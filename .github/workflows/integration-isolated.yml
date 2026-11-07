@@ -1,17 +1,6 @@
 name: Post-A4 single discovery-to-stream integration
+# Closed bounded milestones: retained for explicit reproduction only.
 on:
-  push:
-    branches: [audit/node20-a3-baseline]
-    paths:
-      - 'tests/integration/**'
-      - 'tests/a4/isolation-probe.mjs'
-      - '.github/workflows/integration-isolated.yml'
-  pull_request:
-    branches: [import/upstream-v1.4.1]
-    paths:
-      - 'tests/integration/**'
-      - 'tests/a4/isolation-probe.mjs'
-      - '.github/workflows/integration-isolated.yml'
   workflow_dispatch:
 
 permissions:

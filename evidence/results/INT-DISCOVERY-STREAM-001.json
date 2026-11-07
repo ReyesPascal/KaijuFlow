@@ -1,0 +1,93 @@
+{
+  "id": "INT-DISCOVERY-STREAM-001",
+  "source_commit": "c83a3c733b6394eb140a1c0a1dc500010a9f22e5",
+  "stages": [
+    "original Newznab XML parsing",
+    "original result processing/filtering",
+    "original Fixed coordinator consumes synthetic pre-verified verdict",
+    "original stream builder generates metadata and NzbDAV tile envelope",
+    "original stream route → prepareStream → NZB download/upload → queue/history polling → WebDAV selection/probe → original proxy → exact synthetic bytes"
+  ],
+  "boundaries": [
+    "Synthetic pre-existing verified verdict; no NNTP verification in this scenario",
+    "Fake NzbDAV completes immediately; no actual NZB retrieval/unpacking",
+    "WebDAV listing advertises 128 MiB to meet original 100 MiB selection threshold; delivered fixture is only 64 bytes",
+    "Original modules composed by harness; full server/search orchestrator and manifest authentication are outside this scenario",
+    "Synthetic bytes are not a decodable video; no playback or timing claim"
+  ],
+  "status": "pass",
+  "httpStatus": 200,
+  "bytes": 64,
+  "sha256": "2f487e40e16653113a45fe0c0621d2b36e4bb2aac192a5169570977adfae9d95",
+  "advertisedSize": 134217728,
+  "tileMetadata": {
+    "name": "✅\n4K\nWEB-DL",
+    "title": "🎬 KaijuFlow Fixture (2026)\n  🗣️ English\n  ⚙️ hevc  💾 128 MB\n  🏴‍☠️ Unknown  🗂️ undefined  📅 12h",
+    "behaviorHints": {
+      "notWebReady": false
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "mode": null,
+      "range": null
+    },
+    {
+      "method": "PROPFIND",
+      "path": "/content/Movies/KaijuFlow.Fixture.2026.2160p.WEB-DL.H265/",
+      "mode": null,
+      "range": null
+    },
+    {
+      "method": "GET",
+      "path": "/fixture.nzb",
+      "mode": null,
+      "range": null
+    },
+    {
+      "method": "POST",
+      "path": "/api",
+      "mode": "addfile",
+      "range": null
+    },
+    {
+      "method": "GET",
+      "path": "/api",
+      "mode": "queue",
+      "range": null
+    },
+    {
+      "method": "GET",
+      "path": "/api",
+      "mode": "history",
+      "range": null
+    },
+    {
+      "method": "PROPFIND",
+      "path": "/content/Movies/KaijuFlow.Fixture.2026.2160p.WEB-DL.H265/",
+      "mode": null,
+      "range": null
+    },
+    {
+      "method": "GET",
+      "path": "/content/Movies/KaijuFlow.Fixture.2026.2160p.WEB-DL.H265/fixture.mkv",
+      "mode": null,
+      "range": "bytes=0-0"
+    },
+    {
+      "method": "GET",
+      "path": "/content/Movies/KaijuFlow.Fixture.2026.2160p.WEB-DL.H265/fixture.mkv",
+      "mode": null,
+      "range": null
+    }
+  ],
+  "ci": {
+    "run_id": 42373119985,
+    "job_id": 128405137873,
+    "audit_commit": "ad402bcec957184bfdde91644dc5d00a06e6a7ea",
+    "artifact_id": 13574073895,
+    "artifact_zip_sha256": "c0ef23166582cbf3dde87763cb054dc17d9f44a069403630ba5ede6fdd593aed"
+  }
+}
