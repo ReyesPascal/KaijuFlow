@@ -16,6 +16,7 @@ cp -a "$A4_ROOT/dist" "$A4_RUN_DIR/work/dist"
 cp "$A4_ROOT/package.json" "$A4_RUN_DIR/work/package.json"
 cp -a "$A4_ROOT/node_modules" "$A4_RUN_DIR/work/node_modules"
 cp "$A4_ROOT/tests/a4/synthetic.mjs" "$A4_RUN_DIR/work/synthetic.mjs"
+cp "$A4_ROOT/tests/a4/coordinator.mjs" "$A4_RUN_DIR/work/coordinator.mjs"
 mkdir -p "$A4_RUN_DIR/work/config" "$A4_RUN_DIR/work/assets" "$A4_RUN_DIR/work/ui"
 cp "$A4_ROOT/tests/a4/react-autosave.cjs" "$A4_RUN_DIR/work/ui/react-autosave.cjs"
 cp "$A4_ROOT/ui/.a4-hook.cjs" "$A4_RUN_DIR/work/ui/hook.cjs"
@@ -33,9 +34,13 @@ behavior_status=0
 runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
   NODE_ENV=test A4_APP_ROOT="$A4_RUN_DIR/work" A4_RESULTS="$A4_RUN_DIR/results.json" \
   node "$A4_RUN_DIR/work/synthetic.mjs" || behavior_status=$?
+coord_status=0
+runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
+  NODE_ENV=test A4_APP_ROOT="$A4_RUN_DIR/work" A4_COORD_RESULTS="$A4_RUN_DIR/coordinator-results.json" \
+  node "$A4_RUN_DIR/work/coordinator.mjs" || coord_status=$?
 react_status=0
 runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
   NODE_ENV=test A4_APP_ROOT="$A4_RUN_DIR/work" A4_UI_RESULTS="$A4_RUN_DIR/react-results.json" \
   node "$A4_RUN_DIR/work/ui/react-autosave.cjs" || react_status=$?
-echo "A4: original behavior status=$behavior_status React hook status=$react_status"
-[[ "$behavior_status" -eq 0 && "$react_status" -eq 0 ]]
+echo "A4: original behavior status=$behavior_status coordinator status=$coord_status React hook status=$react_status"
+[[ "$behavior_status" -eq 0 && "$coord_status" -eq 0 && "$react_status" -eq 0 ]]
