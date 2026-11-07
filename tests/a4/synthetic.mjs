@@ -176,11 +176,11 @@ try {
     // not reimplemented. All targets and endpoints are disposable synthetic loopback.
     const { registerDeleteAllTargets } = await src('nzbdav/deleteAllTargetsStore.js');
     const allEndpoint='/stremio/'+manifestKey+'/nzbdav/library-delete-all';
-    const allTile = tk => '?t='+encodeURIComponent(Buffer.from(JSON.stringify({
-      sk:'synthetic-key',type:'movie',id:'a4-deleteall-failure',tk
+    const allTile = (tk,id='a4-deleteall-failure') => '?t='+encodeURIComponent(Buffer.from(JSON.stringify({
+      sk:'synthetic-key',type:'movie',id,tk
     })).toString('base64url'));
     const missBefore=deletes.length;
-    const missing=await request(server.port,allEndpoint+allTile('not-registered'));
+    const missing=await request(server.port,allEndpoint+allTile('not-registered','a4-deleteall-invalid-token'));
     const missDeletes=deletes.length-missBefore;
     const allToken=registerDeleteAllTargets([{path:'/content/movies/FailAllPack',scope:'pack'}]);
     const allUrl=allEndpoint+allTile(allToken);
