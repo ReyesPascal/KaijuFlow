@@ -42,11 +42,15 @@ Directory distribution in original release: `src/` 106 files; `ui/` 62; `auto-in
 
 The pinned source is public, but the connected GitHub text-file API cannot currently read its non-UTF8 binary artifacts. **Do not label a text-only import as complete.** Use a regular Git clone/fetch from a development machine with network access to GitHub and push the validated branch to the private KaijuFlow repo.
 
-Suggested command sequence, run from a new **isolated** KaijuFlow clone (never inside the live Brain container folders):
+A non-deploying, checksum-verifying import helper is committed at [scripts/import-upstream-v1.4.1.sh](../scripts/import-upstream-v1.4.1.sh). It operates only in a clean isolated KaijuFlow checkout, fetches the exact public tag, imports and hash-verifies **all 192 files**, preserves the existing root README/LICENSE and saves a validation report. It **does not** commit, push, deploy, or scan credentials for you; a trusted secret scan and isolated tests are required before any Git push.
+
+The underlying commands, from a new **isolated** KaijuFlow clone (never inside the live Brain container folders):
 
 ```bash
 git status --short
-git remote add upstream-ultimate https://github.com/DSmart33/Usenet-Ultimate.git
+bash scripts/import-upstream-v1.4.1.sh
+# The helper performs the fetch, import, and all-blob SHA checks below.
+# For manual inspection only, the underlying Git fetch is:
 git fetch --no-tags upstream-ultimate refs/tags/v1.4.1:refs/tags/upstream-ultimate-v1.4.1
 git rev-parse 'refs/tags/upstream-ultimate-v1.4.1^{commit}'
 # Must equal: 499efbdeb631b1b059f8aa70d07c12beaf504876
