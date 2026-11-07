@@ -1,3 +1,27 @@
+# Final expanded A4 synthetic execution checkpoint — 2026-11-07
+
+**Verified run:** [GitHub Actions 42370377554](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42370377554), job `128397091476`, original immutable source `c83a3c733b6394eb140a1c0a1dc500010a9f22e5`. `synthetic.mjs`: **15 pass, 2 intentional red original behavior failures**; real React hook fixture: **3 pass, 1 intentional red stale-response ordering failure**. CI combined status FAIL *by design* for the reproduced safety/consistency regressions, not for isolation. Log reports fail-closed no-egress namespace gate PASS and original `src/` and `ui/src/` SHA-256 before/after unchanged. Artifact ID `13573805381`, ZIP SHA-256 `0c2169b10a838199f55f59083ba5b921ff955017dbdc60aae9e0557b635695f8`.
+
+| Case IDs | Outcome | Bounded original-code observation |
+| --- | --- | --- |
+| A4-HTTP-001, A4-SDK-002, A4-AUTOSAVE-004 | PASS | Auth/JWT, SDK routes, sequential backend settings |
+| A4-DELETE-003 | **RED** | HEAD invokes remote WebDAV DELETE; failed 503 DELETE not retried |
+| A4-DELETEALL-007 | **RED** | Failed 503 delete-all attempt not retried (1→1), invalid token/manifest deny remote delete |
+| A4-PROVIDER-005, A4-INDEXER-006, A4-INDEXER-CRUD-006 | PASS | Provider and indexer CRUD, validation, reordering; last indexer fixture overlaps coverage and is not a separate subsystem |
+| A4-NNTP-HANDSHAKE-008, A4-STAT-FALLBACK-009 | PASS | Synthetic NNTP AUTHINFO and 223/430 STAT fallback |
+| A4-ARCHIVE-GROUP-010, A4-YENC-011 | PASS | Split archive grouping/sampling, byte-accurate yEnc BODY and format signatures |
+| A4-RANGE-PROXY-012, A4-PROXY-FALLBACK-014 | PASS | WebDAV proxy full/partial 200/206, 416 recovery, 404 same-origin fallback with Range reset |
+| A4-SYNC-013 | PASS | Prowlarr + NZBHydra fake localhost sync, enabled filtering and settings preservation |
+| A4-CACHE-015 | PASS | Broken video marker and one-shot library bypass |
+| A4-HEALTH-SAMPLING-016 | PASS | Original pipeline verifies 3/7 samples and blocks synthetic 430 missing article |
+| Real React useAppConfig fixture | **3 PASS, 1 RED** | 300 ms debounce, 500/transport retention pass; stale success response overwrites shared config |
+
+**Coverage caveat:** These are isolated source-backed module/route fixtures, not a real-server integration benchmark, original-quality 4K playback test, TLS certificate assessment, or complete Smart/Fixed UI orchestration parity. Do not declare production release readiness. Continue source fixes only by separately approved PR after prioritizing destructive HEAD/deletion, delete-all dedup and autosave ordering. Keep CI intentionally red until actual source remediation is independently reviewed and regression tests pass.
+
+**Evidence index:** `EV-KF-A4-EXPANDED-017`, `CL-KF-A4-EXPANDED-017`, `ART-KF-A4-EXPANDED-017`. Historical mid-run observations follow for provenance.
+
+---
+
 # A4 additional synthetic execution checkpoint — 2026-11-07
 
 ## Scope and boundaries
