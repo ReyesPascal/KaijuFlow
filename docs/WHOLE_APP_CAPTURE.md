@@ -44,22 +44,12 @@ The pinned source is public, but the connected GitHub text-file API cannot curre
 
 A non-deploying, checksum-verifying import helper is committed at [scripts/import-upstream-v1.4.1.sh](../scripts/import-upstream-v1.4.1.sh). It operates only in a clean isolated KaijuFlow checkout, fetches the exact public tag, imports and hash-verifies **all 192 files**, preserves the existing root README/LICENSE and saves a validation report. It **does not** commit, push, deploy, or scan credentials for you; a trusted secret scan and isolated tests are required before any Git push.
 
-The underlying commands, from a new **isolated** KaijuFlow clone (never inside the live Brain container folders):
+Run only the following from a **clean, isolated** KaijuFlow checkout with working Git network access. The helper creates `import/upstream-v1.4.1`, fetches the immutable source, copies every file and verifies each Git blob checksum; it never commits, pushes or deploys.
 
 ```bash
-git status --short
 bash scripts/import-upstream-v1.4.1.sh
-# The helper performs the fetch, import, and all-blob SHA checks below.
-# For manual inspection only, the underlying Git fetch is:
-git fetch --no-tags upstream-ultimate refs/tags/v1.4.1:refs/tags/upstream-ultimate-v1.4.1
-git rev-parse 'refs/tags/upstream-ultimate-v1.4.1^{commit}'
-# Must equal: 499efbdeb631b1b059f8aa70d07c12beaf504876
-git switch -c import/upstream-v1.4.1
-# Extract the entire exact upstream tree to a temporary directory.
-# Copy all files, retaining executable bits, with README and LICENSE remapped
-# as documented above; verify all 192 file blob hashes against the manifest.
-# Run security/credential scans before staging or committing.
-# Run isolated backend/UI build, then commit and push this development branch.
 ```
+
+Then independently scan imported content for credentials, review file inventory and preserved notices, perform isolated backend/UI builds and application-wide regression checks, and only after passing validation commit and push the import branch. It is intentionally not yet executed in this session.
 
 Record detailed audit/testing evidence under this docs directory, update `HANDOFF.md` and the checkpoint register, and only then proceed to Phase B. KaijuNNTP does not replace or remove in-app NNTP features.
