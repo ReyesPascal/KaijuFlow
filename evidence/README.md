@@ -8,7 +8,7 @@
 
 | Start here | Purpose |
 | --- | --- |
-| [Next-session runbook](../docs/kaijuflow/audit/NEXT_SESSION.md) | Exact saved checkpoint and first A3-ROUTE-001 analysis deliverable |
+| [Next-session runbook](../docs/kaijuflow/audit/NEXT_SESSION.md) | Current status and next action |
 | [A3-ROUTE-001 first-pass route/UI matrix](../docs/kaijuflow/audit/A3-ROUTE-001.md) | 63 explicit endpoint declarations, 21 representative UI/action chains, side effects, guard classification and unknowns |
 | [Execution plan](../docs/kaijuflow/audit/EXECUTION_PLAN.md) | Research-validated stages 0–5, tool choice and exit gates |
 | [Original independent research report](../docs/kaijuflow/audit/RESEARCH_REPORT_2026-11-07.txt) | Exact user-supplied report archived for provenance; **illustrative commands may contain assumptions** and the corrected execution plan is authoritative |
@@ -19,7 +19,6 @@
 | [Findings guidelines](findings/README.md) | Individual finding format, review workflow and security rules |
 | [A3 v0.1 source architecture](../docs/kaijuflow/A3_STATIC_ARCHITECTURE.md) | Previously completed source-backed 13-subsystem inventory (NOT full A3) |
 | [Earlier REA decision record](../docs/kaijuflow/REA_DECISION_AND_PLAN.md) | Original tool choice and alternatives; retained for history |
-| [Import handoff](../docs/kaijuflow/HANDOFF.md) | Original import checkpoint and rollback; some steps have since advanced |
 | [Issue #2](https://github.com/ReyesPascal/KaijuFlow/issues/2) | Durable session handoffs and current evidence updates |
 
 > Relative links are relative to `evidence/`. The GitHub PR and Issue hold cross-session status. Check their latest comments before asserting a milestone; old documents may retain historical pending statuses.

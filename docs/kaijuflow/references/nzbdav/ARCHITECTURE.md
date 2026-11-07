@@ -1,8 +1,6 @@
 # NzbDAV architecture and source map
 
-Source pin: `c83a3c733b6394eb140a1c0a1dc500010a9f22e5` (original v1.4.1 import). Every application source link below pins this commit and names the relevant symbol. **Source-observed** means inspected code; **tested** means only the named synthetic case executed; **proposed** means future work; **unknown** means missing evidence. JSONL uses `test-observed` for tested results. No production configuration, credentials, private NZBs or Brain services were accessed.
-
-Evidence: `EV-KF-REF-001` for this source review; `EV-KF-A4-CLOSURE-001` for [A4 closure](../../audit/A4-CLOSURE.md); `EV-KF-INT-001` for [the separate integration](../../audit/INTEGRATION-DISCOVERY-STREAM.md). See [live-validation gaps](../../audit/VALIDATION_GAPS.md).
+Source pin, labels and evidence IDs: see [README](README.md).
 
 | ID / topic | Behavior and source | Classification / evidence | Reproduction and remaining gap |
 | --- | --- | --- | --- |
