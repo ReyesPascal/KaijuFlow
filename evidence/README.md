@@ -9,6 +9,7 @@
 | Start here | Purpose |
 | --- | --- |
 | [Next-session runbook](../docs/kaijuflow/audit/NEXT_SESSION.md) | Exact saved checkpoint and first A3-ROUTE-001 analysis deliverable |
+| [A3-ROUTE-001 first-pass route/UI matrix](../docs/kaijuflow/audit/A3-ROUTE-001.md) | 63 explicit endpoint declarations, 21 representative UI/action chains, side effects, guard classification and unknowns |
 | [Execution plan](../docs/kaijuflow/audit/EXECUTION_PLAN.md) | Research-validated stages 0–5, tool choice and exit gates |
 | [Original independent research report](../docs/kaijuflow/audit/RESEARCH_REPORT_2026-11-07.txt) | Exact user-supplied report archived for provenance; **illustrative commands may contain assumptions** and the corrected execution plan is authoritative |
 | [Subsystem index](index/subsystems.jsonl) | Stable subsystem IDs, source anchors, status and coverage gaps |
@@ -59,3 +60,11 @@
 See `index/schema/` for schema specifications. CI lint/consistency tests should detect duplicate IDs, malformed JSONL, dangling support IDs, missing source commit pins, and stale/absent SHA-256 for claims marked as retained/verified. Source coverage and documentation validity are separate from behavioral coverage and from performance.
 
 **Append-only evidence history:** New analysis can supersede claims via explicit `supersedes` and `status` metadata; never erase an inconvenient observation just because code changed.
+
+## New A3-ROUTE-001 source evidence (2026-11-07)
+
+- [Pinned first-pass UI/HTTP matrix](../docs/kaijuflow/audit/A3-ROUTE-001.md) extends A3 v0.1 without modifying any original source file. The matrix covers 63 explicit route declarations and 21 high-value UI/action chains; SDK-generated routes, nested callbacks and runtime behavior remain unverified.
+- Stage 0 private detached checkout verified at import SHA with clean Git status and both original lockfile SHA-256 identities. **No runtime boot or network-denial test has been conducted**, and no live services changed.
+- New manifest IDs: `EV-KF-STAGE0-001`, `EV-KF-A3-ROUTE-001`. Claims: `CL-KF-STAGE0-CHECKOUT-001`, `CL-KF-A3-ROUTE-001`, `CL-KF-A3-GET-DELETE-001`. The latter records state-changing Stremio GET actions as a source observation; actual exploitability is unknown.
+- A read-only Codex source review used only a sanitized 47-file original-source snapshot, separated from all audit notes and unrelated work. It verified a bounded auth-chain map; it did not run the app, change files or make network requests. The canonical evidence remains independently inspected source.
+- Next: confirm frontend callback edges and Express/SDK routes using TypeScript AST, then synthetic auth, destructive-GET and range/fallback tests in a network-restricted disposable runtime. REA artifact inspection remains a distinct later gate; no KaijuFlow scan was performed.
