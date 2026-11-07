@@ -6,6 +6,7 @@ on:
       - audit/node20-a3-baseline
     paths:
       - 'tools/audit/extract_route_graph.cjs'
+      - 'tools/audit/inspect_stremio_sdk.cjs'
       - '.github/workflows/a3-ast.yml'
       - 'src/**'
       - 'ui/src/**'
@@ -38,6 +39,12 @@ jobs:
         run: |
           sha256sum "$RUNNER_TEMP/kaijuflow-a3-ast/ast-edges.json"
           sha256sum "$RUNNER_TEMP/kaijuflow-a3-ast/AST_SUMMARY.md"
+      - name: Install locked Stremio SDK without application execution
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Inspect SDK 1.6.10 source without importing it
+        run: |
+          node tools/audit/inspect_stremio_sdk.cjs "$RUNNER_TEMP/kaijuflow-a3-ast"
+          sha256sum "$RUNNER_TEMP/kaijuflow-a3-ast/sdk-routes.json"
       - name: Retain bounded static graph as review artifact
         uses: actions/upload-artifact@v4
         with:
