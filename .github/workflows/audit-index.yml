@@ -1,0 +1,37 @@
+name: KaijuFlow evidence index integrity
+
+on:
+  push:
+    branches:
+      - audit/node20-a3-baseline
+    paths:
+      - 'evidence/**'
+      - 'tools/audit/**'
+      - '.github/workflows/audit-index.yml'
+  pull_request:
+    branches:
+      - import/upstream-v1.4.1
+    paths:
+      - 'evidence/**'
+      - 'tools/audit/**'
+      - '.github/workflows/audit-index.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  index-consistency:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout review-only audit branch and original source history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate index, source paths and pinned source blob IDs
+        run: |
+          python3 --version
+          python3 tools/audit/validate_index.py
