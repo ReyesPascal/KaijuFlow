@@ -252,6 +252,63 @@ try {
   } finally {await s.close();}
 } catch(e) {record('A4-AUTOSAVE-004','fail',{error:String(e)},'Settings backend behavior not confirmed; UI timer/concurrency remain unverified');}
 
+// Provider and indexer CRUD: invoke the original Express routers with in-memory
+// synthetic repository callbacks. No NNTP credentials or external indexer traffic.
+try {
+  const {createHealthCheckRoutes}=await src('routes/healthCheck.js');
+  const {createIndexerRoutes}=await src('routes/indexers.js');
+  let providers=[],indexers=[],n=0;
+  const app=express();app.use(express.json());app.use('/api',authMw.requireAuth);
+  app.use('/api/health-check',createHealthCheckRoutes({
+    getProviders:()=>providers,
+    addProvider:p=>{const v={...p,id:'fixture-'+(++n)};providers.push(v);return v;},
+    updateProvider:(id,v)=>{const i=providers.findIndex(x=>x.id===id);if(i<0)throw Error('not found');return providers[i]={...providers[i],...v};},
+    deleteProvider:id=>{const i=providers.findIndex(x=>x.id===id);if(i<0)throw Error('not found');providers.splice(i,1);},
+    reorderProviders:ids=>{if(ids.length!==providers.length||ids.some(x=>!providers.some(p=>p.id===x)))throw Error('invalid ids');providers=ids.map(id=>providers.find(x=>x.id===id));}
+  }));
+  app.use('/api/indexers',createIndexerRoutes({
+    config,getIndexers:()=>indexers,
+    addIndexer:x=>{if(indexers.some(i=>i.name===x.name))throw Error('duplicate name');const v={...x,enabled:true};indexers.push(v);return v;},
+    updateIndexer:(name,x)=>{const i=indexers.findIndex(v=>v.name===name);if(i<0)throw Error('not found');return indexers[i]={...indexers[i],...x};},
+    deleteIndexer:name=>{const i=indexers.findIndex(x=>x.name===name);if(i<0)throw Error('not found');indexers.splice(i,1);},
+    reorderIndexers:items=>{if(items.length!==indexers.length||items.some(x=>!indexers.some(i=>i.name===x.name)))throw Error('invalid order');indexers=items;},
+    fetchIndexerCaps:async()=>({categories:[]}),
+    proxyFetch:async()=>({ok:true,status:200,statusText:'OK',text:async()=>'<rss><channel><item><title>Synthetic.Movie</title></item></channel></rss>'}),
+    getLatestVersions:()=>({chrome:'synthetic',prowlarr:'synthetic'})
+  }));
+  const s=await serve(app);
+  const base='/api/health-check/providers',ix='/api/indexers';
+  const req=(url,opts)=>request(s.port,url,{headers:{Authorization:'Bearer '+jwt,...opts?.headers},...opts});
+  try {
+    assert.equal((await request(s.port,base)).status,401);
+    assert.equal((await req(base,{method:'POST',...jsonReq('POST',{name:'bad'},jwt)})).status,400);
+    const a=await req(base,jsonReq('POST',{name:'SyntheticA',host:'127.0.0.1',username:'dummy',password:'dummy'},jwt));
+    const b=await req(base,jsonReq('POST',{name:'SyntheticB',host:'127.0.0.1'},jwt));
+    assert.equal(a.status,201);assert.equal(b.status,201);
+    assert.equal(a.json.port,563);assert.equal(a.json.useTLS,true);
+    const reorder=await req(base+'/reorder',jsonReq('POST',{orderedIds:[b.json.id,a.json.id]},jwt));
+    assert.equal(reorder.status,200);assert.equal(providers[0].id,b.json.id);
+    assert.equal((await req(base+'/'+encodeURIComponent(a.json.id),jsonReq('PUT',{enabled:false},jwt))).json.enabled,false);
+    assert.equal((await req(base+'/'+encodeURIComponent(a.json.id),{method:'DELETE'})).status,204);
+    assert.equal(providers.length,1);
+    record('A4-PROVIDER-005','pass',{anonymous:401,created:2,reordered:reorder.status,deleted:1},'Original provider CRUD and reorder router; synthetic in-memory callbacks');
+    assert.equal((await req(ix,jsonReq('POST',{name:'bad'},jwt))).status,400);
+    assert.equal((await req(ix,jsonReq('POST',{name:'BadTimeout',url:'http://127.0.0.1',apiKey:'dummy',timeout:46},jwt))).status,400);
+    const one=await req(ix,jsonReq('POST',{name:'IndexA',url:'http://127.0.0.1',apiKey:'dummy'},jwt));
+    const two=await req(ix,jsonReq('POST',{name:'IndexB',url:'http://127.0.0.1/api',apiKey:'dummy'},jwt));
+    assert.equal(one.status,201);assert.equal(two.status,201);
+    assert.equal(one.json.url,'http://127.0.0.1/api');
+    assert.equal((await req(ix+'/IndexA',jsonReq('PUT',{timeout:10,timeoutEnabled:true},jwt))).status,200);
+    assert.equal((await req(ix+'/reorder',jsonReq('POST',{indexers:[two.json,one.json]},jwt))).status,200);
+    assert.equal(indexers[0].name,'IndexB');
+    assert.equal((await req(ix+'/IndexA',{method:'DELETE'})).status,204);
+    assert.equal(indexers.length,1);
+    const caps=await req(ix+'/caps',jsonReq('POST',{url:'http://127.0.0.1',apiKey:'dummy'},jwt));
+    assert.equal(caps.status,200);
+    record('A4-INDEXER-006','pass',{created:2,normalizedUrl:one.json.url,reordered:true,deleted:1,caps:200},'Original manual indexer router, injected caps and proxy callbacks; not a sync integration test');
+  }finally{await s.close();}
+}catch(e){record('A4-PROVIDER-INDEXER','fail',{error:String(e)},'Synthetic CRUD fixture did not satisfy original route contract');}
+
 fs.writeFileSync(process.env.A4_RESULTS,JSON.stringify(report,null,2)+'\n',{mode:0o600});
 console.log('A4 SYNTHETIC SUMMARY',JSON.stringify({passed:report.cases.filter(x=>x.status==='pass').length,failed:failures}));
 process.exit(failures ? 1 : 0);
