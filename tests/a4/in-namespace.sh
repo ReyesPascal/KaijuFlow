@@ -7,17 +7,19 @@ ip link set lo up
 [[ "$(ip -o link show | wc -l)" == 1 ]] && ip -o link show lo >/dev/null || { echo "FAIL: non-loopback interface"; exit 22; }
 mkdir -p "$A4_RUN_DIR"/{home,work,tmp}
 chmod 755 "$(dirname "$A4_RUN_DIR")"
+cp "$A4_ROOT/tests/a4/isolation-probe.mjs" "$A4_RUN_DIR/probe.mjs"
 chown -R nobody:nogroup "$A4_RUN_DIR"
 runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
-  A4_FORCE_FAIL="${A4_FORCE_FAIL:-0}" node "$A4_ROOT/tests/a4/isolation-probe.mjs"
+  A4_FORCE_FAIL="${A4_FORCE_FAIL:-0}" node "$A4_RUN_DIR/probe.mjs"
 echo "A4-ISO-000: network namespace $(readlink /proc/self/ns/net); only lo; TCP v4/v6 and DNS denied; local loopback PASS"
 cp -a "$A4_ROOT/dist" "$A4_RUN_DIR/work/dist"
 cp "$A4_ROOT/package.json" "$A4_RUN_DIR/work/package.json"
-ln -s "$A4_ROOT/node_modules" "$A4_RUN_DIR/work/node_modules"
+cp -a "$A4_ROOT/node_modules" "$A4_RUN_DIR/work/node_modules"
+cp "$A4_ROOT/tests/a4/synthetic.mjs" "$A4_RUN_DIR/work/synthetic.mjs"
 mkdir -p "$A4_RUN_DIR/work/config" "$A4_RUN_DIR/work/assets"
 chown -R nobody:nogroup "$A4_RUN_DIR/work"
 printf 'A4-ISO-000 PASS\n' > "$A4_RUN_DIR/app-import.started"
 cd "$A4_RUN_DIR/work"
 runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
   NODE_ENV=test A4_APP_ROOT="$A4_RUN_DIR/work" A4_RESULTS="$A4_RUN_DIR/results.json" \
-  node "$A4_ROOT/tests/a4/synthetic.mjs"
+  node "$A4_RUN_DIR/work/synthetic.mjs"
