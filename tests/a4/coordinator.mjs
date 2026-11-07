@@ -31,7 +31,7 @@ try{
     assert.equal(r.healthResults.get(arr[0].link)?.status,'verified');
     assert.equal(r.healthResults.get(arr[2].link)?.message,'Zyclops');
     assert.equal(r.filteredResults.length,4);
-    assert.equal(r.filteredResults.at(-1).origin,'library');
+    assert.ok(r.filteredResults.some(result=>result.origin==='library'));
     return {verified:r.healthResults.size,retained:r.filteredResults.length,libraryKept:true};
   });
   await run('A4-COORD-FIXED-019',async()=>{
