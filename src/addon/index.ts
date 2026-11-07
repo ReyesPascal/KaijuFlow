@@ -37,6 +37,7 @@ import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
 import { isDatabaseLoaded } from '../anime/animeDatabase.js';
 import { resolveEpisodeCountFromTvdbId, resolveTmdbExternalIds } from '../idResolver.js';
+import { getSelfUrl } from '../utils/selfUrl.js';
 
 // Create cache for search results
 // Use stdTTL: 0 (no expiry) and manage TTL per-entry via cache.set() so runtime changes take effect
@@ -299,7 +300,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // === SHARED: Filter dead NZBs from raw results ===
     const filterDeadFromRaw = (results: any[]) => {
       if (!config.filterDeadNzbs) return results;
-      const SELF_URL = `http://localhost:${process.env.PORT || 1337}`;
+      const SELF_URL = getSelfUrl(); // must match healthCheckCoordinator's dead-NZB keys
       const manifestKey = requestContext.getStore()?.manifestKey || '';
       let cachePattern: string | undefined;
       if (type === 'series' && season !== undefined && episode !== undefined) {

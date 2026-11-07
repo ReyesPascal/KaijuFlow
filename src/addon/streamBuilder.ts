@@ -21,6 +21,7 @@ import { createFallbackGroup, type FallbackCandidate } from '../nzbdav/index.js'
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
 import { registerDeleteAllTargets } from '../nzbdav/deleteAllTargetsStore.js';
 import { buildStreamDisplay } from './streamDisplay.js';
+import { getSelfUrl } from '../utils/selfUrl.js';
 
 // Ultimate Fallback tile name + path
 const UF_TILE_BASE_NAME = '👑 Ultimate Fallback';
@@ -37,9 +38,9 @@ function ufTileDisplay(mode: 'speed' | 'priority' | undefined): { name: string; 
 
 
 /** Resolve the base URL for stream/proxy URLs — uses the request's origin when available,
- *  falls back to BASE_URL env or localhost for background tasks (auto-queue, health checks). */
+ *  falls back to BASE_URL env or loopback (127.0.0.1) for background tasks (auto-queue, health checks). */
 function getBaseUrl(): string {
-  return requestContext.getStore()?.baseUrl || process.env.BASE_URL || 'http://localhost:1337';
+  return requestContext.getStore()?.baseUrl || process.env.BASE_URL || getSelfUrl(1337);
 }
 
 /** Get the path prefix for manifest-key routes (empty for legacy root, '/stremio' for prefixed path). */
