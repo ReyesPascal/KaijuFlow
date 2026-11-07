@@ -157,11 +157,30 @@ try {
     const failCount1=deletes.filter(x=>x.url?.includes('FailPack')).length;
     await request(server.port,endpoint+tile('/content/movies/FailPack'),{method:'GET'});
     const failCount2=deletes.filter(x=>x.url?.includes('FailPack')).length;
-    const metrics={invalidDeletes:0,headResponse:head.status,headRemoteDeletes:afterHEAD,replayRemoteDeletes:afterReplay,failedFirst:failCount1,failedReplay:failCount2};
+    // Bounded, loopback-only regression expansion. Unique paths avoid the existing 30s dedup window.
+    const priorInvalid = deletes.length;
+    await request(server.port,endpoint+tile('/content/movies/../CrossRoot'));
+    await request(server.port,endpoint+tile('/content/movies/Bad/Deep','pack'));
+    await request(server.port,endpoint+'?t=not-valid-json-base64');
+    const invalidAdditional = deletes.length-priorInvalid;
+    const unauthorizedBefore=deletes.length;
+    const unauthorized = await request(server.port,'/stremio/invalid-manifest-key/nzbdav/library-delete'+tile('/content/movies/Unauthorized'));
+    const unauthorizedDeletes=deletes.length-unauthorizedBefore;
+
+    const concurrentPath='/content/movies/ConcurrentPack';
+    const concurrentBefore=deletes.filter(x=>x.url?.includes('ConcurrentPack')).length;
+    await Promise.all(Array.from({length:4},()=>request(server.port,endpoint+tile(concurrentPath))));
+    const concurrentDeletes=deletes.filter(x=>x.url?.includes('ConcurrentPack')).length-concurrentBefore;
+
+    // Existing handler treats 404/410 as a successful absence; 503 is not success.
+    const metrics={invalidDeletes:0,headResponse:head.status,headRemoteDeletes:afterHEAD,replayRemoteDeletes:afterReplay,failedFirst:failCount1,failedReplay:failCount2,invalidAdditional,unauthorizedStatus:unauthorized.status,unauthorizedDeletes,concurrentDeletes};
     const violations=[];
     if(afterHEAD!==0) violations.push('HEAD initiated WebDAV DELETE');
     if(afterReplay!==1) violations.push('dedup/replay count differs from one');
     if(failCount2!==2) violations.push('failed DELETE is deduped instead of retried');
+    if(invalidAdditional!==0) violations.push('invalid/traversal/deep-pack envelope remotely deleted');
+    if(unauthorized.status!==404 || unauthorizedDeletes!==0) violations.push('invalid manifest reached deletion');
+    if(concurrentDeletes!==1) violations.push('concurrent same-key delete was not coalesced');
     record('A4-DELETE-003',violations.length?'fail':'pass',metrics,violations.length?violations.join('; '):'Original imported handler; no live WebDAV; remote side-effect count measured');
   } finally { await server.close();await fake.close(); }
 } catch(e) { record('A4-DELETE-003','fail',{error:String(e)},'Original deletion route could not complete sandbox fixture'); }
