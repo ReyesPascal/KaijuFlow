@@ -280,8 +280,15 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   editFormRef.current = editForm;
 
   // ─── Internal auto-save helper ──────────────────────────────────────
+  // KaijuFlow (AUDIT.md finding 4): number each save. Each response carries
+  // the full server config as of that save, so a reply from an older save
+  // that arrives after a newer save's reply is stale and must not overwrite
+  // `config`. Failed saves still leave local state alone, as before.
+  const saveSeqRef = useRef(0);
+  const appliedSaveSeqRef = useRef(0);
   const saveSettings = useCallback(
     async (settings: Record<string, unknown>) => {
+      const seq = ++saveSeqRef.current;
       try {
         const response = await apiFetch('/api/settings', {
           method: 'PUT',
@@ -290,6 +297,8 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
         });
         if (response.ok) {
           const data = await response.json();
+          if (seq < appliedSaveSeqRef.current) return; // a newer save already applied
+          appliedSaveSeqRef.current = seq;
           setConfig(data);
         } else {
           // Server rejected the save (413 payload too large, 400 validation, 5xx).
