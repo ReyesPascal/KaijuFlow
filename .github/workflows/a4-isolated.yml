@@ -49,7 +49,7 @@ jobs:
         if: always()
         with:
           name: a4-disposable-synthetic-report
-          path: a4-results.json
+          path: |\n            a4-results.json\n            a4-react-results.json
           if-no-files-found: warn
           retention-days: 14
       - name: Preserve gate and assertion failures as CI failures
