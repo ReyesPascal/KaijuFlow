@@ -456,6 +456,17 @@ try {
     const missing='/stremio/'+manifestKey+'/nzbdav/v?path='+encodeURIComponent('/content/movies/MissingMedia');
     const gone=await fetch('http://127.0.0.1:'+s.port+missing);
     assert.equal(gone.status,404);
+    const fb='/stremio/'+manifestKey+'/nzbdav/stream/ultimate-fallback';
+    const fallback=await fetch('http://127.0.0.1:'+s.port+missing+'&_fb='+encodeURIComponent(fb),
+      {redirect:'manual'});
+    assert.equal(fallback.status,302);
+    const location=new URL(fallback.headers.get('location'));
+    assert.equal(location.hostname,'127.0.0.1');
+    assert.equal(location.pathname,fb);
+    assert.equal(location.searchParams.get('_norange'),'1');
+    record('A4-PROXY-FALLBACK-014','pass',
+      {upstream404:404,redirect:302,noRange:location.searchParams.get('_norange'),sameOrigin:true},
+      'Original video proxy 404 marks stale path and redirects to same-origin fallback with range reset');
     record('A4-RANGE-PROXY-012','pass',
       {full:200,partial:206,recovered416:200,missing:404,upstreamRequests:upstreamRanges.length},
       'Original /v proxy, byte-for-byte 200/206 and 416 recovery, upstream 404 without fallback; no actual 4K playback');
