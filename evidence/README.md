@@ -9,6 +9,7 @@
 | Start here | Purpose |
 | --- | --- |
 | [Execution plan](../docs/kaijuflow/audit/EXECUTION_PLAN.md) | Research-validated stages 0–5, tool choice and exit gates |
+| [Original independent research report](../docs/kaijuflow/audit/RESEARCH_REPORT_2026-11-07.txt) | Exact user-supplied report archived for provenance; **illustrative commands may contain assumptions** and the corrected execution plan is authoritative |
 | [Subsystem index](index/subsystems.jsonl) | Stable subsystem IDs, source anchors, status and coverage gaps |
 | [Evidence manifest](index/manifest.jsonl) | Who/what produced each piece of evidence, source commit, tool version, and storage policy |
 | [Claims ledger](index/claims.jsonl) | Atomic claims with evidence links, certainty, validation and staleness fields |
