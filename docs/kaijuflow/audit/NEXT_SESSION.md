@@ -1,3 +1,39 @@
+# NEXT SESSION — A4 continuation and Brain-first streaming architecture (2026-11-07)
+
+**Live state verified at save:** audit PR #3 OPEN/DRAFT and UNMERGED at `8275ffd2fb2ae507f78ef7631fad604b86afc554`; import PR #1 OPEN/UNMERGED at immutable `c83a3c733b6394eb140a1c0a1dc500010a9f22e5`. Original upstream source is unchanged. This handoff commit will advance PR #3, so fetch the new head and CI next session.
+
+## Immediate A4 restart
+- A4-ISO-000 proven in GitHub Actions run 42366142956: disposable network namespace, loopback only, IPv4/IPv6 TCP and DNS outbound denied, fail-closed negative probe stops application imports. Existing synthetic authentication A4-HTTP-001, Stremio SDK A4-SDK-002, and sequential backend settings subtest PASSED.
+- A4-DELETE-003 intentionally RED on originally observed safety invariants: HEAD on a destructive GET route initiates fake WebDAV DELETE; simulated 503 is marked handled for 30 seconds. Independent review: `docs/kaijuflow/audit/A4-DELETE-003-REVIEW.md` and `evidence/findings/F-KF-A4-DELETE-001.md`. Additional deletion assertions were committed in `tests/a4/synthetic.mjs` (traversal, invalid pack depth, malformed token, invalid manifest, four concurrent same-key requests). **Do not claim the added assertions passed until latest CI results independently confirm.** Delete-all error dedup is currently a source-supported hypothesis, not a runtime observation.
+- Original React `ui/src/hooks/useAppConfig.ts` uses 300/500ms delayed autosaves; successful responses call `setConfig(data)`, errors leave local state. React timer overlap, out-of-order response, 500 rejection and retry/rollback scenarios remain untested. Existing backend sequential tests do not establish React concurrency correctness.
+- **Next action sequence:** verify current branch CI/index integrity; diagnose only newly added deletion assertions (keep discovered source defects visibly RED); build isolated actual React-hook timer/inflight/failure fixture; then A4-PROVIDER-005 and A4-SYNC-006; then synthetic Smart/Fixed NNTP, archive/yEnc, Range 200/206/416, cache/fallback and proxy cases. Save source-linked evidence/index records and GitHub commits, track independently executed vs source-observed vs proposed. No repeat of import/A3 AST/Node20 baseline.
+
+## User-requested Brain-heavy / TV-light architecture recap (design target, not implementation claim)
+```mermaid
+flowchart TD
+  A[Indexers + Usenet NNTP providers] --> B[Brain / ThinkPad: KaijuFlow]
+  subgraph BRAIN[Brain does the heavy work]
+    B --> C[Discover and rank]
+    C --> D[Smart and Fixed article verification]
+    D --> E[NNTP retrieval / connection scheduling / yEnc assembly]
+    E --> F[Buffer, prefetch and cache]
+    F --> G[Stream delivery / HTTP Range / seek]
+    H[Recovery: provider and source fallback] --> E
+    F --> H
+  end
+  G -->|Direct LAN or Wi-Fi; HTTP video bytes| T[PTP on Hisense TV]
+  T --> U[Hardware decode original-quality video/audio]
+  T -->|Seek, pause and playback requests| G
+```
+- Today: working Usenet Ultimate + NzbDAV baseline on Brain, PTP on Hisense, direct LAN/Wi-Fi without Tailscale proved materially more stable in earlier playback observation. The architecture above is a **proposed KaijuFlow optimization target**. Do not claim planned NNTP prefetch, direct-stream engine or replacement is implemented.
+- Keep NzbDAV until measured alternative wins on startup, sustained 4K bitrate, seek behavior, buffering, recovery, RAM/CPU and maintenance. Prefer original-quality passthrough and TV hardware decoding; Brain offloads discovery, network retrieval, assembly and buffering, **not necessarily video decoding/transcoding**. KaijuNNTP separate engine only with objective evidence.
+- Brain / production Docker, NzbDAV volumes, passwords, networks and deployment are strictly off-limits without explicit approval. No PR merges, source rewrites, live NZBs/credentials, REA crossover or force push.
+
+## Exact next-session prompt
+> Resume KaijuFlow from GitHub Issue #2 and docs/kaijuflow/audit/NEXT_SESSION.md. Verify the current audit PR #3 head and A4 CI. Preserve the original source and both unmerged PRs. Complete expanded deletion assertions and React autosave concurrency in the proven isolated test environment; then continue remaining A4 synthetic cases. Save GitHub evidence/index checkpoints. Keep the Brain-heavy original-quality streaming design as a future benchmarking target, without touching Brain production.
+
+---
+
 # CURRENT A4 CONTINUATION — deletion review and expanded regression committed (2026-11-07)
 
 **Verified live PR #3 head at session start:** `0d4f229a395e9ac2ea8eedd67585f13c6c41456d`; audit-only follow-up commits `f838c16f` (test expansion) and `ef72f276` (independent review). **Recheck current head and latest GitHub Actions before claiming execution.** Both PR #1 and draft PR #3 remain unmerged; immutable original baseline `c83a3c73` untouched.
