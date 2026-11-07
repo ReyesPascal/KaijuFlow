@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ReyesPascal/KaijuFlow/blob/audit/node20-a3-baseline/evidence/index/schema/records.schema.json",
+  "title": "KaijuFlow audit index record schemas v1",
+  "description": "Records used by manifest/claims/subsystems/artifacts JSONL. Schema definitions are selectable by dataset. CI's Python validator separately checks cross-file references and file paths.",
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "claim_id",
+        "statement",
+        "classification",
+        "status",
+        "source_commit",
+        "support_evidence_ids",
+        "contradiction_ids",
+        "confidence",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "claim_id": {
+          "type": "string",
+          "pattern": "^CL-KF-[A-Z0-9-]+$"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 8
+        },
+        "classification": {
+          "enum": [
+            "source-observed",
+            "REA-observed",
+            "test-observed",
+            "measured",
+            "unverified"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "minLength": 2
+        },
+        "source_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "support_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^EV-KF-[A-Z0-9-]+$"
+          }
+        },
+        "contradiction_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "revalidation": {
+          "type": "string"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "evidence_id",
+        "record_type",
+        "classification",
+        "source_commit",
+        "producer",
+        "state",
+        "coverage",
+        "storage"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "evidence_id": {
+          "type": "string",
+          "pattern": "^EV-KF-[A-Z0-9-]+$"
+        },
+        "record_type": {
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "source-observed",
+            "REA-observed",
+            "test-observed",
+            "measured",
+            "unverified"
+          ]
+        },
+        "source_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "producer": {
+          "type": "object",
+          "required": [
+            "name"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "coverage": {
+          "type": "object",
+          "required": [
+            "summary",
+            "limitations"
+          ]
+        },
+        "storage": {
+          "type": "object",
+          "required": [
+            "storage_class",
+            "uri",
+            "raw_retained"
+          ],
+          "properties": {
+            "storage_class": {
+              "type": "string"
+            },
+            "uri": {
+              "type": "string"
+            },
+            "raw_retained": {
+              "type": "boolean"
+            },
+            "sha256": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "subsystem": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "subsystem_id",
+        "name",
+        "source_commit",
+        "primary_path",
+        "source_evidence_ids",
+        "source_review",
+        "rea_review",
+        "behavior_test",
+        "performance_test",
+        "open_question"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "subsystem_id": {
+          "type": "string",
+          "pattern": "^KF-S[0-9]{2}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "primary_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "related_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^EV-KF-[A-Z0-9-]+$"
+          }
+        },
+        "source_review": {
+          "type": "string"
+        },
+        "rea_review": {
+          "type": "string"
+        },
+        "behavior_test": {
+          "type": "string"
+        },
+        "performance_test": {
+          "type": "string"
+        },
+        "open_question": {
+          "type": "string"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "artifact_id",
+        "kind",
+        "source_commit",
+        "state",
+        "storage_class",
+        "sha256",
+        "raw_retained_locally",
+        "retention_policy"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^ART-KF-[A-Z0-9-]+$"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "source_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "state": {
+          "type": "string"
+        },
+        "storage_class": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "raw_retained_locally": {
+          "type": "boolean"
+        },
+        "retention_policy": {
+          "type": "string",
+          "minLength": 8
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
