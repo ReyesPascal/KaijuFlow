@@ -252,6 +252,50 @@ try {
   } finally {await s.close();}
 } catch(e) {record('A4-AUTOSAVE-004','fail',{error:String(e)},'Settings backend behavior not confirmed; UI timer/concurrency remain unverified');}
 
+// Original provider /test handshake against a disposable NNTP greeting and
+// AUTHINFO server (loopback only). No external NNTP or real account is contacted.
+try {
+  const net=await import('node:net');
+  const {createHealthCheckRoutes}=await src('routes/healthCheck.js');
+  const commands=[];
+  const fake=net.createServer(socket=>{
+    socket.write('200 A4 synthetic NNTP ready\\r\\n');
+    let pending='';
+    socket.on('data',buf=>{
+      pending+=buf.toString();
+      while(pending.includes('\\r\\n')){
+        const pos=pending.indexOf('\\r\\n');
+        const cmd=pending.slice(0,pos);pending=pending.slice(pos+2);
+        commands.push(cmd.startsWith('AUTHINFO PASS')?'AUTHINFO PASS [redacted]':cmd);
+        if(cmd==='AUTHINFO USER synthetic-user')socket.write('381 password required\\r\\n');
+        else if(cmd==='AUTHINFO PASS synthetic-pass')socket.write('281 authenticated\\r\\n');
+        else socket.write('481 authentication rejected\\r\\n');
+      }
+    });
+  });
+  await new Promise(resolve=>fake.listen(0,'127.0.0.1',resolve));
+  const port=fake.address().port;
+  const app=express();app.use(express.json());app.use('/api',authMw.requireAuth);
+  app.use('/api/health-check',createHealthCheckRoutes({
+    getProviders:()=>[],addProvider:x=>x,updateProvider:(_,x)=>x,
+    deleteProvider:()=>{},reorderProviders:()=>{}
+  }));
+  const s=await serve(app);
+  try {
+    const endpoint='/api/health-check/test';
+    const missing=await request(s.port,endpoint,jsonReq('POST',{host:'',port:0},jwt));
+    assert.equal(missing.status,400);
+    const ok=await request(s.port,endpoint,jsonReq('POST',{
+      host:'127.0.0.1',port,useTLS:false,username:'synthetic-user',password:'synthetic-pass'
+    },jwt));
+    assert.equal(ok.status,200);
+    assert.equal(ok.json?.success,true);
+    assert.deepEqual(commands,['AUTHINFO USER synthetic-user','AUTHINFO PASS [redacted]']);
+    record('A4-NNTP-HANDSHAKE-008','pass',{missing:400,authenticated:200,commands:commands.length},
+      'Original NNTP connection test route; local fake 200/381/281 handshake, no STAT or article availability check');
+  }finally{await s.close();await new Promise(resolve=>fake.close(resolve));}
+}catch(e){record('A4-NNTP-HANDSHAKE-008','fail',{error:String(e)},'Original NNTP auth route synthetic loopback test');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
