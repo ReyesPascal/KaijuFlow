@@ -86,3 +86,8 @@ See `index/schema/` for schema specifications. CI lint/consistency tests should 
 - [A4 isolation plan](../docs/kaijuflow/audit/A4_ISOLATED_TEST_PLAN.md) and [12-case test matrix](../tests/a4/cases.json) are **planning only**; no application started, no network isolation gate executed, no synthetic behaviors tested.
 - New evidence: EV-KF-A3-TYPED-003, EV-KF-A3-AGENTS-003 and EV-KF-A4-DESIGN-001. Claims: CL-KF-A3-CALLBACK-003, CL-KF-A3-PROVIDER-003, CL-KF-A3-AUTOSAVE-003 and CL-KF-A4-FIXTURES-001. Artifact: ART-KF-A3-TYPED-003 (CI ZIP SHA-256 preserved in ledger).
 - Next gate: implement and separately validate disposable network-denied A4-ISO-000 before running the app, then run high-priority auth/SDK, deletion and autosave mock scenarios. Keep all original files immutable, Brain untouched and both PRs unmerged.
+
+
+## A4-ISO-000 isolated runtime evidence — 2026-11-07
+
+The [network-denial gate and behavior results](../docs/kaijuflow/audit/A4-ISO-000.md) are indexed as `EV-KF-A4-ISO-000` and `EV-KF-A4-BEHAVIOR-001`; [GitHub Actions 42366142956](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42366142956) proves A4-ISO-000 **PASS** even though the combined workflow is **FAIL** on an observed deletion safety assertion. In synthetic scoped module tests, JWT auth and SDK routes passed, backend sequential settings persisted, and [F-KF-A4-DELETE-001](findings/F-KF-A4-DELETE-001.md) records a HEAD-triggered mock WebDAV DELETE plus failed-request deduplication. No original files changed and no Brain production touched. Full React autosave races, NNTP, archives, Range and streaming remain unverified.

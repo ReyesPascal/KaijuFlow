@@ -3,61 +3,71 @@
   "project": "KaijuFlow",
   "source_commit": "c83a3c733b6394eb140a1c0a1dc500010a9f22e5",
   "stage": "A4",
-  "status": "test-design-only-no-runtime",
+  "status": "isolation-passed-3-bounded-synthetic-tests-passed-1-safety-regression; remaining-cases-planned",
   "isolation_gate": "A4-ISO-000",
   "cases": [
     {
       "id": "A4-ISO-000",
-      "status": "specified-not-run",
+      "status": "verified-pass",
       "goal": "denied external TCP/DNS with loopback mocks reachable",
       "stub": "sandbox",
       "assertion": "no app process launched on isolation failure",
       "requires": [],
-      "data_policy": "synthetic-only"
+      "data_policy": "synthetic-only",
+      "actual_observation": "Gate: DNS and IPv4/6 TCP denied, localhost worked, injected negative 77 stopped before import; run 42366142956",
+      "ci_run": 42366142956
     },
     {
       "id": "A4-HTTP-001",
-      "status": "specified-not-run",
+      "status": "verified-pass",
       "goal": "API JWT required and manifest-key routes scoped correctly",
       "stub": "jwt-auth",
       "assertion": "401/404 boundaries; no secret echo",
       "requires": [
         "A4-ISO-000"
       ],
-      "data_policy": "synthetic-only"
+      "data_policy": "synthetic-only",
+      "actual_observation": "Synthetic original JWT/router run 42366142956; setup, valid/invalid auth; full server not booted",
+      "ci_run": 42366142956
     },
     {
       "id": "A4-SDK-002",
-      "status": "specified-not-run",
+      "status": "verified-pass",
       "goal": "Stremio 1.6.10 getRouter dynamic route/mount behavior",
       "stub": "stremio-sdk",
       "assertion": "both prefixes, resource extra, manifest, CORS",
       "requires": [
         "A4-ISO-000"
       ],
-      "data_policy": "synthetic-only"
+      "data_policy": "synthetic-only",
+      "actual_observation": "Locked SDK getRouter both manifest prefixes+extra, invalid key and CORS; synthetic stream handler",
+      "ci_run": 42366142956
     },
     {
       "id": "A4-DELETE-003",
-      "status": "specified-not-run",
+      "status": "verified-safety-failure",
       "goal": "GET/HEAD library delete guarded with deterministic replay",
       "stub": "webdav-delete",
       "assertion": "HEAD and invalid path must not remote-delete; replay/fail counter observed",
       "requires": [
         "A4-ISO-000"
       ],
-      "data_policy": "synthetic-only"
+      "data_policy": "synthetic-only",
+      "actual_observation": "HEAD led to WebDAV DELETE, failed 503 deletion was deduped; finding F-KF-A4-DELETE-001",
+      "ci_run": 42366142956
     },
     {
       "id": "A4-AUTOSAVE-004",
-      "status": "specified-not-run",
+      "status": "backend-subcase-pass-ui-timing-pending",
       "goal": "independent debounced saves under reordered completions",
       "stub": "settings-store",
       "assertion": "memory/disk final identity, 400/413/500 handling",
       "requires": [
         "A4-ISO-000"
       ],
-      "data_policy": "synthetic-only"
+      "data_policy": "synthetic-only",
+      "actual_observation": "Sequential original settings PUT persisted; malformed 400 and oversized 413; React debounce, races, 500 not tested",
+      "ci_run": 42366142956
     },
     {
       "id": "A4-PROVIDER-005",
