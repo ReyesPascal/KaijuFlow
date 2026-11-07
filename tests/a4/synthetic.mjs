@@ -524,7 +524,8 @@ try {
     const hydra=await request(s.port,'/api/nzbhydra/sync',
       jsonReq('POST',{url,apiKey:'fixture'},jwt));
     assert.equal(hydra.status,200);
-    assert.equal(hydra.json?.total,1);
+    assert.equal(hydra.json?.total,2); // includes user-disabled status, which is excluded from synced results
+    assert.equal(hydra.json?.indexers?.length,1);
     assert.equal(hydra.json?.indexers?.[0]?.name,'HydraA4');
     const reordered=await request(s.port,'/api/synced-indexers/reorder',
       jsonReq('POST',{syncedIndexers:hydra.json.indexers},jwt));
