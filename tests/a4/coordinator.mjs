@@ -54,4 +54,4 @@ try{
 }
 fs.writeFileSync(output,JSON.stringify({source_commit:'c83a3c733b6394eb140a1c0a1dc500010a9f22e5',gate:'A4-ISO-000',cases:results},null,2));
 console.log('A4 COORD SUMMARY',JSON.stringify({passed:results.filter(x=>x.status==='pass').length,failed:results.filter(x=>x.status!=='pass').length}));
-if(results.some(x=>x.status!=='pass'))process.exitCode=1;
+process.exit(results.some(x=>x.status!=='pass') ? 1 : 0);
