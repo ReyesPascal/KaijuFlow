@@ -536,6 +536,24 @@ try {
   }finally{await s.close();await fake.close();}
 }catch(e){record('A4-SYNC-013','fail',{error:String(e)},'Original synced indexer fixture failed');}
 
+// Original cache recovery markers, exercised with only disposable keys.
+try {
+  const cache=await src('nzbdav/streamCache.js');
+  const video='/content/movies/A4BrokenVideo.mkv';
+  assert.equal(cache.isVideoPathBroken(video),false);
+  cache.markVideoPathBroken(video);
+  assert.equal(cache.isVideoPathBroken(video),true);
+  cache.clearVideoPathBroken(video);
+  assert.equal(cache.isVideoPathBroken(video),false);
+  const key='a4-test-manifest:movie:tt9999999::';
+  assert.equal(cache.consumeLibraryBypass(key),false);
+  cache.markLibraryBypass(key);
+  assert.equal(cache.consumeLibraryBypass(key),true);
+  assert.equal(cache.consumeLibraryBypass(key),false);
+  record('A4-CACHE-015','pass',{brokenPathMarkClear:true,bypassOneShot:true},
+    'Original broken-video-path and library bypass cache marker state, no persisted stream/cache parity claimed');
+}catch(e){record('A4-CACHE-015','fail',{error:String(e)},'Original cache marker fixture failed');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
