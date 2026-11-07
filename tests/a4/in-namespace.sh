@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-: "\${A4_ROOT:?missing root}" "\${A4_RUN_DIR:?missing disposable path}" "\${A4_PARENT_NETNS:?missing outer net namespace}"
+: "${A4_ROOT:?missing root}" "${A4_RUN_DIR:?missing disposable path}" "${A4_PARENT_NETNS:?missing outer net namespace}"
 [[ "$(readlink /proc/self/ns/net)" != "$A4_PARENT_NETNS" ]] || { echo "FAIL: not isolated"; exit 20; }
 [[ "$(id -u)" == "0" ]] || { echo "FAIL: namespace setup requires root"; exit 21; }
 ip link set lo up
@@ -8,11 +8,9 @@ ip link set lo up
 mkdir -p "$A4_RUN_DIR"/{home,work,tmp}
 chmod 755 "$(dirname "$A4_RUN_DIR")"
 chown -R nobody:nogroup "$A4_RUN_DIR"
-# No original source or application dependencies are imported before this proof succeeds.
 runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
-  A4_FORCE_FAIL="\${A4_FORCE_FAIL:-0}" node "$A4_ROOT/tests/a4/isolation-probe.mjs"
+  A4_FORCE_FAIL="${A4_FORCE_FAIL:-0}" node "$A4_ROOT/tests/a4/isolation-probe.mjs"
 echo "A4-ISO-000: network namespace $(readlink /proc/self/ns/net); only lo; TCP v4/v6 and DNS denied; local loopback PASS"
-# After the isolation proof, copy compiled output into a disposable root. Source checkout stays unmodified.
 cp -a "$A4_ROOT/dist" "$A4_RUN_DIR/work/dist"
 cp "$A4_ROOT/package.json" "$A4_RUN_DIR/work/package.json"
 ln -s "$A4_ROOT/node_modules" "$A4_RUN_DIR/work/node_modules"
