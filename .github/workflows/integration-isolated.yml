@@ -1,0 +1,54 @@
+name: Post-A4 single discovery-to-stream integration
+on:
+  push:
+    branches: [audit/node20-a3-baseline]
+    paths:
+      - 'tests/integration/**'
+      - 'tests/a4/isolation-probe.mjs'
+      - '.github/workflows/integration-isolated.yml'
+  pull_request:
+    branches: [import/upstream-v1.4.1]
+    paths:
+      - 'tests/integration/**'
+      - 'tests/a4/isolation-probe.mjs'
+      - '.github/workflows/integration-isolated.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discovery-stream:
+    if: github.repository == 'ReyesPascal/KaijuFlow'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # Dependency retrieval/build occur BEFORE the sandbox and do not execute application modules.
+      - name: Install locked build dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile original application without starting it
+        run: npm run build
+      - name: Isolation proof, negative gate injection, and synthetic behavior
+        id: a4
+        continue-on-error: true
+        run: bash tests/integration/run-ci.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: single-integration-report
+          path: integration-results.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Preserve gate and assertion failures as CI failures
+        if: steps.a4.outcome != 'success'
+        run: exit 1
