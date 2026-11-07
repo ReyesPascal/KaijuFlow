@@ -4,7 +4,7 @@ All work is private. The stable Brain (ThinkPad) Usenet Ultimate + NzbDAV deploy
 
 | Phase | Scope | Required checkpoint / exit gate |
 | --- | --- | --- |
-| A — Baseline | Repository verification, upstream v1.4.1 pin, MIT notices, source import, full architecture audit, baseline tests | `A1-repos-upstream`, `A2-source-import`, `A3-static-audit`, `A4-baseline-tests`; immutable commit SHAs and evidence |
+| A — Baseline | Repository verification, upstream v1.4.1 pin, **complete 192-file application import including binary media**, MIT notices, **end-to-end application** audit and baseline tests | `A1-repos-upstream`, `A2-source-import`, `A3-static-audit`, `A4-baseline-tests`; immutable commit SHAs and evidence |
 | B — Dependencies/security | Node/UI dependencies, vulnerabilities, sensitive data, licensing, API/compatibility; NNTP TLS validation review | `B1-dependency-review`, `B2-security-review`; documented fixes proposed separately |
 | C — Smart health checks | Reliability, sampling, provider fallback, cache awareness, stop conditions, timeouts; no unjustified rewrites | `C1-regression-tests`, `C2-reliability-improvements`; pre/post metrics |
 | D — Stream reliability | Ultimate Fallback, dead NZB cache, range/seek, NzbDAV, true 4K direct streaming, performance | `D1-fallback-cache`, `D2-playback-metrics`; stable configuration preserved |
@@ -13,6 +13,10 @@ All work is private. The stable Brain (ThinkPad) Usenet Ultimate + NzbDAV deploy
 
 ## Checkpoint procedure
 Every checkpoint records: date/owner, phase/task ID, immutable upstream SHA, branch + resulting Git commit SHA, files changed, tests run and results, known risks, deployment state, **reversal instructions**, and the next executable step. Store current state in root `HANDOFF.md`, detailed findings under `docs/`, and use small descriptive Git commits or PRs. A proposed checkpoint is not 'complete' until artifacts are committed and independently verified on GitHub.
+
+## Whole-application scope
+
+The development baseline is the **entire Usenet Ultimate v1.4.1 release**, not merely Smart-mode checking. Preserve backend, frontend and static assets; search/indexers/providers; Smart and Fixed health modes; archive inspection; NzbDAV streaming; original-quality playback; fallback and caches; config/migrations; deployment scripts; docs; licensing and all binary assets. See [Whole App Capture](WHOLE_APP_CAPTURE.md) and [complete source manifest](upstream-v1.4.1-manifest.json). Phase A source import is not complete until all 192 original blobs match upstream hashes.
 
 ## Phased discipline
 - Branches: `import/upstream-v1.4.1`, then `audit/<subject>`, `fix/<subject>`, `perf/<subject>`. Keep `main` stable.
