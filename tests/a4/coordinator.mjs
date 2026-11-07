@@ -9,7 +9,7 @@ const root = process.env.A4_APP_ROOT;
 const output = process.env.A4_COORD_RESULTS;
 if (!root || !output || !fs.existsSync(path.join(path.dirname(root), 'app-import.started'))) throw Error('FAIL CLOSED: isolation sentinel missing');
 assert.deepEqual(Object.keys(os.networkInterfaces()), ['lo']);
-assert.match(root, /kaijuflow-a4-[^/]+\\/positive\\/work$/);
+assert.match(root, /kaijuflow-a4-[^/]+\/positive\/work$/);
 const load = x => import(pathToFileURL(path.join(root,'dist',x)).href);
 const {config} = await load('config/index.js');
 const {coordinateHealthChecks} = await load('addon/healthCheckCoordinator.js');
