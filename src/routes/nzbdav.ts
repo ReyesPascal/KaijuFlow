@@ -270,16 +270,33 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
   // it plays it. Each request hits this route. Dedup by key for 30s so
   // the WebDAV delete (and its log line) runs once per click rather than
   // once per Range request. Cleanup is lazy on each insertion.
-  const recentDeletes = new Map<string, number>();
-  function alreadyHandled(key: string): boolean {
+  //
+  // KaijuFlow changes (AUDIT.md findings 2 and 3):
+  // - Requests that arrive while a delete is still running wait for its real
+  //   result instead of being told "success" up front.
+  // - A failed delete is forgotten immediately, so the next click retries.
+  //   Only successful deletes are remembered for the 30s window.
+  type DeleteOutcome = { ok: boolean; remember: boolean };
+  const recentDeletes = new Map<string, { expiresAt: number; result: Promise<DeleteOutcome> }>();
+  function runOnce(key: string, work: () => Promise<DeleteOutcome>): Promise<DeleteOutcome> {
     const now = Date.now();
-    const expiresAt = recentDeletes.get(key);
-    if (expiresAt && expiresAt > now) return true;
-    for (const [k, exp] of recentDeletes) {
-      if (exp <= now) recentDeletes.delete(k);
+    for (const [k, entry] of recentDeletes) {
+      if (entry.expiresAt <= now) recentDeletes.delete(k);
     }
-    recentDeletes.set(key, now + 30_000);
-    return false;
+    const existing = recentDeletes.get(key);
+    if (existing) return existing.result;
+    const entry = {
+      expiresAt: now + 30_000,
+      result: work().catch((err) => {
+        console.error(`\u274C Delete task threw for ${key}: ${(err as Error).message}`);
+        return { ok: false, remember: false };
+      }),
+    };
+    recentDeletes.set(key, entry);
+    entry.result.then((outcome) => {
+      if (!outcome.remember && recentDeletes.get(key) === entry) recentDeletes.delete(key);
+    });
+    return entry.result;
   }
 
   // Validate that a query path is a legal absolute WebDAV path under /content/.
@@ -410,19 +427,23 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
       return sendDeleteFailedVideo(req, res);
     }
     const targetPath = v.path;
+    const sendScopeSuccess = scope === 'pack' ? sendDeletePackSuccessVideo : sendDeleteFileSuccessVideo;
+
+    // KaijuFlow (finding 2): Express runs GET handlers for HEAD too. A HEAD
+    // probe must never delete; answer with the placeholder headers only.
+    if (req.method === 'HEAD') return sendScopeSuccess(req, res);
 
     // Stremio sends multiple Range requests against the placeholder video as
     // it plays it. Without dedup, each Range request would re-run the delete
-    // and re-log. The first request actually does the work; subsequent
-    // hits within 30s short-circuit to the same placeholder silently.
+    // and re-log. The first request actually does the work; the others share
+    // its result. A failed delete is not remembered, so a retry runs again.
     const dedupKey = `${manifestKey}::${scope}::${targetPath}`;
-    const sendScopeSuccess = scope === 'pack' ? sendDeletePackSuccessVideo : sendDeleteFileSuccessVideo;
-    if (alreadyHandled(dedupKey)) {
-      return sendScopeSuccess(req, res);
-    }
-
-    const result = await runWebdavDelete(targetPath, scope);
-    if (result.ok) {
+    const { ok } = await runOnce(dedupKey, async () => {
+      const result = await runWebdavDelete(targetPath, scope);
+      if (!result.ok) {
+        console.error(`\u274C WebDAV delete failed (${scope}) for ${targetPath}: ${result.error}`);
+        return { ok: false, remember: false };
+      }
       console.log(`\u{1F5D1}\uFE0F Deleted from WebDAV (${scope}): ${targetPath}`);
       invalidateAfterDelete(targetPath, scope, manifestKey, type, id);
       // File scope can leave behind release / season subfolders that hold only
@@ -432,10 +453,9 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
       // already removed the whole release folder via Depth: infinity.
       if (scope === 'file') await pruneOrphanedAncestors(targetPath);
       await cleanupHistoryForPath(targetPath, scope, buildNzbdavConfig());
-      return sendScopeSuccess(req, res);
-    }
-    console.error(`\u274C WebDAV delete failed (${scope}) for ${targetPath}: ${result.error}`);
-    return sendDeleteFailedVideo(req, res);
+      return { ok: true, remember: true };
+    });
+    return ok ? sendScopeSuccess(req, res) : sendDeleteFailedVideo(req, res);
   });
 
   router.get('/library-delete-all', async (req, res) => {
@@ -449,18 +469,25 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
       return sendDeleteFailedVideo(req, res);
     }
 
-    // Dedup repeat Range requests from Stremio's placeholder playback.
-    if (alreadyHandled(`${manifestKey}::all::${type}::${id}`)) {
-      return sendDeleteAllSuccessVideo(req, res);
-    }
+    // KaijuFlow (finding 2): never delete on a HEAD probe.
+    if (req.method === 'HEAD') return sendDeleteAllSuccessVideo(req, res);
 
+    // Dedup repeat Range requests from Stremio's placeholder playback. The
+    // placeholder shown is unchanged (success if at least one target was
+    // removed), but only a run where every target succeeded is remembered;
+    // any failure lets the next click retry (already-gone targets = 404 = ok).
+    const { ok } = await runOnce(`${manifestKey}::all::${type}::${id}`, () => runDeleteAll(manifestKey, type, id, tk));
+    return ok ? sendDeleteAllSuccessVideo(req, res) : sendDeleteFailedVideo(req, res);
+  });
+
+  async function runDeleteAll(manifestKey: string, type: string, id: string, tk: string): Promise<DeleteOutcome> {
     // Targets live in deleteAllTargetsStore; the tile envelope carries only
     // the token. Per-target validation below still gates everything before
     // it reaches WebDAV.
     const targets = getDeleteAllTargets(tk);
     if (!targets || targets.length === 0) {
       console.warn(`\u{1F5D1}\uFE0F Delete-all: token miss (restart, expired, or invalid)`);
-      return sendDeleteFailedVideo(req, res);
+      return { ok: false, remember: false };
     }
 
     let okCount = 0;
@@ -487,8 +514,8 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
       }
     }
     console.log(`\u{1F5D1}\uFE0F Delete-all done: ${okCount} removed, ${failCount} failed (of ${targets.length})`);
-    return okCount > 0 ? sendDeleteAllSuccessVideo(req, res) : sendDeleteFailedVideo(req, res);
-  });
+    return { ok: okCount > 0, remember: failCount === 0 };
+  }
 
   // NZBDav stream endpoint (key-protected)
   // Uses history API polling to detect job completion/failure

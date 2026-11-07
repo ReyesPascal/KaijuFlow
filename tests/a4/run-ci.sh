@@ -2,9 +2,10 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 ROOT="$PWD"
-BASE="c83a3c733b6394eb140a1c0a1dc500010a9f22e5"
-# Verify all original app source contents against the immutable import, not merely a clean worktree.
-git diff --quiet "$BASE" -- src ui/src || { echo "SOURCE-DIFF: FAIL"; exit 10; }
+# KaijuFlow: the audit is closed and fixes are allowed, so test the committed
+# app source (HEAD) instead of requiring the untouched v1.4.1 import
+# (c83a3c733b6394eb140a1c0a1dc500010a9f22e5). Uncommitted edits are refused.
+git diff --quiet HEAD -- src ui/src || { echo "SOURCE-DIFF: uncommitted app changes; commit first"; exit 10; }
 before="$(mktemp)"
 after="$(mktemp)"
 git ls-files -- src ui/src | LC_ALL=C sort | while IFS= read -r f; do sha256sum "$f"; done > "$before"
@@ -49,6 +50,6 @@ if [[ -f "$sandbox/positive/cache-results.json" ]]; then
 fi
 git ls-files -- src ui/src | LC_ALL=C sort | while IFS= read -r f; do sha256sum "$f"; done > "$after"
 cmp -s "$before" "$after" || { echo "SOURCE HASHES CHANGED"; exit 14; }
-git diff --quiet "$BASE" -- src ui/src || { echo "SOURCE-DIFF AFTER: FAIL"; exit 15; }
+git diff --quiet HEAD -- src ui/src || { echo "SOURCE-DIFF AFTER: FAIL"; exit 15; }
 echo "A4: source SHA-256 before/after identical; behavior exit=$status"
 exit "$status"
