@@ -8,6 +8,7 @@
 
 | Start here | Purpose |
 | --- | --- |
+| [Next-session runbook](../docs/kaijuflow/audit/NEXT_SESSION.md) | Exact saved checkpoint and first A3-ROUTE-001 analysis deliverable |
 | [Execution plan](../docs/kaijuflow/audit/EXECUTION_PLAN.md) | Research-validated stages 0–5, tool choice and exit gates |
 | [Original independent research report](../docs/kaijuflow/audit/RESEARCH_REPORT_2026-11-07.txt) | Exact user-supplied report archived for provenance; **illustrative commands may contain assumptions** and the corrected execution plan is authoritative |
 | [Subsystem index](index/subsystems.jsonl) | Stable subsystem IDs, source anchors, status and coverage gaps |
