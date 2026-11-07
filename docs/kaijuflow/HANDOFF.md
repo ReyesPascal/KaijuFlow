@@ -1,5 +1,7 @@
 # A2 checkpoint and handoff
 
+> **Current restart instruction:** [Begin the next analysis session here](audit/NEXT_SESSION.md), starting with A3-ROUTE-001. Do not repeat the A2 import review, Node20 build or index setup.
+
 > **Historical import handoff preserved below.** For the most recent verified A3/REA/index evidence, use [the source-adjacent audit index](../../evidence/README.md), [the corrected execution plan](audit/EXECUTION_PLAN.md), [Issue #2](https://github.com/ReyesPascal/KaijuFlow/issues/2), and [draft PR #3](https://github.com/ReyesPascal/KaijuFlow/pull/3). The original A2 text below predates the independent Node20 CI pass and the recovered REA setup.
 
 ## Later checkpoint: research-validated audit/index (2026-11-07)
