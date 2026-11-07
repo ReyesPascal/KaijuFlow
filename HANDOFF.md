@@ -11,7 +11,7 @@ Last update: 2026-11-07. Current phase: **A (in progress; full-app scope establi
 - Initial commits: KaijuFlow `1cd3932a9ae6d0a5a2fe53d8834637bc1f822cd0`; KaijuNNTP `16a308411569602a9ffea055e824296f6607f033`.
 - Canonical upstream `DSmart33/Usenet-Ultimate` release tag `v1.4.1` resolves to `499efbdeb631b1b059f8aa70d07c12beaf504876`; verified MIT upstream notice differs from current KaijuFlow license.
 - Pinned source tree enumerated using GitHub Git-tree API: **192 files, 12,132,917 bytes** (untruncated). File path, SHA, mode and size of every original blob committed in `docs/upstream-v1.4.1-manifest.json`. Scope recorded in `docs/WHOLE_APP_CAPTURE.md`. Initial source inspection covered health-check, NNTP, fallback, cache, archive, config, UI and Docker modules; this is not a complete application audit.
-- Roadmap and checklists documented: `docs/ROADMAP.md`, `docs/CHECKPOINTS.md`.
+- Roadmap and checklists documented: `docs/ROADMAP.md`, `docs/CHECKPOINTS.md`. Non-deploying full-app import script `scripts/import-upstream-v1.4.1.sh` committed; it has not been run.
 
 ## Unfinished
 - Source code and binary assets are **NOT imported**. Do not mistake the complete inventory/manifest for a code import. No runtime benchmark has been made; the full application audit, reproducible build and tests remain outstanding.
