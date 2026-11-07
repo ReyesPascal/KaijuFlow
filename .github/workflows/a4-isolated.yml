@@ -1,0 +1,51 @@
+name: A4 disposable network-isolated synthetic tests
+on:
+  push:
+    branches: [audit/node20-a3-baseline]
+    paths:
+      - 'tests/a4/**'
+      - '.github/workflows/a4-isolated.yml'
+  pull_request:
+    branches: [import/upstream-v1.4.1]
+    paths:
+      - 'tests/a4/**'
+      - '.github/workflows/a4-isolated.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  a4-isolated:
+    if: github.repository == 'ReyesPascal/KaijuFlow'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # Dependency retrieval/build occur BEFORE the sandbox and do not execute application modules.
+      - name: Install locked build dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile original application without starting it
+        run: npm run build
+      - name: Isolation proof, negative gate injection, and synthetic behavior
+        id: a4
+        continue-on-error: true
+        run: bash tests/a4/run-ci.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a4-disposable-synthetic-report
+          path: a4-results.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Preserve gate and assertion failures as CI failures
+        if: steps.a4.outcome != 'success'
+        run: exit 1
