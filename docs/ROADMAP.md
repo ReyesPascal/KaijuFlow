@@ -18,6 +18,10 @@ Every checkpoint records: date/owner, phase/task ID, immutable upstream SHA, bra
 
 The development baseline is the **entire Usenet Ultimate v1.4.1 release**, not merely Smart-mode checking. Preserve backend, frontend and static assets; search/indexers/providers; Smart and Fixed health modes; archive inspection; NzbDAV streaming; original-quality playback; fallback and caches; config/migrations; deployment scripts; docs; licensing and all binary assets. See [Whole App Capture](WHOLE_APP_CAPTURE.md) and [complete source manifest](upstream-v1.4.1-manifest.json). Phase A source import is not complete until all 192 original blobs match upstream hashes.
 
+## REA investigative baseline (Phase A)
+
+After the complete 192-file source import is hash-verified, run **Reverse Engineer Anything (REA)** in an isolated development environment. In A3, trace the complete application's modules and data flows; in A4, inspect an isolated instance's runtime behavior before any code modifications. Keep REA evidence linked to the exact upstream commit; supplement it with conventional source review, builds and regression tests. Repeat targeted traces in phases B–D after changes. **Do not install or run REA against Brain's working containers.** See [REA Audit Plan](REA_AUDIT_PLAN.md).
+
 ## Phased discipline
 - Branches: `import/upstream-v1.4.1`, then `audit/<subject>`, `fix/<subject>`, `perf/<subject>`. Keep `main` stable.
 - No code modifications until Phase A baseline is signed off. Separate changes from tests and measure against unchanged upstream.
