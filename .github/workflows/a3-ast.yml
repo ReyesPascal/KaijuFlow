@@ -1,0 +1,53 @@
+name: KaijuFlow A3 original-source AST inventory
+
+on:
+  push:
+    branches:
+      - audit/node20-a3-baseline
+    paths:
+      - 'tools/audit/extract_route_graph.cjs'
+      - 'tools/audit/inspect_stremio_sdk.cjs'
+      - '.github/workflows/a3-ast.yml'
+      - 'src/**'
+      - 'ui/src/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-graph:
+    name: Source-only TypeScript graph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout audit branch with pinned imported ancestry
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Node 20 for TypeScript parser
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install locked TypeScript parser only (no lifecycle scripts)
+        working-directory: ui
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Extract source-only route/UI graph
+        run: node tools/audit/extract_route_graph.cjs "$RUNNER_TEMP/kaijuflow-a3-ast"
+      - name: Record graph file hashes
+        run: |
+          sha256sum "$RUNNER_TEMP/kaijuflow-a3-ast/ast-edges.json"
+          sha256sum "$RUNNER_TEMP/kaijuflow-a3-ast/AST_SUMMARY.md"
+      - name: Install locked Stremio SDK without application execution
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Inspect SDK 1.6.10 source without importing it
+        run: |
+          node tools/audit/inspect_stremio_sdk.cjs "$RUNNER_TEMP/kaijuflow-a3-ast"
+          sha256sum "$RUNNER_TEMP/kaijuflow-a3-ast/sdk-routes.json"
+      - name: Retain bounded static graph as review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a3-route-002-ast
+          path: ${{ runner.temp }}/kaijuflow-a3-ast/
+          retention-days: 14

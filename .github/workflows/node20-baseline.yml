@@ -1,0 +1,42 @@
+name: Isolated Node 20 baseline build
+
+on:
+  push:
+    branches:
+      - audit/node20-a3-baseline
+  pull_request:
+    branches:
+      - import/upstream-v1.4.1
+
+permissions:
+  contents: read
+
+jobs:
+  node20-build:
+    name: Backend and UI on Node 20
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+    steps:
+      - name: Check out isolated audit branch
+        uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Record toolchain and commit
+        run: |
+          node --version
+          npm --version
+          git rev-parse HEAD
+      - name: Install backend from lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Compile backend TypeScript
+        run: npm run build
+      - name: Install UI from lockfile
+        working-directory: ui
+        run: npm ci --no-audit --no-fund
+      - name: Compile and bundle UI
+        working-directory: ui
+        run: npm run build

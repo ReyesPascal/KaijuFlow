@@ -1,0 +1,625 @@
+KaijuFlow REA Execution and Indexed Evidence Strategy
+Executive summary
+The proposed Stages 0–5 plan is fundamentally sound, but it should be refined in three ways.
+
+First, REA should be treated as an artifact-level, evidence-producing analysis layer rather than the primary source-code architecture tool. REA 6.8.0 can statically inspect JavaScript application directories without executing them and without Ghidra, returning an application graph, artifact identities, source locations, coverage, limitations, and Evidence records. Its JavaScript analyzer also supports explicit source selection, but selected files do not automatically pull in their imports, so targeted analyses must deliberately include supporting manifests, source maps, and related modules. 
+
+Second, the isolated Node 24.22.2 runtime is the correct REA runtime. REA 6.8.0 declares support for Node ^22.23.4 || ^24.22.1 || >=26.12.1; therefore production Node 22.22.1 is below REA's supported floor, while isolated Node 24.22.2 satisfies it. Node 24 is currently an LTS line; Node 20 reached end-of-life in March 2026, so the already-passed Node 20 build remains useful as compatibility evidence but should not become the REA execution environment. 
+
+Third, the evidence store should be versioned beside the imported source but divided into small, reviewable metadata/index files and potentially large raw evidence artifacts. REA warns that full application Evidence can reach hundreds of megabytes; its CLI supports projecting summaries and module pages from saved Evidence rather than repeatedly loading or committing giant reports. GitHub's own REA CI example similarly saves stdout, stderr, and exit status separately and explicitly warns that a zero exit code does not imply full coverage. 
+
+The resulting strategy is therefore:
+
+findings
+
+contradictions
+
+unresolved artifact behavior
+
+Stage 0
+Freeze identity + isolate
+
+Stage 1
+TypeScript architecture map
+
+Stage 2
+REA artifact pilot
+
+Stage 3
+Synthetic behavioral tests
+
+Stage 4
+Streaming/range/recovery tests
+
+Stage 5
+Comparative benchmarks
+
+
+
+Show code
+The most important change from the earlier plan is methodological: do not ask REA to prove runtime behavior. Use it to identify and preserve artifact-level relationships, source locations, boundaries, integrity, coverage and unknowns; use ts-morph/dependency-cruiser for source architecture; Vitest for deterministic service behavior; Playwright for browser/UI behavior; and CodeQL where security-oriented interprocedural data-flow analysis adds value. dependency-cruiser is specifically designed to validate and visualize JS/TS dependency relationships; CodeQL provides JavaScript/TypeScript data-flow and taint analysis; Vitest provides mocks and coverage; and Playwright supplies isolated browser contexts and cross-browser execution. 
+
+No part of this plan requires modifying Brain production containers or merging a PR. The preferred execution target is the ThinkPad's isolated Node 24 environment and a disposable checkout/worktree.
+
+Verification and refinement of the staged plan
+Stage-by-stage assessment
+Stage	Feasibility and prerequisites	Principal risk	Recommended refinement	Exit gate
+Stage 0 — isolated baseline	Fully feasible. Requires Git checkout/worktree, Node 24.22.2, REA 6.8.0, npm, git, sha256sum, jq, and a procps-compatible ps on Linux. REA requires ps for its supervised process checks even for static JS/Electron analysis on Linux. 
+Accidentally analyzing mutable or production paths; silently using unsupported Node 22.22.1.	Freeze commit SHA, lock REA version at 6.8.0, record environment manifest before analysis, and ensure all output lands under the audit worktree or a dedicated evidence root.	Source SHA, artifact SHA-256, Node/REA versions and evidence root recorded; no production path mounted writable.
+Stage 1 — whole-app architecture	Strong fit for TypeScript tooling. ts-morph can construct a project from tsconfig.json, expose compiler diagnostics and AST/symbol navigation; dependency-cruiser can identify imports, cycles, unresolved dependencies and architectural-rule violations. 
+Over-relying on import graphs and missing dynamically computed behavior or runtime configuration.	Make this the canonical source map. Record dynamic edges as “unresolved/runtime” instead of guessing. REA becomes corroboration, not replacement.	Every important subsystem has source entry points, dependencies, external I/O, persistence, side effects and known unknowns.
+Stage 2 — REA artifact pilot	Fully feasible on built JS with Node 24.22.2. Static JavaScript analysis does not require Ghidra, a browser, Java or Electron execution. REA inventories the complete artifact and can restrict static analysis to exact selected files. 
+Large Evidence files; partial selection mistaken for whole-app coverage; source-map or build differences obscuring mappings.	Run one full artifact inventory first, then bounded selected-source investigations. Preserve coverage and limitation fields as first-class evidence.	At least one REA finding materially corroborates, corrects or extends the source map; otherwise keep REA narrowly scoped.
+Stage 3 — synthetic behavioral testing	Highly feasible using Vitest mocks/fakes and local fixtures. Vitest explicitly supports fake external/internal services and recommends clearing/restoring mocks between tests. 
+Tests reproduce the implementation rather than intended observable behavior; fixture leakage into real services.	Build protocol-level fake NNTP/indexer/NzbDAV endpoints where possible instead of mocking every internal function. Deny external network by default.	Smart/Fixed selection, provider failures, timeout/cancellation, cache behavior and cleanup are reproducible without production services.
+Stage 4 — stream/range/recovery validation	Feasible using local HTTP servers plus Vitest and, where browser semantics matter, Playwright. Playwright isolates each test in a fresh BrowserContext. 
+Accidentally testing against live NzbDAV or real NZBs; mistaking mocked range semantics for end-to-end media correctness.	Separate protocol tests from browser playback tests. Keep fixtures synthetic and small; explicitly test 200, 206, 416, seek and cancellation semantics.	Byte-range and fallback behavior are proven in isolated tests; any claim about real-world media throughput remains deferred.
+Stage 5 — comparative benchmark	Feasible after correctness gates.	Benchmarking host/network noise and drawing architectural conclusions from one workstation.	Define fixed synthetic corpus, warm/cold-cache modes, concurrency levels and repeated runs; retain raw measurements plus environment fingerprint.	Repeatable distributions for startup, throughput, seek, failure recovery and resource usage; no replacement decision without measured advantage.
+
+REA's JavaScript analyzer is deliberately parse-not-execute for static application analysis, and its Evidence retains artifact digests, manifests, coverage and explicit limitations. REA also states that source selection changes analysis scope while the complete artifact remains inventoried; imports do not automatically expand selected sources. Those properties are exactly why it is useful as an independent artifact witness but insufficient by itself to establish live NNTP or streaming behavior. 
+
+Ghidra 12.1.4 should therefore remain available but dormant during the initial KaijuFlow work. REA says static JavaScript analysis needs no native engine; Ghidra is appropriate if the audit later discovers native .node add-ons, bundled ELF/PE binaries, proprietary helpers, or another native component whose behavior is material. Ghidra itself is a compiled-code SRE framework offering disassembly and decompilation rather than a TypeScript application architecture analyzer. 
+
+Isolated execution checklist and pilot investigations
+The paths below are assumptions based on the existing ThinkPad setup. Before execution, replace any path that differs. The assumed source worktree is /home/ryan/kaijuflow-a2; the proposed evidence root is inside that worktree at evidence/; and the existing Ghidra installation is assumed to be /home/ryan/fusion-android-analysis/tools/ghidra_12.1.4_PUBLIC. Ghidra is not invoked in the JavaScript pilot.
+
+Environment preparation
+Use a disposable worktree rather than the production checkout:
+
+bash
+Copy
+export KF_REPO=/home/ryan/kaijuflow-a2
+export KF_WORK=/home/ryan/kaijuflow-rea-audit
+export KF_EVIDENCE="$KF_WORK/evidence"
+export REA_VERSION=6.8.0
+
+cd "$KF_REPO"
+
+git status --short
+git rev-parse HEAD
+git worktree add --detach "$KF_WORK" "$(git rev-parse HEAD)"
+
+cd "$KF_WORK"
+mkdir -p \
+  "$KF_EVIDENCE/environment" \
+  "$KF_EVIDENCE/rea/full" \
+  "$KF_EVIDENCE/rea/pilots/smart-fixed" \
+  "$KF_EVIDENCE/rea/pilots/nzbdav" \
+  "$KF_EVIDENCE/static" \
+  "$KF_EVIDENCE/tests" \
+  "$KF_EVIDENCE/hashes" \
+  "$KF_EVIDENCE/index"
+Select the isolated Node runtime using whatever version manager is already installed. Because that mechanism was not specified, this report does not assume nvm, asdf, fnm, or a system package installation. Verify the effective process environment instead:
+
+bash
+Copy
+node --version
+npm --version
+command -v node
+command -v npm
+command -v ps
+command -v jq
+The required outcome is Node v24.22.2 for REA. REA 6.8.0 supports Node 24 beginning at 24.22.1, whereas production 22.22.1 does not meet its Node-22 minimum of 22.23.4. 
+
+Prefer invoking the pinned package rather than @latest:
+
+bash
+Copy
+npx -y rea-agents@6.8.0 --version --json \
+  | tee "$KF_EVIDENCE/environment/rea-version.json"
+
+node --version \
+  | tee "$KF_EVIDENCE/environment/node-version.txt"
+
+git rev-parse HEAD \
+  | tee "$KF_EVIDENCE/environment/source-commit.txt"
+
+git status --porcelain=v1 \
+  | tee "$KF_EVIDENCE/environment/git-status.txt"
+REA 6.8.0 is the current published release as of November 7, 2026, and the official package metadata identifies it as MIT-licensed. 
+If the imported project uses lockfiles, build from those lockfiles rather than adding REA to the application's dependencies:
+
+bash
+Copy
+# Run in each package root actually present in KaijuFlow.
+npm ci
+npm run build
+The exact build output directory is not established by the prompt, so determine it from package scripts and tsconfig/Vite configuration before setting KF_ARTIFACT. Do not assume dist/ until verified.
+
+bash
+Copy
+export KF_ARTIFACT=/absolute/path/to/verified/build-output
+test -d "$KF_ARTIFACT"
+Record artifact identity before REA:
+
+bash
+Copy
+find "$KF_ARTIFACT" -type f -print0 \
+  | sort -z \
+  | xargs -0 sha256sum \
+  > "$KF_EVIDENCE/hashes/build-files.sha256"
+Full baseline REA record
+Run one complete artifact analysis before targeted pilots:
+
+bash
+Copy
+set +e
+npx -y rea-agents@6.8.0 \
+  analyze-javascript-application "$KF_ARTIFACT" \
+  --json --full-output \
+  > "$KF_EVIDENCE/rea/full/application-evidence.json" \
+  2> "$KF_EVIDENCE/rea/full/application.stderr"
+REA_RC=$?
+set -e
+
+printf '%s\n' "$REA_RC" \
+  > "$KF_EVIDENCE/rea/full/exit-code.txt"
+
+test "$REA_RC" -eq 0
+This follows REA's documented CLI model: stdout contains the complete machine-readable Evidence, stderr carries progress/diagnostics, and complete application reports may be very large. A successful process does not guarantee full source coverage; the Evidence's coverage and limitations must be inspected. 
+
+Produce a compact summary without altering the parent Evidence:
+
+bash
+Copy
+jq -nc \
+  --arg path "$KF_EVIDENCE/rea/full/application-evidence.json" \
+  '{source:{kind:"evidence-file",path:$path},view:{kind:"summary"}}' \
+  > "$KF_EVIDENCE/rea/full/summary-request.json"
+
+npx -y rea-agents@6.8.0 \
+  inspect-analysis-view \
+  "$KF_EVIDENCE/rea/full/summary-request.json" \
+  --json \
+  > "$KF_EVIDENCE/rea/full/summary.json"
+REA explicitly supports projecting summaries and pages from saved Evidence files, avoiding the need to consume enormous raw reports directly. 
+
+Smart/Fixed pilot
+The exact compiled filenames must be derived from the build rather than assumed. Locate candidate modules first:
+
+bash
+Copy
+find "$KF_ARTIFACT" -type f \
+  \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.map' \) \
+  | sort \
+  > "$KF_EVIDENCE/rea/pilots/smart-fixed/candidate-files.txt"
+
+grep -RIlE \
+  'Smart|Fixed|healthCheck|articleChecker|availability' \
+  "$KF_ARTIFACT" \
+  > "$KF_EVIDENCE/rea/pilots/smart-fixed/matches.txt" || true
+Create an artifact-relative source list only after inspecting those matches:
+
+bash
+Copy
+cat > "$KF_EVIDENCE/rea/pilots/smart-fixed/source-paths.json" <<'JSON'
+[
+  "package.json",
+  "REPLACE_WITH_COMPILED_COORDINATOR.js",
+  "REPLACE_WITH_COMPILED_PIPELINE.js",
+  "REPLACE_WITH_COMPILED_ARTICLE_CHECKER.js"
+]
+JSON
+Then:
+
+bash
+Copy
+npx -y rea-agents@6.8.0 \
+  analyze-javascript-application "$KF_ARTIFACT" \
+  --source-paths-json \
+    "$KF_EVIDENCE/rea/pilots/smart-fixed/source-paths.json" \
+  --json \
+  > "$KF_EVIDENCE/rea/pilots/smart-fixed/evidence.json" \
+  2> "$KF_EVIDENCE/rea/pilots/smart-fixed/stderr.txt"
+
+echo $? \
+  > "$KF_EVIDENCE/rea/pilots/smart-fixed/exit-code.txt"
+The expected output is an Evidence document containing artifact identity, application-graph observations, selected-source coverage, source locations, statistics and limitations. Because selected-source mode analyzes only explicitly named files, any unresolved edge into an unselected module must be treated as unknown, not evidence that the dependency does not exist. 
+
+The interpretation questions should be narrowly phrased:
+
+Which built modules implement candidate selection and checking?
+What observable artifact relationships support a Smart-versus-Fixed distinction?
+Where are stop conditions represented in the built artifact?
+Which provider-checking dependencies cross the selected-source boundary?
+Does REA expose a source location/source-map link that can be reconciled to the canonical TypeScript source?
+A claim such as “Smart stops after N healthy candidates under condition X” is not accepted merely because an artifact graph suggests that path. It becomes a behavioral claim only after Stage 3 reproduces it with deterministic tests.
+
+NzbDAV pilot
+Repeat the same procedure around NzbDAV and stream-response modules:
+
+bash
+Copy
+grep -RIlE \
+  'NzbDAV|WebDAV|Range|Content-Range|Accept-Ranges|206|416' \
+  "$KF_ARTIFACT" \
+  > "$KF_EVIDENCE/rea/pilots/nzbdav/matches.txt" || true
+After converting verified matches to artifact-relative paths:
+
+bashCopy
+cat > "$KF_EVIDENCE/rea/pilots/nzbdav/source-paths.json" <<'JSON'
+[
+  "package.json",
+  "REPLACE_WITH_NZBDAV_CLIENT.js",
+  "REPLACE_WITH_STREAM_ROUTE.js",
+  "REPLACE_WITH_RANGE_HELPER.js"
+]
+JSON
+
+npx -y rea-agents@6.8.0 \
+  analyze-javascript-application "$KF_ARTIFACT" \
+  --source-paths-json \
+    "$KF_EVIDENCE/rea/pilots/nzbdav/source-paths.json" \
+  --json \
+  > "$KF_EVIDENCE/rea/pilots/nzbdav/evidence.json" \
+  2> "$KF_EVIDENCE/rea/pilots/nzbdav/stderr.txt"
+
+echo $? \
+  > "$KF_EVIDENCE/rea/pilots/nzbdav/exit-code.txt"
+The REA pilot should establish artifact structure, not claim that range streaming actually works. The follow-up runtime gate is a synthetic server test demonstrating requests and responses for ordinary 200, valid 206, unsatisfiable 416, partial reads, seek, disconnect/cancellation and fallback. Playwright is appropriate only if browser/media-client behavior is material; its tests receive isolated BrowserContexts, which helps keep state leakage under control. 
+
+Indexed evidence design beside the imported source
+The recommended design stores a durable index and sanitized summaries in Git, while treating raw REA output and bulky runtime artifacts as controlled evidence whose commit policy depends on size and sensitivity. REA's documentation notes that full Evidence for a real application can be hundreds of megabytes; GitHub Actions artifacts can be assigned explicit retention periods. 
+
+indexes
+
+indexes
+
+indexes
+
+indexes
+
+indexes
+
+indexes
+
+KaijuFlow repository
+
+original imported source
+
+evidence/
+
+index/
+manifest.jsonl
+claims.jsonl
+artifacts.jsonl
+
+environment/
+versions + source SHA
+
+hashes/
+source/build/evidence SHA-256
+
+static/
+ts-morph + dep-cruiser
+
+rea/
+
+full/
+raw Evidence + summary
+
+pilots/
+smart-fixed/
+nzbdav/
+
+tests/
+fixtures + results + coverage
+
+security/
+redaction logs + policy
+
+benchmarks/
+raw measurements + environment
+
+
+
+Show code
+A practical layout:
+
+text
+Copy
+evidence/
+├── README.md
+├── index/
+│   ├── manifest.jsonl
+│   ├── claims.jsonl
+│   ├── artifacts.jsonl
+│   └── schema/
+│       ├── evidence-record.schema.json
+│       └── claim.schema.json
+├── environment/
+│   ├── source-commit.txt
+│   ├── git-status.txt
+│   ├── node-version.txt
+│   └── rea-version.json
+├── hashes/
+│   ├── imported-source.sha256
+│   ├── build-files.sha256
+│   └── evidence-files.sha256
+├── static/
+│   ├── ts-morph/
+│   └── dependency-cruiser/
+├── rea/
+│   ├── full/
+│   │   ├── application-evidence.json
+│   │   ├── summary.json
+│   │   ├── application.stderr
+│   │   └── exit-code.txt
+│   └── pilots/
+│       ├── smart-fixed/
+│       └── nzbdav/
+├── tests/
+│   ├── fixtures/
+│   ├── vitest/
+│   └── playwright/
+├── security/
+│   ├── REDACTION_POLICY.md
+│   └── redaction-log.jsonl
+└── benchmarks/    └── ...
+Evidence record schema
+Use JSON Lines for the index because it is append-friendly, diffable and easy to process. REA itself supports JSONL for selected row-oriented outputs, although its complete Evidence should remain ordinary JSON. 
+
+Example file	Purpose	Key indexed metadata
+environment/rea-version.json	Exact analyzer/runtime identity	record_id, captured_at, rea_version, node_version, platform, arch, sha256
+hashes/build-files.sha256	Immutable identity for analyzed artifact	source_commit, build_command, artifact_root, manifest_sha256
+rea/full/application-evidence.json	Parent REA Evidence	evidence_id, rea_version, input_path, input_digest, coverage_status, limitations, size_bytes, sha256, storage_class
+rea/full/summary.json	Human/reviewer-friendly projection	parent_evidence_id, generated_at, coverage_status, module_count, parse_failures, sha256
+rea/pilots/smart-fixed/evidence.json	Bounded artifact investigation	investigation_id, question, source_paths, parent_commit, coverage_status, limitations, sha256
+static/ts-morph/subsystem-map.json	Canonical TypeScript mapping	tool_version, tsconfig, source_commit, entry_points, symbols, unresolved_edges, sha256
+static/dependency-cruiser/graph.json	Dependency topology	tool_version, configuration_digest, cycles, unresolved, violations, sha256
+tests/vitest/smart-fixed.junit.xml	Behavioral result	test_commit, node_version, fixture_set, passed, failed, duration, sha256
+tests/playwright/nzbdav-results.json	Browser/range behavior	browser, browser_version, fixture_set, network_mode, result, trace_digest
+security/redaction-log.jsonl	Audit trail for sanitized evidence	source_record_id, redaction_type, field/path, reason, reviewer, sanitized_sha256
+
+Each indexed record should also carry these common fields:
+
+json
+Copy
+{
+  "schema_version": 1,
+  "record_id": "ev-kf-20261107-smart-fixed-001",
+  "record_type": "rea-analysis",
+  "created_at": "2026-11-07T00:00:00-06:00",
+  "source_commit": "<git-sha>",
+  "tool": {
+    "name": "rea-agents",
+    "version": "6.8.0",
+    "runtime": "node",
+    "runtime_version": "24.22.2"
+  },
+  "subject": {
+    "path": "<repo-relative-or-sanitized-path>",
+    "sha256": "<digest>"
+  },
+  "coverage": {
+    "status": "partial",
+    "limitations": []
+  },
+  "classification": "internal-sanitized",
+  "storage": {
+    "path": "rea/pilots/smart-fixed/evidence.json",
+    "sha256": "<digest>",
+    "committed": false
+  }
+}
+A separate claims.jsonl should prevent “tool result” from becoming “truth” by accident:
+
+json
+Copy
+{
+  "claim_id": "claim-smart-stop-001",
+  "statement": "Smart mode stops checking once its configured success criterion is satisfied.",
+  "status": "test-observed",
+  "support": [
+    "ev-kf-source-...",
+    "ev-kf-rea-...",
+    "ev-kf-vitest-..."
+  ],
+  "contradictions": [],
+  "confidence": "high"
+}
+Use the evidence classes source-observed, REA-observed, test-observed, measured, and unverified. A claim should graduate to test-observed only after executable reproduction; performance claims require measured.
+
+Subsystem prioritization and tool allocation
+The key principle is to use the tool whose data model matches the question. ts-morph exposes TypeScript AST/project information; dependency-cruiser analyzes module dependencies and rules; CodeQL is built for interprocedural data-flow/taint questions; REA reconstructs and preserves artifact evidence; Vitest isolates deterministic service behavior; Playwright exercises browser-visible behavior. 
+
+Subsystem	Why it matters	Recommended tool(s)	Exit gate
+Smart/Fixed candidate selection	Central policy logic and high risk of subtle early-termination differences.	ts-morph → REA targeted artifact corroboration → Vitest.	Exact source decision path mapped; built artifact correspondence established; deterministic tests prove top-N/stop behavior and error paths.
+Health/article availability checking	Async fan-out, provider failover, timeouts and cancellation are hard to establish statically.	ts-morph, REA for built call relationships, Vitest fake NNTP services.	Primary/pool/backup behavior, cancellation and connection cleanup reproduced under synthetic failure scenarios.
+NNTP transport	Protocol/state/network behavior dominates correctness.	Source analysis + Vitest/local fake NNTP; CodeQL for credential/logging flow. REA only as corroboration.	No live credential dependency; connect/auth/article/error/timeout flows tested; sensitive flows mapped.
+NzbDAV submission/client	External-system boundary and likely source of configuration/data exposure.	ts-morph, REA targeted artifact analysis, Vitest fake HTTP/WebDAV endpoint.	Request formation, error handling, retries and persistence demonstrated without live NzbDAV.
+HTTP streaming/ranges	Observable protocol semantics matter more than source shape.	Source analysis, Vitest integration server, Playwright where browser behavior matters.	Correct 200/206/416, ranges, seeking, disconnect and fallback under isolated fixtures.
+Fallback orchestration	Cross-subsystem control flow can diverge between source intent and build output.	dependency-cruiser + ts-morph + REA + Vitest.	All fallback edges identified; precedence and terminal conditions reproducibly tested.
+Indexer/Newznab aggregation	External input normalization, ranking and failure handling.	ts-morph, dependency-cruiser, Vitest fixture responses; CodeQL for URL/credential flows.	Normalization/ranking/dedupe/failure cases covered with fixture corpus.
+Caching/persistence	State lifetime changes behavior and may leak sensitive data.	ts-morph, CodeQL, Vitest with temporary filesystem/storage.	Cache key/content/TTL/invalidation mapped and tests prove isolation plus cleanup.
+React/UI	Static REA adds relatively little when original TypeScript/JSX is available.	ts-morph + Playwright; dependency-cruiser for frontend boundaries.	User flows and API calls validated in isolated browser tests.
+Configuration/auth/secrets/logging	Highest confidentiality concern.	CodeQL + source review + tests; REA only if compiled output differs materially.	Secret sources/sinks/log paths inventoried; no fixture or evidence artifact contains real secrets.
+Native add-ons/binaries, if discovered	Source tools cannot explain native machine code.	REA + Ghidra 12.1.4.	Native identity/hash recorded; material functions analyzed with explicit evidence/limitations.
+Performance/4K streaming	Cannot be inferred from static analysis.	Benchmark harness and system metrics only.	Repeatable measured latency/throughput/seek/rebuffer distributions under documented conditions.
+
+dependency-cruiser can report circular dependencies, unresolved imports and rule violations and can emit JSON or graph formats, which makes it particularly useful for A3's whole-app topology. 
+
+CodeQL should be reserved for questions such as “can a credential/config source reach a logging sink?” or “can untrusted indexer data reach a dangerous operation without sanitization?” because its JavaScript/TypeScript libraries model local and interprocedural data flow and taint tracking. Repository availability depends on GitHub plan/repository visibility if GitHub-hosted code scanning is used; private/internal repositories require GitHub Code Security, although local CodeQL workflows are a separate deployment question. 
+
+CI isolation, privacy, and security controls
+GitHub Actions design
+REA's official CI documentation recommends a pinned, noninteractive CLI workflow using GitHub-hosted Ubuntu, states that static JavaScript analysis needs no Ghidra/Java/browser/Docker/API key, and recommends keeping the tool installation separate from application dependencies. Its example requests only contents: read and warns against executing untrusted PR code in privileged contexts. 
+
+For KaijuFlow, prefer workflow_dispatch initially and then optionally a normal pull_request job after the workflow has been reviewed. Do not use pull_request_target to check out and execute PR code; GitHub explicitly warns that this combination can expose privileged credentials and repository resources. 
+
+A minimal workflow shape is:
+
+yaml
+Copy
+name: REA isolated JavaScript audit
+
+on:
+  workflow_dispatch:
+  # Enable only after review:
+  # pull_request:
+  #   paths:
+  #     - 'src/**'
+  #     - 'package*.json'
+  #     - '.github/workflows/rea-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rea-static:
+    runs-on: ubuntu-24.04
+
+    env:
+      REA_VERSION: '6.8.0'
+      REPORT_DIR: ${{ runner.temp }}/rea-report
+
+    steps:
+      - name: Prepare report directory        shell: bash
+        run: mkdir -p "$REPORT_DIR"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Use Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.2'
+          cache: npm
+
+      - name: Record environment
+        shell: bash
+        run: |
+          node --version | tee "$REPORT_DIR/node-version.txt"
+          git rev-parse HEAD | tee "$REPORT_DIR/source-commit.txt"
+          npx -y rea-agents@${REA_VERSION} --version --json \
+            > "$REPORT_DIR/rea-version.json"
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Build known artifact
+        run: npm run build
+
+      - name: Hash build
+        shell: bash
+        run: |
+          find dist -type f -print0 | sort -z | \
+            xargs -0 sha256sum > "$REPORT_DIR/build-files.sha256"
+
+      - name: REA static analysis
+        id: rea
+        shell: bash
+        run: |
+          set +e
+          npx -y rea-agents@${REA_VERSION} \
+            analyze-javascript-application "$GITHUB_WORKSPACE/dist" \
+            --json --full-output \
+            > "$REPORT_DIR/analysis.json" \
+            2> "$REPORT_DIR/analysis.stderr"
+          rc=$?
+          echo "$rc" > "$REPORT_DIR/exit-code.txt"
+          exit "$rc"
+
+      - name: Upload diagnostics and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-analysis-${{ github.sha }}
+          path: ${{ runner.temp }}/rea-report
+          retention-days: 7
+dist is deliberately a placeholder; substitute KaijuFlow's verified build output. GitHub recommends setup-node for consistent Node selection, and workflow artifacts support a per-artifact retention-days value. 
+
+For stronger supply-chain reproducibility, pin Actions by full commit SHA after reviewing them rather than relying permanently on moving major tags. REA's own CI guidance notes that its sample pins action revisions and also distinguishes pinning the REA version from pinning all transitive npm dependencies; a committed lockfile plus npm ci is the stronger dependency-reproducibility model. 
+
+Do not expose Brain Tunnel, production credentials, live NNTP credentials, NzbDAV credentials or other production secrets to this workflow. The static REA lane does not need them. 
+
+Evidence confidentiality rules
+REA itself warns that reports may contain paths, URLs, source-derived facts and caller-selected data, and says operators should review artifact access and retention rather than assume REA will infer secrets from their names. 
+
+Apply these rules:
+
+Never place production credentials in fixtures or Evidence. Replace NNTP usernames/passwords, API keys, auth headers, cookies, bearer tokens, private URLs containing credentials, NzbDAV credentials and Brain Tunnel details with deterministic placeholders before analysis.
+
+Treat raw REA Evidence as potentially sensitive even when static. It can preserve paths, source facts, URLs and strings. Store raw output as internal-raw; commit only after automated and manual redaction review. 
+
+Prefer repository-relative paths in index metadata. Absolute /home/... paths provide little analytical value and expose workstation identity. Preserve the original absolute path only in local raw evidence if REA requires it for provenance; REA's own Evidence records retain canonical/selected path identity. 
+
+Synthetic data only for runtime tests. Use fabricated NZBs, fake Message-IDs, invented hosts and credentials, local-only test servers and temporary directories. Never store private NZB contents, actual Usenet article data or real media samples merely to make an architecture test realistic.
+
+Logs are evidence, not dumping grounds. Redact headers such as Authorization, cookies, provider usernames/passwords, query-string API keys and filesystem paths with personal identifiers before committing. Preserve a redaction log containing the field and reason, not the removed value.
+
+Hash originals before sanitization. Keep raw_sha256 locally and sanitized_sha256 in the commit index so later reviewers can establish that a sanitized record derives from a specific local original without publishing the original.
+
+Keep CI artifacts short-lived by default. Seven days is a sensible initial diagnostic period; GitHub allows explicit artifact retention within repository/organization limits. 
+
+Never interpret exit 0 as security clearance. REA explicitly says a successful operation can retain incomplete coverage, unknowns or limitations. 
+
+Legal and licensing handling
+REA 6.8.0 is distributed under MIT; Ghidra's primary license is Apache 2.0, with additional third-party components carrying their own licenses. Ghidra's user agreement also explicitly reminds users that reverse-engineering activity must itself be lawful and compatible with applicable software licenses. 
+
+Those tool licenses do not determine the license of analyzed KaijuFlow/upstream source, bundled assets, dependencies, generated source maps, or evidence excerpts. Before committing generated evidence that embeds source text or third-party assets, verify the imported application's actual license files and third-party notices. This report does not independently establish those upstream licenses.
+
+Tool choice and risk register
+Why REA is retained rather than replaced
+REA is being selected for a narrow problem that the alternatives do not cover as cleanly: independent reconstruction and provenance of the built JavaScript artifact. It records artifact identity, graph observations, coverage, explicit limitations and Evidence, and it can analyze a directory without running the target. 
+
+It is not being selected because it is universally stronger than the alternatives.
+
+Tool	Best KaijuFlow use	Why it does not replace the others
+REA 6.8.0	Independent inspection of emitted JS; artifact/source-map correspondence; bounded feature investigations; evidence/coverage records.	Artifact reconstruction cannot prove live protocol behavior; source selection is explicit and partial unless all relevant files are included. 
+ts-morph	Canonical TypeScript AST/symbol/type traversal and automated source maps.	Works from source/compiler structure, not independently from shipped artifacts. It can construct projects directly from tsconfig.json. 
+dependency-cruiser	Whole-app module dependency topology, cycles, unresolved imports and architectural constraints.	Models module relationships rather than detailed runtime semantics or artifact provenance. 
+CodeQL	Security/data-flow questions: credentials, logging, untrusted inputs and sinks.	Higher setup/query cost and not intended as the primary architecture inventory; GitHub-hosted availability for private repos depends on Code Security entitlement. 
+Vitest	Smart/Fixed, provider failover, cache, timeout, cancellation and HTTP-service behavior using deterministic fakes.	Tests answer questions you formulate; they do not independently discover application structure. 
+Playwright	Browser/UI and real HTTP/media-client semantics.	Expensive and unnecessary for backend policy logic; it observes browser-visible behavior rather than server internals. 
+
+The architecture therefore becomes a triangulation model:
+
+no
+
+yes
+
+Original TypeScript source
+
+ts-morph / dependency-cruiser
+
+Built JavaScript artifact
+
+REA Evidence
+
+Synthetic running application
+
+Vitest / Playwright
+
+Source + config flows
+
+CodeQL
+Indexed claim
+
+Enough independent evidence?
+
+Remain unverified
+
+Source/test/measured finding
+
+
+
+Show code
+Risk register
+Risk	Class	Likelihood / impact	Mitigation
+REA runs under production Node 22.22.1 and fails or behaves unsupported.	Technical	High / Medium	Force isolated Node 24.22.2 and record rea --version --json; REA 6.8.0 requires Node 22.23.4+ or Node 24.22.1+. 
+Partial REA source selection is mistaken for complete application coverage.	Technical	Medium / High	Preserve source_selection, coverage and limitations; explicitly include dependencies needed for each question. REA says imports do not expand selection automatically. 
+Full Evidence becomes enormous and pollutes Git history.	Technical/operational	High / Medium	Commit index + summaries; store large raw Evidence in short-lived CI artifacts or approved external/internal storage; retain hashes. REA documents real-app Evidence in the hundreds of MB. 
+Build artifact does not correspond to indexed source commit.	Technical	Medium / High	Record commit, dirty status, build command and SHA-256 manifest before every analysis.
+Synthetic tests accidentally contact production services.	Security	Low/High	Network-deny by default, loopback-only fixtures, invalid synthetic hostnames, no production environment variables.
+Credentials or URLs appear in REA output/logs.	Data exposure	Medium / High	Redaction pipeline, classification, no live credentials in build environment, raw/sanitized hashes, short CI retention. REA explicitly warns reports may include paths, URLs and caller-selected data. 
+Privileged GitHub workflow executes untrusted PR code.	Supply chain/security	Medium / Critical	Avoid pull_request_target; use workflow_dispatch initially and normal pull_request with contents: read if later enabled. GitHub warns against privileged checkout/execution of untrusted PR code. 
+npm package drift makes REA result irreproducible.	Supply chain	Medium / Medium	Pin rea-agents@6.8.0; record version; for stronger reproducibility use reviewed lockfiles and npm ci, as REA's CI guide recommends. 
+REA static finding is presented as runtime proof.	Methodological	Medium / High	Require test-observed status for behavioral claims and measured for performance.
+Ghidra is introduced unnecessarily, increasing complexity.	Technical	Medium / Low	Do not invoke it unless a native component is discovered; static JS analysis explicitly requires no Ghidra. 
+Generated evidence republishes code/assets beyond their license terms.	Legal/licensing	Low–Medium / High	Verify upstream and third-party licenses before committing embedded source; prefer hashes, locations and summaries over source duplication. Ghidra itself warns that analyzed software may be protected by copyright/license. 
+Tool license is confused with target license.	Legal	Medium / Medium	Track tool licenses independently: REA MIT; Ghidra primarily Apache 2.0 with third-party components. 
+Benchmarks on one machine produce misleading architecture conclusions.	Technical	Medium / High	Repeat runs, retain environment fingerprint, report distributions rather than one result, separate warm/cold cache and local/network effects.
+Node 20 compatibility result is treated as a current runtime recommendation.	Lifecycle	Medium / Medium	Retain Node 20 result as historical compatibility evidence only; Node 20 is EOL while Node 24 is LTS as of November 2026. 
+
+The refined plan therefore keeps Stages 0–5 intact but changes their evidentiary hierarchy: Stage 1 source analysis defines the canonical architecture; Stage 2 REA independently witnesses the built artifact; Stages 3–4 establish behavior; Stage 5 establishes performance. Ghidra remains a conditional native-analysis tool. The evidence index links all four layers to immutable hashes and explicit claims, making it possible to audit exactly what was observed, by which tool, from which commit and artifact, with which limitations—without touching Brain production or requiring a PR merge.

@@ -1,5 +1,21 @@
 # A2 checkpoint and handoff
 
+> **Current restart instruction:** [Begin the next analysis session here](audit/NEXT_SESSION.md), starting with A3-ROUTE-001. Do not repeat the A2 import review, Node20 build or index setup.
+
+> **Historical import handoff preserved below.** For the most recent verified A3/REA/index evidence, use [the source-adjacent audit index](../../evidence/README.md), [the corrected execution plan](audit/EXECUTION_PLAN.md), [Issue #2](https://github.com/ReyesPascal/KaijuFlow/issues/2), and [draft PR #3](https://github.com/ReyesPascal/KaijuFlow/pull/3). The original A2 text below predates the independent Node20 CI pass and the recovered REA setup.
+
+## Later checkpoint: research-validated audit/index (2026-11-07)
+
+- PR #1 remains open/unmerged at original import SHA `c83a3c733b6394eb140a1c0a1dc500010a9f22e5`; `main` and archive checkpoint unchanged.
+- Node 20 independent root/UI compilation **PASSED** in Actions run `42355054013`. This demonstrates builds only, not executable app behavior or 4K reliability.
+- Audit branch `audit/node20-a3-baseline` carries 13 source-observed subsystem entries, a claims/evidence/artifacts JSONL ledger, a source-pinned TLS finding and the full user-supplied independent research report. An index-integrity GitHub Actions run `42357978363` **PASSED**, validating 29 recorded index rows (13 subsystem, 5 evidence, 8 claim, 3 artifact). New commits should be revalidated rather than relying on a historic CI pass.
+- REA CLI 6.8.0, separate Node 24.22.2 and installed Ghidra 12.1.4 were recovered and their paths/version verified on Brain. **No REA analysis of KaijuFlow has run yet**. An earlier general REA plan is superseded by the corrected execution plan.
+- A3 architecture review remains **partial**. A4 behavioral tests, stream/range isolation and 4K baseline benchmarks remain **not verified**. These gaps are represented explicitly in the index rather than treated as passed.
+- Correction: `/home/ryan/kaijuflow-a2` is a saved import-artifacts/manifest folder, not a Git checkout. Use a properly authenticated disposable clone of the exact private import SHA before any REA or runtime test.
+- Next action: create/verify isolated clone, source tree and artifact identities; finish the exact whole-app AST/route/side-effect map; only then run bounded REA pilots and synthetic A4 tests. No Brain production changes, no PR merges or deployments without explicit owner approval.
+
+---
+
 Updated 2026-11-07. **A2 import validation passed. Import review is the next gate; A3/A4 and the wider Phase A baseline remain pending.**
 
 | Checkpoint | State | Evidence |

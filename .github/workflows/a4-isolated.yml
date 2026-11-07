@@ -1,0 +1,52 @@
+name: A4 disposable network-isolated synthetic tests
+# Closed bounded milestones: retained for explicit reproduction only.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  a4-isolated:
+    if: github.repository == 'ReyesPascal/KaijuFlow'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # Dependency retrieval/build occur BEFORE the sandbox and do not execute application modules.
+      - name: Install locked build dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile original application without starting it
+        run: npm run build
+      - name: Prepare original React hook test bundle without executing app
+        run: |
+          npm ci --prefix ui --ignore-scripts --no-audit --no-fund
+          npm install --prefix ui --no-save --package-lock=false --ignore-scripts --no-audit --no-fund react-test-renderer@18.3.1
+          ./ui/node_modules/.bin/esbuild ui/src/hooks/useAppConfig.ts --bundle --platform=node --format=cjs --external:react --outfile=ui/.a4-hook.cjs
+      - name: Isolation proof, negative gate injection, and synthetic behavior
+        id: a4
+        continue-on-error: true
+        run: bash tests/a4/run-ci.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a4-disposable-synthetic-report
+          path: |
+            a4-results.json
+            a4-react-results.json
+            a4-coordinator-results.json
+            a4-cache-results.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Preserve gate and assertion failures as CI failures
+        if: steps.a4.outcome != 'success'
+        run: exit 1

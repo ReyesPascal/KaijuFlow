@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "project": "KaijuFlow",
+  "source_commit": "c83a3c733b6394eb140a1c0a1dc500010a9f22e5",
+  "stage": "A4",
+  "status": "isolation-passed-3-bounded-synthetic-tests-passed-1-safety-regression; remaining-cases-planned",
+  "isolation_gate": "A4-ISO-000",
+  "cases": [
+    {
+      "id": "A4-ISO-000",
+      "status": "verified-pass",
+      "goal": "denied external TCP/DNS with loopback mocks reachable",
+      "stub": "sandbox",
+      "assertion": "no app process launched on isolation failure",
+      "requires": [],
+      "data_policy": "synthetic-only",
+      "actual_observation": "Gate: DNS and IPv4/6 TCP denied, localhost worked, injected negative 77 stopped before import; run 42366142956",
+      "ci_run": 42366142956
+    },
+    {
+      "id": "A4-HTTP-001",
+      "status": "verified-pass",
+      "goal": "API JWT required and manifest-key routes scoped correctly",
+      "stub": "jwt-auth",
+      "assertion": "401/404 boundaries; no secret echo",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only",
+      "actual_observation": "Synthetic original JWT/router run 42366142956; setup, valid/invalid auth; full server not booted",
+      "ci_run": 42366142956
+    },
+    {
+      "id": "A4-SDK-002",
+      "status": "verified-pass",
+      "goal": "Stremio 1.6.10 getRouter dynamic route/mount behavior",
+      "stub": "stremio-sdk",
+      "assertion": "both prefixes, resource extra, manifest, CORS",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only",
+      "actual_observation": "Locked SDK getRouter both manifest prefixes+extra, invalid key and CORS; synthetic stream handler",
+      "ci_run": 42366142956
+    },
+    {
+      "id": "A4-DELETE-003",
+      "status": "verified-safety-failure",
+      "goal": "GET/HEAD library delete guarded with deterministic replay",
+      "stub": "webdav-delete",
+      "assertion": "HEAD and invalid path must not remote-delete; replay/fail counter observed",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only",
+      "actual_observation": "HEAD led to WebDAV DELETE, failed 503 deletion was deduped; finding F-KF-A4-DELETE-001",
+      "ci_run": 42366142956
+    },
+    {
+      "id": "A4-AUTOSAVE-004",
+      "status": "backend-subcase-pass-ui-timing-pending",
+      "goal": "independent debounced saves under reordered completions",
+      "stub": "settings-store",
+      "assertion": "memory/disk final identity, 400/413/500 handling",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only",
+      "actual_observation": "Sequential original settings PUT persisted; malformed 400 and oversized 413; React debounce, races, 500 not tested",
+      "ci_run": 42366142956
+    },
+    {
+      "id": "A4-PROVIDER-005",
+      "status": "specified-not-run",
+      "goal": "provider CRUD/reorder source-to-server consistency",
+      "stub": "nntp-provider-mock",
+      "assertion": "failed reorder vs optimistic state, no live NNTP",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only"
+    },
+    {
+      "id": "A4-SYNC-006",
+      "status": "specified-not-run",
+      "goal": "synced indexers double write paths",
+      "stub": "indexer-mock",
+      "assertion": "immediate POST vs delayed settings PUT order",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only"
+    },
+    {
+      "id": "A4-NNTP-007",
+      "status": "specified-not-run",
+      "goal": "Smart and Fixed fake article verification parity",
+      "stub": "nntp-tcp-mock",
+      "assertion": "pool/backup, missing article and errors",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only"
+    },
+    {
+      "id": "A4-ARCHIVE-008",
+      "status": "specified-not-run",
+      "goal": "synthetic NZB and archive/header parse",
+      "stub": "synthetic-nzb",
+      "assertion": "bad yEnc/header and cancellation paths",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only"
+    },
+    {
+      "id": "A4-RANGE-009",
+      "status": "specified-not-run",
+      "goal": "HTTP Range and seeking with fake WebDAV",
+      "stub": "webdav-range",
+      "assertion": "200/206/416 Content-Range and abort semantics",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only"
+    },
+    {
+      "id": "A4-RECOVERY-010",
+      "status": "specified-not-run",
+      "goal": "ready/dead/pending cache and NzbDAV fallback",
+      "stub": "nzbdav-fallback",
+      "assertion": "timeout/cache correctness and durable JSON diffs",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only"
+    },
+    {
+      "id": "A4-PROXY-011",
+      "status": "specified-not-run",
+      "goal": "dynamic proxy status URL fail-closed",
+      "stub": "proxy-mock",
+      "assertion": "no external destination reached",
+      "requires": [
+        "A4-ISO-000"
+      ],
+      "data_policy": "synthetic-only"
+    }
+  ]
+}
