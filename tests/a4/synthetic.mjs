@@ -693,6 +693,52 @@ try {
   }finally{await s.close();}
 }catch(e){record('A4-PROVIDER-INDEXER','fail',{error:String(e)},'Synthetic CRUD fixture did not satisfy original route contract');}
 
+
+try {
+  // Original indexer CRUD/reorder router with entirely in-memory dependencies.
+  // No proxyFetch or caps call is allowed to reach an external host.
+  const { createIndexerRoutes } = await src('routes/indexers.js');
+  let indexers=[];
+  const calls={add:0,update:0,remove:0,reorder:0,network:0};
+  const deps={
+    config,
+    getIndexers:()=>indexers,
+    addIndexer:i=>{calls.add++;if(indexers.some(x=>x.name===i.name))throw Error('duplicate');const v={...i,enabled:true};indexers.push(v);return v;},
+    updateIndexer:(name,updates)=>{calls.update++;const i=indexers.findIndex(x=>x.name===name);if(i<0)throw Error('missing');indexers[i]={...indexers[i],...updates};return indexers[i];},
+    deleteIndexer:name=>{calls.remove++;const i=indexers.findIndex(x=>x.name===name);if(i<0)throw Error('missing');indexers.splice(i,1);},
+    reorderIndexers:ordered=>{calls.reorder++;if(ordered.length!==indexers.length||ordered.some(x=>!indexers.some(y=>y.name===x.name)))throw Error('invalid reorder');indexers=ordered;},
+    fetchIndexerCaps:async()=>{calls.network++;throw Error('network fixture forbidden');},
+    proxyFetch:async()=>{calls.network++;throw Error('network fixture forbidden');},
+    getLatestVersions:()=>({chrome:'synthetic',prowlarr:'synthetic'})
+  };
+  const app=express();app.use(express.json({limit:'2mb'}));
+  app.use('/api/indexers',authMw.requireAuth,createIndexerRoutes(deps));
+  const s=await serve(app);
+  try {
+    const req=(method,p,body)=>request(s.port,'/api/indexers'+p,body===undefined?
+      {method,headers:{Authorization:'Bearer '+jwt}}:jsonReq(method,body,jwt));
+    assert.equal((await request(s.port,'/api/indexers')).status,401);
+    assert.equal((await req('POST','/',{name:'Incomplete'})).status,400);
+    const a=await req('POST','/',{name:'A4-A',url:'http://127.0.0.1:9998',apiKey:'synthetic-a'});
+    assert.equal(a.status,201);assert.equal(a.json.url,'http://127.0.0.1:9998/api');
+    const b=await req('POST','/',{name:'A4-B',url:'http://127.0.0.1:9999/api',apiKey:'synthetic-b'});
+    assert.equal(b.status,201);
+    assert.equal((await req('POST','/',{name:'BadTimeout',url:'http://127.0.0.1:9997',apiKey:'test',timeout:46})).status,400);
+    assert.equal((await req('PUT','/A4-A',{timeoutEnabled:'false'})).status,400);
+    const update=await req('PUT','/A4-A',{timeout:12,timeoutEnabled:true});
+    assert.equal(update.status,200);assert.equal(update.json.timeout,12);
+    assert.equal((await req('POST','/reorder',{indexers:'invalid'})).status,400);
+    const reverse=[indexers[1],indexers[0]];
+    assert.equal((await req('POST','/reorder',{indexers:reverse})).status,200);
+    assert.deepEqual((await req('GET','/')).json.map(x=>x.name),['A4-B','A4-A']);
+    assert.equal((await req('DELETE','/A4-B')).status,204);
+    assert.deepEqual((await req('GET','/')).json.map(x=>x.name),['A4-A']);
+    assert.equal(calls.network,0);
+    record('A4-INDEXER-CRUD-006','pass',{...calls,remaining:indexers.length,normalizedURL:a.json.url,authWithoutJWT:401},
+      'Original compiled indexer router; all injected storage synthetic and no search/network calls');
+  } finally {await s.close();}
+} catch(e) {record('A4-INDEXER-CRUD-006','fail',{error:String(e)},'Original indexer CRUD/reorder fixture failed');}
+
 fs.writeFileSync(process.env.A4_RESULTS,JSON.stringify(report,null,2)+'\n',{mode:0o600});
 console.log('A4 SYNTHETIC SUMMARY',JSON.stringify({passed:report.cases.filter(x=>x.status==='pass').length,failed:failures}));
 process.exit(failures ? 1 : 0);
