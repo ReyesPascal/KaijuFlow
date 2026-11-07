@@ -365,6 +365,47 @@ try {
     'Original archive grouping, first-part discovery, sample selection, file classifier; not archive decompression/yEnc decode');
 }catch(e){record('A4-ARCHIVE-GROUP-010','fail',{error:String(e)},'Original archive fixture failed');}
 
+// Original BODY transfer and yEnc decode, synthetic article with exact bytes.
+// One fake socket returns 222 with dot-terminated body and one returns 430.
+try {
+  const net=await import('node:net');
+  const {downloadSegment}=await src('archive/nntpSegmentDownloader.js');
+  const magic=await src('archive/formatDetector.js');
+  const servers=[];
+  async function fakeBody(mode){
+    const server=net.createServer(socket=>{
+      let pending='';
+      socket.on('data',b=>{
+        pending+=b.toString();
+        if(pending.includes('\r\n')){
+          if(mode==='found')socket.write('222 1 <a4-body> body follows\r\n=ybegin line=128 size=3 name=a4.bin\r\nklm\r\n=yend size=3\r\n.\r\n');
+          else socket.write('430 missing\r\n');
+          pending='';
+        }
+      });
+    });
+    await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));servers.push(server);
+    return server.address().port;
+  }
+  const okPort=await fakeBody('found'),badPort=await fakeBody('missing');
+  const ok=net.connect({host:'127.0.0.1',port:okPort});
+  const bad=net.connect({host:'127.0.0.1',port:badPort});
+  try {
+    const bytes=await downloadSegment(ok,'a4-body');
+    assert.deepEqual(bytes,Buffer.from('ABC'));
+    await assert.rejects(()=>downloadSegment(bad,'missing'),/Article not found/);
+    assert.equal(magic.isRAR4(Buffer.from([0x52,0x61,0x72,0x21,0x1a,0x07,0])),true);
+    assert.equal(magic.isRAR5(Buffer.from([0x52,0x61,0x72,0x21,0x1a,0x07,1,0])),true);
+    assert.equal(magic.isZip(Buffer.from([0x50,0x4b,3,4])),true);
+    assert.equal(magic.is7Zip(Buffer.from([0x37,0x7a,0xbc,0xaf,0x27,0x1c])),true);
+    record('A4-YENC-011','pass',{bodyBytes:bytes.length,decoded:'ABC',missing:430,detectors:4},
+      'Original BODY message handler and yEnc decoder plus archive signatures; no full archive extraction');
+  }finally{
+    ok.destroy();bad.destroy();
+    await Promise.all(servers.map(s=>new Promise(resolve=>s.close(resolve))));
+  }
+}catch(e){record('A4-YENC-011','fail',{error:String(e)},'Original yEnc BODY fixture failed');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
