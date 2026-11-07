@@ -406,6 +406,62 @@ try {
   }
 }catch(e){record('A4-YENC-011','fail',{error:String(e)},'Original yEnc BODY fixture failed');}
 
+// Original /v WebDAV proxy. Fake upstream returns exact 200/206/416 and
+// 404 on loopback. Tests forwarding, 416 recovery and same-origin fallback.
+try {
+  assert.ok(manifestKey,'auth fixture required');
+  const {createNzbdavStreamRoutes}=await src('routes/nzbdav.js');
+  const body=Buffer.from('0123456789','ascii');
+  const upstreamRanges=[];
+  const fake=await serve((req,res)=>{
+    const range=req.headers.range;
+    upstreamRanges.push(range||'(none)');
+    if(req.url.includes('MissingMedia')){
+      res.writeHead(404);res.end();return;
+    }
+    if(!range){res.writeHead(200,{'Content-Type':'video/mp4','Content-Length':body.length,'Accept-Ranges':'bytes'});res.end(body);return;}
+    const match=/^bytes=(\d+)-(\d*)$/.exec(range);
+    const start=match?Number(match[1]):Infinity;
+    const end=match&&match[2]?Math.min(Number(match[2]),body.length-1):body.length-1;
+    if(start>=body.length || end<start){res.writeHead(416,{'Content-Range':'bytes */10'});res.end();return;}
+    const payload=body.subarray(start,end+1);
+    res.writeHead(206,{'Content-Type':'video/mp4','Content-Length':payload.length,
+      'Content-Range':'bytes '+start+'-'+end+'/10','Accept-Ranges':'bytes'});
+    res.end(payload);
+  });
+  configData.nzbdavWebdavUrl='http://127.0.0.1:'+fake.port;
+  configData.nzbdavUrl='http://127.0.0.1:'+fake.port;
+  configData.nzbdavStreamingMethod='pipe';
+  configData.nzbdavWebdavUser='';configData.nzbdavWebdavPassword='';
+  const deps={
+    config,handleStream:async(_req,res)=>res.end(),getCacheStats:()=>({}),
+    clearStreamCache:()=>{},clearReadyCache:()=>0,clearFailedCache:()=>0,
+    deleteCacheEntry:()=>false,getCacheEntries:()=>[],isStreamCached:()=>false,
+    getLatestVersions:()=>({chrome:'synthetic'})
+  };
+  const app=express();
+  app.use('/stremio/:manifestKey/nzbdav',authMw.validateManifestKey,createNzbdavStreamRoutes(deps));
+  const s=await serve(app);
+  try{
+    const endpoint='/stremio/'+manifestKey+'/nzbdav/v?path='+encodeURIComponent('/content/movies/A4Media');
+    const full=await fetch('http://127.0.0.1:'+s.port+endpoint);
+    assert.equal(full.status,200);assert.equal(await full.text(),'0123456789');
+    const partial=await fetch('http://127.0.0.1:'+s.port+endpoint,{headers:{Range:'bytes=2-5'}});
+    assert.equal(partial.status,206);
+    assert.equal(partial.headers.get('content-range'),'bytes 2-5/10');
+    assert.equal(await partial.text(),'2345');
+    const recovered=await fetch('http://127.0.0.1:'+s.port+endpoint,{headers:{Range:'bytes=100-'}});
+    assert.equal(recovered.status,200);assert.equal(await recovered.text(),'0123456789');
+    assert.deepEqual(upstreamRanges.slice(0,4),['(none)','bytes=2-5','bytes=100-','(none)']);
+    const missing='/stremio/'+manifestKey+'/nzbdav/v?path='+encodeURIComponent('/content/movies/MissingMedia');
+    const gone=await fetch('http://127.0.0.1:'+s.port+missing);
+    assert.equal(gone.status,404);
+    record('A4-RANGE-PROXY-012','pass',
+      {full:200,partial:206,recovered416:200,missing:404,upstreamRequests:upstreamRanges.length},
+      'Original /v proxy, byte-for-byte 200/206 and 416 recovery, upstream 404 without fallback; no actual 4K playback');
+  }finally{await s.close();await fake.close();}
+}catch(e){record('A4-RANGE-PROXY-012','fail',{error:String(e)},'Original WebDAV proxy Range fixture failed');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
