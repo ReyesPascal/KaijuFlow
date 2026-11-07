@@ -1,3 +1,20 @@
+# OWNER DECISION — DOCUMENT DEFECTS, DO NOT FIX (2026-11-07)
+
+**Explicit latest user instruction:** "dont try to fix anything just make a note about it". This supersedes any prior handoff suggestion to prepare/implement fixes. **Do not edit application source, create remediation patches, propose fixes as the next required task, or merge either PR.** Preserve the audit-only scope and move efficiently through unfinished validation/documentation if requested.
+
+Known, test-observed application behaviors are **record-only**:
+1. Destructive library-delete GET route is also invoked by HEAD and triggers fake WebDAV DELETE (A4-DELETE-003).
+2. Failed 503 single-delete and delete-all operations are incorrectly deduplicated on immediate replay rather than retried (A4-DELETE-003 / A4-DELETEALL-007).
+3. Older successful React autosave PUT responses can overwrite newer shared config state (A4-REACT-ORDER).
+
+The corresponding deliberately red assertions remain intact. **Do not try to resolve them now.** Do not misrepresent them as fixed; distinguish synthetic reproduction from real-production frequency. Existing reports and source-linked findings remain canonical. The user wants speed: skip completed synthetic A4 fixtures, focus only on genuine uncovered validation if continuing; record limitations without making source modifications.
+
+As of prior independent verification: isolated A4 42370377554, backend 15 PASS / 2 intentionally RED, React 3 PASS / 1 intentionally RED. Evidence and Node 20 CI were green at head `695dbcff01577459ac1c3a770ea720f6a79de25d`; A4 remained red by design. Confirm new head/CI before fresh claims. Preserve original source/import, Brain production, private repos, and unmerged PR #1/#3.
+
+**Next-session prompt:** Resume KaijuFlow from Issue #2 and the top of NEXT_SESSION.md. Honor owner decision: **document the three confirmed defects only, do not fix anything**. Verify latest audit branch/CI, avoid repeating completed A4 tests, and finish only unverified isolated validation/evidence tasks quickly. Leave original source, Brain production, and both PRs untouched.
+
+---
+
 # CURRENT HANDOFF — expanded A4 synthetic matrix executed and indexed (2026-11-07)
 
 **Verified:** Original immutable app at `c83a3c733b6394eb140a1c0a1dc500010a9f22e5`; draft PR #3 stays open/unmerged against open/unmerged import PR #1. CI [A4 run 42370377554](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42370377554), job `128397091476`: `synthetic.mjs` **15 PASS / 2 intentional RED**, React `3 PASS / 1 intentional RED`. Original source hash checks and fail-closed no-egress gate passed. Expanded evidence: [A4-ADDITIONAL-SYNTHETIC-2026-11-07.md](A4-ADDITIONAL-SYNTHETIC-2026-11-07.md), indexed `EV-KF-A4-EXPANDED-017`, `CL-KF-A4-EXPANDED-017`, `ART-KF-A4-EXPANDED-017`. Final evidence/Node20 CI on new documentation/index commits must be rechecked.
