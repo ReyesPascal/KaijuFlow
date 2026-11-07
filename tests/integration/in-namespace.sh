@@ -15,11 +15,21 @@ echo "A4-ISO-000: network namespace $(readlink /proc/self/ns/net); only lo; TCP 
 cp -a "$A4_ROOT/dist" "$A4_RUN_DIR/work/dist"
 cp "$A4_ROOT/package.json" "$A4_RUN_DIR/work/package.json"
 cp -a "$A4_ROOT/node_modules" "$A4_RUN_DIR/work/node_modules"
-cp "$A4_ROOT/tests/integration/discovery-stream.mjs" "$A4_RUN_DIR/work/scenario.mjs"
+cp "$A4_ROOT"/tests/integration/*.mjs "$A4_RUN_DIR/work/"
 mkdir -p "$A4_RUN_DIR/work/config"
 chown -R nobody:nogroup "$A4_RUN_DIR/work"
 printf 'integration isolation PASS\n' > "$A4_RUN_DIR/app-import.started"
 cd "$A4_RUN_DIR/work"
-runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
-  NODE_ENV=test A4_APP_ROOT="$A4_RUN_DIR/work" INTEGRATION_RESULTS="$A4_RUN_DIR/results.json" \
-  node "$A4_RUN_DIR/work/scenario.mjs"
+# KaijuFlow: run each scenario in a fresh process (module state, env and caches don't leak).
+overall=0
+for scenario in "$A4_RUN_DIR"/work/*.mjs; do
+  name="$(basename "$scenario" .mjs)"
+  rm -rf "$A4_RUN_DIR/work/config"; mkdir -p "$A4_RUN_DIR/work/config"; chown nobody:nogroup "$A4_RUN_DIR/work/config"
+  rc=0
+  runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
+    NODE_ENV=test A4_APP_ROOT="$A4_RUN_DIR/work" INTEGRATION_RESULTS="$A4_RUN_DIR/results-$name.json" \
+    timeout 120 node "$scenario" || rc=$?
+  echo "INTEGRATION SCENARIO $name exit=$rc"
+  [[ "$rc" -eq 0 ]] || overall=1
+done
+exit "$overall"

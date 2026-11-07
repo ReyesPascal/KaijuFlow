@@ -48,6 +48,17 @@ const STREMIO_TIMEOUT_MS = 60_000;       // Stremio's built-in HTTP timeout
 const STREMIO_SAFETY_MARGIN_MS = 5_000;  // Safety buffer when deciding whether to self-redirect
 const MAX_SELF_REDIRECTS = Number(process.env.NZBDAV_MAX_SELF_REDIRECTS) || 500; // Safety cap on self-redirects — supports large fallback chains without infinite loops
 const EXO_PLAYER_BUDGET_MS = 8_000;      // Max blocking time per post-redirect request (keeps ExoPlayer alive on Android)
+// KaijuFlow (AUDIT.md finding 5): on a fresh play request, stop waiting for the
+// first source after this long and try the next one. The first source is NOT
+// cancelled or marked dead: it keeps preparing in the stream cache, so it is
+// ready next time. Only applies when Ultimate Fallback gives a next candidate.
+// PTP 1.0.2.1 gives up on a source at ~42 s (30 s soft + 12 s hard), so 25 s
+// leaves room for the backup. 0 disables.
+const FIRST_SOURCE_SWITCH_MS = (() => {
+  const raw = process.env.NZBDAV_FIRST_SOURCE_SWITCH_MS;
+  const n = raw === undefined || raw === '' ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 25_000;
+})();
 const DEDUP_CACHE_TTL_MS = 600_000;      // 10 min — covers a typical play session's seeks/probes without library-check overhead; eviction mid-session self-heals via the broken-path marker + live videoPathExists gate
 const LOBBY_CACHED_LOG_THROTTLE_MS = 15_000; // Suppress repeat "cached resolve served" lines within this window (matches /stream hit throttle)
 // Self-redirect query params (internal, appended to stream URL during 302 redirects):
@@ -1144,6 +1155,25 @@ export async function handleStream(
             exoTimerId = setTimeout(() => reject(Object.assign(new Error('ExoPlayer safety timeout'), { isExoTimeout: true })), waitMs);
           })
         ]);
+      } else if (
+        FIRST_SOURCE_SWITCH_MS > 0
+        && i === candidateOrder[0]
+        && candidateOrder.length > 1
+        && req.query.auto !== 'true'
+      ) {
+        // KaijuFlow (finding 5): first source on a fresh request with a backup
+        // available. candidateOrder already honors userPickFallback (it holds a
+        // single entry when the user's mode doesn't walk to other sources). Wait up to FIRST_SOURCE_SWITCH_MS, then move on without
+        // cancelling it (getOrCreateStream keeps it warming in pendingCache).
+        const switchWaitMs = Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime));
+        let switchTimerId: ReturnType<typeof setTimeout>;
+        streamData = await Promise.race([
+          getOrCreateStream(candidate.nzbUrl, candidate.title, config, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+            .finally(() => clearTimeout(switchTimerId)),
+          new Promise<never>((_, reject) => {
+            switchTimerId = setTimeout(() => reject(Object.assign(new Error('First-source switch'), { isSourceSwitch: true })), switchWaitMs);
+          })
+        ]);
       } else {
         // On the initial request, race against the remaining Stremio window when
         // the attempt budget would exceed it. If the stream isn't ready in time,
@@ -1244,6 +1274,12 @@ export async function handleStream(
       return;
 
     } catch (error) {
+      // KaijuFlow (finding 5): first source still preparing after the switch
+      // window. Not a failure: leave it warming, don't mark it dead, try next.
+      if ((error as any).isSourceSwitch) {
+        console.log(`\u23E9 Still preparing after ${Math.round(FIRST_SOURCE_SWITCH_MS / 1000)}s, trying next source (kept warming) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
+        continue;
+      }
       // Proxy circuit aborted (VPN IP changed / baseline unavailable / etc.) -
       // every remaining candidate in the local array carries the same stale
       // searchExitIp hash and would abort identically. Break the walk; the
