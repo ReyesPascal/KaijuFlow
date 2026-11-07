@@ -1,3 +1,19 @@
+# CURRENT CHECKPOINT — A3-ROUTE-003 complete as a bounded static pass / A4 design prepared
+
+**Date:** November 7, 2026. **Latest audit head:** read live GitHub PR #3; this handoff itself advances the head. **Source:** c83a3c733b6394eb140a1c0a1dc500010a9f22e5 unchanged.
+
+Completed this session:
+- Source-only typed callback analyzer tools/audit/extract_callback_edges.cjs and .github/workflows/a3-callbacks.yml. [GitHub Actions run 42363448497](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42363448497) PASS: 38 frontend files, 261 selected callback prop bindings (261 child parameters), 167 hook-return origins, 22 dynamic URL expressions, 0 parser errors/source modifications. This is bounded static relation mapping, NOT 603 complete transitive event-to-network chains. Detail: [A3-ROUTE-003.md](A3-ROUTE-003.md).
+- Codex CLI 0.167.0 read-only ephemeral reviewed scoped App/useAppConfig source. Claude Code 2.1.319 Sonnet 5.5 Medium reviewed selected source excerpts with tools disabled; findings crosschecked against original source. Neither agent read REA, Fusion, related project materials, credentials or live configuration. No original files or production services modified.
+- Source-confirmed provider callback pass-through HealthChecksOverlay/UltimateFallbackOverlay -> ProviderManager -> POST provider reorder with optimistic state; timed autosave hook and synced-indexer immediate POST plus debounced PUT. Runtime races and HTTP failure outcomes untested.
+- [A4_ISOLATED_TEST_PLAN.md](A4_ISOLATED_TEST_PLAN.md) and [tests/a4/cases.json](../../../tests/a4/cases.json): 12 synthetic scenario specifications including A4-ISO-000, auth, SDK routes, GET/HEAD deletion, autosave, providers, Smart/Fixed, archive, Range and fallback. **No A4 app boot, network-denial validation or behavioral test executed.**
+- Evidence/index/ manifest, claims, artifacts and subsystem links updated with source-pinned provenance. Validate new commit via evidence-index CI; do NOT declare new head CI passing without checking.
+- PR #1 remains open/unmerged into main; draft PR #3 open/unmerged into import branch. Private repos; original 192 upstream file blobs/modes unchanged by audit. Brain production status read-only healthy prior to these doc/code changes.
+
+**NEXT ACTION:** Verify PR #3 current head and CI. Resolve any validator finding without re-running import/AST/Node20 unnecessarily. Then IMPLEMENT THE A4-ISO-000 fail-closed, disposable network-namespace/mock fixture harness on isolated CI only and prove it prevents egress. Only after the gate passes, execute A4-HTTP-001, A4-SDK-002, A4-DELETE-003 and A4-AUTOSAVE-004 against synthetic services. Never use production credentials, real NZBs/NNTP, Brain containers, Docker volumes, networking or live streaming. No merge or deployment without owner approval.
+
+---
+
 # KaijuFlow — authoritative next-session handoff (2026-11-07)
 
 **Checkpoint scope:** A3-ROUTE-002 source-only static inventory **delivered and indexed**; runtime behavior, complete cross-module React callback reachability, and A4 synthetic fixtures **not** complete. The older handoffs below this section are retained as history, not active directions.
