@@ -462,6 +462,69 @@ try {
   }finally{await s.close();await fake.close();}
 }catch(e){record('A4-RANGE-PROXY-012','fail',{error:String(e)},'Original WebDAV proxy Range fixture failed');}
 
+// Actual Prowlarr/NZBHydra sync route against synthetic localhost HTTP
+// integrations. All IDs/keys are fabricated; the original axios logic runs.
+try {
+  const {createIntegrationRoutes}=await src('routes/integrations.js');
+  const fake=await serve((req,res)=>{
+    if(req.url==='/api/v1/indexer'){
+      res.writeHead(200,{'Content-Type':'application/json'});
+      res.end(JSON.stringify([
+        {id:23,name:'A4Synced',protocol:'usenet',enable:true,
+          fields:[{name:'baseUrl',value:'http://127.0.0.1'}],
+          capabilities:{movieSearchParams:['ImdbId','Q'],tvSearchParams:['TvdbId','Q']}},
+        {id:24,name:'DisabledA4',protocol:'usenet',enable:false},
+        {id:25,name:'TorrentA4',protocol:'torrent',enable:true}
+      ]));return;
+    }
+    if(req.url.startsWith('/api?') && req.url.includes('t=caps')){
+      res.writeHead(200,{'Content-Type':'text/xml'});
+      res.end('<caps><searching><movie-search supportedParams="imdbid,q"/><tv-search supportedParams="tvdbid,q"/></searching></caps>');return;
+    }
+    if(req.url==='/api/stats/indexers'){
+      res.writeHead(200,{'Content-Type':'application/json'});
+      res.end(JSON.stringify([{indexerName:'HydraA4',state:'ENABLED'},
+        {indexerName:'DisabledHydraA4',state:'DISABLED_USER'}]));return;
+    }
+    res.writeHead(404);res.end();
+  });
+  const app=express();app.use(express.json());app.use('/api',authMw.requireAuth);
+  app.use('/api',createIntegrationRoutes({
+    config,updateSettings,
+    reorderSyncedIndexers:items=>{configData.syncedIndexers=items;},
+    getLatestVersions:()=>({chrome:'synthetic'})
+  }));
+  const s=await serve(app);
+  try{
+    const url='http://127.0.0.1:'+fake.port;
+    const unauth=await request(s.port,'/api/prowlarr/sync',jsonReq('POST',{url,apiKey:'fixture'},'invalid'));
+    assert.equal(unauth.status,401);
+    configData.syncedIndexers=[{id:'23',name:'OldA4',enabledForSearch:false,
+      enabledForHealthCheck:true,movieSearchMethod:['text'],tvSearchMethod:['text']}];
+    const prowlarr=await request(s.port,'/api/prowlarr/sync',
+      jsonReq('POST',{url,apiKey:'fixture'},jwt));
+    assert.equal(prowlarr.status,200);
+    assert.equal(prowlarr.json?.total,1);
+    assert.equal(prowlarr.json?.indexers?.[0]?.id,'23');
+    assert.equal(prowlarr.json?.indexers?.[0]?.enabledForSearch,false);
+    assert.deepEqual(prowlarr.json?.indexers?.[0]?.movieSearchMethod,['text']);
+    assert.equal((await request(s.port,'/api/synced-indexers/23',
+      jsonReq('PUT',{enabledForHealthCheck:false,id:'override'},jwt))).json?.id,'23');
+    const hydra=await request(s.port,'/api/nzbhydra/sync',
+      jsonReq('POST',{url,apiKey:'fixture'},jwt));
+    assert.equal(hydra.status,200);
+    assert.equal(hydra.json?.total,1);
+    assert.equal(hydra.json?.indexers?.[0]?.name,'HydraA4');
+    const reordered=await request(s.port,'/api/synced-indexers/reorder',
+      jsonReq('POST',{syncedIndexers:hydra.json.indexers},jwt));
+    assert.equal(reordered.status,200);
+    record('A4-SYNC-013','pass',
+      {unauth:401,prowlarr:prowlarr.json.total,hydra:hydra.json.total,
+        preservedSettings:true,reorder:200},
+      'Original Prowlarr/NZBHydra sync routers with localhost fake responses and synthetic settings');
+  }finally{await s.close();await fake.close();}
+}catch(e){record('A4-SYNC-013','fail',{error:String(e)},'Original synced indexer fixture failed');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
