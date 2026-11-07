@@ -18,6 +18,7 @@ const bad='https://127.0.0.1/cache-restart-dead-A4.nzb';
 if(process.env.A4_CACHE_STAGE==='write'){
   sc.setReadyCacheEntry(sc.getCacheKey(u,title),{videoPath:'/synthetic/a4.mp4',videoSize:4096},'Synthetic');
   sc.addDeadNzbByUrl(bad,'A4 Unavailable','Synthetic',123);
+  sc.saveCacheToDisk();
 }
 const state={ready:sc.isStreamCached(u,title),dead:sc.isDeadNzbByUrl(bad),readyCount:sc.getCacheStats().ready,deadCount:sc.getCacheStats().failed};
 console.log('CACHE_METRIC '+JSON.stringify(state));
