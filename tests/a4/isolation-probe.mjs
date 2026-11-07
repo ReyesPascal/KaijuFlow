@@ -3,9 +3,9 @@ import net from 'node:net';
 import dgram from 'node:dgram';
 import dns from 'node:dns/promises';
 import http from 'node:http';
-import fs from 'node:fs';
+import os from 'node:os';
 
-assert.equal(fs.readdirSync('/sys/class/net').join(','), 'lo');
+assert.deepEqual(Object.keys(os.networkInterfaces()), ['lo']);
 async function deniedTCP(host, family) {
   await new Promise((resolve, reject) => {
     const s = net.createConnection({ host, port: 443, family, timeout: 1500 });
@@ -33,5 +33,5 @@ try {
   const r = await fetch('http://127.0.0.1:'+server.address().port);
   assert.equal(await r.text(),'synthetic-loopback');
 } finally { await new Promise(resolve => server.close(resolve)); }
-if (process.env.A4_FORCE_FAIL === '1') throw new Error('INJECTED GATE DENIAL: must prevent app import');
+if (process.env.A4_FORCE_FAIL === '1') { console.error('INJECTED GATE DENIAL after successful network probes'); process.exit(77); }
 console.log('A4_ISOLATION_GATE_PASS');

@@ -16,10 +16,12 @@ chmod 755 "$sandbox"
 trap 'sudo rm -rf "$sandbox"; rm -f "$before" "$after"' EXIT
 echo "A4: parent network namespace = $parent_ns"
 # Deliberately reject the gate. It MUST abort before the application-import sentinel exists.
-if sudo -n env -i PATH="$PATH" A4_ROOT="$ROOT" A4_RUN_DIR="$sandbox/negative" \
+negative_status=0
+sudo -n env -i PATH="$PATH" A4_ROOT="$ROOT" A4_RUN_DIR="$sandbox/negative" \
     A4_PARENT_NETNS="$parent_ns" A4_FORCE_FAIL=1 \
-    unshare --net -- bash "$ROOT/tests/a4/in-namespace.sh"; then
-  echo "FAIL-CLOSED CONTROL: injected gate failure was accepted"; exit 12
+    unshare --net -- bash "$ROOT/tests/a4/in-namespace.sh" || negative_status=$?
+if [[ "$negative_status" -ne 77 ]]; then
+  echo "FAIL-CLOSED CONTROL: expected injected exit 77 after complete probe, got $negative_status"; exit 12
 fi
 if [[ -e "$sandbox/negative/app-import.started" ]]; then
   echo "FAIL-CLOSED CONTROL: application began after failed gate"; exit 13

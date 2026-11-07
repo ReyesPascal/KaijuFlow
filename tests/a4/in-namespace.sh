@@ -4,7 +4,7 @@ set -euo pipefail
 [[ "$(readlink /proc/self/ns/net)" != "$A4_PARENT_NETNS" ]] || { echo "FAIL: not isolated"; exit 20; }
 [[ "$(id -u)" == "0" ]] || { echo "FAIL: namespace setup requires root"; exit 21; }
 ip link set lo up
-[[ "$(ls -1 /sys/class/net | wc -l)" == 1 ]] && [[ -d /sys/class/net/lo ]] || { echo "FAIL: non-loopback interface"; exit 22; }
+[[ "$(ip -o link show | wc -l)" == 1 ]] && ip -o link show lo >/dev/null || { echo "FAIL: non-loopback interface"; exit 22; }
 mkdir -p "$A4_RUN_DIR"/{home,work,tmp}
 chmod 755 "$(dirname "$A4_RUN_DIR")"
 chown -R nobody:nogroup "$A4_RUN_DIR"
