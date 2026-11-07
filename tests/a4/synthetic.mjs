@@ -172,6 +172,38 @@ try {
     await Promise.all(Array.from({length:4},()=>request(server.port,endpoint+tile(concurrentPath))));
     const concurrentDeletes=deletes.filter(x=>x.url?.includes('ConcurrentPack')).length-concurrentBefore;
 
+    // A4-DELETEALL-007: the token store and original delete-all handler are exercised,
+    // not reimplemented. All targets and endpoints are disposable synthetic loopback.
+    const { registerDeleteAllTargets } = await src('nzbdav/deleteAllTargetsStore.js');
+    const allEndpoint='/stremio/'+manifestKey+'/nzbdav/library-delete-all';
+    const allTile = tk => '?t='+encodeURIComponent(Buffer.from(JSON.stringify({
+      sk:'synthetic-key',type:'movie',id:'a4-deleteall-failure',tk
+    })).toString('base64url'));
+    const missBefore=deletes.length;
+    const missing=await request(server.port,allEndpoint+allTile('not-registered'));
+    const missDeletes=deletes.length-missBefore;
+    const allToken=registerDeleteAllTargets([{path:'/content/movies/FailAllPack',scope:'pack'}]);
+    const allUrl=allEndpoint+allTile(allToken);
+    const allBefore=deletes.filter(x=>x.url?.includes('FailAllPack')).length;
+    const allFirst=await request(server.port,allUrl,{method:'GET'});
+    const allCountFirst=deletes.filter(x=>x.url?.includes('FailAllPack')).length-allBefore;
+    const allReplay=await request(server.port,allUrl,{method:'GET'});
+    const allCountReplay=deletes.filter(x=>x.url?.includes('FailAllPack')).length-allBefore;
+    const invalidAllBefore=deletes.length;
+    const invalidAll=await request(server.port,'/stremio/invalid-manifest-key/nzbdav/library-delete-all'+allTile(allToken));
+    const invalidAllDeletes=deletes.length-invalidAllBefore;
+    const allMetrics={missingTokenResponse:missing.status,missingTokenDeletes:missDeletes,
+      firstResponse:allFirst.status,replayResponse:allReplay.status,
+      firstAttemptCount:allCountFirst,replayAttemptCount:allCountReplay,
+      invalidManifestResponse:invalidAll.status,invalidManifestDeletes:invalidAllDeletes};
+    const allViolations=[];
+    if(missDeletes!==0) allViolations.push('missing token caused DELETE');
+    if(allCountFirst!==1) allViolations.push('first delete-all did not attempt one DELETE');
+    if(allCountReplay!==2) allViolations.push('failed delete-all 503 did not retry');
+    if(invalidAll.status!==404 || invalidAllDeletes!==0) allViolations.push('unauthorized delete-all reached WebDAV');
+    record('A4-DELETEALL-007',allViolations.length?'fail':'pass',allMetrics,
+      allViolations.length?allViolations.join('; '):'Original delete-all handler and token registry, failed WebDAV 503 replay');
+
     // Existing handler treats 404/410 as a successful absence; 503 is not success.
     const metrics={invalidDeletes:0,headResponse:head.status,headRemoteDeletes:afterHEAD,replayRemoteDeletes:afterReplay,failedFirst:failCount1,failedReplay:failCount2,invalidAdditional,unauthorizedStatus:unauthorized.status,unauthorizedDeletes,concurrentDeletes};
     const violations=[];
