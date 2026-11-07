@@ -1,3 +1,17 @@
+# CURRENT HANDOFF — expanded A4 synthetic matrix executed and indexed (2026-11-07)
+
+**Verified:** Original immutable app at `c83a3c733b6394eb140a1c0a1dc500010a9f22e5`; draft PR #3 stays open/unmerged against open/unmerged import PR #1. CI [A4 run 42370377554](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42370377554), job `128397091476`: `synthetic.mjs` **15 PASS / 2 intentional RED**, React `3 PASS / 1 intentional RED`. Original source hash checks and fail-closed no-egress gate passed. Expanded evidence: [A4-ADDITIONAL-SYNTHETIC-2026-11-07.md](A4-ADDITIONAL-SYNTHETIC-2026-11-07.md), indexed `EV-KF-A4-EXPANDED-017`, `CL-KF-A4-EXPANDED-017`, `ART-KF-A4-EXPANDED-017`. Final evidence/Node20 CI on new documentation/index commits must be rechecked.
+
+**Completed, do not repeat:** Auth/SDK, sequential settings and actual React 300ms/error scenarios; deletion and delete-all failed-503 replay; provider and manual indexer CRUD/reorder; Prowlarr/NZBHydra sync; local NNTP authentication/STAT provider fallback; split archive grouping and yEnc BODY; synthetic health pipeline sampleCount 3 and 7 with missing-article block; WebDAV 200/206/416 + fallback and one-shot cache markers. An additional manual indexer CRUD fixture repeats coverage and should not count as a new subsystem.
+
+**Outstanding actual application defects (red by design):** destructive library-delete GET auto-handling HEAD; unsuccessful single and delete-all WebDAV 503 being deduped instead of retried; real useAppConfig stale successful PUT response overwriting newer shared config state. None are fixed in original source, and failures should remain visible until separately approved remedies. The 15 successful tests establish bounded synthetic module behavior, not real-4K streaming parity or comprehensive Smart/Fixed UI orchestration.
+
+**Next gate:** Verify this handoff/index commit's evidence-index and Node20 CI; inspect synthetic job changes if another worker advanced audit branch; do not redo passed A4 tests. Prepare a separate source-fix review plan only with user permission. Never modify Brain production, credentials, original source `src/` or `ui/src/`, merge PRs, or weaken sandbox. Maintain rollback branch.
+
+**Resume prompt:** Resume KaijuFlow from Issue #2 and the top of NEXT_SESSION.md. Verify latest audit head and CI. Expanded A4 synthetic matrix is verified at run 42370377554 (15 PASS, two intentional deletion RED; separate React ordering RED). Inspect any new changes, verify evidence-index CI, and prioritize reviewing proposed fixes for the three original behavior defects without changing original source or production or merging either PR.
+
+---
+
 # VERIFIED A4 CI CHECKPOINT — November 7, 2026
 
 The latest independently reviewed isolated A4 run is [42370377554](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42370377554), job `128397091476` at audit commit `17822864583a09917b65c46aaaeae02b67e9e1e6`. Permanent [case-by-case report](A4-CI-VERIFIED-2026-11-07.md).
