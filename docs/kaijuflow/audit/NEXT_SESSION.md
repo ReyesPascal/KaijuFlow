@@ -1,3 +1,20 @@
+# LATEST VERIFIED GATE — SMART/FIXED COORDINATOR SYNTHETIC EXECUTION (2026-11-07)
+
+**Owner's overriding instruction remains: record known defects only; no source fixes, production changes, or PR merges.**
+
+Audit branch `audit/node20-a3-baseline@ac3d49f25ac9e59578176d504bcf3c557bebb3ac` added review-only `tests/a4/coordinator.mjs` and sealed runner/artifact wiring (source `src/` and `ui/src/` untouched). Independently checked [A4 GitHub Actions 42371578806](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42371578806), job `128400633529`: **three newly added coordinator cases PASS / zero new failures**:
+- `A4-COORD-SMART-018` PASS: original compiled `coordinateHealthChecks` stops after first healthy Smart batch with pre-existing synthetic results; Zyclops verification and library-origin retention observed.
+- `A4-COORD-FIXED-019` PASS: original compiled coordinator Fixed top-N=2 with pre-existing statuses; later Zyclops auto-marked and library-origin result retained.
+- `A4-COORD-DISABLED-020` PASS: checks disabled, Zyclops auto-verification and library-origin retention.
+
+Execution used original sealed disposable network namespace and fake data; recorded `A4 COORD SUMMARY {"passed":3,"failed":0}`. Prior backend `15 PASS / 2 intentional RED`, React `3 PASS / 1 intentional RED` reproduced in the same run. Original source SHA-256 before/after identical. **The A4 CI conclusion is intentionally failure** due to existing deletion and React behavior findings, not a coordinator regression. Evidence-index CI [42371578804](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42371578804) passed on this head; Node20 status on the same commit should be rechecked before making a new claim.
+
+**Scope caveat:** Cached-verdict coordinator control flow only; does not prove live Smart/Fixed NNTP orchestration, Newznab discovery-to-stream E2E, long-running cache restart/corruption, seek/disconnect byte correctness under full integration, or 4K comparative performance. These are separate unverified validation gates, not evidence that current application source is incorrect. Keep known original behavior findings recorded without remediation.
+
+**Next safe gate:** Add genuinely missing isolated E2E protocol fixtures only, in small bounded commits with same fail-closed gate, or document not executable without permissions. Real NzbDAV/NNTP performance or production-coupled benchmarks require separately scoped explicit approval; do not contact Brain or real providers automatically. No repeated settled A4 cases; preserve draft PR #3, import PR #1 unmerged and main unchanged.
+
+---
+
 # OWNER DECISION — DOCUMENT DEFECTS, DO NOT FIX (2026-11-07)
 
 **Explicit latest user instruction:** "dont try to fix anything just make a note about it". This supersedes any prior handoff suggestion to prepare/implement fixes. **Do not edit application source, create remediation patches, propose fixes as the next required task, or merge either PR.** Preserve the audit-only scope and move efficiently through unfinished validation/documentation if requested.
