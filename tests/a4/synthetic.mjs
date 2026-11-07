@@ -259,17 +259,17 @@ try {
   const {createHealthCheckRoutes}=await src('routes/healthCheck.js');
   const commands=[];
   const fake=net.createServer(socket=>{
-    socket.write('200 A4 synthetic NNTP ready\\r\\n');
+    socket.write('200 A4 synthetic NNTP ready\r\n');
     let pending='';
     socket.on('data',buf=>{
       pending+=buf.toString();
-      while(pending.includes('\\r\\n')){
-        const pos=pending.indexOf('\\r\\n');
+      while(pending.includes('\r\n')){
+        const pos=pending.indexOf('\r\n');
         const cmd=pending.slice(0,pos);pending=pending.slice(pos+2);
         commands.push(cmd.startsWith('AUTHINFO PASS')?'AUTHINFO PASS [redacted]':cmd);
-        if(cmd==='AUTHINFO USER synthetic-user')socket.write('381 password required\\r\\n');
-        else if(cmd==='AUTHINFO PASS synthetic-pass')socket.write('281 authenticated\\r\\n');
-        else socket.write('481 authentication rejected\\r\\n');
+        if(cmd==='AUTHINFO USER synthetic-user')socket.write('381 password required\r\n');
+        else if(cmd==='AUTHINFO PASS synthetic-pass')socket.write('281 authenticated\r\n');
+        else socket.write('481 authentication rejected\r\n');
       }
     });
   });
