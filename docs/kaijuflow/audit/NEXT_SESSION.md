@@ -1,3 +1,22 @@
+# LATEST VERIFIED GATE — COORDINATOR + CACHE RESTART/RECOVERY (2026-11-07)
+
+Owner instruction: document existing defects only; **do not fix app source**, merge PRs or touch Brain production.
+
+**Current verified audit head before this handoff commit:** `0db27d54119faec1a19cd28a1d75450a45a0acd9`; original pinned source `c83a3c733b6394eb140a1c0a1dc500010a9f22e5` unchanged. Independent [sealed A4 CI run 42372101024](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42372101024), job `128402154382`:
+- A4 coordinator cases **3 PASS, 0 FAIL** (Smart early stop with pre-existing cached verdicts, Fixed top-N, disabled health checks).
+- Added separate-process stream cache cases **2 PASS, 0 FAIL**:
+  - `A4-CACHE-RESTART-021`: original compiled streamCache ready/dead states persisted, then recovered in a fresh process: both writer/reloader `ready=true, dead=true, readyCount=1, deadCount=1`. Important source contract: `addDeadNzbByUrl` caller invokes `saveCacheToDisk()`; earlier fixture omission was corrected without source changes.
+  - `A4-CACHE-CORRUPT-022`: both cache files overwritten with invalid synthetic JSON, subsequent process loaded zero entries without crashing.
+- Existing backend cases **15 PASS / 2 intentional RED**, existing React cases **3 PASS / 1 intentional RED**, unchanged. Combined A4 workflow conclusion remains **red intentionally** because original deletion and React assertions are not fixed.
+- A4 fail-closed namespace and immutable original source SHA-256 before/after passed; only disposable mock URLs and files used. CI report includes `a4-coordinator-results.json` and `a4-cache-results.json`.
+- Evidence index [run 42372101054](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42372101054) PASS on above head; Node20 build CI should be checked on newest head for final claim.
+
+**Verified new cases this session: five additional passes, zero new confirmed application defects.** All additions in `tests/a4/`, isolated runner/workflow and audit docs only. Important remaining unverified work: full Newznab discovery-to-playback E2E, real NNTP/NzbDAV behaviors under streaming load, HTTP byte-body and seek/disconnect integration, archive compatibility, longer recovery/persistence cases, resource use and 4K performance comparisons. Synthetic coordinator probes do not establish actual NNTP reachability or 4K parity. Avoid repeating already-passed fixtures. Any live benchmark touching Brain requires separate explicit production-impact approval. Keep PR #1 and PR #3 open/unmerged.
+
+**Resume:** Verify the latest audit head and CI, proceed only with genuinely uncovered isolated end-to-end cases, and document blockers/remaining live-performance gates. Preserve all intentional red assertions, source identity and production safety.
+
+---
+
 # LATEST VERIFIED GATE — SMART/FIXED COORDINATOR SYNTHETIC EXECUTION (2026-11-07)
 
 **Owner's overriding instruction remains: record known defects only; no source fixes, production changes, or PR merges.**
