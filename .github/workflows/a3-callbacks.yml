@@ -1,0 +1,36 @@
+name: KaijuFlow A3 callback projection
+on:
+  push:
+    branches: [audit/node20-a3-baseline]
+    paths:
+      - 'tools/audit/extract_callback_edges.cjs'
+      - '.github/workflows/a3-callbacks.yml'
+      - 'src/**'
+      - 'ui/src/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  typed-graph:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install original locked UI deps, no lifecycle scripts
+        working-directory: ui
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Type-aware static callback graph, no application execution
+        run: node tools/audit/extract_callback_edges.cjs /tmp/kf-callbacks
+      - name: Hash the resulting projection
+        run: sha256sum /tmp/kf-callbacks/callback-edges.json /tmp/kf-callbacks/CALLBACK_SUMMARY.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a3-route-003-callbacks
+          path: /tmp/kf-callbacks/
+          retention-days: 14
