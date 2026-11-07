@@ -555,6 +555,51 @@ try {
     'Original broken-video-path and library bypass cache marker state, no persisted stream/cache parity claimed');
 }catch(e){record('A4-CACHE-015','fail',{error:String(e)},'Original cache marker fixture failed');}
 
+// Real health-check pipeline with cached fabricated NZB XML and a local STAT
+// responder. Runs both 3-sample and 7-sample verification policies.
+try {
+  const net=await import('node:net');
+  const {cacheNzbContent}=await src('health/nzbContentCache.js');
+  const {performHealthCheck}=await src('health/healthCheckPipeline.js');
+  const url='http://127.0.0.1/fixture-a4-health.nzb';
+  const segments=Array.from({length:7},(_,i)=>
+    '<segment bytes="200" number="'+(i+1)+'">a4-health-'+(i+1)+'</segment>').join('');
+  const xml='<?xml version="1.0"?><nzb><file subject="A4.Fixture.Video.mkv"><segments>'+segments+'</segments></file></nzb>';
+  cacheNzbContent(url,xml); // no external NZB fetch/circuit validation
+  let missing=false;
+  const seen=[];
+  const server=net.createServer(socket=>{
+    socket.write('200 synthetic health server\r\n');
+    let buffer='';
+    socket.on('data',chunk=>{
+      buffer+=chunk.toString();
+      while(buffer.includes('\r\n')){
+        const i=buffer.indexOf('\r\n');const command=buffer.slice(0,i);buffer=buffer.slice(i+2);
+        if(!command.startsWith('STAT <'))continue;
+        seen.push(command);
+        socket.write(missing&&command.includes('a4-health-7')?'430 missing\r\n':'223 found\r\n');
+      }
+    });
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const provider={id:'a4-health-provider',name:'A4 Health',type:'pool',enabled:true,
+    host:'127.0.0.1',port:server.address().port,useTLS:false,username:'',password:''};
+  try {
+    const three=await performHealthCheck(url,[provider],'A4 synthetic',{archiveInspection:false,sampleCount:3});
+    assert.equal(three.status,'verified');assert.equal(three.playable,true);
+    assert.equal(seen.length,3);
+    const seven=await performHealthCheck(url,[provider],'A4 synthetic',{archiveInspection:false,sampleCount:7});
+    assert.equal(seven.status,'verified');assert.equal(seven.playable,true);
+    assert.equal(seen.length,10);
+    missing=true;
+    const blocked=await performHealthCheck(url,[provider],'A4 synthetic',{archiveInspection:false,sampleCount:3});
+    assert.equal(blocked.status,'blocked');assert.equal(blocked.playable,false);
+    record('A4-HEALTH-SAMPLING-016','pass',
+      {threeSamples:3,sevenSamples:7,blockedStatus:blocked.status},
+      'Original health-check pipeline, synthetic cached NZB + 3/7 STAT policies; does not assert UI Smart/Fixed full orchestration');
+  }finally{await new Promise(resolve=>server.close(resolve));}
+}catch(e){record('A4-HEALTH-SAMPLING-016','fail',{error:String(e)},'Original end-to-end synthetic NZB health pipeline fixture failed');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
