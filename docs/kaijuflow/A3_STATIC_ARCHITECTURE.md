@@ -1,0 +1,76 @@
+# A3 whole-application architecture inventory — static baseline v0.1
+
+**Status:** In progress; source-backed inventory, not runtime parity, performance, or a completed security audit.
+**Source baseline:** `ReyesPascal/KaijuFlow@c83a3c733b6394eb140a1c0a1dc500010a9f22e5` (`import/upstream-v1.4.1`), pinned to `DSmart33/Usenet-Ultimate@499efbdeb631b1b059f8aa70d07c12beaf504876`.
+**Audit branch:** `audit/node20-a3-baseline`; source code left unmodified. PR #1 remains the immutable import gate. All findings below are from GitHub source inspection, not observed on Brain.
+**Safety:** No production Brain commands, container/config/network changes, live credentials, private NZBs, or runtime traces were used.
+
+## 1. Component inventory and contracts (source-observed)
+
+| Boundary | Main source paths | Static entry/behavior | Pending verification |
+| --- | --- | --- | --- |
+| React UI | `ui/src/App.tsx`, `ui/src/hooks/{useAuth,useAppConfig}.ts`, `ui/src/components/{DashboardTab,InstallTab}.tsx`, `ui/src/components/overlays/`, `ui/src/components/shared/ProviderManager.tsx` | Vite/React UI for authentication, dashboard, indexers, proxy, Smart/Fixed health, provider configuration, rules, caching, NzbDAV, streaming, fallback, logs and install guidance | Full UI controls-to-API coverage, persisted defaults, auth expiry, validation |
+| HTTP / Stremio | `src/server.ts`, `src/addon/index.ts`, `src/routes/*`, `src/auth/*`, `src/requestContext.ts` | Express serves SPA/static files, auth-gated `/api` routes, manifest-key Stremio routes, `/health`; Stremio SDK stream handler in `src/addon/index.ts` | Endpoint matrix, cancellation, auth/manifest boundary, error and media client compatibility |
+| Discovery and metadata | `src/addon/{titleResolver,searchOrchestrator,resultProcessor,filters,dedup,sort,libraryGate}.ts`, `src/idResolver.ts`, `src/anime/*` | Title/episode and IMDb/TMDb/TVDB/anime ID resolution; Index Manager search, filtering/dedup/ranking; optional library bypass/gating | Indexer timing, multi-episode cases, alternate IDs and metadata failures |
+| Indexer adapters | `src/parsers/{usenetSearcher,newznabClient,titleMatching,metadataParsers}.ts`, `src/searchers/{prowlarr,nzbhydra,easynews}Searcher.ts`, `src/routes/{indexers,integrations,externalApis,easynewsProxy}.ts` | Newznab/aggregator and EasyNews paths, Prowlarr/NZBHydra sync, Zyclops integration, upstream proxy calls | Error/retry contracts, search/dedup equality, rate limits, timeout semantics |
+| Rule system | `src/rules/{rankEngine,sel,selFunctions,safeRegex,importers,remoteFetch}.ts`, `src/routes/rules.ts` | Compiled ranking/filter rules with import and preview endpoints | Rule precedence, invalid rules, malicious regex and remote-fetch controls |
+| Smart and Fixed | `src/addon/healthCheckCoordinator.ts`, `src/health/{batchProcessor,healthCheckPipeline}.ts` | Smart iterates configured-sized batches and stops after target healthy count or batch budget; Fixed inspects configured top-N; pre-checks NzbDAV library and dead-NZB state | Healthy-count semantics, bounded concurrency, skipped cached results, disabled health mode, short-circuit behavior |
+| NNTP verification | `src/health/{nzbParser,articleChecker,nntpConnection,archiveGrouper,fileClassifier}.ts` | Parse NZB; choose video/archive/largest file; sample segments; check articles using NNTP; use pooled connections; pool-provider checks then backups | `STAT` accuracy, reconnect/cancel, provider quotas, timeouts, TLS, yEnc/sampling correctness |
+| Archive analysis | `src/archive/{formatDetector,rar4Parser,rar5Parser,sevenZipParser,zipParser,lzmaDecoder,lzma2Decoder,nntpSegmentDownloader}.ts` | Archive header/segment inspection and special 7z end-metadata path | Malformed/multipart/encrypted archives, mismatched containers, memory limits |
+| Stream preparation | `src/nzbdav/{streamHandler,nzbdavApi,videoDiscovery,librarySearch,webdavClient}.ts` | Resolve library hit or submit NZB to NzbDAV; wait for playable video path; WebDAV client and metadata probes | NzbDAV availability, job state, concurrent grabs, WebDAV 404, stuck jobs |
+| Delivery | `src/routes/nzbdav.ts`, `src/nzbdav/{streamHandler,redirectHelpers,utils}.ts` | `/stream/:filename?` tiles, `/v` media proxy; `pipe`, `proxy`, `direct` selection, HTTP range handling, self-redirect recovery and fallback links | Range 200/206/416 and SEEK behavior, disconnect handling, buffering, 4K sustained data rate |
+| Recovery / caches | `src/nzbdav/{streamCache,fallbackManager,ultimateFallback,timeoutDefaults,cacheUtils,deleteAllTargetsStore}.ts`, `src/addon/index.ts` | Pending, ready, dead, broken-path and search caches; fallback candidate groups; UF session promises, backup selection, job cancellation and persisted resolved sessions | Concurrent race conditions, restart persistence, expiry, fallback ordering, state corruption |
+| Settings / persistence | `src/config/{schema,migrations,accessors,settingsUpdater,providerCrud,indexerCrud}.ts`, `src/auth/auth.ts`, `src/statsTracker.ts` | Shared in-process config plus file persistence/migrations, auth users/manifests, stats; environment overrides | Defaults and migrations, credential handling, transactional updates, corruption recovery |
+| Operations / installation | `Dockerfile`, `docker-compose.yml`, `scripts/`, `auto-installers/`, `src/routes/{logs,stats}.ts`, `src/proxy.ts` | Upstream Node 20 Alpine multistage Docker build; logging/stats API; proxy and circuit verification; installation scripts | Isolated boot, port defaults, health endpoint, asset paths, deployment rollback, proxy safety |
+
+## 2. Primary source-observed flow
+
+```text
+Browser/React -> /api auth + configuration/settings -> config/config.json / users.json
+Stremio -> /:manifestKey/* -> Express + request context -> addon.defineStreamHandler
+  -> title/ID/episode resolution -> indexManagerSearch / easynewsSearch
+  -> adapter queries (Newznab, Prowlarr, NZBHydra, EasyNews, Zyclops)
+  -> dedup/filter/rank + optional NzbDAV library gate
+  -> coordinateHealthChecks (Smart or Fixed, or bypass/auto-mark)
+       -> NZB fetch/parse -> video/archive classification -> archive inspection
+       -> segment article probes with NNTP connection pool, pool + backup providers
+  -> buildStreams -> stream tiles / fallback groups
+  -> /stream/:filename? -> library pre-check or NzbDAV job -> WebDAV video path
+  -> /v (proxy/pipe, ranges) or direct WebDAV redirect
+  -> ready/dead/pending caches, Ultimate Fallback sessions and candidate retries
+```
+
+This is a conceptual dependency and call path. Actual runtime sequencing depends on configuration, cache hits, client request order, failures and mode toggles.
+
+## 3. Observable side effects, safety-sensitive seams
+
+- `src/config/schema.ts`: reads `config/config.json`; creates default config on module initialization when absent; saves through temporary file followed by rename. All runtime tests must use a disposable filesystem, never a live Brain volume.
+- `src/auth/auth.ts`: stores hashed user credentials, JWT secret and manifests in `config/users.json`; a reset-password env path exists. Never inject real users or keys into tests.
+- `src/statsTracker.ts`: reads/writes `config/stats.json`. `src/nzbdav/streamCache.ts` persists `config/healthy-nzbs.json` and `config/dead-nzbs.json`; `src/nzbdav/ultimateFallback.ts` persists `config/uf-sessions.json`. Their load/save behavior requires dedicated restart fixtures.
+- `src/nzbdav/nzbdavApi.ts`: submits/cancels NzbDAV jobs and polls API; `streamHandler.ts` checks/resolves WebDAV paths; no invocation against production is authorized for baseline tests.
+- `src/nzbdav/streamHandler.ts`: handles `Range`, forwards video, 302 redirects; `direct` method constructs URL carrying WebDAV credentials (security-sensitive, inherited behavior). Both `/v` proxy and `/stream` paths must be covered in client tests.
+- `src/health/nntpConnection.ts:29`: `rejectUnauthorized: false` disables NNTP TLS certificate validation; Phase B fix requires compatibility tests. `src/idResolver.ts` has a TVDB missing-token response log concern recorded in prior AUDIT. Import is preserved.
+- `src/proxy.ts`: checks proxy/circuit IP and can invalidate search and fallback caches on a circuit change; replay with fabricated network responses only.
+- Route coverage: `src/server.ts` mounts `/api/manifests`, `/api/indexers`, `/api/health-check`, `/api/nzbdav`, `/api/search-config`, `/api/stats`, `/api/logs`, `/api/rules`, integration/settings/auth routes, `/stremio/:manifestKey` and `/:manifestKey` aliases.
+
+## 4. Critical contracts for A4 fixture testing
+
+1. **Discovery:** deterministic Newznab/Prowlarr/NZBHydra/EasyNews adapter fixtures; no-result/error/timeout/retries, dedup, filters, rule ranking, metadata and anime/episode routing.
+2. **Health:** Smart batch size / additional-run / min-healthy and stop rules; Fixed top-N; disabled checks; EasyNews/Zyclops auto-verification; NzbDAV/dead-cache skip; cancellation and pool/backup provider partial coverage. Include zero/partial/missing article samples.
+3. **Archive:** known synthetic video, RAR4/RAR5/7z/ZIP, multipart, obfuscated, encrypted, malformed, unsupported and segment-boundary cases.
+4. **Streaming:** fabricated NZB and fake NzbDAV/WebDAV endpoints; HTTP GET/HEAD where supported, byte ranges (first/mid/end/invalid), redirects, disconnect, seek, 404, stalled job, proxy/pipe/direct, no-transcode bytestream assertion.
+5. **Recovery:** concurrent same-stream requests; pending->ready/dead; process restart, file corruption and TTL expiry; UF primary failure, pre-vetted backup, fallback chain, cancellations and circuit abort.
+6. **Interface/security:** auth/manifest isolation, saved config migration/defaults, provider CRUD, stats/logs, UI control mapping, startup asset and health endpoints; no production credential or key use.
+
+Capture test runner, Node version, exact source SHA, deterministic fixture hashes, measured timings and failures. A successful compile alone does not prove runtime parity.
+
+## 5. Independent build gate
+
+An isolated GitHub-hosted CI workflow is added at `.github/workflows/node20-baseline.yml` on this audit branch. It checks out only the audit code, uses Node 20, runs root and `ui/` lockfile installs and builds. It does **not** run application services, access Brain, use production secrets, or deploy artifacts. Its result remains **pending until an actual GitHub Actions log confirms success**. Node 22 builds in `import-verification.json` remain Codex-recorded results rather than an independent rerun.
+
+## 6. Limits, next audit steps, and merge boundary
+
+- Source inspection covers primary subsystems and side-effect boundaries but not every function, branch, mode combination or React callback. Call this **A3 v0.1**, not A3 complete.
+- Next: verify the Node 20 workflow, enumerate UI-to-API control contracts and exact bootstrap side effects, prepare offline synthetic stubs, then document A4 behavioral evidence. Do not benchmark Brain until a separately approved, non-disruptive plan exists.
+- REA/Ghidra are a separate tool-access/security decision. Use targeted analysis only on an isolated checkout or compiled artifacts after access/permissions are reviewed; do not install or invoke on Brain, and do not delegate REA to Codex.
+- PR #1 should remain open and unmerged until the owner approves. Keep `main` and `archive/pre-upstream-import` untouched. This audit branch and its future PR are review-only evidence, not the authorized merge target.
