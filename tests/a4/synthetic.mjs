@@ -296,6 +296,51 @@ try {
   }finally{await s.close();await new Promise(resolve=>fake.close(resolve));}
 }catch(e){record('A4-NNTP-HANDSHAKE-008','fail',{error:String(e)},'Original NNTP auth route synthetic loopback test');}
 
+// Article-level original STAT checker: two entirely synthetic NNTP servers
+// demonstrate pipelining, missing articles and backup provider recovery.
+try {
+  const net=await import('node:net');
+  const {checkArticlesMultiProvider}=await src('health/articleChecker.js');
+  const seen={pool:[],backup:[]};
+  const servers=[];
+  async function fakeNntp(role){
+    const server=net.createServer(socket=>{
+      socket.write('200 A4 local article fixture\r\n');
+      let buffer='';
+      socket.on('data',data=>{
+        buffer+=data.toString();
+        while(buffer.includes('\r\n')){
+          const k=buffer.indexOf('\r\n'),cmd=buffer.slice(0,k);
+          buffer=buffer.slice(k+2);
+          if(!cmd.startsWith('STAT <')){socket.write('500 unknown command\r\n');continue;}
+          seen[role].push(cmd);
+          const exists=role==='pool'?cmd.includes('a4-one'):cmd.includes('a4-two');
+          socket.write(exists?'223 1 article found\r\n':'430 no such article\r\n');
+        }
+      });
+    });
+    await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    servers.push(server);return server.address().port;
+  }
+  const poolPort=await fakeNntp('pool'),backupPort=await fakeNntp('backup');
+  const providers=[
+    {id:'a4-pool',name:'synthetic-pool',type:'pool',enabled:true,host:'127.0.0.1',port:poolPort,useTLS:false,username:'',password:''},
+    {id:'a4-backup',name:'synthetic-backup',type:'backup',enabled:true,host:'127.0.0.1',port:backupPort,useTLS:false,username:'',password:''}
+  ];
+  try {
+    const result=await checkArticlesMultiProvider(providers,['a4-one','a4-two']);
+    assert.equal(result.totalExists,2);
+    assert.equal(result.totalMissing,0);
+    assert.deepEqual(seen.pool,['STAT <a4-one>','STAT <a4-two>']);
+    assert.deepEqual(seen.backup,['STAT <a4-two>']);
+    assert.equal(result.providersUsed.length,2);
+    await assert.rejects(()=>checkArticlesMultiProvider([],['a4-one']),/No enabled providers/);
+    record('A4-STAT-FALLBACK-009','pass',
+      {poolCommands:seen.pool.length,backupCommands:seen.backup.length,exists:result.totalExists,missing:result.totalMissing},
+      'Original articleChecker STAT pipeline and backup-provider fallback against two fake NNTP servers');
+  }finally{await Promise.all(servers.map(server=>new Promise(resolve=>server.close(resolve))));}
+}catch(e){record('A4-STAT-FALLBACK-009','fail',{error:String(e)},'Original article checker synthetic fallback fixture');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
