@@ -1,6 +1,8 @@
 # Phase A — upstream baseline audit and source import plan
 
-Date: 2026-11-07. Status: **initial remote static audit documented; full tree import, build, isolated tests, and Brain baseline capture remain pending**.
+Date: 2026-11-07. Status: **complete immutable source manifest checked (192 files / 12,132,917 bytes), partial static audit; actual full-app import, build, isolated tests, and Brain baseline capture remain pending**.
+
+> **Scope correction:** KaijuFlow must preserve and operate the **entire** Usenet Ultimate v1.4.1 application. The health-check modules below were inspected first, but are only one subsystem in the full application. [Full-app capture contract](WHOLE_APP_CAPTURE.md) and [source manifest](upstream-v1.4.1-manifest.json) govern import fidelity, including all frontend/backend modules, binary UI media, install scripts, PDFs, dependency locks, runtime behavior, and provenance. **The complete source has NOT yet been imported.**
 
 ## Provenance and immutable reference
 - Canonical upstream: `DSmart33/Usenet-Ultimate`, default branch `master`
@@ -31,9 +33,9 @@ Date: 2026-11-07. Status: **initial remote static audit documented; full tree im
 This is a **static partial audit only**: no isolated compilation/test run, full source-file inventory, SBOM, secrets scan, performance measurement, architecture equivalence test or Brain verification has been performed.
 
 ## Planned source import (A2) — no application code changes before A1 sign-off
-1. In a **separate development checkout**, verify the target `ReyesPascal/KaijuFlow` and the tag SHA; fetch and checkout the exact `v1.4.1` commit (not moving `master` or `latest`).
+1. In a **separate development checkout** with real Git binary transfer, verify all 192 files and their Git blob SHAs from the manifest (including videos, PDFs, images); verify the target `ReyesPascal/KaijuFlow` and the tag SHA; fetch and checkout the exact `v1.4.1` commit (not moving `master` or `latest`).
 2. Preserve the current initial `main` commit as a rollback checkpoint (record SHA and optional `pre-import` tag). Branch `import/upstream-v1.4.1` from it.
-3. Import upstream application source into the project root **without editing program behavior**, retaining its relative paths, manifests, lockfiles, docs and source notices. Record upstream commit and import method; do not auto-merge or silently overwrite the existing `LICENSE`.
+3. Import **all 192 upstream file blobs** into the project root **without editing program behavior or dropping assets**, retaining source paths, file modes, binaries, manifests, lockfiles, Docker and installer files, docs and notices. Preserve the original upstream README exactly as `docs/upstream/README.v1.4.1.md`; preserve upstream LICENSE at the explicit third-party path below. Compare every imported file's Git blob SHA to the saved manifest. Record upstream commit and import method; do not silently overwrite the existing `README.md` or `LICENSE`.
 4. Keep the existing KaijuFlow root `LICENSE` intact and preserve upstream `LICENSE` **verbatim** at `THIRD_PARTY_NOTICES/Usenet-Ultimate-LICENSE`; retain all copyright headers and attribution. Confirm both texts/hashes.
 5. Exclude runtime files and credentials: `.env*` secrets, `config/`, API keys, tokens, saved provider credentials, TLS private keys, cookies and logs. Check the staged diff and scan contents before any push. Include no real NZBs or private media metadata.
 6. Commit **source-only** upstream import as `chore(import): pin Usenet Ultimate v1.4.1`. Do not change Docker tags or deploy to Brain.
@@ -52,4 +54,4 @@ This is a **static partial audit only**: no isolated compilation/test run, full 
 - Security: secret scan and dependency audit; never log/auth-commit live secrets.
 
 ## Gate to Phase B
-A1 repo/release/licensing verified; A2 source import committed with traceable upstream checksum and both license notices; A3 initial static and runtime baseline audit documented; A4 comparison test plan with isolated results and rollback verified. **Do not claim Phase A complete until all four are satisfied.**
+A1 repo/release/licensing verified plus entire 192-file tree manifest; A2 **full** source import (including non-text media) committed with each blob hash matching upstream and both license notices; A3 **whole-application** static and runtime baseline audit documented; A4 comparison test plan with isolated results and rollback verified. **Do not claim Phase A complete until all four are satisfied.**
