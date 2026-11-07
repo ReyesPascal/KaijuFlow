@@ -128,7 +128,8 @@ try {
   const fake=await serve((req,res)=>{
     if(req.method==='DELETE'){
       deletes.push({url:req.url,depth:req.headers.depth||null});
-      res.writeHead(req.url.includes('FailPack')?503:204);res.end();return;
+      // KaijuFlow: also fail FailAllPack; 'FailAllPack' does not contain 'FailPack', so delete-all never saw a 503.
+      res.writeHead(/Fail(All)?Pack/.test(req.url)?503:204);res.end();return;
     }
     res.writeHead(200,{'Content-Type':'application/json'});res.end('{"history":{"slots":[]}}');
   });
