@@ -20,10 +20,12 @@ import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js'
 import { buildEpisodePattern, buildDateEpisodePattern } from '../nzbdav/utils.js';
 import { getTvAllowMultiEpisode } from '../config/accessors.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
+import { getSelfUrl } from '../utils/selfUrl.js';
 
-// Internal self-requests (auto-queue) hit localhost directly to avoid
+// Internal self-requests (auto-queue) hit loopback directly to avoid
 // cross-origin redirect errors from reverse proxies / external BASE_URL.
-const SELF_URL = `http://localhost:${process.env.PORT || 1337}`;
+// KaijuFlow: 127.0.0.1, not localhost (see utils/selfUrl.ts).
+const SELF_URL = getSelfUrl();
 
 /**
  * Mark candidates that already exist in the NZBDav library by calling
