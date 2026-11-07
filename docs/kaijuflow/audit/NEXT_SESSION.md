@@ -1,3 +1,14 @@
+# CURRENT A4 CHECKPOINT — actual React hook race independently reproduced (2026-11-07)
+
+- **Executed** actual original React `useAppConfig` under disposable, fail-closed network namespace in [GitHub Actions run 42368292063](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42368292063), job `128390937109`. Original source SHA256 before/after unchanged.
+- Actual hook mounted with React test renderer and virtual timers: **A4-REACT-300 PASS**, **A4-REACT-ORDER FAIL desired ordering invariant** (two successful cacheTTL PUT response completions reversed: local 9400 but config 9300), **A4-REACT-500 PASS** local edit retained/error logged, **A4-REACT-TRANSPORT PASS** local edit retained/error logged. This is **test-observed client state race**, not a production incidence or persisted backend overwrite. Details: [F-KF-A4-AUTOSAVE-001.md](../../../evidence/findings/F-KF-A4-AUTOSAVE-001.md).
+- A4 backend/auth/SDK and expanded deletion cases still reproduce earlier outcomes, with original HEAD/503 problems intentionally RED. New two-report CI artifact ID `13572687206`, ZIP SHA256 `9841987a4f2f86853e7ba0f74a108fa20f165a114b1e68776a5a4ab56d5d38ff`. Red combined CI is appropriate; independent job logs show neither isolation nor hook harness failed.
+- Added only `tests/a4/react-autosave.cjs`, isolated runner/CI wiring, and evidence; no edits to `src/` or `ui/src/`, no production actions, merges, secret or real NZB use. The React runtime fixture uses ephemeral dependency install **before** gate and original hook import **after** gate.
+- **Next task:** synthetic failed delete-all WebDAV retry/dedup replay, then provider CRUD/reorder, synced indexers, Smart/Fixed NNTP, archive/yEnc, HTTP Range 200/206/416, cache/fallback. Keep tests isolated and source unchanged. Explicit owner approval required before fixes.
+- Preserve design target: ThinkPad/Brain does discovery, NNTP retrieval/assembly, buffering/cache/fallback; PTP/Hisense does playback UI and hardware decode over direct LAN/Wi-Fi. Benchmark NzbDAV against alternatives; do not assume new engine implemented.
+
+---
+
 # CURRENT VERIFIED A4 CI — expanded deletion assertions executed (2026-11-07)
 
 - Independent GitHub Actions log review of [A4 run 42367643808](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42367643808), job `128388981743`, at audit head `f1c75cefbdb62a896e6563e41ef11e028dcebeff`: isolation gate PASS; HTTP/auth PASS; SDK PASS; backend sequential settings PASS; A4 deletion intentionally RED due to **HEAD invoking remote DELETE** and **503 failed DELETE deduplication**.
