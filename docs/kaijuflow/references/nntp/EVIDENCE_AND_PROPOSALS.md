@@ -1,8 +1,6 @@
 # NNTP evidence and future decisions
 
-Source pin: `c83a3c733b6394eb140a1c0a1dc500010a9f22e5` (original v1.4.1 import). Every application source link below pins that commit; symbol names are navigation anchors. **Source-observed** means inspection, **tested** means the named bounded synthetic case executed, **proposed** means future work, and **unknown** means evidence is absent. Tested does not imply production verification. Evidence IDs use `test-observed` in JSONL for the same classification.
-
-Evidence map: `EV-KF-REF-001` records this source review; `EV-KF-A4-CLOSURE-001` records the [closed A4 evidence](../../audit/A4-CLOSURE.md); `EV-KF-INT-001` records the separate [integration result](../../audit/INTEGRATION-DISCOVERY-STREAM.md). See [live validation gaps](../../audit/VALIDATION_GAPS.md). No production configurations or credentials were inspected.
+Source pin, labels and evidence IDs: see [README](README.md).
 
 ## Executed evidence
 
