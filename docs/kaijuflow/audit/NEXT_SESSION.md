@@ -1,3 +1,15 @@
+# ACTIVE A4 CHECKPOINT — executed new tests (2026-11-07)
+
+**Source of truth:** [A4 additional synthetic CI report](A4-ADDITIONAL-SYNTHETIC-2026-11-07.md). Audit-only code head `1699e435af9a41f7f0f243a652fcc5def1a798dd` was independently executed in GitHub Actions [A4 42369608369](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42369608369): **six synthetic.mjs cases PASS, two FAIL desired safety invariants** (single delete and delete-all). Separate original React stale-autosave success response remains intentionally RED, previously verified. Node20 [42369608375](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42369608375) PASS; evidence validator [42369608614](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42369608614) PASS. Recheck CI after this documentation commit.
+
+**New verified:** A4-DELETEALL-007 failed 503 DELETE is not retried on immediate replay (attempt count 1→1), while missing token and invalid manifest cause zero remote DELETE; A4-PROVIDER-005 CRUD/reorder PASS using in-memory callbacks; A4-INDEXER-006 manual indexer CRUD/timeout/URL normalization/caps callback PASS; A4-NNTP-HANDSHAKE-008 original test endpoint PASS against fake 200/381/281 AUTHINFO socket on loopback. This is not real provider/indexer syncing, Smart/Fixed article verification, or throughput.
+
+**Next tasks, in order:** (1) real synchronized indexer pathways; (2) Smart and Fixed article/STAT/provider fallback; (3) archive/yEnc parsing; (4) HTTP Range 200/206/416, cache and proxy/fallback. Extend `tests/a4/synthetic.mjs` or add bounded test files wired into existing sealed CI; avoid repeating passed tests. Record exact CI runs and findings. Keep intentionally RED behavior findings untouched. **Never modify original source or Brain production, merge PR #1/#3, use live NNTP/indexer credentials, or disable the isolation gate.**
+
+**Resume prompt:** Resume KaijuFlow from Issue #2 and the top of NEXT_SESSION.md. Verify latest audit branch CI; continue outstanding A4 synchronized indexer, Smart/Fixed STAT and provider, archive/yEnc, Range/cache/fallback tests in the isolated GitHub-hosted fixture. Preserve source, existing red findings, and both unmerged PRs; save small evidence commits.
+
+---
+
 # ACTIVE NEXT-SESSION HANDOFF — finish remaining A4 quickly (2026-11-07)
 
 **User direction:** Focus exclusively on completing and validating the remaining KaijuFlow A4 work as efficiently as safely possible. Do not surface or carry forward previously discussed optional architecture concepts in progress reports, priorities or future-session prompts. Historical handoffs below are retained only as provenance; this section overrides them.
