@@ -91,3 +91,10 @@ See `index/schema/` for schema specifications. CI lint/consistency tests should 
 ## A4-ISO-000 isolated runtime evidence — 2026-11-07
 
 The [network-denial gate and behavior results](../docs/kaijuflow/audit/A4-ISO-000.md) are indexed as `EV-KF-A4-ISO-000` and `EV-KF-A4-BEHAVIOR-001`; [GitHub Actions 42366142956](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42366142956) proves A4-ISO-000 **PASS** even though the combined workflow is **FAIL** on an observed deletion safety assertion. In synthetic scoped module tests, JWT auth and SDK routes passed, backend sequential settings persisted, and [F-KF-A4-DELETE-001](findings/F-KF-A4-DELETE-001.md) records a HEAD-triggered mock WebDAV DELETE plus failed-request deduplication. No original files changed and no Brain production touched. Full React autosave races, NNTP, archives, Range and streaming remain unverified.
+
+## Closed A4 and post-A4 checkpoint (2026-11-07)
+
+- [A4 closure](../docs/kaijuflow/audit/A4-CLOSURE.md): EV-KF-A4-CLOSURE-001; intentional RED findings retained.
+- [One integration scenario](../docs/kaijuflow/audit/INTEGRATION-DISCOVERY-STREAM.md): EV-KF-INT-001, CL-KF-INT-001, ART-KF-INT-001. Permanent [actual result](results/INT-DISCOVERY-STREAM-001.json).
+- Source review EV-KF-REF-001: [NNTP](../docs/kaijuflow/references/nntp/README.md), [NzbDAV](../docs/kaijuflow/references/nzbdav/README.md).
+- [Live validation gaps](../docs/kaijuflow/audit/VALIDATION_GAPS.md); [separate performance plan](../docs/kaijuflow/performance/BENCHMARK_PLAN.md), Issue #4. No measurements or source fixes authorized.

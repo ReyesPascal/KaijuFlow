@@ -1,3 +1,9 @@
+# Current scope override — 2026-11-07
+
+A4 is officially closed; see [closure](A4-CLOSURE.md). One separate composed discovery-to-stream integration passed; see [result and boundaries](INTEGRATION-DISCOVERY-STREAM.md). Do not execute historical expansion instructions below. Original application defects are record-only. Remaining live-service uncertainty is enumerated in [validation gaps](VALIDATION_GAPS.md). Future performance work is a distinct [planning milestone](../performance/BENCHMARK_PLAN.md), Issue #4; no benchmarking, production changes, deployment or source implementation authorized.
+
+---
+
 # KaijuFlow REA execution and indexed-evidence strategy
 
 **Adopted from the independent November 7, 2026 deep-research assessment; execution roadmap, not a claim that tests/scans have run.** This document supersedes the *process* in [REA_DECISION_AND_PLAN.md](../REA_DECISION_AND_PLAN.md) while preserving it as historical evidence. It does not supersede the pinned original upstream code or licenses.
