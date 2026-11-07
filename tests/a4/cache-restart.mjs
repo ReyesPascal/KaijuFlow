@@ -34,8 +34,8 @@ const cases=[];
 const test=(id,fn)=>{try{const metrics=fn();cases.push({id,status:'pass',metrics});console.log('A4 CACHE CASE',id,'pass',JSON.stringify(metrics))}catch(e){cases.push({id,status:'fail',error:String(e)});console.log('A4 CACHE CASE',id,'fail',String(e))}};
 test('A4-CACHE-RESTART-021',()=>{
  const writer=run('write'),reloaded=run('reload');
- assert.ok(writer.ready&&writer.dead);
- assert.ok(reloaded.ready&&reloaded.dead);
+ assert.ok(writer.ready&&writer.dead,'writer '+JSON.stringify(writer));
+ assert.ok(reloaded.ready&&reloaded.dead,'reloaded '+JSON.stringify(reloaded));
  return {writer,reloaded};
 });
 test('A4-CACHE-CORRUPT-022',()=>{
