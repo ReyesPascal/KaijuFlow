@@ -1,0 +1,76 @@
+/**
+ * NZBDav Service Types
+ * Shared interfaces, type aliases, and constants used across all NZBDav modules.
+ */
+
+// ── Shared constants ──────────────────────────────────────────────────
+
+/** Timeout per WebDAV directory listing / file request — prevents hang if NZBDav is overwhelmed */
+export const WEBDAV_REQUEST_TIMEOUT_MS = 10_000;
+
+// ── Interfaces ────────────────────────────────────────────────────────
+
+export interface NZBDavConfig {
+  url: string;
+  apiKey: string;
+  webdavUrl: string;
+  webdavUser: string;
+  webdavPassword: string;
+  moviesCategory: string;
+  tvCategory: string;
+  scanUncategorized: boolean;
+}
+
+export interface StreamData {
+  nzoId: string;
+  videoPath: string;
+  videoSize: number;
+}
+
+export type CacheStatus = 'pending' | 'ready' | 'failed';
+
+export interface CacheEntry {
+  status: CacheStatus;
+  promise?: Promise<StreamData>;
+  data?: StreamData;
+  error?: Error;
+  expiresAt: number;
+}
+
+export interface HistorySlot {
+  nzo_id?: string;
+  nzoId?: string;
+  status?: string;
+  Status?: string;
+  fail_message?: string;
+  failMessage?: string;
+  name?: string;
+}
+
+export interface FallbackCandidate {
+  nzbUrl: string;
+  title: string;
+  indexerName: string;
+  size?: number;
+  isSeasonPack?: boolean;
+  /** Full WebDAV path, set only for library-origin candidates (mirrors
+   *  RawResult.libraryVideoPath). Lets UF probe the exact file regardless of
+   *  which root it lives under, including /content/uncategorized/... where
+   *  resolveCategory would otherwise reconstruct the wrong path. */
+  libraryVideoPath?: string;
+  /** Proxy exit IP captured at search time. verifyProxyCircuit compares against
+   *  this when grabbing the NZB, so a rotation+new-search between search and
+   *  grab cannot silently pass verification. Persisted with the group (it's a
+   *  hash, never the raw IP) so post-restart grabs still verify against the
+   *  search-time IP. */
+  searchExitIp?: string;
+}
+
+export interface FallbackGroup {
+  candidates: FallbackCandidate[];
+  type: string;
+  season?: string;
+  episode?: string;
+  episodesInSeason?: number;
+  createdAt: number;
+}

@@ -1,0 +1,141 @@
+// What this does:
+//   Search cache TTL configuration overlay with day/hour/minute/second sliders
+
+import { Zap, X } from 'lucide-react';
+import { formatTTL, decomposeTTL, composeTTL } from '../../utils/ttl';
+
+interface CacheTTLOverlayProps {
+  onClose: () => void;
+  cacheTTL: number;
+  setCacheTTL: React.Dispatch<React.SetStateAction<number>>;
+  cacheEmptyResults: boolean;
+  setCacheEmptyResults: React.Dispatch<React.SetStateAction<boolean>>;
+  apiFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  autoPlayEnabled: boolean;
+}
+
+export function CacheTTLOverlay({
+  onClose,
+  cacheTTL,
+  setCacheTTL,
+  cacheEmptyResults,
+  setCacheEmptyResults,
+  apiFetch,
+  autoPlayEnabled,
+}: CacheTTLOverlayProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => onClose()}>
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl border border-slate-700/50 shadow-2xl max-w-md w-full animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 md:p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Zap className="w-6 h-6 text-yellow-400" />
+              <h3 className="text-xl font-semibold text-slate-200">Search Cache Configuration</h3>
+            </div>
+            <button onClick={() => onClose()} className="text-slate-400 hover:text-slate-200 transition-colors">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-3">Search Cache TTL (Time To Live)</label>
+              {(() => {
+                const { days, hours, minutes, seconds } = decomposeTTL(cacheTTL);
+                const updateUnit = (unit: 'days' | 'hours' | 'minutes' | 'seconds', value: number) => {
+                  const d = unit === 'days' ? value : days;
+                  const h = unit === 'hours' ? value : hours;
+                  const m = unit === 'minutes' ? value : minutes;
+                  const s = unit === 'seconds' ? value : seconds;
+                  const composed = Math.min(345600, composeTTL(d, h, m, s));
+                  setCacheTTL(autoPlayEnabled ? Math.max(9000, composed) : composed);
+                };
+                return (
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Days', unit: 'days' as const, value: days, max: 4, step: 1 },
+                      { label: 'Hours', unit: 'hours' as const, value: hours, max: 23, step: 1 },
+                      { label: 'Minutes', unit: 'minutes' as const, value: minutes, max: 59, step: 1 },
+                      { label: 'Seconds', unit: 'seconds' as const, value: seconds, max: 59, step: 1 },
+                    ].map(({ label, unit, value, max, step }) => (
+                      <div key={unit} className="flex items-center gap-3">
+                        <span className="text-sm text-slate-400 w-16">{label}</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max={max}
+                          step={step}
+                          value={value}
+                          onChange={(e) => updateUnit(unit, Number(e.target.value))}
+                          className="flex-1 accent-amber-400"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max={max}
+                          value={value}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10);
+                            if (!isNaN(v)) updateUnit(unit, Math.min(max, Math.max(0, v)));
+                          }}
+                          className="w-14 bg-slate-700/50 border border-slate-600/30 rounded px-2 py-1 text-sm text-slate-200 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              <div className="text-sm font-medium text-yellow-400 mt-3">{formatTTL(cacheTTL)}</div>
+              <p className="text-xs text-slate-500 mt-1">
+                How long to cache search results. Set all values to 0 to disable caching. Maximum 4 days.
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Fallback groups also expire with this TTL. When caching is disabled, fallback groups persist for 2 hours.
+              </p>
+              {autoPlayEnabled && (
+                <p className="text-xs text-amber-400/80 mt-1">
+                  Auto play requires a minimum search cache of 2.5 hours
+                </p>
+              )}
+            </div>
+            <div className="pt-4 border-t border-slate-700">
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="cache-empty-results" className="flex-1 cursor-pointer">
+                  <div className="text-sm font-medium text-slate-300">Cache 0 result searches</div>
+                  <div className="text-xs text-slate-500 mt-0.5">When enabled, searches that return no results are cached for the full TTL above. Disable to retry every empty search live, useful when adding new indexers or fixing misconfigurations.</div>
+                </label>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="cache-empty-results"
+                    checked={cacheEmptyResults}
+                    onChange={(e) => setCacheEmptyResults(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-500"></div>
+                </label>
+              </div>
+            </div>
+            <div className="pt-4 border-t border-slate-700 space-y-2">
+              <button
+                onClick={() => { setCacheTTL(9000); setCacheEmptyResults(true); }}
+                className="btn-secondary w-full"
+              >
+                Reset to Default (2.5 Hours)
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await apiFetch('/api/search-cache', { method: 'DELETE' });
+                  } catch {}
+                }}
+                className="btn-secondary w-full !border-red-500/30 !text-red-400 hover:!bg-red-500/10"
+              >
+                Clear Search Cache
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
