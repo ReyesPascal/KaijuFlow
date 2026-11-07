@@ -31,7 +31,7 @@ for(const file of [...uifiles,...serverfiles]){
  function visit(n){
   if(isUI&&ts.isFunctionDeclaration(n)&&n.name)add('functions',{...base(n),name:n.name.text,kind:'declaration'});
   if(isUI&&ts.isVariableDeclaration(n)&&n.initializer){let i=n.initializer;if(ts.isArrowFunction(i)||ts.isFunctionExpression(i)||ts.isCallExpression(i)&&/^(useCallback|useMemo)$/.test(print(i.expression)))add('functions',{...base(n),name:print(n.name),kind:ts.isCallExpression(i)?'hook-wrapped':'function-expression'})}
-  if(isUI&&ts.isJsxAttribute(n)&&/^on[A-Z]/.test(print(n.name))){const x=n.initializer&&ts.isJsxExpression(n.initializer)?n.initializer.expression:n.initializer;add('jsx',{...base(n),tag:n.parent&&n.parent.tagName?print(n.parent.tagName):'<unknown>',event:print(n.name),target:print(x),inline:!!x&&(ts.isArrowFunction(x)||ts.isFunctionExpression(x))})}
+  if(isUI&&ts.isJsxAttribute(n)&&/^on[A-Z]/.test(print(n.name))){const x=n.initializer&&ts.isJsxExpression(n.initializer)?n.initializer.expression:n.initializer;add('jsx',{...base(n),tag:n.parent&&n.parent.parent&&n.parent.parent.tagName?print(n.parent.parent.tagName):'<unknown>',event:print(n.name),target:print(x),inline:!!x&&(ts.isArrowFunction(x)||ts.isFunctionExpression(x))})}
   if(ts.isCallExpression(n)){
    const c=print(n.expression);
    if(isUI){
