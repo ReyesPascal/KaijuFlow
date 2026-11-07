@@ -39,6 +39,10 @@ if [[ -f "$sandbox/positive/react-results.json" ]]; then
   sudo cp "$sandbox/positive/react-results.json" "$ROOT/a4-react-results.json"
   sudo chown "$(id -u):$(id -g)" "$ROOT/a4-react-results.json"
 fi
+if [[ -f "$sandbox/positive/coordinator-results.json" ]]; then
+  sudo cp "$sandbox/positive/coordinator-results.json" "$ROOT/a4-coordinator-results.json"
+  sudo chown "$(id -u):$(id -g)" "$ROOT/a4-coordinator-results.json"
+fi
 git ls-files -- src ui/src | LC_ALL=C sort | while IFS= read -r f; do sha256sum "$f"; done > "$after"
 cmp -s "$before" "$after" || { echo "SOURCE HASHES CHANGED"; exit 14; }
 git diff --quiet "$BASE" -- src ui/src || { echo "SOURCE-DIFF AFTER: FAIL"; exit 15; }
