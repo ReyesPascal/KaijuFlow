@@ -5,13 +5,14 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import http from 'node:http';
 
 const ROOT = process.env.A4_APP_ROOT;
 if (!ROOT || !process.env.A4_RESULTS || !fs.existsSync(path.join(path.dirname(ROOT), 'app-import.started'))) {
   throw new Error('FAIL CLOSED: A4 gate sentinel or disposable root missing');
 }
-assert.equal(fs.readdirSync('/sys/class/net').join(','), 'lo');
+assert.deepEqual(Object.keys(os.networkInterfaces()), ['lo']);
 assert.match(ROOT, /kaijuflow-a4-[^/]+\/positive\/work$/);
 const require = createRequire(path.join(ROOT, 'package.json'));
 const express = require('express');
