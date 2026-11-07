@@ -341,6 +341,30 @@ try {
   }finally{await Promise.all(servers.map(server=>new Promise(resolve=>server.close(resolve))));}
 }catch(e){record('A4-STAT-FALLBACK-009','fail',{error:String(e)},'Original article checker synthetic fallback fixture');}
 
+// Original archive classification/grouping: fabricated NZB segment structures only.
+try {
+  const group=await src('health/archiveGrouper.js');
+  const cls=await src('health/fileClassifier.js');
+  const mk=(i)=>({subject:'[1/3] - "A4.Movie.part00'+i+'.rar" yEnc (1/1)',
+    segments:[{messageId:'a4-archive-'+i,bytes:128,number:1}]});
+  const files=[mk(3),mk(1),mk(2)];
+  const groups=group.groupArchiveParts(files);
+  assert.equal(groups.length,1);
+  assert.deepEqual(groups[0].map(f=>cls.extractFilename(f.subject)),
+    ['A4.Movie.part001.rar','A4.Movie.part002.rar','A4.Movie.part003.rar']);
+  assert.equal(group.findFirstArchivePart(files).subject,mk(1).subject);
+  const samples=group.selectMultiPartSamples(files,3);
+  assert.deepEqual(samples,['a4-archive-1','a4-archive-2','a4-archive-3']);
+  const collected=group.collectAllArchiveSegments(files);
+  assert.deepEqual(collected.map(x=>x.messageId),samples);
+  assert.equal(cls.isCompressedArchive(mk(1).subject),true);
+  assert.equal(cls.isVideoFile('"Movie.mkv" yEnc (1/1)'),true);
+  assert.equal(cls.isVideoFile('"Movie.sample.mkv" yEnc (1/1)'),false);
+  record('A4-ARCHIVE-GROUP-010','pass',
+    {groups:groups.length,parts:groups[0].length,samples:samples.length,orderedSegments:collected.length},
+    'Original archive grouping, first-part discovery, sample selection, file classifier; not archive decompression/yEnc decode');
+}catch(e){record('A4-ARCHIVE-GROUP-010','fail',{error:String(e)},'Original archive fixture failed');}
+
 // Provider and indexer CRUD: invoke the original Express routers with in-memory
 // synthetic repository callbacks. No NNTP credentials or external indexer traffic.
 try {
