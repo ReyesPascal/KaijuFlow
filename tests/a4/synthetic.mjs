@@ -214,6 +214,42 @@ try {
     if(unauthorized.status!==404 || unauthorizedDeletes!==0) violations.push('invalid manifest reached deletion');
     if(concurrentDeletes!==1) violations.push('concurrent same-key delete was not coalesced');
     record('A4-DELETE-003',violations.length?'fail':'pass',metrics,violations.length?violations.join('; '):'Original imported handler; no live WebDAV; remote side-effect count measured');
+
+    // Delete-all is a distinct original handler, sharing the 30-second handled cache.
+    // Entirely fabricated targets; the fake WebDAV intentionally returns 503.
+    const { registerDeleteAllTargets } = await src('nzbdav/deleteAllTargetsStore.js');
+    const token=registerDeleteAllTargets([{path:'/content/movies/FailPackAll',scope:'pack'}]);
+    const allTile='?t='+encodeURIComponent(Buffer.from(JSON.stringify({
+      sk:'synthetic-key',type:'movie',id:'tt-a4-deleteall',tk:token
+    })).toString('base64url'));
+    const allEndpoint='/stremio/'+manifestKey+'/nzbdav/library-delete-all';
+    const countAll=()=>deletes.filter(x=>x.url?.includes('FailPackAll')).length;
+    const allBefore=countAll();
+    const allFirst=await request(server.port,allEndpoint+allTile);
+    const allAfterFirst=countAll()-allBefore;
+    const allSecond=await request(server.port,allEndpoint+allTile);
+    const allAfterReplay=countAll()-allBefore;
+    const badToken='?t='+encodeURIComponent(Buffer.from(JSON.stringify({
+      sk:'synthetic-key',type:'movie',id:'tt-a4-no-targets',tk:'missing-a4-token'
+    })).toString('base64url'));
+    const beforeMissing=deletes.length;
+    const missing=await request(server.port,allEndpoint+badToken);
+    const missingRemoteDeletes=deletes.length-beforeMissing;
+    const beforeUnauthAll=deletes.length;
+    const unauthAll=await request(server.port,'/stremio/invalid-manifest-key/nzbdav/library-delete-all'+allTile);
+    const unauthAllDeletes=deletes.length-beforeUnauthAll;
+    const allMetrics={firstHTTP:allFirst.status,replayHTTP:allSecond.status,remote503AttemptsFirst:allAfterFirst,
+      remote503AttemptsAfterReplay:allAfterReplay,invalidTokenHTTP:missing.status,
+      invalidTokenRemoteDeletes:missingRemoteDeletes,invalidManifestHTTP:unauthAll.status,
+      invalidManifestRemoteDeletes:unauthAllDeletes};
+    const allViolations=[];
+    if(allAfterFirst!==1) allViolations.push('first delete-all request did not send exactly one fake WebDAV DELETE');
+    if(allAfterReplay!==2) allViolations.push('failed delete-all was deduplicated instead of retried');
+    if(missingRemoteDeletes!==0) allViolations.push('invalid delete-all token reached WebDAV');
+    if(unauthAll.status!==404||unauthAllDeletes!==0) allViolations.push('invalid manifest reached delete-all WebDAV');
+    record('A4-DELETE-ALL-005',allViolations.length?'fail':'pass',allMetrics,
+      allViolations.length?allViolations.join('; '):'Original delete-all handler, synthetic token and localhost-only failing WebDAV');
+
   } finally { await server.close();await fake.close(); }
 } catch(e) { record('A4-DELETE-003','fail',{error:String(e)},'Original deletion route could not complete sandbox fixture'); }
 
