@@ -1,3 +1,24 @@
+# KaijuFlow — current handoff: A3-ROUTE-002 static graph and persistence checkpoint
+
+**Updated 2026-11-07. This section supersedes the older A3-ROUTE-002 pending instructions below.** Treat GitHub Issue #2, PR #1, draft PR #3 and the `evidence/` index as live source of truth. Avoid repeating completed import or builds.
+
+## A3-ROUTE-002 delivered this session
+
+- The pinned source `c83a3c733b6394eb140a1c0a1dc500010a9f22e5` was statically analyzed using the TypeScript compiler API in isolated GitHub Actions [run 42361312353](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42361312353), **PASS**: 38 UI TS/TSX, 105 backend TS files, 603 JSX event bindings (520 inline), 64 UI network request sites (22 dynamic), 40 React effects, 64 explicit Express path declarations (including SPA wildcard), 105 potential writes, no parse errors and no original source differences. Tool [`tools/audit/extract_route_graph.cjs`](../../../tools/audit/extract_route_graph.cjs) and [A3-ROUTE-002-AST.md](A3-ROUTE-002-AST.md) reproduce/retain the projection. CI artifact `a3-route-002-ast` (ID 13569439504), ZIP SHA-256 `88ee33dd742148ab1c547844296220c9d70471b2080783a153ffc4a3e61f6d3b`, expires November 21; regenerate from source after expiry.
+- [A3-ROUTE-002.md](A3-ROUTE-002.md) traces UI callbacks into key HTTP handlers, both legacy and /stremio/ manifest key mounts, SDK boundaries, settings/indexer/provider writes to config/config.json, auth/manifest writes to config/users.json, NZB caches/fallback persistence, startup/shutdown mutation and state-changing GET-based WebDAV deletion. **This finishes the bounded static A3-ROUTE-002 inventory, not complete semantic cross-module reachability or runtime parity.**
+- Canonical index `evidence/README.md` has evidence IDs `EV-KF-A3-ROUTE-002`, `EV-KF-A3-ROUTE-002-AST`, `EV-KF-A3-SONNET-REVIEW-001`, 4 claim IDs and hashed artifact entry `ART-KF-A3-ROUTE-002-AST-001`. [Evidence CI 42361920738](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42361920738) **PASS** after index additions.
+- Claude Code 2.1.319 with actual `claude-sonnet-5-5` at Medium effort completed a read-only, no-tools source-only review. Codex CLI 0.167.0 traced a bounded 47-file original-source-only snapshot in read-only ephemeral mode; it reached a 180-second timeout without a final reviewed report. Partial Codex traces must not be labeled independent verification. No agents had REA/Fusion, credentials or unrelated project information.
+- Both PR #1 and draft PR #3 remain open and unmerged; audit branch is review-only. Original 192 upstream blobs unchanged, detached source checkout still clean. Brain production untouched.
+
+## Next work gates — do not repeat A3 inventory or Node 20 builds
+
+1. Expand **cross-module callback resolution**: JSX component prop passing, `useAppConfig` setter ownership and autosave effect dependencies; mark dynamic/unknown edges rather than claiming all 603 control sites are transitively resolved. Name-only same-file candidate edges are not semantic proof.
+2. Verify generated Stremio routes against *installed SDK 1.6.10 source* (the protocol is informative but not exact implementation proof). Keep 64 Express literal declarations distinguished from SDK-generated patterns and wildcard.
+3. Design isolated A4 fake-service tests for settings failure/concurrent write, GET/HEAD WebDAV delete dedup/replay, auth/manifests, Smart/Fixed, cache persist/recovery, HTTP 200/206/416 Range and fallback. Require isolated synthetic credentials, controlled filesystem and network; **no live Brain services**.
+4. Validate index and checkpoint after new evidence; save a new evidence record for each distinct measured/test observation. Do not merge PRs, edit original source, force-push or use REA without a separate decision.
+
+---
+
 # KaijuFlow — latest handoff: A3-ROUTE-001 source audit started
 
 **Update:** 2026-11-07. This top section **supersedes the previous "not yet started" task status** preserved below. GitHub Issue #2 and PR #3 are authoritative for current heads and CI. Do not repeat completed tasks.
