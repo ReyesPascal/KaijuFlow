@@ -13,6 +13,10 @@ Last update: 2026-11-07. Current phase: **A (in progress; full-app scope establi
 - Pinned source tree enumerated using GitHub Git-tree API: **192 files, 12,132,917 bytes** (untruncated). File path, SHA, mode and size of every original blob committed in `docs/upstream-v1.4.1-manifest.json`. Scope recorded in `docs/WHOLE_APP_CAPTURE.md`. Initial source inspection covered health-check, NNTP, fallback, cache, archive, config, UI and Docker modules; this is not a complete application audit.
 - Roadmap and checklists documented: `docs/ROADMAP.md`, `docs/CHECKPOINTS.md`. Non-deploying full-app import script `scripts/import-upstream-v1.4.1.sh` committed; it has not been run.
 
+## Planned REA checkpoint
+
+Once the complete v1.4.1 import (A2) is verified, run **REA (Reverse Engineer Anything)** on the isolated development copy in A3 for whole-app architecture mapping; use an isolated runtime copy for A4 behavior tracing. This is not yet performed. Do **not** install, attach or execute REA on Brain's production containers. See `docs/REA_AUDIT_PLAN.md`.
+
 ## Unfinished
 - Source code and binary assets are **NOT imported**. Do not mistake the complete inventory/manifest for a code import. No runtime benchmark has been made; the full application audit, reproducible build and tests remain outstanding.
 - Preserve both MIT notices; before source import, use separate `import/upstream-v1.4.1` branch and verify source tag SHA.
