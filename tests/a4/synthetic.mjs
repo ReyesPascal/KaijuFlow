@@ -180,22 +180,22 @@ try {
   }));
   const s=await serve(app);
   try {
-    const one=await request(s.port,'/api/settings',jsonReq('PUT',{cacheTTL:123},jwt));
+    const one=await request(s.port,'/api/settings',jsonReq('PUT',{cacheTTL:9300},jwt));
     assert.equal(one.status,200);
-    assert.equal(one.json?.cacheTTL,123);
-    assert.equal(configData.cacheTTL,123);
-    assert.equal(JSON.parse(fs.readFileSync(CONFIG_FILE,'utf8')).cacheTTL,123);
-    const two=await request(s.port,'/api/settings',jsonReq('PUT',{cacheTTL:456},jwt));
+    assert.equal(one.json?.cacheTTL,9300);
+    assert.equal(configData.cacheTTL,9300);
+    assert.equal(JSON.parse(fs.readFileSync(CONFIG_FILE,'utf8')).cacheTTL,9300);
+    const two=await request(s.port,'/api/settings',jsonReq('PUT',{cacheTTL:9400},jwt));
     assert.equal(two.status,200);
     const disk=JSON.parse(fs.readFileSync(CONFIG_FILE,'utf8'));
-    assert.equal(disk.cacheTTL,456);
+    assert.equal(disk.cacheTTL,9400);
     const bad=await request(s.port,'/api/settings',{
       method:'PUT',headers:{Authorization:'Bearer '+jwt,'Content-Type':'application/json'},body:'{broken-json'
     });
     assert.equal(bad.status,400);
     const oversized=await request(s.port,'/api/settings',jsonReq('PUT',{extra:'A'.repeat(5*1024*1024+100)},jwt));
     assert.equal(oversized.status,413);
-    assert.equal(JSON.parse(fs.readFileSync(CONFIG_FILE,'utf8')).cacheTTL,456);
+    assert.equal(JSON.parse(fs.readFileSync(CONFIG_FILE,'utf8')).cacheTTL,9400);
     const metrics={save:one.status,replacement:two.status,memory:configData.cacheTTL,disk:disk.cacheTTL,invalidJSON:bad.status,oversize:oversized.status};
     record('A4-AUTOSAVE-004','pass',metrics,'Real settings route plus synchronous persistence; UI debounce and reordering of in-flight UI responses NOT exercised');
   } finally {await s.close();}
