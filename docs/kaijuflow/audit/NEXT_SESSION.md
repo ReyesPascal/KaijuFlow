@@ -1,3 +1,13 @@
+# CURRENT VERIFIED A4 CI — expanded deletion assertions executed (2026-11-07)
+
+- Independent GitHub Actions log review of [A4 run 42367643808](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42367643808), job `128388981743`, at audit head `f1c75cefbdb62a896e6563e41ef11e028dcebeff`: isolation gate PASS; HTTP/auth PASS; SDK PASS; backend sequential settings PASS; A4 deletion intentionally RED due to **HEAD invoking remote DELETE** and **503 failed DELETE deduplication**.
+- **Expanded deletion edge cases are now CI-executed, not pending**: traversal/deep-pack/malformed inputs caused zero extra remote DELETEs, invalid manifest yielded 404/zero DELETE, four concurrent same-key requests issued exactly one remote DELETE.
+- Permanent exact metrics and CI artifact identity: [A4-DELETE-003-CI-VERIFICATION.md](A4-DELETE-003-CI-VERIFICATION.md). New audit-only commits advance PR #3, so verify its head and evidence-index/Node20 checks again.
+- **Next actual implementation**: isolated React `useAppConfig` hook fixture with controlled 300/500ms timers, deferred/inverted-order mock PUT replies, 500 and transport failure cases; then delete-all 503 replay, provider/sync, Smart/Fixed NNTP, archive/yEnc, Range 200/206/416, cache/fallback. These remain unexecuted. Do not report React concurrency as passed.
+- Keep original source pristine, preserve the intentional red behavioral findings, and retain Brain-heavy original-quality retrieval/buffering with TV hardware decode as **design**, not deployed functionality. Both PRs remain unmerged; Brain production untouched.
+
+---
+
 # NEXT SESSION — A4 continuation and Brain-first streaming architecture (2026-11-07)
 
 **Live state verified at save:** audit PR #3 OPEN/DRAFT and UNMERGED at `8275ffd2fb2ae507f78ef7631fad604b86afc554`; import PR #1 OPEN/UNMERGED at immutable `c83a3c733b6394eb140a1c0a1dc500010a9f22e5`. Original upstream source is unchanged. This handoff commit will advance PR #3, so fetch the new head and CI next session.
