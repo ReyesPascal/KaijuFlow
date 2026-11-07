@@ -11,9 +11,9 @@ if (!root || !output || !fs.existsSync(path.join(path.dirname(root), 'app-import
 assert.deepEqual(Object.keys(os.networkInterfaces()), ['lo']);
 assert.match(root, /kaijuflow-a4-[^/]+\/positive\/work$/);
 const load = x => import(pathToFileURL(path.join(root,'dist',x)).href);
-const {config} = await load('config/index.js');
+const {configData} = await load('config/index.js');
 const {coordinateHealthChecks} = await load('addon/healthCheckCoordinator.js');
-const original = { healthChecks:structuredClone(config.healthChecks), streamingMode:config.streamingMode, indexManager:config.indexManager, easynewsHealthCheck:config.easynewsHealthCheck };
+const original = { healthChecks:structuredClone(configData.healthChecks), streamingMode:configData.streamingMode, indexManager:configData.indexManager, easynewsHealthCheck:configData.easynewsHealthCheck };
 const results=[];
 const run=async(id,fn)=>{try{const measurements=await fn();results.push({id,status:'pass',measurements});console.log('A4 COORD CASE',id,'pass',JSON.stringify(measurements));}catch(e){results.push({id,status:'fail',error:String(e),stack:e.stack});console.log('A4 COORD CASE',id,'fail',String(e));}};
 const items=()=>[
@@ -24,8 +24,8 @@ const items=()=>[
 ];
 const pre=arr=>new Map(arr.slice(0,2).map(r=>[r.link,{status:'verified',message:'Synthetic cached result',playable:true}]));
 try{
-  config.streamingMode='none'; config.indexManager='manual'; config.easynewsHealthCheck=false;
-  config.healthChecks={...config.healthChecks,enabled:true,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture'}],inspectionMethod:'smart',smartBatchSize:2,smartAdditionalRuns:2,smartMinHealthy:1,libraryPreCheck:false,hideBlocked:false};
+  configData.streamingMode='none'; configData.indexManager='manual'; configData.easynewsHealthCheck=false;
+  configData.healthChecks={...configData.healthChecks,enabled:true,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture'}],inspectionMethod:'smart',smartBatchSize:2,smartAdditionalRuns:2,smartMinHealthy:1,libraryPreCheck:false,hideBlocked:false};
   await run('A4-COORD-SMART-018',async()=>{
     const arr=items(), r=await coordinateHealthChecks({allResults:arr,type:'movie',preExistingHealth:pre(arr)});
     assert.equal(r.healthResults.get(arr[0].link)?.status,'verified');
@@ -35,7 +35,7 @@ try{
     return {verified:r.healthResults.size,retained:r.filteredResults.length,libraryKept:true};
   });
   await run('A4-COORD-FIXED-019',async()=>{
-    config.healthChecks.inspectionMethod='fixed';config.healthChecks.nzbsToInspect=2;
+    configData.healthChecks.inspectionMethod='fixed';configData.healthChecks.nzbsToInspect=2;
     const arr=items(),r=await coordinateHealthChecks({allResults:arr,type:'movie',preExistingHealth:pre(arr)});
     assert.equal(r.healthResults.get(arr[1].link)?.status,'verified');
     assert.equal(r.healthResults.get(arr[2].link)?.message,'Zyclops');
@@ -43,14 +43,14 @@ try{
     return {topN:2,verified:r.healthResults.size,retained:r.filteredResults.length};
   });
   await run('A4-COORD-DISABLED-020',async()=>{
-    config.healthChecks.enabled=false;
+    configData.healthChecks.enabled=false;
     const arr=items(),r=await coordinateHealthChecks({allResults:arr,type:'movie',preExistingHealth:pre(arr)});
     assert.equal(r.healthResults.get(arr[2].link)?.message,'Zyclops');
     assert.equal(r.filteredResults.length,4);
     return {autoMarked:true,retained:r.filteredResults.length};
   });
 } finally {
-  config.healthChecks=original.healthChecks;config.streamingMode=original.streamingMode;config.indexManager=original.indexManager;config.easynewsHealthCheck=original.easynewsHealthCheck;
+  configData.healthChecks=original.healthChecks;configData.streamingMode=original.streamingMode;configData.indexManager=original.indexManager;configData.easynewsHealthCheck=original.easynewsHealthCheck;
 }
 fs.writeFileSync(output,JSON.stringify({source_commit:'c83a3c733b6394eb140a1c0a1dc500010a9f22e5',gate:'A4-ISO-000',cases:results},null,2));
 console.log('A4 COORD SUMMARY',JSON.stringify({passed:results.filter(x=>x.status==='pass').length,failed:results.filter(x=>x.status!=='pass').length}));
