@@ -1,34 +1,32 @@
 # KaijuFlow
 
-Private, self-hosted Usenet discovery, verification, fallback and original-quality streaming project.
+Private, self-hosted Usenet discovery, verification, fallback, and original-quality streaming application, based on the complete Usenet Ultimate v1.4.1 release.
 
-**Mission: preserve and extend the ENTIRE Usenet Ultimate v1.4.1 application**, including all backend, frontend, streaming, search, indexers, NNTP providers, health modes, archive inspection, NzbDAV integration, automatic fallback, caches, media assets, Docker/build tooling and documentation. Smart mode is one protected feature, **not** the scope of the project.
+The baseline includes the backend, React UI and media assets, search and indexer integrations, NNTP providers, Smart and Fixed health checks, archive inspection, NzbDAV streaming, automatic fallback, caches, installation scripts, and Docker tooling. Application source and assets remain unchanged from the pinned release. See [UPSTREAM.md](UPSTREAM.md) for provenance and licensing.
 
-**Status:** Phase A — exact upstream release and full 192-file manifest verified; **full source code/assets not yet imported**. The repository contains planning and audit material, not yet the working application.
+## Development
 
-## Canonical source of truth
-- Upstream: https://github.com/DSmart33/Usenet-Ultimate
-- Exact release: `v1.4.1`
-- Pinned commit: `499efbdeb631b1b059f8aa70d07c12beaf504876`
-- Source tree: **192 files, 12,132,917 bytes**, including non-UTF8 binaries (MP4 videos, PDF changelogs, PNG and ICO assets).
-- Original upstream license: MIT — copyright (c) 2026 Usenet Ultimate Contributors
-- Current KaijuFlow repository license: MIT — copyright (c) 2026 ReyesPascal
+Use an isolated development environment with Node.js 20, as used by the upstream Docker build. Install from the preserved lockfiles:
 
-**Do not import only selected modules.** The import must preserve all 192 upstream file blobs, original bytes/modes and attribution, with documented remapping of `README.md` and `LICENSE` to retain the existing KaijuFlow versions. Preserve the upstream MIT license verbatim under `THIRD_PARTY_NOTICES/Usenet-Ultimate-LICENSE` and retain any source-file notices.
+```sh
+npm ci
+npm run build
+cd ui
+npm ci
+npm run build
+```
 
-## Phase A documents
-- [Whole-application capture requirements](docs/WHOLE_APP_CAPTURE.md)
-- [Complete upstream file manifest with Git blob SHAs](docs/upstream-v1.4.1-manifest.json)
-- [Preliminary baseline/architecture audit and import planning](docs/PHASE_A_BASELINE.md)
-- [Roadmap, Phases A–F](docs/ROADMAP.md)
-- [Checkpoint register](docs/CHECKPOINTS.md)
-- [Current work state / resumable handoff](HANDOFF.md)
+Use fabricated credentials and synthetic fixtures for testing. Keep provider credentials, indexer keys, private configuration, logs, and runtime data out of Git. Setup and deployment details remain in the original [INSTALLATION.md](INSTALLATION.md) and [SETUP.md](SETUP.md); the original release README is preserved [verbatim](docs/upstream/README.v1.4.1.md).
 
-## Operational restrictions
-- Never change, restart, update or replace the working Usenet Ultimate or NzbDAV containers on Brain without explicit approval.
-- No production deployment without approval; preserve stable direct LAN/Wi-Fi playback without Tailscale.
-- Never commit credentials, provider passwords, indexer keys, tokens, private configuration or runtime media data.
-- Keep KaijuFlow separate from Droidusion and Pascal The Popcorn source.
-- Keep the entire current functional application intact as a baseline before targeted improvements; prioritize verified playable reliability over result count.
+## Project records
 
-[KaijuNNTP](https://github.com/ReyesPascal/KaijuNNTP) is a separate, **dormant** candidate for a future verifier service. It does not replace or justify deleting the verification implementation inside the full KaijuFlow application.
+- [Roadmap and acceptance gates](docs/kaijuflow/ROADMAP.md)
+- [Audit findings and development decisions](docs/kaijuflow/AUDIT.md)
+- [Current checkpoint and handoff](docs/kaijuflow/HANDOFF.md)
+- [Source manifest](docs/kaijuflow/upstream-v1.4.1-manifest.json) and [validation evidence](docs/kaijuflow/import-verification.json)
+
+Brain and its working containers and streaming configuration are outside this development task. No production deployment is authorized. KaijuNNTP remains a separate, dormant candidate pending an architecture decision.
+
+## License
+
+The original upstream [MIT license](LICENSE), copyright (c) 2026 Usenet Ultimate Contributors, is preserved exactly at the root. The previous ReyesPascal MIT notice is preserved [separately](docs/kaijuflow/LICENSE.ReyesPascal), on `archive/pre-upstream-import`, and in Git history.

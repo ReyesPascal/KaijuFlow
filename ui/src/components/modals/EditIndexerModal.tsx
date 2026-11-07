@@ -1,0 +1,396 @@
+// What this does:
+//   Modal for editing an existing indexer with capability discovery and test search
+
+import { useCallback, useEffect } from 'react';
+import { Settings, X, Eye, EyeOff, Search, CheckCircle, XCircle, Trash2 } from 'lucide-react';
+import clsx from 'clsx';
+import type { Config, IndexerCaps, EditIndexerForm } from '../../types';
+import { normalizeNewznabUrl } from '../../utils/normalizeNewznabUrl';
+import { useHoldRepeat } from '../../hooks/useHoldRepeat';
+import { TimeoutStepper } from '../shared/TimeoutStepper';
+import { PagesStepper } from '../shared/PagesStepper';
+import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../../constants';
+
+interface EditIndexerModalProps {
+  onClose: () => void;
+  expandedIndexer: string;
+  editForm: EditIndexerForm;
+  setEditForm: React.Dispatch<React.SetStateAction<EditIndexerForm>>;
+  showApiKey: { new: boolean; edit: boolean };
+  setShowApiKey: React.Dispatch<React.SetStateAction<{ new: boolean; edit: boolean }>>;
+  capsLoading: 'new' | 'edit' | null;
+  config: Config | null;
+  testResults: Record<string, { loading: boolean; success?: boolean; message?: string; results?: number; titles?: string[] }>;
+  setTestResults: React.Dispatch<React.SetStateAction<Record<string, { loading: boolean; success?: boolean; message?: string; results?: number; titles?: string[] }>>>;
+  testQuery: Record<string, string>;
+  setTestQuery: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  discoverCaps: (url: string, apiKey: string, target: 'new' | 'edit') => void;
+  getAvailableMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
+  getAvailableTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
+  getAvailableAnimeMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
+  getAvailableAnimeTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
+  renderMethodLabel: (m: { value: string; label: string }) => React.ReactNode;
+  handleTestIndexer: (indexerName: string) => void;
+  setDeleteConfirmation: React.Dispatch<React.SetStateAction<{ show: boolean; indexerName: string }>>;
+  setExpandedIndexer: React.Dispatch<React.SetStateAction<string | null>>;
+}
+
+export function EditIndexerModal({
+  onClose,
+  expandedIndexer,
+  editForm,
+  setEditForm,
+  showApiKey,
+  setShowApiKey,
+  capsLoading,
+  config,
+  testResults,
+  setTestResults,
+  testQuery,
+  setTestQuery,
+  discoverCaps,
+  getAvailableMovieMethods,
+  getAvailableTvMethods,
+  getAvailableAnimeMovieMethods,
+  getAvailableAnimeTvMethods,
+  renderMethodLabel,
+  handleTestIndexer,
+  setDeleteConfirmation,
+  setExpandedIndexer,
+}: EditIndexerModalProps) {
+  const currentIndexer = config?.indexers.find(i => i.name === expandedIndexer);
+  const zyclopsActive = currentIndexer?.zyclops?.enabled === true;
+
+  // Hold-to-accelerate handlers for the per-indexer timeout stepper.
+  const editTimeoutDec = useHoldRepeat(useCallback(() => setEditForm(prev => ({ ...prev, timeout: Math.max(1, prev.timeout - 1) })), [setEditForm]));
+  const editTimeoutInc = useHoldRepeat(useCallback(() => setEditForm(prev => ({ ...prev, timeout: Math.min(45, prev.timeout + 1) })), [setEditForm]));
+
+  // Clear test state when modal unmounts
+  useEffect(() => {
+    return () => {
+      setTestResults(prev => { const next = { ...prev }; delete next[expandedIndexer]; return next; });
+      setTestQuery(prev => { const next = { ...prev }; delete next[expandedIndexer]; return next; });
+    };
+  }, [expandedIndexer, setTestResults, setTestQuery]);
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => onClose()}>
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl border border-slate-700/50 shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm p-4 md:p-6 border-b border-slate-700/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Settings className="w-6 h-6 text-blue-400" />
+              <h3 className="text-xl font-semibold text-slate-200">Edit Indexer</h3>
+            </div>
+            <button
+              onClick={() => onClose()}
+              className="text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+        <div className="p-4 md:p-6 space-y-4">
+          {zyclopsActive && (
+            <div className="bg-violet-500/10 border border-violet-500/20 rounded-lg p-3">
+              <p className="text-xs text-violet-300">
+                <span className="font-semibold">🤖 Zyclops Active</span> — Name, URL, and enabled status are locked while Zyclops is enabled. Disable Zyclops first to edit these fields.
+              </p>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">Name</label>
+            <input
+              type="text"
+              value={editForm.name}
+              onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+              disabled={zyclopsActive}
+              className={clsx('input', zyclopsActive && 'opacity-50 cursor-not-allowed')}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">URL</label>
+            <input
+              type="text"
+              value={editForm.url}
+              onChange={(e) => setEditForm(prev => ({ ...prev, url: e.target.value }))}
+              onBlur={() => setEditForm(prev => ({ ...prev, url: normalizeNewznabUrl(prev.url) }))}
+              disabled={zyclopsActive}
+              className={clsx('input', zyclopsActive && 'opacity-50 cursor-not-allowed')}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">API Key</label>
+            <div className="relative">
+              <input
+                type={showApiKey.edit ? "text" : "password"}
+                value={editForm.apiKey}
+                onChange={(e) => setEditForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                placeholder="Leave blank to keep current"
+                className="input pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(prev => ({ ...prev, edit: !prev.edit }))}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                {showApiKey.edit ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="edit-enabled" className={clsx('flex-1 cursor-pointer text-sm text-slate-300', zyclopsActive && 'opacity-50 cursor-not-allowed')}>
+              Enabled {zyclopsActive && '(managed by Zyclops)'}
+            </label>
+            <label className={clsx('relative inline-flex items-center', zyclopsActive ? 'cursor-not-allowed' : 'cursor-pointer')}>
+              <input
+                type="checkbox"
+                id="edit-enabled"
+                checked={editForm.enabled}
+                onChange={(e) => setEditForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                disabled={zyclopsActive}
+                className="sr-only peer"
+              />
+              <div className={clsx("w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600", zyclopsActive && 'opacity-50')}></div>
+            </label>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="edit-timeout-enabled" className="flex-1 cursor-pointer">
+                <span className="text-sm text-slate-300">Request timeout</span>
+                <span className="text-xs text-slate-500 ml-2">Limit how long to wait for indexer responses</span>
+              </label>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="edit-timeout-enabled"
+                  checked={editForm.timeoutEnabled}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, timeoutEnabled: e.target.checked }))}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
+              </label>
+            </div>
+            {editForm.timeoutEnabled && (
+              <div className="pl-6">
+                <TimeoutStepper
+                  value={editForm.timeout}
+                  defaultValue={DEFAULT_INDEXER_TIMEOUT_SECONDS}
+                  decProps={editTimeoutDec}
+                  incProps={editTimeoutInc}
+                  onChange={(next) => setEditForm(prev => ({ ...prev, timeout: next }))}
+                  inputId="edit-timeout-seconds"
+                />
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="edit-pagination" className="flex-1 cursor-pointer">
+                <span className="text-sm text-slate-300">Paginated search</span>
+                <span className="text-xs text-slate-500 ml-2">Fetch additional pages of results when available</span>
+              </label>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="edit-pagination"
+                  checked={editForm.pagination}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, pagination: e.target.checked }))}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
+              </label>
+            </div>
+            {editForm.pagination && (
+              <div className="pl-6">
+                <PagesStepper
+                  value={editForm.maxPages}
+                  onChange={(v) => setEditForm(prev => ({ ...prev, maxPages: v }))}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Search Method (per-indexer) */}
+          <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-3 mt-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium text-slate-300">Search Method</div>
+              <button
+                onClick={() => discoverCaps(editForm.url, editForm.apiKey || config?.indexers.find(i => i.name === expandedIndexer)?.apiKey || '', 'edit')}
+                disabled={capsLoading === 'edit'}
+                className="text-xs text-primary-400 hover:text-primary-300 transition-colors disabled:opacity-50"
+              >
+                {capsLoading === 'edit' ? 'Discovering...' : editForm.caps ? 'Re-discover' : 'Discover Capabilities'}
+              </button>
+            </div>
+            {editForm.caps && (
+              <p className="text-xs text-green-400/70">
+                Capabilities: Movie [{editForm.caps.movieSearchParams.join(', ')}] TV [{editForm.caps.tvSearchParams.join(', ')}]
+              </p>
+            )}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Movies</label>
+              <div className="flex flex-wrap gap-3">
+                {getAvailableMovieMethods(editForm.caps).map(m => (
+                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.movieSearchMethod.includes(m.value)}
+                      onChange={(e) => setEditForm(prev => {
+                        const updated = e.target.checked
+                          ? [...prev.movieSearchMethod, m.value]
+                          : prev.movieSearchMethod.filter(v => v !== m.value);
+                        return { ...prev, movieSearchMethod: updated.length > 0 ? updated : prev.movieSearchMethod };
+                      })}
+                      className="accent-blue-500"
+                    />
+                    {renderMethodLabel(m)}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">TV Shows</label>
+              <div className="flex flex-wrap gap-3">
+                {getAvailableTvMethods(editForm.caps).map(m => (
+                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.tvSearchMethod.includes(m.value)}
+                      onChange={(e) => setEditForm(prev => {
+                        const updated = e.target.checked
+                          ? [...prev.tvSearchMethod, m.value]
+                          : prev.tvSearchMethod.filter(v => v !== m.value);
+                        return { ...prev, tvSearchMethod: updated.length > 0 ? updated : prev.tvSearchMethod };
+                      })}
+                      className="accent-blue-500"
+                    />
+                    {renderMethodLabel(m)}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Anime Movies</label>
+              <div className="flex flex-wrap gap-3">
+                {getAvailableAnimeMovieMethods(editForm.caps).map(m => (
+                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.animeMovieSearchMethod.includes(m.value)}
+                      onChange={(e) => setEditForm(prev => {
+                        const updated = e.target.checked
+                          ? [...prev.animeMovieSearchMethod, m.value]
+                          : prev.animeMovieSearchMethod.filter(v => v !== m.value);
+                        return { ...prev, animeMovieSearchMethod: updated.length > 0 ? updated : prev.animeMovieSearchMethod };
+                      })}
+                      className="accent-blue-500"
+                    />
+                    {renderMethodLabel(m)}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Anime TV Shows</label>
+              <div className="flex flex-wrap gap-3">
+                {getAvailableAnimeTvMethods(editForm.caps).map(m => (
+                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.animeTvSearchMethod.includes(m.value)}
+                      onChange={(e) => setEditForm(prev => {
+                        const updated = e.target.checked
+                          ? [...prev.animeTvSearchMethod, m.value]
+                          : prev.animeTvSearchMethod.filter(v => v !== m.value);
+                        return { ...prev, animeTvSearchMethod: updated.length > 0 ? updated : prev.animeTvSearchMethod };
+                      })}
+                      className="accent-blue-500"
+                    />
+                    {renderMethodLabel(m)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Test Search */}
+          <div className="border-t border-slate-700/50 pt-4 mt-4">
+            <label className="block text-sm text-slate-400 mb-2">Test Search</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={testQuery[expandedIndexer] || ''}
+                onChange={(e) => setTestQuery(prev => ({ ...prev, [expandedIndexer]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !testResults[expandedIndexer]?.loading) {
+                    handleTestIndexer(expandedIndexer);
+                  }
+                }}
+                placeholder="Enter search query"
+                className="input flex-1"
+              />
+              <button
+                onClick={() => handleTestIndexer(expandedIndexer)}
+                disabled={testResults[expandedIndexer]?.loading}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              >
+                {testResults[expandedIndexer]?.loading ? (
+                  <Settings className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+                Test
+              </button>
+            </div>
+            {testResults[expandedIndexer] && !testResults[expandedIndexer].loading && (
+              <div className={clsx(
+                "mt-2 p-3 rounded-lg text-sm",
+                testResults[expandedIndexer].success
+                  ? "bg-green-500/10 border border-green-500/30 text-green-400"
+                  : "bg-red-500/10 border border-red-500/30 text-red-400"
+              )}>
+                <div className="flex items-start gap-2">
+                  {testResults[expandedIndexer].success ? (
+                    <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium break-words">{testResults[expandedIndexer].message}</div>
+                    {testResults[expandedIndexer].success && testResults[expandedIndexer].results !== undefined && (
+                      <div className="text-xs mt-1 opacity-80">
+                        Found {testResults[expandedIndexer].results} result{testResults[expandedIndexer].results !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {testResults[expandedIndexer].titles && testResults[expandedIndexer].titles!.length > 0 && (
+                      <div className="text-xs mt-2 space-y-1 opacity-80">
+                        <div className="font-medium">Sample results:</div>
+                        {testResults[expandedIndexer].titles!.slice(0, 3).map((title, i) => (
+                          <div key={i} className="break-words">• {title}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => {
+                setDeleteConfirmation({ show: true, indexerName: expandedIndexer });
+                setExpandedIndexer(null);
+              }}
+              className="btn flex items-center justify-center gap-2 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

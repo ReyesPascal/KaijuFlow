@@ -1,0 +1,1493 @@
+// What this does:
+//   Custom React hook that manages all configuration-related state, fetching,
+//   and auto-save effects for the Usenet Ultimate UI.
+
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type {
+  Config,
+  SyncedIndexer,
+  StreamDisplayConfig,
+  HealthChecksState,
+  AutoPlayState,
+  FiltersState,
+  OverlayType,
+  Tab,
+  IndexerCaps,
+  NewIndexerForm,
+  EditIndexerForm,
+  ElementDragState,
+  ElementDragOverState,
+  UserAgents,
+} from '../types';
+import {
+  DEFAULT_STREAM_DISPLAY,
+  DEFAULT_HEALTH_CHECKS,
+  DEFAULT_FILTERS,
+  DEFAULT_CARD_ORDER,
+  DEFAULT_ULTIMATE_FALLBACK,
+  DEFAULT_INDEXER_TIMEOUT_SECONDS,
+} from '../constants';
+import { normalizeLineGroups } from '../utils/streamPreview';
+import { formatTTL, decomposeTTL, composeTTL } from '../utils/ttl';
+
+// Re-export TTL utilities so consumers don't need to import separately
+export { formatTTL, decomposeTTL, composeTTL };
+
+// Re-export types so consumers of this hook can access them
+export type { IndexerCaps, NewIndexerForm, EditIndexerForm, ElementDragState, ElementDragOverState, UserAgents };
+
+import type { ApiFetch } from '../types';
+
+const DEFAULT_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+// Push a history sentinel on each closed→open transition of a PWA layer.
+// The popstate handler in App.tsx consumes one sentinel per back press,
+// cascade-closing one layer at a time. No-op outside standalone PWA mode.
+function pushPwaSentinel(): void {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || (navigator as any).standalone === true;
+  if (isStandalone) window.history.pushState({ pwa: true }, '');
+}
+
+// Wrap a useState setter so it fires pushPwaSentinel() exactly when the next
+// value transitions from "closed" to "open" per the supplied predicate.
+// Stable identity; consumers don't churn re-renders.
+function useSentinelSetter<T>(
+  state: T,
+  rawSet: React.Dispatch<React.SetStateAction<T>>,
+  isOpen: (v: T) => boolean,
+): React.Dispatch<React.SetStateAction<T>> {
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
+  return useCallback((value) => {
+    const next = typeof value === 'function'
+      ? (value as (prev: T) => T)(stateRef.current)
+      : value;
+    if (isOpenRef.current(next) && !isOpenRef.current(stateRef.current)) {
+      pushPwaSentinel();
+    }
+    rawSet(next);
+  }, [rawSet]);
+}
+
+const DEFAULT_NEW_INDEXER: NewIndexerForm = {
+  name: '', url: '', apiKey: '', website: '', logo: '',
+  movieSearchMethod: ['text'], tvSearchMethod: ['text'],
+  animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'],
+  caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS,
+};
+
+const DEFAULT_EDIT_FORM: EditIndexerForm = {
+  name: '', url: '', apiKey: '', enabled: true, website: '', logo: '',
+  movieSearchMethod: ['text'], tvSearchMethod: ['text'],
+  animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'],
+  caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS,
+};
+
+export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
+  // ─── Config & general UI state ──────────────────────────────────────
+  const [config, setConfig] = useState<Config | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [addonEnabled, setAddonEnabled] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [showAddIndexer, setShowAddIndexer] = useState(false);
+  const [newIndexer, setNewIndexer] = useState<NewIndexerForm>({ ...DEFAULT_NEW_INDEXER });
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  const [editForm, setEditForm] = useState<EditIndexerForm>({ ...DEFAULT_EDIT_FORM });
+  const [capsLoading, setCapsLoading] = useState<'new' | 'edit' | null>(null);
+  const [expandedIndexer, setExpandedIndexer] = useState<string | null>(null);
+  const [draggedIndexer, setDraggedIndexer] = useState<string | null>(null);
+  const [dragOverIndexer, setDragOverIndexer] = useState<string | null>(null);
+  const [pendingSave, setPendingSave] = useState(false);
+  const [testResults, setTestResults] = useState<Record<string, { loading: boolean; success?: boolean; message?: string; results?: number; titles?: string[] }>>({});
+  const [testQuery, setTestQuery] = useState<Record<string, string>>({});
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ show: boolean; indexerName: string }>({ show: false, indexerName: '' });
+  const [directModeWarning, setDirectModeWarning] = useState<{ show: boolean }>({ show: false });
+  const [libraryDeleteWarning, setLibraryDeleteWarning] = useState<{ show: boolean; toggleType: 'all' | 'perStream' | null }>({ show: false, toggleType: null });
+  const [activeOverlay, setActiveOverlay] = useState<OverlayType>(null);
+  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
+  const [showApiKey, setShowApiKey] = useState<{ new: boolean; edit: boolean }>({ new: false, edit: false });
+
+  // ─── Cache ──────────────────────────────────────────────────────────
+  const [cacheTTL, setCacheTTL] = useState<number>(9000);
+
+  // ─── Streaming & Index Manager ──────────────────────────────────────
+  const [streamingMode, setStreamingMode] = useState<'nzbdav' | 'stremio'>('nzbdav');
+  const [indexManager, setIndexManager] = useState<'newznab' | 'prowlarr' | 'nzbhydra'>('newznab');
+
+  // ─── Proxy ──────────────────────────────────────────────────────────
+  const [proxyMode, setProxyMode] = useState<'disabled' | 'http'>('disabled');
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [proxyStatus, setProxyStatus] = useState<'connected' | 'disconnected' | 'checking' | null>(null);
+  const [proxyIp, setProxyIp] = useState<string>('');
+  const [localIp, setLocalIp] = useState<string>('');
+  const [proxyIndexers, setProxyIndexers] = useState<Record<string, boolean>>({});
+
+  // ─── Search config ──────────────────────────────────────────────────
+  const [tmdbApiKey, setTmdbApiKey] = useState('');
+  const [tvdbApiKey, setTvdbApiKey] = useState('');
+  const [includeSeasonPacks, setIncludeSeasonPacks] = useState(true);
+  const [includeMultiSeasonPacks, setIncludeMultiSeasonPacks] = useState(true);
+  const [seasonPackPagination, setSeasonPackPagination] = useState(true);
+  const [seasonPackAdditionalPages, setSeasonPackAdditionalPages] = useState(1);
+  const [seriesPackKeywords, setSeriesPackKeywords] = useState<string[]>([]);
+  const [seriesPackPagination, setSeriesPackPagination] = useState(true);
+  const [seriesPackAdditionalPages, setSeriesPackAdditionalPages] = useState(1);
+  const [indexerPriorityDedup, setIndexerPriorityDedup] = useState(false);
+  const [urlDedup, setUrlDedup] = useState(true);
+  const [junkFilter, setJunkFilter] = useState(true);
+  const [librarySearchThreshold, setLibrarySearchThreshold] = useState(0);
+  const [libraryApplyToMovies, setLibraryApplyToMovies] = useState(true);
+  const [libraryApplyToSeries, setLibraryApplyToSeries] = useState(true);
+  const [librarySearchScanUncategorized, setLibrarySearchScanUncategorized] = useState(true);
+  const [libraryRunOnCacheHit, setLibraryRunOnCacheHit] = useState(false);
+  const [cacheEmptyResults, setCacheEmptyResults] = useState(true);
+  const [displayLibraryInResults, setDisplayLibraryInResults] = useState(true);
+  const [libraryDeleteAllTile, setLibraryDeleteAllTile] = useState(false);
+  const [libraryDeletePerStreamTile, setLibraryDeletePerStreamTile] = useState(false);
+  const [librarySkipTilePosition, setLibrarySkipTilePosition] = useState<'second' | 'last'>('second');
+  const [libraryDeleteAllPackScope, setLibraryDeleteAllPackScope] = useState<'episode' | 'pack'>('episode');
+  const [absoluteEpisodeFallback, setAbsoluteEpisodeFallback] = useState(true);
+  const [parallelAlternateTitleSearch, setParallelAlternateTitleSearch] = useState(false);
+  const [aliasTitleFallback, setAliasTitleFallback] = useState(true);
+  const [tvdbPreferEnglishTitle, setTvdbPreferEnglishTitle] = useState(true);
+  const [indexerPriority, setIndexerPriority] = useState<string[]>([]);
+  const [dedupDraggedItem, setDedupDraggedItem] = useState<string | null>(null);
+  const [dedupDragOverItem, setDedupDragOverItem] = useState<string | null>(null);
+  const [tmdbKeyStatus, setTmdbKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle');
+  const [tvdbKeyStatus, setTvdbKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle');
+  const [showTmdbKey, setShowTmdbKey] = useState(false);
+  const [showTvdbKey, setShowTvdbKey] = useState(false);
+
+  const [showProwlarrKey, setShowProwlarrKey] = useState(false);
+  const [showNzbhydraKey, setShowNzbhydraKey] = useState(false);
+  const [showNzbhydraPassword, setShowNzbhydraPassword] = useState(false);
+
+  // ─── Prowlarr / NZBHydra ───────────────────────────────────────────
+  const [prowlarrUrl, setProwlarrUrl] = useState('http://localhost:9696');
+  const [prowlarrApiKey, setProwlarrApiKey] = useState('');
+  const [prowlarrTimeoutEnabled, setProwlarrTimeoutEnabled] = useState(true);
+  const [prowlarrTimeout, setProwlarrTimeout] = useState(30);
+  const [nzbhydraUrl, setNzbhydraUrl] = useState('http://localhost:5076');
+  const [nzbhydraApiKey, setNzbhydraApiKey] = useState('');
+  const [nzbhydraUsername, setNzbhydraUsername] = useState('');
+  const [nzbhydraPassword, setNzbhydraPassword] = useState('');
+  const [nzbhydraTimeoutEnabled, setNzbhydraTimeoutEnabled] = useState(true);
+  const [nzbhydraTimeout, setNzbhydraTimeout] = useState(30);
+
+  // ─── NzbDAV ─────────────────────────────────────────────────────────
+  const [nzbdavUrl, setNzbdavUrl] = useState('http://localhost:3000');
+  const [nzbdavApiKey, setNzbdavApiKey] = useState('');
+  const [nzbdavWebdavUrl, setNzbdavWebdavUrl] = useState('http://localhost:3000');
+  const [nzbdavWebdavUser, setNzbdavWebdavUser] = useState('');
+  const [nzbdavWebdavPassword, setNzbdavWebdavPassword] = useState('');
+  const [nzbdavMoviesCategory, setNzbdavMoviesCategory] = useState('Usenet-Ultimate-Movies');
+  const [nzbdavTvCategory, setNzbdavTvCategory] = useState('Usenet-Ultimate-TV');
+  const [nzbdavCacheTimeouts, setNzbdavCacheTimeouts] = useState(true);
+  const [filterDeadNzbs, setFilterDeadNzbs] = useState(true);
+  const [nzbdavStreamBufferMB, setNzbdavStreamBufferMB] = useState(128);
+  const [nzbdavPipeBufferMB, setNzbdavPipeBufferMB] = useState(8);
+  const [nzbdavStreamingMethod, setNzbdavStreamingMethod] = useState<'pipe' | 'proxy' | 'direct'>('proxy');
+  const [healthyNzbDbMode, setHealthyNzbDbMode] = useState<'time' | 'storage'>('time');
+  const [healthyNzbDbTTL, setHealthyNzbDbTTL] = useState(259200);
+  const [healthyNzbDbMaxSizeMB, setHealthyNzbDbMaxSizeMB] = useState(50);
+  const [deadNzbDbMode, setDeadNzbDbMode] = useState<'time' | 'storage'>('storage');
+  const [deadNzbDbTTL, setDeadNzbDbTTL] = useState(86400);
+  const [deadNzbDbMaxSizeMB, setDeadNzbDbMaxSizeMB] = useState(50);
+  const [nzbdavConnectionStatus, setNzbdavConnectionStatus] = useState<'connected' | 'disconnected' | 'unconfigured' | 'checking' | null>(null);
+  const [nzbdavTestNzbStatus, setNzbdavTestNzbStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [nzbdavTestNzbMessage, setNzbdavTestNzbMessage] = useState('');
+
+  // ─── EasyNews ───────────────────────────────────────────────────────
+  const [easynewsEnabled, setEasynewsEnabled] = useState(false);
+  const [easynewsUsername, setEasynewsUsername] = useState('');
+  const [easynewsPassword, setEasynewsPassword] = useState('');
+  const [easynewsPagination, setEasynewsPagination] = useState(false);
+  const [easynewsMaxPages, setEasynewsMaxPages] = useState(3);
+  const [easynewsTimeoutEnabled, setEasynewsTimeoutEnabled] = useState(true);
+  const [easynewsTimeout, setEasynewsTimeout] = useState(30);
+  const [easynewsMode, setEasynewsMode] = useState<'ddl' | 'nzb'>('nzb');
+  const [easynewsHealthCheck, setEasynewsHealthCheck] = useState(true);
+  const [showEasynewsPassword, setShowEasynewsPassword] = useState(false);
+  const [easynewsTestStatus, setEasynewsTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [easynewsTestMessage, setEasynewsTestMessage] = useState('');
+
+  // ─── Zyclops ────────────────────────────────────────────────────────
+  const [zyclopsEndpoint, setZyclopsEndpoint] = useState('https://zyclops.elfhosted.com');
+  const [zyclopsTestStatus, setZyclopsTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [zyclopsTestMessage, setZyclopsTestMessage] = useState('');
+  const [zyclopsConfirmDialog, setZyclopsConfirmDialog] = useState<{ show: boolean; indexerName: string }>({ show: false, indexerName: '' });
+  const [singleIpConfirmDialog, setSingleIpConfirmDialog] = useState<{ show: boolean; indexerName: string }>({ show: false, indexerName: '' });
+  const [zyclopsInflightToggle, setZyclopsInflightToggle] = useState<Set<string>>(new Set());
+
+  // ─── User-Agent ─────────────────────────────────────────────────────
+  const defaultChromeUA = DEFAULT_CHROME_UA;
+  const [userAgents, setUserAgents] = useState({
+    indexerSearch: 'Prowlarr/2.3.0.5236 (alpine 3.22.2)',
+    nzbDownload: 'SABnzbd/4.5.5',
+    nzbdavOperations: 'SABnzbd/4.5.5',
+    webdavOperations: 'SABnzbd/4.5.5',
+    general: defaultChromeUA
+  });
+
+  // ─── Filters ────────────────────────────────────────────────────────
+  const [filters, setFilters] = useState<FiltersState>({ ...DEFAULT_FILTERS });
+  const [movieFilters, setMovieFilters] = useState<FiltersState | null>(null);
+  const [tvFilters, setTvFilters] = useState<FiltersState | null>(null);
+
+  // ─── Stats ──────────────────────────────────────────────────────────
+  const [statsData, setStatsData] = useState<any>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsSortBy, setStatsSortBy] = useState<'score' | 'successRate' | 'avgResponseTime' | 'avgResultsPerQuery' | 'totalGrabs'>('score');
+  const [statsSortDir, setStatsSortDir] = useState<'asc' | 'desc'>('desc');
+  const [statsExpandedIndexer, setStatsExpandedIndexer] = useState<string | null>(null);
+
+  // ─── Ultimate-Fallback ───────────────────────────────────────────────
+  const [ultimateFallback, setUltimateFallback] = useState({ ...DEFAULT_ULTIMATE_FALLBACK });
+
+  // ─── Health Checks ──────────────────────────────────────────────────
+  const [healthChecks, setHealthChecks] = useState<HealthChecksState>({ ...DEFAULT_HEALTH_CHECKS });
+  const [syncedIndexers, setSyncedIndexers] = useState<SyncedIndexer[]>([]);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [syncMessage, setSyncMessage] = useState('');
+  const [selectedSyncedIndexer, setSelectedSyncedIndexer] = useState<string | null>(null);
+
+  // ─── Auto Play ──────────────────────────────────────────────────────
+  const [autoPlay, setAutoPlay] = useState<AutoPlayState>({
+    enabled: true, method: 'firstFile', attributes: ['resolution', 'quality', 'edition']
+  });
+
+  // ─── Stream Display ─────────────────────────────────────────────────
+  const [streamDisplayConfig, setStreamDisplayConfig] = useState<StreamDisplayConfig>(normalizeLineGroups(DEFAULT_STREAM_DISPLAY));
+  const [emojiPickerTarget, setEmojiPickerTarget] = useState<string | null>(null);
+  const [emojiSearch, setEmojiSearch] = useState('');
+  const [elementDrag, setElementDrag] = useState<ElementDragState | null>(null);
+  const [elementDragOver, setElementDragOver] = useState<ElementDragOverState | null>(null);
+  const [draggedLineGroup, setDraggedLineGroup] = useState<string | null>(null);
+  const [dragOverLineGroup, setDragOverLineGroup] = useState<string | null>(null);
+
+  // ─── Dashboard card order ───────────────────────────────────────────
+  const [cardOrder, setCardOrder] = useState<string[]>([...DEFAULT_CARD_ORDER]);
+  const [draggedCard, setDraggedCard] = useState<string | null>(null);
+  const [dragOverCard, setDragOverCard] = useState<string | null>(null);
+
+  // ─── Refs ───────────────────────────────────────────────────────────
+  const initialLoadDone = useRef(false);
+  const nzbdavFieldsChanged = useRef(false);
+  const editFormRef = useRef(editForm);
+  editFormRef.current = editForm;
+
+  // ─── Internal auto-save helper ──────────────────────────────────────
+  const saveSettings = useCallback(
+    async (settings: Record<string, unknown>) => {
+      try {
+        const response = await apiFetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setConfig(data);
+        } else {
+          // Server rejected the save (413 payload too large, 400 validation, 5xx).
+          // Log it; leave local React state alone so the user's in-flight edits
+          // aren't stomped and the next edit re-triggers the save naturally.
+          console.error(`Failed to auto-save settings (HTTP ${response.status} ${response.statusText})`);
+        }
+      } catch (error) {
+        console.error('Failed to auto-save settings:', error);
+      }
+    },
+    [apiFetch]
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Auto-save effects
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Auto-save: cache TTL
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ cacheTTL }), 500);
+    return () => clearTimeout(timer);
+  }, [cacheTTL, saveSettings]);
+
+  // Auto-save: user agents
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ userAgents }), 500);
+    return () => clearTimeout(timer);
+  }, [userAgents, saveSettings]);
+
+  // Auto-save: filters (global + per-type)
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ filters, movieFilters, tvFilters }), 500);
+    return () => clearTimeout(timer);
+  }, [filters, movieFilters, tvFilters, saveSettings]);
+
+  // Auto-save: stream display config
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ streamDisplayConfig }), 500);
+    return () => clearTimeout(timer);
+  }, [streamDisplayConfig, saveSettings]);
+
+  // Auto-save: health check settings (excludes providers - they have their own CRUD endpoints)
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const { providers: _, ...healthCheckSettings } = healthChecks;
+    const timer = setTimeout(() => saveSettings({ healthChecks: { ...healthCheckSettings, providers: undefined } }), 500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [healthChecks.enabled, healthChecks.archiveInspection, healthChecks.sampleCount, healthChecks.nzbsToInspect, healthChecks.inspectionMethod, healthChecks.smartBatchSize, healthChecks.smartAdditionalRuns, healthChecks.smartMinHealthy, healthChecks.maxConnections, healthChecks.autoQueueMode, healthChecks.hideBlocked, healthChecks.libraryPreCheck, healthChecks.healthCheckIndexers, saveSettings]);
+
+  // Auto-save: Ultimate-Fallback settings
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ ultimateFallback }), 500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ultimateFallback.enabled, ultimateFallback.healthCheckEnabled, ultimateFallback.whenToResolve, ultimateFallback.userPickFallback, ultimateFallback.candidateCount, ultimateFallback.preferenceMode, ultimateFallback.archiveInspection, ultimateFallback.sampleCount, ultimateFallback.maxAttempts, ultimateFallback.desiredBackups, ultimateFallback.backupProcessingLimit, ultimateFallback.priorityMoviesTimeoutSeconds, ultimateFallback.priorityTvTimeoutSeconds, ultimateFallback.prioritySeasonPackTimeoutSeconds, ultimateFallback.speedMoviesTimeoutSeconds, ultimateFallback.speedTvTimeoutSeconds, ultimateFallback.speedSeasonPackTimeoutSeconds, ultimateFallback.healthCheckIndexers, saveSettings]);
+
+  // Auto-save: addon enabled/disabled
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ addonEnabled }), 300);
+    return () => clearTimeout(timer);
+  }, [addonEnabled, saveSettings]);
+
+  // Auto-save: streaming/nzbdav settings
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({
+      streamingMode, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod,
+    }), 500);
+    return () => clearTimeout(timer);
+  }, [streamingMode, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod, saveSettings]);
+
+  // Auto-save: NZB database settings
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({
+      healthyNzbDbMode, healthyNzbDbTTL, healthyNzbDbMaxSizeMB,
+      deadNzbDbMode, deadNzbDbTTL, deadNzbDbMaxSizeMB, nzbdavCacheTimeouts, filterDeadNzbs,
+    }), 500);
+    return () => clearTimeout(timer);
+  }, [healthyNzbDbMode, healthyNzbDbTTL, healthyNzbDbMaxSizeMB, deadNzbDbMode, deadNzbDbTTL, deadNzbDbMaxSizeMB, nzbdavCacheTimeouts, filterDeadNzbs, saveSettings]);
+
+  // Auto-save: index manager type
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ indexManager }), 300);
+    return () => clearTimeout(timer);
+  }, [indexManager, saveSettings]);
+
+  // Auto-save: easynews settings
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ easynewsEnabled, easynewsUsername, easynewsPassword, easynewsPagination, easynewsMaxPages: easynewsPagination ? easynewsMaxPages : undefined, easynewsTimeoutEnabled, easynewsTimeout, easynewsMode, easynewsHealthCheck }), 500);
+    return () => clearTimeout(timer);
+  }, [easynewsEnabled, easynewsUsername, easynewsPassword, easynewsPagination, easynewsMaxPages, easynewsTimeoutEnabled, easynewsTimeout, easynewsMode, easynewsHealthCheck, saveSettings]);
+
+  // Auto-save: zyclops endpoint
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ zyclopsEndpoint }), 500);
+    return () => clearTimeout(timer);
+  }, [zyclopsEndpoint, saveSettings]);
+
+  // Auto-save: search config (API keys, season packs - methods are now per-indexer)
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({
+      searchConfig: {
+        tmdbApiKey: tmdbApiKey || undefined,
+        tvdbApiKey: tvdbApiKey || undefined,
+        includeSeasonPacks,
+        includeMultiSeasonPacks,
+        seasonPackPagination: includeSeasonPacks ? seasonPackPagination : undefined,
+        seasonPackAdditionalPages: includeSeasonPacks && seasonPackPagination ? seasonPackAdditionalPages : undefined,
+        // Persist the array as-is when master is on, even if empty, so the user's
+        // intent to disable keyword queries (deselect every chip) survives reload.
+        // Drop the field entirely only when the master toggle is off.
+        seriesPackKeywords: includeMultiSeasonPacks ? seriesPackKeywords : undefined,
+        seriesPackPagination: includeMultiSeasonPacks ? seriesPackPagination : undefined,
+        seriesPackAdditionalPages: includeMultiSeasonPacks && seriesPackPagination ? seriesPackAdditionalPages : undefined,
+        indexerPriorityDedup,
+        urlDedup,
+        junkFilter,
+        librarySearchThreshold,
+        libraryApplyToMovies,
+        libraryApplyToSeries,
+        librarySearchScanUncategorized,
+        libraryRunOnCacheHit,
+        displayLibraryInResults,
+        libraryDeleteAllTile,
+        libraryDeletePerStreamTile,
+        librarySkipTilePosition,
+        libraryDeleteAllPackScope,
+        absoluteEpisodeFallback,
+        parallelAlternateTitleSearch,
+        aliasTitleFallback,
+        tvdbPreferEnglishTitle,
+        cacheEmptyResults,
+      },
+      indexerPriority: indexerPriorityDedup ? indexerPriority : undefined,
+    }), 300);
+    return () => clearTimeout(timer);
+  }, [tmdbApiKey, tvdbApiKey, includeSeasonPacks, includeMultiSeasonPacks, seasonPackPagination, seasonPackAdditionalPages, seriesPackKeywords, seriesPackPagination, seriesPackAdditionalPages, indexerPriorityDedup, urlDedup, junkFilter, librarySearchThreshold, libraryApplyToMovies, libraryApplyToSeries, librarySearchScanUncategorized, libraryRunOnCacheHit, displayLibraryInResults, libraryDeleteAllTile, libraryDeletePerStreamTile, librarySkipTilePosition, libraryDeleteAllPackScope, absoluteEpisodeFallback, parallelAlternateTitleSearch, aliasTitleFallback, tvdbPreferEnglishTitle, cacheEmptyResults, indexerPriority, saveSettings]);
+
+  // Keep indexer priority list in sync when indexers or EasyNews change
+  useEffect(() => {
+    if (!initialLoadDone.current || !indexerPriorityDedup) return;
+    const activeNames = new Set<string>();
+    if (indexManager === 'newznab') {
+      config?.indexers.filter(i => i.enabled).forEach(i => activeNames.add(i.name));
+    } else {
+      syncedIndexers.filter(i => i.enabledForSearch).forEach(i => activeNames.add(i.name));
+    }
+    if (easynewsEnabled) activeNames.add('EasyNews');
+
+    const updated = [...indexerPriority];
+    let changed = false;
+    for (const name of activeNames) {
+      if (!updated.includes(name)) {
+        updated.push(name);
+        changed = true;
+      }
+    }
+    const filtered = updated.filter(name => activeNames.has(name));
+    if (filtered.length !== updated.length) changed = true;
+
+    if (changed) setIndexerPriority(filtered.length > 0 ? filtered : [...activeNames]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indexerPriorityDedup, config?.indexers, syncedIndexers, easynewsEnabled, indexManager]);
+
+  // Auto-save: proxy settings.
+  // proxyMode/proxyUrl/proxyIndexers changes invalidate the previously-displayed
+  // connection status and exit IP (those were resolved against the OLD proxy).
+  // Reset both so the UI doesn't keep showing "Connected, X.X.X.X" for a proxy
+  // that's no longer in use until the user clicks Test.
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    setProxyStatus(null);
+    setProxyIp('');
+    const timer = setTimeout(() => saveSettings({ proxyMode, proxyUrl, proxyIndexers }), 300);
+    return () => clearTimeout(timer);
+  }, [proxyMode, proxyUrl, proxyIndexers, saveSettings]);
+
+  // Auto-save: auto-play / binge group settings
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ autoPlay }), 500);
+    return () => clearTimeout(timer);
+  }, [autoPlay, saveSettings]);
+
+  // Enforce minimum cacheTTL when auto play is enabled
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    if (autoPlay.enabled && cacheTTL < 9000) {
+      setCacheTTL(9000);
+    }
+  }, [autoPlay.enabled]);
+
+  // Auto-save: prowlarr settings
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ indexManager, prowlarrUrl, prowlarrApiKey, prowlarrTimeoutEnabled, prowlarrTimeout }), 500);
+    return () => clearTimeout(timer);
+  }, [indexManager, prowlarrUrl, prowlarrApiKey, prowlarrTimeoutEnabled, prowlarrTimeout, saveSettings]);
+
+  // Auto-save: nzbhydra settings
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ indexManager, nzbhydraUrl, nzbhydraApiKey, nzbhydraUsername, nzbhydraPassword, nzbhydraTimeoutEnabled, nzbhydraTimeout }), 500);
+    return () => clearTimeout(timer);
+  }, [indexManager, nzbhydraUrl, nzbhydraApiKey, nzbhydraUsername, nzbhydraPassword, nzbhydraTimeoutEnabled, nzbhydraTimeout, saveSettings]);
+
+  // Auto-save: synced indexers (Prowlarr/NZBHydra per-indexer settings)
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const timer = setTimeout(() => saveSettings({ syncedIndexers }), 500);
+    return () => clearTimeout(timer);
+  }, [syncedIndexers, saveSettings]);
+
+  // Auto-save: indexer edit form
+  useEffect(() => {
+    if (!expandedIndexer || !initialLoadDone.current) return;
+    if (!editFormRef.current.name?.trim()) return;
+    const savedName = expandedIndexer;
+    const timer = setTimeout(async () => {
+      const updates: Partial<typeof editFormRef.current> = { ...editFormRef.current };
+      if (!updates.apiKey) delete updates.apiKey;
+      try {
+        const response = await apiFetch(`/api/indexers/${encodeURIComponent(savedName)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        });
+        if (response.ok) {
+          const saved = await response.json();
+          // Reflect normalized URL (e.g. /api appended) back into the form
+          if (typeof saved?.url === 'string' && saved.url !== editFormRef.current.url) {
+            setEditForm(prev => ({ ...prev, url: saved.url }));
+          }
+          await fetchIndexers();
+        }
+      } catch (error) {
+        console.error('Failed to auto-save indexer:', error);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editForm.name, editForm.url, editForm.apiKey, editForm.enabled, JSON.stringify(editForm.movieSearchMethod), JSON.stringify(editForm.tvSearchMethod), JSON.stringify(editForm.animeMovieSearchMethod), JSON.stringify(editForm.animeTvSearchMethod), editForm.caps, editForm.website, editForm.logo, editForm.pagination, editForm.maxPages, editForm.timeoutEnabled, editForm.timeout, expandedIndexer]);
+
+  // Reset NzbDAV connection status when fields change after initial load
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    if (!nzbdavFieldsChanged.current) {
+      nzbdavFieldsChanged.current = true;
+      return;
+    }
+    setNzbdavConnectionStatus(null);
+  }, [streamingMode, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword]);
+
+  // Check proxy when proxy mode changes
+  useEffect(() => {
+    if (proxyMode === 'http') checkProxyStatus();
+    else { setProxyStatus(null); setProxyIp(''); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proxyMode]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Fetch functions
+  // ═══════════════════════════════════════════════════════════════════
+
+  const fetchIndexers = async () => {
+    try {
+      const response = await apiFetch('/api/indexers');
+      const indexers = await response.json();
+      setConfig(prev => prev ? { ...prev, indexers } : null);
+    } catch (error) {
+      console.error('Failed to fetch indexers:', error);
+    }
+  };
+
+  const fetchConfig = async () => {
+    try {
+      const response = await apiFetch('/api/config');
+      const data = await response.json();
+      setConfig(data);
+      setAddonEnabled(data.addonEnabled !== false);
+      setCacheTTL(data.cacheTTL ?? 0);
+      setStreamingMode(data.streamingMode || 'nzbdav');
+      setIndexManager(data.indexManager || 'newznab');
+      setProxyMode(data.proxyMode || 'disabled');
+      setProxyUrl(data.proxyUrl || '');
+      setProxyIndexers(data.proxyIndexers || {});
+      const sc = data.searchConfig;
+      setTmdbApiKey(sc?.tmdbApiKey || '');
+      setTvdbApiKey(sc?.tvdbApiKey || '');
+      setIncludeSeasonPacks(sc?.includeSeasonPacks ?? data.includeSeasonPacks ?? true);
+      setIncludeMultiSeasonPacks(sc?.includeMultiSeasonPacks ?? true);
+      setSeriesPackKeywords(Array.isArray(sc?.seriesPackKeywords) ? sc.seriesPackKeywords : []);
+      setSeriesPackPagination(sc?.seriesPackPagination ?? true);
+      setSeriesPackAdditionalPages(sc?.seriesPackAdditionalPages ?? 1);
+      setSeasonPackPagination(sc?.seasonPackPagination ?? true);
+      setSeasonPackAdditionalPages(sc?.seasonPackAdditionalPages || 1);
+      setIndexerPriorityDedup(sc?.indexerPriorityDedup ?? false);
+      setUrlDedup(sc?.urlDedup !== false);
+      setJunkFilter(sc?.junkFilter !== false);
+      setLibrarySearchThreshold(Math.max(0, Math.min(10, sc?.librarySearchThreshold ?? 0)));
+      setLibraryApplyToMovies(sc?.libraryApplyToMovies !== false);
+      setLibraryApplyToSeries(sc?.libraryApplyToSeries !== false);
+      setLibrarySearchScanUncategorized(sc?.librarySearchScanUncategorized !== false);
+      setLibraryRunOnCacheHit(sc?.libraryRunOnCacheHit === true);
+      setDisplayLibraryInResults(sc?.displayLibraryInResults !== false);
+      setLibraryDeleteAllTile(sc?.libraryDeleteAllTile === true);
+      setLibraryDeletePerStreamTile(sc?.libraryDeletePerStreamTile === true);
+      setLibrarySkipTilePosition(sc?.librarySkipTilePosition === 'last' ? 'last' : 'second');
+      setLibraryDeleteAllPackScope(sc?.libraryDeleteAllPackScope === 'pack' ? 'pack' : 'episode');
+      setAbsoluteEpisodeFallback(sc?.absoluteEpisodeFallback !== false);
+      setParallelAlternateTitleSearch(sc?.parallelAlternateTitleSearch === true);
+      setAliasTitleFallback(sc?.aliasTitleFallback !== false);
+      setTvdbPreferEnglishTitle(sc?.tvdbPreferEnglishTitle !== false);
+      setCacheEmptyResults(sc?.cacheEmptyResults !== false);
+      setIndexerPriority(data.indexerPriority || []);
+      setEasynewsEnabled(data.easynewsEnabled || false);
+      setEasynewsUsername(data.easynewsUsername || '');
+      setEasynewsPassword(data.easynewsPassword || '');
+      setEasynewsPagination(data.easynewsPagination || false);
+      setEasynewsMaxPages(data.easynewsMaxPages || 3);
+      setEasynewsTimeoutEnabled(data.easynewsTimeoutEnabled !== false);
+      setEasynewsTimeout(data.easynewsTimeout ?? DEFAULT_INDEXER_TIMEOUT_SECONDS);
+      setEasynewsMode(data.easynewsMode || 'nzb');
+      setEasynewsHealthCheck(data.easynewsHealthCheck ?? true);
+      setZyclopsEndpoint(data.zyclopsEndpoint || 'https://zyclops.elfhosted.com');
+
+      // Ensure all cards are in cardOrder (backward compat)
+      let order = data.cardOrder || [...DEFAULT_CARD_ORDER];
+      // Strip removed cards from saved orders so the dashboard doesn't render phantom slots
+      order = order.filter((c: string) => c !== 'fallback');
+      if (!order.includes('userAgent')) {
+        const cacheIndex = order.indexOf('cache');
+        if (cacheIndex !== -1) {
+          order = [...order.slice(0, cacheIndex + 1), 'userAgent', ...order.slice(cacheIndex + 1)];
+        } else {
+          order = [...order, 'userAgent'];
+        }
+      }
+      if (!order.includes('filters')) {
+        const userAgentIndex = order.indexOf('userAgent');
+        if (userAgentIndex !== -1) {
+          order = [...order.slice(0, userAgentIndex), 'filters', ...order.slice(userAgentIndex)];
+        } else {
+          order = [...order, 'filters'];
+        }
+      }
+      if (!order.includes('healthChecks')) {
+        const streamingIndex = order.indexOf('streaming');
+        if (streamingIndex !== -1) {
+          order = [...order.slice(0, streamingIndex + 1), 'healthChecks', ...order.slice(streamingIndex + 1)];
+        } else {
+          order = [...order, 'healthChecks'];
+        }
+      }
+      if (!order.includes('proxy')) {
+        const streamingIndex = order.indexOf('streaming');
+        if (streamingIndex !== -1) {
+          order = [...order.slice(0, streamingIndex + 1), 'proxy', ...order.slice(streamingIndex + 1)];
+        } else {
+          order = [...order, 'proxy'];
+        }
+      }
+      if (!order.includes('power')) {
+        order = [...order, 'power'];
+      }
+      if (!order.includes('autoPlay')) {
+        const healthChecksIndex = order.indexOf('healthChecks');
+        if (healthChecksIndex !== -1) {
+          order = [...order.slice(0, healthChecksIndex + 1), 'autoPlay', ...order.slice(healthChecksIndex + 1)];
+        } else {
+          order = [...order, 'autoPlay'];
+        }
+      }
+      if (!order.includes('streamDisplay')) {
+        const autoPlayIndex = order.indexOf('autoPlay');
+        if (autoPlayIndex !== -1) {
+          order = [...order.slice(0, autoPlayIndex + 1), 'streamDisplay', ...order.slice(autoPlayIndex + 1)];
+        } else {
+          order = [...order, 'streamDisplay'];
+        }
+      }
+      if (!order.includes('zyclops')) {
+        const proxyIndex = order.indexOf('proxy');
+        if (proxyIndex !== -1) {
+          order = [...order.slice(0, proxyIndex + 1), 'zyclops', ...order.slice(proxyIndex + 1)];
+        } else {
+          order = [...order, 'zyclops'];
+        }
+      }
+      if (!order.includes('nzbDatabase')) {
+        const healthIdx = order.indexOf('healthChecks');
+        order = healthIdx !== -1
+          ? [...order.slice(0, healthIdx + 1), 'nzbDatabase', ...order.slice(healthIdx + 1)]
+          : [...order, 'nzbDatabase'];
+      }
+      if (!order.includes('ultimateFallback')) {
+        const zyclopsIdx = order.indexOf('zyclops');
+        order = zyclopsIdx !== -1
+          ? [...order.slice(0, zyclopsIdx + 1), 'ultimateFallback', ...order.slice(zyclopsIdx + 1)]
+          : [...order, 'ultimateFallback'];
+      }
+      setCardOrder(order);
+
+      // Load auto-play settings
+      setAutoPlay(data.autoPlay || { enabled: true, method: 'firstFile', attributes: ['resolution', 'quality', 'edition'] });
+
+      // Load stream display config (normalize to always have MAX_TITLE_ROWS)
+      {
+        const displayCfg = normalizeLineGroups(data.streamDisplayConfig || DEFAULT_STREAM_DISPLAY);
+        // Ensure all elements from defaults exist in loaded config
+        for (const [id, el] of Object.entries(DEFAULT_STREAM_DISPLAY.elements)) {
+          if (!displayCfg.elements[id]) {
+            displayCfg.elements[id] = { ...el };
+          }
+        }
+        // Place any orphaned elements (in elements dict but not in any lineGroup or nameElements) into the first empty row
+        const placedIds = new Set([
+          ...displayCfg.nameElements,
+          ...displayCfg.lineGroups.flatMap(g => g.elementIds),
+        ]);
+        const orphaned = Object.keys(displayCfg.elements).filter(id => !placedIds.has(id));
+        if (orphaned.length > 0) {
+          const emptyRow = displayCfg.lineGroups.find(g => g.elementIds.length === 0);
+          if (emptyRow) {
+            emptyRow.elementIds = orphaned;
+          }
+        }
+        setStreamDisplayConfig(displayCfg);
+      }
+
+      setUserAgents(data.userAgents || {
+        indexerSearch: 'Prowlarr/2.3.0.5236 (alpine 3.22.2)',
+        nzbDownload: 'SABnzbd/4.5.5',
+        nzbdavOperations: 'SABnzbd/4.5.5',
+        webdavOperations: 'SABnzbd/4.5.5',
+        general: defaultChromeUA
+      });
+
+      // Handle backward compatibility: convert old sortBy to sortOrder
+      let filterConfig = data.filters || {
+        sortOrder: ['quality', 'videoTag', 'size', 'encode', 'visualTag', 'audioTag', 'language'],
+        enabledSorts: {
+          quality: true,
+          videoTag: true,
+          size: true,
+          encode: true,
+          visualTag: true,
+          audioTag: true,
+          language: false
+        },
+        enabledPriorities: {
+          resolution: {},
+          video: {},
+          encode: {},
+          visualTag: { '3D': false },
+          audioTag: {},
+          language: {}
+        },
+        maxFileSize: undefined,
+        maxStreamsPerResolution: undefined,
+        maxStreamsPerQuality: undefined,
+        resolutionPriority: ['4k', '1440p', '1080p', '720p', 'Unknown', '576p', '540p', '480p', '360p', '240p', '144p'],
+        videoPriority: ['BluRay REMUX', 'REMUX', 'BDMUX', 'BRMUX', 'BluRay', 'WEB-DL', 'WEB', 'DLMUX', 'UHDRip', 'BDRip', 'WEB-DLRip', 'WEBRip', 'BRRip', 'DCP', 'WEBCap', 'VODR', 'HDTV', 'HDTVRip', 'SATRip', 'TVRip', 'PPVRip', 'DVD', 'DVDRip', 'PDTV', 'SDTV', 'HDRip', 'SCR', 'WORKPRINT', 'TeleCine', 'TeleSync', 'CAM', 'VHSRip', 'Unknown'],
+        encodePriority: ['vvc', 'av1', 'hevc', 'vp9', 'avc', 'vc1', 'vp8', 'xvid', 'mpeg2', 'Unknown'],
+        visualTagPriority: ['DV', 'HDR+DV', 'HDR10+', 'HDR', '10bit', 'AI', 'SDR', '3D', 'Unknown'],
+        audioTagPriority: ['Atmos (TrueHD)', 'DTS:X', 'Atmos (DD+)', 'TrueHD', 'DTS-HD MA', 'FLAC', 'DTS-HD', 'DD+', 'DTS-ES', 'DTS', 'AAC', 'DD', 'Opus', 'PCM', 'MP3', 'Unknown'],
+        languagePriority: ['English', 'Multi', 'Dual Audio', 'Dubbed', 'Arabic', 'Bengali', 'Bulgarian', 'Chinese', 'Croatian', 'Czech', 'Danish', 'Dutch', 'Estonian', 'Finnish', 'French', 'German', 'Greek', 'Gujarati', 'Hebrew', 'Hindi', 'Hungarian', 'Indonesian', 'Italian', 'Japanese', 'Kannada', 'Korean', 'Latino', 'Latvian', 'Lithuanian', 'Malay', 'Malayalam', 'Marathi', 'Norwegian', 'Persian', 'Polish', 'Portuguese', 'Punjabi', 'Romanian', 'Russian', 'Serbian', 'Slovak', 'Slovenian', 'Spanish', 'Swedish', 'Tamil', 'Telugu', 'Thai', 'Turkish', 'Ukrainian', 'Vietnamese'],
+        editionPriority: ['Extended Edition', "Director's Cut", 'Superfan', 'Unrated', 'Uncensored', 'Uncut', 'Theatrical', 'IMAX', 'Special Edition', "Collector's Edition", 'Criterion Collection', 'Ultimate Edition', 'Anniversary Edition', 'Diamond Edition', 'Dragon Box', 'Color Corrected', 'Remastered', 'Standard']
+      };
+
+      // If old config has sortBy but not sortOrder, convert it
+      if ((filterConfig as any).sortBy && !filterConfig.sortOrder) {
+        const oldSortBy = (filterConfig as any).sortBy;
+        if (oldSortBy === 'quality') {
+          filterConfig.sortOrder = ['quality', 'videoTag', 'size', 'encode', 'visualTag', 'audioTag'];
+        } else if (oldSortBy === 'size') {
+          filterConfig.sortOrder = ['size', 'quality', 'videoTag', 'encode', 'visualTag', 'audioTag'];
+        } else if (oldSortBy === 'videoTag') {
+          filterConfig.sortOrder = ['videoTag', 'quality', 'size', 'encode', 'visualTag', 'audioTag'];
+        } else {
+          filterConfig.sortOrder = ['quality', 'videoTag', 'size', 'encode', 'visualTag', 'audioTag'];
+        }
+      }
+
+      // Ensure language is in sortOrder for existing configs
+      if (filterConfig.sortOrder && !filterConfig.sortOrder.includes('language')) {
+        filterConfig.sortOrder = [...filterConfig.sortOrder, 'language'];
+      }
+      if (filterConfig.enabledSorts && filterConfig.enabledSorts.language === undefined) {
+        filterConfig.enabledSorts.language = false;
+      }
+      if (!filterConfig.languagePriority) {
+        filterConfig.languagePriority = ['English', 'Multi', 'Dual Audio', 'Dubbed', 'Arabic', 'Bengali', 'Bulgarian', 'Chinese', 'Croatian', 'Czech', 'Danish', 'Dutch', 'Estonian', 'Finnish', 'French', 'German', 'Greek', 'Gujarati', 'Hebrew', 'Hindi', 'Hungarian', 'Indonesian', 'Italian', 'Japanese', 'Kannada', 'Korean', 'Latino', 'Latvian', 'Lithuanian', 'Malay', 'Malayalam', 'Marathi', 'Norwegian', 'Persian', 'Polish', 'Portuguese', 'Punjabi', 'Romanian', 'Russian', 'Serbian', 'Slovak', 'Slovenian', 'Spanish', 'Swedish', 'Tamil', 'Telugu', 'Thai', 'Turkish', 'Ukrainian', 'Vietnamese'];
+      }
+
+      // Ensure edition is in sortOrder for existing configs
+      if (filterConfig.sortOrder && !filterConfig.sortOrder.includes('edition')) {
+        filterConfig.sortOrder = [...filterConfig.sortOrder, 'edition'];
+      }
+      if (filterConfig.enabledSorts && filterConfig.enabledSorts.edition === undefined) {
+        filterConfig.enabledSorts.edition = false;
+      }
+      if (!filterConfig.editionPriority) {
+        filterConfig.editionPriority = ['Extended Edition', "Director's Cut", 'Superfan', 'Unrated', 'Uncensored', 'Uncut', 'Theatrical', 'IMAX', 'Special Edition', "Collector's Edition", 'Criterion Collection', 'Ultimate Edition', 'Anniversary Edition', 'Diamond Edition', 'Dragon Box', 'Color Corrected', 'Remastered', 'Standard'];
+      }
+      // Ensure Collector's Edition is in editionPriority for existing configs
+      if (filterConfig.editionPriority && !filterConfig.editionPriority.includes("Collector's Edition")) {
+        filterConfig.editionPriority = [...filterConfig.editionPriority, "Collector's Edition"];
+      }
+
+      // Ensure age is in sortOrder for existing configs
+      if (filterConfig.sortOrder && !filterConfig.sortOrder.includes('age')) {
+        filterConfig.sortOrder = [...filterConfig.sortOrder, 'age'];
+      }
+      if (filterConfig.enabledSorts && filterConfig.enabledSorts.age === undefined) {
+        filterConfig.enabledSorts.age = false;
+      }
+
+      // Ensure bitrate is in sortOrder for existing configs
+      if (filterConfig.sortOrder && !filterConfig.sortOrder.includes('bitrate')) {
+        filterConfig.sortOrder = [...filterConfig.sortOrder, 'bitrate'];
+      }
+      if (filterConfig.enabledSorts && filterConfig.enabledSorts.bitrate === undefined) {
+        filterConfig.enabledSorts.bitrate = false;
+      }
+
+      // Ensure seScore / regexScore sort methods are available for existing configs.
+      // Append at end only if missing — never reposition, so the user's saved order
+      // is preserved across reloads. Both stay disabled by default; users opt in by
+      // checking them in the sort list.
+      if (filterConfig.sortOrder && !filterConfig.sortOrder.includes('seScore')) {
+        filterConfig.sortOrder = [...filterConfig.sortOrder, 'seScore'];
+      }
+      if (filterConfig.enabledSorts && filterConfig.enabledSorts.seScore === undefined) {
+        filterConfig.enabledSorts.seScore = false;
+      }
+      if (filterConfig.sortOrder && !filterConfig.sortOrder.includes('regexScore')) {
+        filterConfig.sortOrder = [...filterConfig.sortOrder, 'regexScore'];
+      }
+      if (filterConfig.enabledSorts && filterConfig.enabledSorts.regexScore === undefined) {
+        filterConfig.enabledSorts.regexScore = false;
+      }
+
+      // Ensure sortDirections exists for existing configs
+      if (!filterConfig.sortDirections) {
+        filterConfig.sortDirections = {};
+      }
+
+      // Migrate maxStreamsPerQuality → maxStreamsPerResolution for existing configs
+      if ((filterConfig as any).maxStreamsPerQuality !== undefined && filterConfig.maxStreamsPerResolution === undefined) {
+        filterConfig.maxStreamsPerResolution = (filterConfig as any).maxStreamsPerQuality;
+        delete (filterConfig as any).maxStreamsPerQuality;
+      }
+
+      setFilters(filterConfig);
+      setMovieFilters(data.movieFilters || null);
+      setTvFilters(data.tvFilters || null);
+
+      setHealthChecks({
+        ...DEFAULT_HEALTH_CHECKS,
+        ...(data.healthChecks || {})
+      });
+
+      setUltimateFallback({
+        ...DEFAULT_ULTIMATE_FALLBACK,
+        ...(data.ultimateFallback || {})
+      });
+
+      // Load synced indexers from config
+      setSyncedIndexers(data.syncedIndexers || []);
+
+      setProwlarrUrl(data.prowlarrUrl || 'http://localhost:9696');
+      setProwlarrApiKey(data.prowlarrApiKey || '');
+      setProwlarrTimeoutEnabled(data.prowlarrTimeoutEnabled !== false);
+      setProwlarrTimeout(data.prowlarrTimeout ?? DEFAULT_INDEXER_TIMEOUT_SECONDS);
+      setNzbhydraUrl(data.nzbhydraUrl || 'http://localhost:5076');
+      setNzbhydraApiKey(data.nzbhydraApiKey || '');
+      setNzbhydraUsername(data.nzbhydraUsername || '');
+      setNzbhydraPassword(data.nzbhydraPassword || '');
+      setNzbhydraTimeoutEnabled(data.nzbhydraTimeoutEnabled !== false);
+      setNzbhydraTimeout(data.nzbhydraTimeout ?? DEFAULT_INDEXER_TIMEOUT_SECONDS);
+      setNzbdavUrl(data.nzbdavUrl || 'http://localhost:3000');
+      setNzbdavApiKey(data.nzbdavApiKey || '');
+      setNzbdavWebdavUrl(data.nzbdavWebdavUrl || 'http://localhost:3000');
+      setNzbdavWebdavUser(data.nzbdavWebdavUser || '');
+      setNzbdavWebdavPassword(data.nzbdavWebdavPassword || '');
+      setNzbdavMoviesCategory(data.nzbdavMoviesCategory || 'Usenet-Ultimate-Movies');
+      setNzbdavTvCategory(data.nzbdavTvCategory || 'Usenet-Ultimate-TV');
+      setNzbdavCacheTimeouts(data.nzbdavCacheTimeouts !== false);
+      setFilterDeadNzbs(data.filterDeadNzbs !== false);
+      setNzbdavStreamBufferMB(data.nzbdavStreamBufferMB ?? 128);
+      setNzbdavPipeBufferMB(data.nzbdavPipeBufferMB ?? 8);
+      // Belt-and-braces: backend accessor already migrates, but fall back to legacy field if the API response
+      // somehow lacks nzbdavStreamingMethod (very old server, hand-edited config, etc.)
+      setNzbdavStreamingMethod(
+        data.nzbdavStreamingMethod
+          ?? (data.nzbdavProxyEnabled === false ? 'direct' : data.nzbdavProxyEnabled === true ? 'proxy' : 'proxy')
+      );
+      setHealthyNzbDbMode(data.healthyNzbDbMode || 'time');
+      setHealthyNzbDbTTL(data.healthyNzbDbTTL ?? 259200);
+      setHealthyNzbDbMaxSizeMB(data.healthyNzbDbMaxSizeMB ?? 50);
+      setDeadNzbDbMode(data.deadNzbDbMode || 'storage');
+      setDeadNzbDbTTL(data.deadNzbDbTTL ?? 86400);
+      setDeadNzbDbMaxSizeMB(data.deadNzbDbMaxSizeMB ?? 50);
+      // Mark initial load as done so auto-save hooks don't fire on load.
+      // setTimeout defers past React's useEffect cycle — effects from the setState
+      // batch above see initialLoadDone.current === false and skip the save.
+      // Also auto-test NzbDAV connection on startup (inline to avoid stale closure)
+      setTimeout(async () => {
+        initialLoadDone.current = true;
+        if ((data.streamingMode || 'nzbdav') === 'nzbdav' && data.nzbdavUrl) {
+          setNzbdavConnectionStatus('checking');
+          try {
+            const testResp = await apiFetch('/api/nzbdav/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: data.nzbdavUrl,
+                apiKey: data.nzbdavApiKey || '',
+                webdavUrl: data.nzbdavWebdavUrl || '',
+                webdavUser: data.nzbdavWebdavUser || '',
+                webdavPassword: data.nzbdavWebdavPassword || '',
+              }),
+              signal: AbortSignal.timeout(20_000),
+            });
+            setNzbdavConnectionStatus(testResp.ok ? 'connected' : 'disconnected');
+          } catch {
+            setNzbdavConnectionStatus('disconnected');
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Failed to fetch config:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    setStatsLoading(true);
+    try {
+      const response = await apiFetch('/api/stats');
+      const data = await response.json();
+      setStatsData(data);
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Handler functions
+  // ═══════════════════════════════════════════════════════════════════
+
+  const fetchLocalIp = async () => {
+    try {
+      const res = await apiFetch('/api/ip/local');
+      const data = await res.json();
+      if (data.ip) setLocalIp(data.ip);
+    } catch { /* ignore */ }
+  };
+
+  const checkProxyStatus = async () => {
+    setProxyStatus('checking');
+    fetchLocalIp();
+    try {
+      const res = await apiFetch(`/api/proxy/status?url=${encodeURIComponent(proxyUrl)}`);
+      const data = await res.json();
+      if (data.connected) {
+        setProxyStatus('connected');
+        setProxyIp(data.ip || '');
+      } else {
+        setProxyStatus('disconnected');
+        setProxyIp('');
+      }
+    } catch {
+      setProxyStatus('disconnected');
+      setProxyIp('');
+    }
+  };
+
+  const checkNzbdavConnection = async () => {
+    if (streamingMode !== 'nzbdav') {
+      setNzbdavConnectionStatus(null);
+      return;
+    }
+
+    if (!nzbdavUrl) {
+      setNzbdavConnectionStatus('unconfigured');
+      return;
+    }
+
+    setNzbdavConnectionStatus('checking');
+    try {
+      const response = await apiFetch('/api/nzbdav/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: nzbdavUrl,
+          apiKey: nzbdavApiKey,
+          webdavUrl: nzbdavWebdavUrl,
+          webdavUser: nzbdavWebdavUser,
+          webdavPassword: nzbdavWebdavPassword
+        })
+      });
+
+      setNzbdavConnectionStatus(response.ok ? 'connected' : 'disconnected');
+    } catch {
+      setNzbdavConnectionStatus('disconnected');
+    }
+  };
+
+  const sendNzbdavTestNzb = async () => {
+    setNzbdavTestNzbStatus('sending');
+    setNzbdavTestNzbMessage('');
+    try {
+      const response = await apiFetch('/api/nzbdav/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: nzbdavUrl,
+          apiKey: nzbdavApiKey,
+          webdavUrl: nzbdavWebdavUrl,
+          webdavUser: nzbdavWebdavUser,
+          webdavPassword: nzbdavWebdavPassword,
+          moviesCategory: nzbdavMoviesCategory,
+          sendTestNzb: true
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setNzbdavTestNzbStatus('success');
+        setNzbdavTestNzbMessage(data.message || 'Test NZB accepted');
+      } else {
+        setNzbdavTestNzbStatus('error');
+        setNzbdavTestNzbMessage(data.message || 'Test NZB failed');
+      }
+    } catch (error) {
+      setNzbdavTestNzbStatus('error');
+      setNzbdavTestNzbMessage(`Failed: ${(error as Error).message}`);
+    }
+  };
+
+  const testTmdbKey = async () => {
+    if (!tmdbApiKey) return;
+    setTmdbKeyStatus('testing');
+    try {
+      const response = await apiFetch('/api/search-config/test-tmdb', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: tmdbApiKey })
+      });
+      const data = await response.json();
+      setTmdbKeyStatus(data.success ? 'valid' : 'invalid');
+    } catch {
+      setTmdbKeyStatus('invalid');
+    }
+  };
+
+  const testTvdbKey = async () => {
+    if (!tvdbApiKey) return;
+    setTvdbKeyStatus('testing');
+    try {
+      const response = await apiFetch('/api/search-config/test-tvdb', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: tvdbApiKey })
+      });
+      const data = await response.json();
+      setTvdbKeyStatus(data.success ? 'valid' : 'invalid');
+    } catch {
+      setTvdbKeyStatus('invalid');
+    }
+  };
+
+  // Handle element drop for unified drag-and-drop (move elements between name column and title rows)
+  const handleElementDrop = (overrideDragOver?: typeof elementDragOver) => {
+    const dragOver = overrideDragOver || elementDragOver;
+    if (!elementDrag || !dragOver) return;
+    const { elementId, sourceType, sourceGroupId } = elementDrag;
+    const { targetType, targetGroupId, targetElementId, position } = dragOver;
+
+    setStreamDisplayConfig(prev => {
+      const next = { ...prev, nameElements: [...prev.nameElements], lineGroups: prev.lineGroups.map(g => ({ ...g, elementIds: [...g.elementIds] })) };
+
+      // 1. Remove from source
+      if (sourceType === 'name') {
+        next.nameElements = next.nameElements.filter(id => id !== elementId);
+      } else if (sourceGroupId) {
+        next.lineGroups = next.lineGroups.map(g =>
+          g.id === sourceGroupId ? { ...g, elementIds: g.elementIds.filter(id => id !== elementId) } : g
+        );
+      }
+
+      // 2. Insert into target
+      if (targetType === 'name') {
+        if (targetElementId) {
+          const idx = next.nameElements.indexOf(targetElementId);
+          const insertIdx = position === 'after' ? idx + 1 : Math.max(0, idx);
+          next.nameElements.splice(insertIdx, 0, elementId);
+        } else {
+          next.nameElements.push(elementId);
+        }
+      } else if (targetType === 'title' && targetGroupId) {
+        next.lineGroups = next.lineGroups.map(g => {
+          if (g.id !== targetGroupId) return g;
+          const newIds = [...g.elementIds];
+          if (targetElementId) {
+            const idx = newIds.indexOf(targetElementId);
+            const insertIdx = position === 'after' ? idx + 1 : Math.max(0, idx);
+            newIds.splice(insertIdx, 0, elementId);
+          } else {
+            newIds.push(elementId);
+          }
+          return { ...g, elementIds: newIds };
+        });
+      }
+
+      return next;
+    });
+
+    setElementDrag(null);
+    setElementDragOver(null);
+  };
+
+  // Card drag handlers
+  const handleCardDragStart = (cardId: string) => {
+    setDraggedCard(cardId);
+  };
+
+  const handleCardDragOver = (e: React.DragEvent, cardId: string) => {
+    e.preventDefault();
+    if (draggedCard && draggedCard !== cardId) {
+      setDragOverCard(cardId);
+    }
+  };
+
+  const handleCardDrop = async (e: React.DragEvent, dropCardId: string) => {
+    e.preventDefault();
+
+    if (!draggedCard || draggedCard === dropCardId) {
+      setDraggedCard(null);
+      setDragOverCard(null);
+      return;
+    }
+
+    const newOrder = [...cardOrder];
+    const draggedIndex = newOrder.indexOf(draggedCard);
+    const dropIndex = newOrder.indexOf(dropCardId);
+
+    newOrder.splice(draggedIndex, 1);
+    newOrder.splice(dropIndex, 0, draggedCard);
+
+    setCardOrder(newOrder);
+    setDraggedCard(null);
+    setDragOverCard(null);
+
+    // Save to backend
+    try {
+      await apiFetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardOrder: newOrder })
+      });
+    } catch (error) {
+      console.error('Failed to save card order:', error);
+    }
+  };
+
+  const handleCardDragEnd = () => {
+    setDraggedCard(null);
+    setDragOverCard(null);
+  };
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Computed values (useMemo)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Compute ranked indexers for stats comparison dashboard
+  const rankedIndexers = useMemo(() => {
+    if (!statsData?.indexers) return [];
+    const allIndexers = Object.values(statsData.indexers) as any[];
+    if (allIndexers.length === 0) return [];
+
+    const qualified = allIndexers.filter((i: any) => i.totalQueries >= 5);
+    const unqualified = allIndexers.filter((i: any) => i.totalQueries < 5);
+
+    if (qualified.length === 0) {
+      const simple = allIndexers.map((i: any) => ({
+        ...i,
+        score: 0,
+        successRate: i.totalQueries > 0 ? Math.round((i.successfulQueries / i.totalQueries) * 100) : 0,
+        avgResultsPerQuery: i.totalQueries > 0 ? Math.round(i.totalResults / i.totalQueries) : 0,
+        qualified: false,
+      }));
+      return simple.sort((a: any, b: any) => b.totalQueries - a.totalQueries).map((i: any, idx: number) => ({ ...i, rank: idx + 1 }));
+    }
+
+    const maxAvgResults = Math.max(...qualified.map((i: any) => i.totalResults / i.totalQueries), 1);
+    const minResponseTime = Math.min(...qualified.map((i: any) => i.avgResponseTime || Infinity));
+    const maxGrabs = Math.max(...qualified.map((i: any) => i.totalGrabs || 0), 1);
+
+    const scored = qualified.map((i: any) => {
+      const successRate = i.successfulQueries / i.totalQueries;
+      const avgResults = i.totalResults / i.totalQueries;
+      const score = Math.round(
+        successRate * 40 +
+        (maxAvgResults > 0 ? (avgResults / maxAvgResults) * 25 : 0) +
+        (i.avgResponseTime > 0 ? (minResponseTime / i.avgResponseTime) * 20 : 0) +
+        (maxGrabs > 0 ? ((i.totalGrabs || 0) / maxGrabs) * 15 : 0)
+      );
+      return {
+        ...i,
+        score,
+        successRate: Math.round(successRate * 100),
+        avgResultsPerQuery: Math.round(avgResults),
+        qualified: true,
+      };
+    });
+
+    const unscored = unqualified.map((i: any) => ({
+      ...i,
+      score: -1,
+      successRate: i.totalQueries > 0 ? Math.round((i.successfulQueries / i.totalQueries) * 100) : 0,
+      avgResultsPerQuery: i.totalQueries > 0 ? Math.round(i.totalResults / i.totalQueries) : 0,
+      qualified: false,
+    }));
+
+    const sortKey = statsSortBy;
+    const dir = statsSortDir === 'desc' ? 1 : -1;
+    scored.sort((a: any, b: any) => {
+      if (sortKey === 'avgResponseTime') {
+        return dir * ((a[sortKey] || 0) - (b[sortKey] || 0));
+      }
+      return dir * ((b[sortKey] || 0) - (a[sortKey] || 0));
+    });
+
+    const ranked = scored.map((i: any, idx: number) => ({ ...i, rank: idx + 1 }));
+    const unranked = unscored.map((i: any) => ({ ...i, rank: null }));
+
+    return [...ranked, ...unranked];
+  }, [statsData, statsSortBy, statsSortDir]);
+
+  // Category award winners
+  const categoryAwards = useMemo(() => {
+    const qualified = rankedIndexers.filter((i: any) => i.qualified);
+    if (qualified.length === 0) return null;
+    return {
+      fastest: qualified.reduce((best: any, i: any) => (!best || i.avgResponseTime < best.avgResponseTime) ? i : best, null),
+      mostReliable: qualified.reduce((best: any, i: any) => (!best || i.successRate > best.successRate) ? i : best, null),
+      mostResults: qualified.reduce((best: any, i: any) => (!best || i.avgResultsPerQuery > best.avgResultsPerQuery) ? i : best, null),
+      mostPopular: qualified.reduce((best: any, i: any) => (!best || (i.totalGrabs || 0) > (best.totalGrabs || 0)) ? i : best, null),
+    };
+  }, [rankedIndexers]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PWA back-button sentinel-pushing setters
+  // ═══════════════════════════════════════════════════════════════════
+  // Each opened layer pushes one history sentinel at open-time so popstate
+  // can cascade-close one layer per back press without an in-handler push
+  // (which raced on mobile WebViews under rapid back presses).
+
+  const setActiveOverlayWithSentinel = useSentinelSetter(activeOverlay, setActiveOverlay, v => v !== null);
+  const setShowAddIndexerWithSentinel = useSentinelSetter(showAddIndexer, setShowAddIndexer, v => v === true);
+  const setExpandedIndexerWithSentinel = useSentinelSetter(expandedIndexer, setExpandedIndexer, v => v !== null);
+  const setSelectedSyncedIndexerWithSentinel = useSentinelSetter(selectedSyncedIndexer, setSelectedSyncedIndexer, v => v !== null);
+  const setDeleteConfirmationWithSentinel = useSentinelSetter(deleteConfirmation, setDeleteConfirmation, v => v.show);
+  const setZyclopsConfirmDialogWithSentinel = useSentinelSetter(zyclopsConfirmDialog, setZyclopsConfirmDialog, v => v.show);
+  const setSingleIpConfirmDialogWithSentinel = useSentinelSetter(singleIpConfirmDialog, setSingleIpConfirmDialog, v => v.show);
+  const setDirectModeWarningWithSentinel = useSentinelSetter(directModeWarning, setDirectModeWarning, v => v.show);
+  const setLibraryDeleteWarningWithSentinel = useSentinelSetter(libraryDeleteWarning, setLibraryDeleteWarning, v => v.show);
+  const setActiveTabWithSentinel = useSentinelSetter(activeTab, setActiveTab, v => v !== 'dashboard');
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Return everything the UI needs
+  // ═══════════════════════════════════════════════════════════════════
+
+  return {
+    // Config & loading
+    config, setConfig,
+    loading, setLoading,
+    addonEnabled, setAddonEnabled,
+    activeTab, setActiveTab: setActiveTabWithSentinel,
+
+    // Indexer management
+    showAddIndexer, setShowAddIndexer: setShowAddIndexerWithSentinel,
+    newIndexer, setNewIndexer,
+    selectedPreset, setSelectedPreset,
+    editForm, setEditForm,
+    capsLoading, setCapsLoading,
+    expandedIndexer, setExpandedIndexer: setExpandedIndexerWithSentinel,
+    draggedIndexer, setDraggedIndexer,
+    dragOverIndexer, setDragOverIndexer,
+    pendingSave, setPendingSave,
+    testResults, setTestResults,
+    testQuery, setTestQuery,
+    deleteConfirmation, setDeleteConfirmation: setDeleteConfirmationWithSentinel,
+    directModeWarning, setDirectModeWarning: setDirectModeWarningWithSentinel,
+    libraryDeleteWarning, setLibraryDeleteWarning: setLibraryDeleteWarningWithSentinel,
+    activeOverlay, setActiveOverlay: setActiveOverlayWithSentinel,
+    failedLogos, setFailedLogos,
+    showApiKey, setShowApiKey,
+
+    // Cache
+    cacheTTL, setCacheTTL,
+
+    // Streaming & index manager
+    streamingMode, setStreamingMode,
+    indexManager, setIndexManager,
+
+    // Proxy
+    proxyMode, setProxyMode,
+    proxyUrl, setProxyUrl,
+    proxyStatus, setProxyStatus,
+    proxyIp, setProxyIp,
+    localIp, setLocalIp,
+    proxyIndexers, setProxyIndexers,
+
+    // Search config
+    tmdbApiKey, setTmdbApiKey,
+    tvdbApiKey, setTvdbApiKey,
+    includeSeasonPacks, setIncludeSeasonPacks,
+    includeMultiSeasonPacks, setIncludeMultiSeasonPacks,
+    seriesPackKeywords, setSeriesPackKeywords,
+    seriesPackPagination, setSeriesPackPagination,
+    seriesPackAdditionalPages, setSeriesPackAdditionalPages,
+    seasonPackPagination, setSeasonPackPagination,
+    seasonPackAdditionalPages, setSeasonPackAdditionalPages,
+    indexerPriorityDedup, setIndexerPriorityDedup,
+    urlDedup, setUrlDedup,
+    junkFilter, setJunkFilter,
+    librarySearchThreshold, setLibrarySearchThreshold,
+    libraryApplyToMovies, setLibraryApplyToMovies,
+    libraryApplyToSeries, setLibraryApplyToSeries,
+    librarySearchScanUncategorized, setLibrarySearchScanUncategorized,
+    libraryRunOnCacheHit, setLibraryRunOnCacheHit,
+    displayLibraryInResults, setDisplayLibraryInResults,
+    libraryDeleteAllTile, setLibraryDeleteAllTile,
+    libraryDeletePerStreamTile, setLibraryDeletePerStreamTile,
+    librarySkipTilePosition, setLibrarySkipTilePosition,
+    libraryDeleteAllPackScope, setLibraryDeleteAllPackScope,
+    absoluteEpisodeFallback, setAbsoluteEpisodeFallback,
+    parallelAlternateTitleSearch, setParallelAlternateTitleSearch,
+    aliasTitleFallback, setAliasTitleFallback,
+    tvdbPreferEnglishTitle, setTvdbPreferEnglishTitle,
+    cacheEmptyResults, setCacheEmptyResults,
+    indexerPriority, setIndexerPriority,
+    dedupDraggedItem, setDedupDraggedItem,
+    dedupDragOverItem, setDedupDragOverItem,
+    tmdbKeyStatus, setTmdbKeyStatus,
+    tvdbKeyStatus, setTvdbKeyStatus,
+    showTmdbKey, setShowTmdbKey,
+    showTvdbKey, setShowTvdbKey,
+    showProwlarrKey, setShowProwlarrKey,
+    showNzbhydraKey, setShowNzbhydraKey,
+    showNzbhydraPassword, setShowNzbhydraPassword,
+
+    // Prowlarr / NZBHydra
+    prowlarrUrl, setProwlarrUrl,
+    prowlarrApiKey, setProwlarrApiKey,
+    prowlarrTimeoutEnabled, setProwlarrTimeoutEnabled,
+    prowlarrTimeout, setProwlarrTimeout,
+    nzbhydraUrl, setNzbhydraUrl,
+    nzbhydraApiKey, setNzbhydraApiKey,
+    nzbhydraUsername, setNzbhydraUsername,
+    nzbhydraPassword, setNzbhydraPassword,
+    nzbhydraTimeoutEnabled, setNzbhydraTimeoutEnabled,
+    nzbhydraTimeout, setNzbhydraTimeout,
+
+    // NzbDAV
+    nzbdavUrl, setNzbdavUrl,
+    nzbdavApiKey, setNzbdavApiKey,
+    nzbdavWebdavUrl, setNzbdavWebdavUrl,
+    nzbdavWebdavUser, setNzbdavWebdavUser,
+    nzbdavWebdavPassword, setNzbdavWebdavPassword,
+    nzbdavMoviesCategory, setNzbdavMoviesCategory,
+    nzbdavTvCategory, setNzbdavTvCategory,
+    nzbdavCacheTimeouts, setNzbdavCacheTimeouts,
+    filterDeadNzbs, setFilterDeadNzbs,
+    nzbdavStreamBufferMB, setNzbdavStreamBufferMB,
+    nzbdavPipeBufferMB, setNzbdavPipeBufferMB,
+    nzbdavStreamingMethod, setNzbdavStreamingMethod,
+    healthyNzbDbMode, setHealthyNzbDbMode,
+    healthyNzbDbTTL, setHealthyNzbDbTTL,
+    healthyNzbDbMaxSizeMB, setHealthyNzbDbMaxSizeMB,
+    deadNzbDbMode, setDeadNzbDbMode,
+    deadNzbDbTTL, setDeadNzbDbTTL,
+    deadNzbDbMaxSizeMB, setDeadNzbDbMaxSizeMB,
+    nzbdavConnectionStatus, setNzbdavConnectionStatus,
+    nzbdavTestNzbStatus, setNzbdavTestNzbStatus,
+    nzbdavTestNzbMessage, setNzbdavTestNzbMessage,
+
+    // EasyNews
+    easynewsEnabled, setEasynewsEnabled,
+    easynewsUsername, setEasynewsUsername,
+    easynewsPassword, setEasynewsPassword,
+    easynewsPagination, setEasynewsPagination,
+    easynewsMaxPages, setEasynewsMaxPages,
+    easynewsTimeoutEnabled, setEasynewsTimeoutEnabled,
+    easynewsTimeout, setEasynewsTimeout,
+    easynewsMode, setEasynewsMode,
+    easynewsHealthCheck, setEasynewsHealthCheck,
+    showEasynewsPassword, setShowEasynewsPassword,
+    easynewsTestStatus, setEasynewsTestStatus,
+    easynewsTestMessage, setEasynewsTestMessage,
+
+    // Zyclops
+    zyclopsEndpoint, setZyclopsEndpoint,
+    zyclopsTestStatus, setZyclopsTestStatus,
+    zyclopsTestMessage, setZyclopsTestMessage,
+    zyclopsConfirmDialog, setZyclopsConfirmDialog: setZyclopsConfirmDialogWithSentinel,
+    singleIpConfirmDialog, setSingleIpConfirmDialog: setSingleIpConfirmDialogWithSentinel,
+    zyclopsInflightToggle, setZyclopsInflightToggle,
+
+    // User agents
+    defaultChromeUA,
+    userAgents, setUserAgents,
+
+    // Filters
+    filters, setFilters,
+    movieFilters, setMovieFilters,
+    tvFilters, setTvFilters,
+
+    // Stats
+    statsData, setStatsData,
+    statsLoading, setStatsLoading,
+    statsSortBy, setStatsSortBy,
+    statsSortDir, setStatsSortDir,
+    statsExpandedIndexer, setStatsExpandedIndexer,
+
+    // Ultimate-Fallback
+    ultimateFallback, setUltimateFallback,
+
+    // Health checks
+    healthChecks, setHealthChecks,
+    syncedIndexers, setSyncedIndexers,
+    syncStatus, setSyncStatus,
+    syncMessage, setSyncMessage,
+    selectedSyncedIndexer, setSelectedSyncedIndexer: setSelectedSyncedIndexerWithSentinel,
+
+    // Auto play
+    autoPlay, setAutoPlay,
+
+    // Stream display
+    streamDisplayConfig, setStreamDisplayConfig,
+    emojiPickerTarget, setEmojiPickerTarget,
+    emojiSearch, setEmojiSearch,
+    elementDrag, setElementDrag,
+    elementDragOver, setElementDragOver,
+    draggedLineGroup, setDraggedLineGroup,
+    dragOverLineGroup, setDragOverLineGroup,
+
+    // Dashboard card order
+    cardOrder, setCardOrder,
+    draggedCard, setDraggedCard,
+    dragOverCard, setDragOverCard,
+
+    // Computed
+    rankedIndexers,
+    categoryAwards,
+
+    // Refs
+    initialLoadDone,
+
+    // Functions
+    fetchConfig,
+    fetchStats,
+    fetchIndexers,
+    fetchLocalIp,
+    checkProxyStatus,
+    checkNzbdavConnection,
+    sendNzbdavTestNzb,
+    testTmdbKey,
+    testTvdbKey,
+    handleElementDrop,
+    handleCardDragStart,
+    handleCardDragOver,
+    handleCardDrop,
+    handleCardDragEnd,
+    saveSettings,
+
+    // Utilities re-exported for convenience
+    formatTTL,
+    decomposeTTL,
+    composeTTL,
+  };
+}

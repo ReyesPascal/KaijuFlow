@@ -1,0 +1,104 @@
+{
+  "status": "validated-import-snapshot",
+  "upstream_commit": "499efbdeb631b1b059f8aa70d07c12beaf504876",
+  "pre_import_main_commit": "1d35e9088f7abb5a8b907605b4b06a8960557540",
+  "archive_branch": "archive/pre-upstream-import",
+  "archive_verified_on_github": true,
+  "import_branch": "import/upstream-v1.4.1",
+  "archive_sha256": "391c57b6dc6219a20c23df453ab7921bd3a1a6d6c8b2ef6abd7a5d4ec8f95c72",
+  "files_verified": 192,
+  "bytes_verified": 12132917,
+  "binary_assets_verified": 14,
+  "binary_types": {
+    "mp4": 5,
+    "pdf": 3,
+    "png": 5,
+    "ico": 1
+  },
+  "all_original_executable_bits_verified": true,
+  "path_mappings": {
+    "README.md": "docs/upstream/README.v1.4.1.md",
+    "LICENSE": "LICENSE",
+    "all_other_original_paths": "unchanged"
+  },
+  "licenses": {
+    "LICENSE": "5bc411160a82a757d004b351a290be3913320707",
+    "docs/kaijuflow/LICENSE.ReyesPascal": "e105fc9452829c8f8308ca1407626209ac892da9"
+  },
+  "final_project_file_count": 200,
+  "security_scan": {
+    "method": "Eight credential/private-key pattern families across final source and documentation bytes, plus manual review of flagged assignments and env template",
+    "token_or_private_key_matches": 0,
+    "flagged_assignment_lines_reviewed": 34,
+    "review_result": "Only runtime references, generated tokens, UI fields, placeholders, and non-credential strings; no credential identified",
+    "private_configuration_files_present": false,
+    "scope": "Final 200-file snapshot; excludes archive/history and dependency directories; not a dependency vulnerability audit"
+  },
+  "builds": {
+    "recorded_at_utc": "2026-11-07T07:47:12.783682+00:00",
+    "checks": [
+      {
+        "component": "backend",
+        "step": "install",
+        "command": [
+          "npm",
+          "ci",
+          "--no-audit",
+          "--no-fund"
+        ],
+        "exit_code": 0
+      },
+      {
+        "component": "backend",
+        "step": "build",
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "exit_code": 0
+      },
+      {
+        "component": "frontend",
+        "step": "install",
+        "command": [
+          "npm",
+          "ci",
+          "--no-audit",
+          "--no-fund"
+        ],
+        "exit_code": 0
+      },
+      {
+        "component": "frontend",
+        "step": "build",
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "exit_code": 0
+      }
+    ],
+    "source_files_reverified_after_builds": 192,
+    "result": "PASS",
+    "non_fatal_warnings": [
+      "Outdated Browserslist data",
+      "Deprecated upstream dependencies including glob@11.1.0; dependency security review pending Phase B"
+    ]
+  },
+  "publication": {
+    "branch": "import/upstream-v1.4.1",
+    "base_commit": "1d35e9088f7abb5a8b907605b4b06a8960557540",
+    "review_target": "main",
+    "automatic_merge": false,
+    "snapshot_commit_identification": "Git history and the PR containing this checkpoint"
+  },
+  "production_access": "NONE",
+  "toolchain_verified": {
+    "node": "v22.22.1",
+    "npm": "9.2.0",
+    "upstream_docker_node_major": 20,
+    "node20_build_not_run": true
+  }
+}
