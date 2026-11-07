@@ -1,3 +1,31 @@
+# ACTIVE NEXT-SESSION HANDOFF — finish remaining A4 quickly (2026-11-07)
+
+**User direction:** Focus exclusively on completing and validating the remaining KaijuFlow A4 work as efficiently as safely possible. Do not surface or carry forward previously discussed optional architecture concepts in progress reports, priorities or future-session prompts. Historical handoffs below are retained only as provenance; this section overrides them.
+
+## Independently verified current GitHub state
+- PR #1 open/unmerged: `import/upstream-v1.4.1@c83a3c733b6394eb140a1c0a1dc500010a9f22e5`, targeting unchanged `main@1d35e9088f7abb5a8b907605b4b06a8960557540`.
+- PR #3 open/draft/unmerged: `audit/node20-a3-baseline@3021941c86afed3b31026683feda4490c128cf52` when checked; new documentation commit will advance this head.
+- On that audit head, evidence index [42368490168](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42368490168) PASS and Node20 build [42368490167](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42368490167) PASS. A4 [42368490134](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42368490134) FAILED as expected due to original behavioral safety invariants. Do not treat intentionally red tests as environment-isolation failure; inspect logs if outcomes change.
+- Immutable original source retained; all changes are audit/test/docs/evidence only.
+
+## Completed — do not repeat
+- A4-ISO-000 fail-closed disposable namespace/egress denial; JWT/auth A4-HTTP-001; Stremio SDK route A4-SDK-002; backend sequential settings subcase.
+- Expanded A4-DELETE-003 tests: path traversal, bad packs/envelopes, invalid manifest, concurrency executed. **Two original defects remain test-observed and intentionally RED:** destructive HEAD; unsuccessful WebDAV DELETE marked deduplicated for immediate replay.
+- Actual original `useAppConfig` React hook executed under isolated CI [42368292063](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42368292063): 300ms debounce PASS; HTTP 500 and rejected transport response retain local edits PASS; **response-order safety invariant FAIL** — old successful PUT response overwrites shared `config` with stale cacheTTL=9300 after newer 9400, while local edit remains 9400. This is verified synthetic client-state behavior, not proof of server persistence order. [Finding](../../../evidence/findings/F-KF-A4-AUTOSAVE-001.md), evidence IDs `EV-KF-A4-REACT-004`, `CL-KF-A4-REACT-RACE-004`, `ART-KF-A4-REACT-004`. Do not rebuild or rerun solved static A3/import for redundancy.
+
+## Fastest safe next sequence
+1. Extend current isolated `tests/a4/synthetic.mjs` with **delete-all 503 replay** using fake localhost WebDAV. Distinguish expected red source behavior from fixture failures; record request count and auth/validation boundaries.
+2. Add **provider CRUD/reorder + synced-indexer** synthetic fixtures against original compiled handlers, while preserving existing fail-closed gate.
+3. Add **Smart/Fixed and provider NNTP** fixtures using fake Article/STAT responses and invented test credentials; no external host connections.
+4. Add **archive/yEnc** synthetic fixtures and **NzbDAV HTTP Range 200/206/416, cache, fallback/proxy** cases. Prefer compact bounded increments, one committed checkpoint per tested group.
+5. Check new-head CI and exact job logs after changes; write source-pinned results to `docs/kaijuflow/audit/` and evidence-index JSONL, run validator, leave failures visibly red. Update Issue #2 with each verified gate. Keep a fresh top-of-file handoff and exact resume prompt.
+
+**Safety:** Never change original `src/` or `ui/src/`, working Brain production, containers, volumes, secrets, credentials or networking. No live NZBs, provider connections, PR merges, force pushes, or production deployment. Separate source fixes require approval.
+
+**Resume prompt:** Resume KaijuFlow from Issue #2 and the top of `docs/kaijuflow/audit/NEXT_SESSION.md`. Verify audit head/CI; continue A4 delete-all 503 replay, then provider/sync, Smart/Fixed NNTP, archive/yEnc, Range/cache/fallback in isolated synthetic CI. Move quickly, use incremental verified GitHub checkpoints, keep original source and production unchanged and both PRs unmerged. Do not redo completed A3 or React work.
+
+---
+
 # CURRENT A4 CHECKPOINT — actual React hook race independently reproduced (2026-11-07)
 
 - **Executed** actual original React `useAppConfig` under disposable, fail-closed network namespace in [GitHub Actions run 42368292063](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42368292063), job `128390937109`. Original source SHA256 before/after unchanged.
