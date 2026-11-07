@@ -1,3 +1,17 @@
+# VERIFIED A4 CI CHECKPOINT — November 7, 2026
+
+The latest independently reviewed isolated A4 run is [42370377554](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42370377554), job `128397091476` at audit commit `17822864583a09917b65c46aaaeae02b67e9e1e6`. Permanent [case-by-case report](A4-CI-VERIFIED-2026-11-07.md).
+
+- **15 backend PASS, 2 deliberately RED**: full synthetic provider CRUD, indexer CRUD, synced indexers, fake NNTP handshake, STAT fallback, archive grouping, yEnc, Range/proxy, cache, health sampling, auth/SDK and backend settings all executed successfully. Single-delete and delete-all 503/HEAD behavior faults remain red.
+- **React 3 PASS / 1 intentionally RED**: debounce, HTTP 500, transport error pass; older success response overwrites newer shared config.
+- A4 isolation gate remained PASS with no network egress and source SHA-256 unchanged. Evidence-index CI passed for preceding head [42370377549](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42370377549). Recheck CI on new documentation commits.
+- The earlier duplicate `registerDeleteAllTargets` declaration in our added test was caught by isolated run 42370253462; corrected audit-only by `17822864`. Do not claim the earlier syntax-failing run executed backend synthetic assertions.
+- Both PR #1 and draft PR #3 remain unmerged. Neither original application source nor Brain production changed.
+
+**Next action:** Confirm fresh head CI and validator, avoid repeating settled fixtures, triage the three original behavior defects as owner-approval-required source fixes, and plan missing broader integration/performance coverage separately. There is no claim of full A4 production parity or live 4K verification. Keep original source immutable until user authorizes fixes.
+
+---
+
 # ACTIVE A4 CHECKPOINT — executed new tests (2026-11-07)
 
 **Source of truth:** [A4 additional synthetic CI report](A4-ADDITIONAL-SYNTHETIC-2026-11-07.md). Audit-only code head `1699e435af9a41f7f0f243a652fcc5def1a798dd` was independently executed in GitHub Actions [A4 42369608369](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42369608369): **six synthetic.mjs cases PASS, two FAIL desired safety invariants** (single delete and delete-all). Separate original React stale-autosave success response remains intentionally RED, previously verified. Node20 [42369608375](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42369608375) PASS; evidence validator [42369608614](https://github.com/ReyesPascal/KaijuFlow/actions/runs/42369608614) PASS. Recheck CI after this documentation commit.
