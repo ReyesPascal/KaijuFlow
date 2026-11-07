@@ -1,3 +1,29 @@
+# KaijuFlow — latest handoff: A3-ROUTE-001 source audit started
+
+**Update:** 2026-11-07. This top section **supersedes the previous "not yet started" task status** preserved below. GitHub Issue #2 and PR #3 are authoritative for current heads and CI. Do not repeat completed tasks.
+
+## Newly completed during this session
+
+1. Re-verified both private repositories and PRs: `main@1d35e9088f7abb5a8b907605b4b06a8960557540`, import `c83a3c733b6394eb140a1c0a1dc500010a9f22e5`, draft audit PR #3 initially `26c7de7cd8d564dc3c51c4cb4d1718b1782406cf`; both PR #1 and PR #3 remain **open and unmerged**. Node 20 and evidence CI at initial head PASS; recheck latest audit CI after new commits.
+2. **Stage 0 checkout established:** separate private authenticated clone detached at immutable import SHA; Git clean, exactly 200 tracked source files. Root lock SHA-256 `54c88ad99a24af5f0839ad6791eb965faad6c67d8a09a3763c9220008900ea0b`; UI lock SHA-256 `24adc3cc32afd193a7827186fe95a2dc45b28fcf9f0a02b7f9176ae0dc3bd1a0`. Git 2.53.0 / Node 22.22.1 / npm 9.2.0 on host. **No app started; network isolation gate pending for runtime**. No production change.
+3. Read-only Brain status: existing Usenet Ultimate healthy; NzbDAV and Manifexus running. No production process, credential, container or network mutation.
+4. Both existing agents discovered on Brain: Claude Code 2.1.319 and Codex CLI 0.167.0. A **47-file original-source-only** scratch snapshot was created outside working deployment, without audit docs, Git history, credentials or unrelated material. Codex performed a bounded `--sandbox read-only --ephemeral` three-file auth chain spot review that agreed with independent pinned source fetch. It did not write or call services; Claude not run.
+5. **Delivered [A3-ROUTE-001](A3-ROUTE-001.md)**: first-pass 63 explicit route declarations, 21 representative UI/action chains, guard/mount order, cross-references and unknowns. Includes source-observed GET-based WebDAV delete flows, JWT query-token SSE and protected config reads. These are **source facts, not test-confirmed vulnerabilities or runtime parity**.
+6. Evidence index updated: `EV-KF-STAGE0-001`, `EV-KF-A3-ROUTE-001`; `CL-KF-STAGE0-CHECKOUT-001`, `CL-KF-A3-ROUTE-001`, `CL-KF-A3-GET-DELETE-001`; six subsystem records cross-link route evidence. Canonical [index](../../../evidence/README.md) updated.
+
+## First actions next session
+
+- Verify the **latest PR #3 head and CI** (Node 20 baseline + evidence-index validator); if validation fails, diagnose the specific new evidence record rather than repeating builds or source import.
+- Run the saved `tools/audit/validate_index.py` against the audit branch if CI cannot verify it; retain result in a new evidence entry, without touching production.
+- Continue A3 as `A3-ROUTE-002`: TypeScript AST-confirmed `ui/src` fetch/callback graph and Stremio SDK/Express route methods. **Do not claim complete UI coverage from the first-pass table**. Trace durable config writes and file/cache mutation paths before any isolated runtime boot.
+- Keep helper agents on source-only sanitized materials, without access to unrelated audit tooling or directories. Use Codex for mechanical graph extraction, Claude Sonnet at Medium effort if available for independent review. Do not delegate specialized artifact analysis to them.
+- Build network-restricted synthetic A4 fixtures for manifest-key and WebDAV-delete flows, query-token SSE, Smart/Fixed verification and `200/206/416` Range/fallback; live streaming and 4K benchmarks remain deferred.
+- No PR merges, force-push, production deployment or Brain container changes. Original source bytes and rollback branch are preserved.
+
+---
+
+## Previous checkpoint (historical)
+
 # KaijuFlow — next session: begin A3 analysis
 
 **Checkpoint date:** 2026-11-07
