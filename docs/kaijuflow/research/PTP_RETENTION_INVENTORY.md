@@ -1,6 +1,6 @@
 # PTP retention inventory for Jetstream
 
-Research date: 2026-11-07. Read-only source inspection of **source-1.0.2.1 @ fbf14f6e77f3cfc7a26b1004662d868a5a517a85**. This inventory supports a Jetstream rebuild around useful PTP playback pieces, Fusion as design reference, and KaijuFlow integration. It makes no owner retention decisions and proposes no KaijuNNTP or Brain architecture. No builds, execution of repository software, host/device access, deployment, or remote changes occurred.
+Research date: 2026-11-07. Read-only source inspection of **source-1.0.2.1 @ fbf14f6e77f3cfc7a26b1004662d868a5a517a85**. This inventory supports a Jetstream rebuild around useful PTP playback pieces, Fusion as design reference, and KaijuFlow integration. It makes no owner retention decisions and proposes no KaijuNNTP or Brain architecture. No builds, execution of repository software, host/device access, deployment, or application-source changes occurred. Publication is limited to this research report on a private documentation branch.
 
 ## Baseline and instructions
 
