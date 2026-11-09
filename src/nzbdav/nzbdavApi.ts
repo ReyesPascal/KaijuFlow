@@ -81,15 +81,12 @@ export async function grabNzb(
 
     if (!nzbResponse.ok) {
       const status = `${nzbResponse.status} ${nzbResponse.statusText}`.trim();
+      const message = `Failed to download NZB from ${indexerForLog}: ${status}`;
       // Rate limit, server error or refused credentials: the indexer is unavailable to us,
       // the Source is not bad (ADR 0004, #51). Any other 4xx (404, 410) means the link is gone.
-      if (nzbResponse.status === 429 || nzbResponse.status >= 500) {
-        throw new Error(`Failed to download NZB from ${indexerForLog}: ${status} (indexer unavailable, Source kept)`);
-      }
-      if (nzbResponse.status === 401 || nzbResponse.status === 403) {
-        throw new Error(`Indexer ${indexerForLog} refused the NZB download: ${status} (check its API key; Source kept)`);
-      }
-      throw nzbdavError(`Failed to download NZB from ${indexerForLog}: ${status}`);
+      if (nzbResponse.status === 429 || nzbResponse.status >= 500) throw new Error(`${message} (indexer unavailable, Source kept)`);
+      if (nzbResponse.status === 401 || nzbResponse.status === 403) throw new Error(`${message} (indexer refused us, check its API key; Source kept)`);
+      throw nzbdavError(message);
     }
 
     nzbContent = await nzbResponse.text();

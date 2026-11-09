@@ -190,12 +190,31 @@ export class WebDav404Error extends Error {
 
 /**
  * True for a dead-mark message written when the indexer did not hand over the
- * NZB (rate limit, server error, network error, download timeout). Such a mark
+ * NZB (rate limit, server error, refused credentials, network error, download
+ * timeout). Such a mark
  * says nothing about the Source (ADR 0004, #51); the dead cache drops it on
  * load. Bad-content messages (invalid NZB, indexer error payload) stay.
  */
 export function isIndexerUnavailableMessage(message: string): boolean {
-  return /^Failed to download NZB from .+: (429|5\d\d)\b/.test(message)
+  return /^Failed to download NZB from .+: (429|401|403|5\d\d)\b/.test(message)
     || /^NZB download failed for /.test(message)
     || /^NZB download timed out after /.test(message);
+}
+
+/**
+ * Split stored dead marks into the ones to keep and the ones an unavailable
+ * indexer caused (429, 5xx, refused credentials, network error, timeout on the
+ * NZB grab). Earlier builds wrote those as Source failures; they say nothing
+ * about the Source, so they are dropped on load (ADR 0004, #51).
+ */
+export function pruneIndexerUnavailableMarks<T extends { error?: { message?: string } }>(
+  stored: Record<string, T>,
+): { kept: Record<string, T>; dropped: string[] } {
+  const kept: Record<string, T> = {};
+  const dropped: string[] = [];
+  for (const [key, entry] of Object.entries(stored)) {
+    if (isIndexerUnavailableMessage(entry.error?.message ?? '')) dropped.push(key);
+    else kept[key] = entry;
+  }
+  return { kept, dropped };
 }

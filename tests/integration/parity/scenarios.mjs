@@ -202,13 +202,15 @@ const failureScenarios = [
       const media = mediaFor('ratelimited');
       const title = 'KaijuFlow.Parity.RateLimited.2026.1080p.WEB-DL.H264';
       const nzb = backend.addMovie('ratelimited', title, media);
-      backend.setIndexerDown(429);
-      try {
-        assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
-      } finally {
-        backend.setIndexerDown(0);
+      for (const status of [429, 503]) {
+        backend.setIndexerDown(status);
+        try {
+          assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
+        } finally {
+          backend.setIndexerDown(0);
+        }
+        assert.equal(backend.submitsFor('ratelimited'), 0, `nothing should reach the Backend without an NZB (indexer ${status})`);
       }
-      assert.equal(backend.submitsFor('ratelimited'), 0, 'nothing should reach the Backend without an NZB');
       const r = await play(streamUrl(kaijuflow, nzb, title));
       assert.equal(r.status, 200, 'the Source should play once the indexer answers again');
       assertBytes(r.body, media);

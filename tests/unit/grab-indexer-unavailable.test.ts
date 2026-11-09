@@ -7,7 +7,8 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { grabNzb } from '../../src/nzbdav/nzbdavApi.ts';
-import { isIndexerUnavailableMessage } from '../../src/nzbdav/utils.ts';
+import { isIndexerUnavailableMessage, pruneIndexerUnavailableMarks } from '../../src/nzbdav/utils.ts';
+import { captureLogs } from './capture-logs.ts';
 import { isSourceFailure } from '../../src/backends/types.ts';
 
 const VALID_NZB = `<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"><file subject="&quot;a.mkv&quot;"><segments><segment bytes="1" number="1">a@fake</segment></segments></file></nzb>`;
@@ -27,15 +28,24 @@ const base = `http://127.0.0.1:${(indexer.address() as { port: number }).port}`;
 after(() => indexer.close());
 
 let n = 0;
-const grab = (path: string) => grabNzb(`${base}${path}?n=${++n}`, `Grab Test ${n}`, undefined, '', 'FakeIndexer');
+/** Grab with the console captured (the grab logs every step). Returns the NZB text or the error. */
+async function grab(url: string): Promise<{ nzb?: string; err?: Error; logs: string }> {
+  let nzb: string | undefined, err: Error | undefined;
+  const logs = await captureLogs(async () => {
+    try { nzb = await grabNzb(url, `Grab Test ${n}`, undefined, '', 'FakeIndexer'); } catch (e) { err = e as Error; }
+  });
+  return { nzb, err, logs };
+}
+const grabPath = (path: string) => grab(`${base}${path}?n=${++n}`);
 
 async function failure(path: string): Promise<Error> {
-  try { await grab(path); } catch (err) { return err as Error; }
-  assert.fail(`${path} should have thrown`);
+  const { err } = await grabPath(path);
+  assert.ok(err, `${path} should have thrown`);
+  return err;
 }
 
 test('a good NZB comes back as text', async () => {
-  assert.equal(await grab('/ok'), VALID_NZB);
+  assert.equal((await grabPath('/ok')).nzb, VALID_NZB);
 });
 
 test('indexer 429: a plain error, not a Source failure', async () => {
@@ -55,10 +65,10 @@ test('indexer unreachable: a plain error, not a Source failure', async () => {
   await new Promise<void>(r => closed.listen(0, '127.0.0.1', () => r()));
   const port = (closed.address() as { port: number }).port;
   await new Promise<void>(r => closed.close(() => r()));
-  let err: Error | undefined;
-  try { await grabNzb(`http://127.0.0.1:${port}/x.nzb`, 'Unreachable', undefined, '', 'FakeIndexer'); } catch (e) { err = e as Error; }
+  const { err } = await grab(`http://127.0.0.1:${port}/x.nzb`);
   assert.ok(err, 'should have thrown');
   assert.equal(isSourceFailure(err), false, err.message);
+  assert.match(err.message, /FakeIndexer/, 'the error names the indexer');
 });
 
 test('a body that is not an NZB is still a Source failure', async () => {
@@ -73,11 +83,13 @@ test('an indexer error payload is still a Source failure', async () => {
 });
 
 test('stored dead marks from an unavailable indexer are recognised, bad-Source ones are not', () => {
-  // Messages as written by earlier KaijuFlow/UU builds into dead-nzbs.json.
+  // Messages as earlier builds wrote them into dead-nzbs.json (the first three are
+  // the owner's config on 2026-11-09: 45 × 429, 30 × 500, 5 × fetch failed).
   for (const m of [
     'Failed to download NZB from altHUB: 429 Too Many Requests',
-    'Failed to download NZB from NinjaCentral: 502 Bad Gateway',
+    'Failed to download NZB from EasyNews: 500 Internal Server Error',
     'NZB download failed for DrunkenSlug: fetch failed',
+    'Failed to download NZB from NinjaCentral: 403 Forbidden',
     'NZB download timed out after 30s for altHUB',
   ]) assert.equal(isIndexerUnavailableMessage(m), true, m);
   for (const m of [
@@ -88,4 +100,19 @@ test('stored dead marks from an unavailable indexer are recognised, bad-Source o
     'AltMount could not process the Source: {"error":{"code":"INTERNAL_SERVER_ERROR"}}',
     'Failed to download NZB from altHUB: 404 Not Found',
   ]) assert.equal(isIndexerUnavailableMessage(m), false, m);
+});
+
+test('loading the dead cache drops the indexer-caused marks and keeps the rest', () => {
+  const mark = (message: string) => ({ title: 't', indexerName: 'x', error: { message, isNzbdavFailure: true }, createdAt: 1, expiresAt: 0 });
+  const stored = {
+    'https://api.althub.co.za/getnzb/a.nzb': mark('Failed to download NZB from altHUB: 429 Too Many Requests'),
+    'http://localhost:1337/u/easynews/nzb?hash=b': mark('Failed to download NZB from EasyNews: 500 Internal Server Error'),
+    'https://drunkenslug.com/getnzb/c.nzb::S02E03': mark('NZB download failed for DrunkenSlug: fetch failed'),
+    'https://ninjacentral.co.za/getnzb/d.nzb': mark('NZBDav download failed: Article with message-id x@y not found.'),
+    'https://ninjacentral.co.za/getnzb/e.nzb': mark('Health check: blocked'),
+    'https://ninjacentral.co.za/getnzb/f.nzb': mark('Invalid NZB content received (120 bytes)'),
+  };
+  const { kept, dropped } = pruneIndexerUnavailableMarks(stored);
+  assert.deepEqual(dropped.sort(), ['http://localhost:1337/u/easynews/nzb?hash=b', 'https://api.althub.co.za/getnzb/a.nzb', 'https://drunkenslug.com/getnzb/c.nzb::S02E03']);
+  assert.deepEqual(Object.keys(kept).sort(), ['https://ninjacentral.co.za/getnzb/d.nzb', 'https://ninjacentral.co.za/getnzb/e.nzb', 'https://ninjacentral.co.za/getnzb/f.nzb']);
 });
