@@ -12,8 +12,7 @@
 import { config as globalConfig } from '../config/index.js';
 import { createHash } from 'node:crypto';
 import { grabNzb } from '../nzbdav/nzbdavApi.js';
-import { nzbdavError } from '../nzbdav/utils.js';
-import { PrepareCancelledError, isSourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
+import { PrepareCancelledError, isSourceFailure, sourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
 
 const TEST_CONNECTION_TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 10_000;
@@ -65,11 +64,16 @@ async function testAltmountConnection(settings: AltmountSettings): Promise<Backe
       body: form,
       signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
     });
+    // Handler order (AltMount v0.4.0): integration off -> 404, config not loaded -> 503,
+    // bad key -> 401, no NZB in the request -> 400 (key accepted, nothing queued).
     if (res.status === 401 || res.status === 403) {
       return fail(502, 'AltMount rejected the API key - check the key');
     }
+    if (res.status === 503) {
+      return fail(502, 'AltMount not ready (configuration not loaded) - try again in a moment');
+    }
     const text = (await res.text().catch(() => '')).slice(0, 300);
-    if (res.status === 404 || res.status === 503 || /stremio|integration|disabled/i.test(text)) {
+    if (res.status === 404 && /stremio integration is disabled/i.test(text)) {
       return fail(502, 'AltMount Stremio integration is turned off - enable it in AltMount settings');
     }
     if (res.status === 400 || res.status === 422 || res.ok) {
@@ -85,6 +89,12 @@ async function testAltmountConnection(settings: AltmountSettings): Promise<Backe
 const downloadKey = (apiKey: string) => createHash('sha256').update(apiKey).digest('hex');
 
 const configError = (what: string) => new Error(`AltMount ${what} is not set - check AltMount settings`);
+
+/** AltMount 500 answers that say AltMount had a problem, not that the Source failed. */
+const BACKEND_SIDE_500 = /failed to check queue status|queue item not found|failed to list output media files|failed to fetch completed item|progress broadcaster closed unexpectedly|failed to open uploaded file|failed to read uploaded file/i;
+
+/** Ready means streamable or completed, or a reused completed entry. */
+const isReady = (e: StreamsEntry) => e._cached === true || e._queue_status === 'streamable' || e._queue_status === 'completed';
 
 interface StreamsEntry { url?: string; _queue_item_id?: string | number; _queue_status?: string; _cached?: boolean }
 
@@ -147,7 +157,9 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
     async prepare(source, opts = {}) {
       const { logPrefix = '', timeoutMs = 0, onJob, isCancelled } = opts;
       if (!settings.apiKey) throw configError('API key');
-      const waitSec = timeoutMs > 0 ? Math.max(1, Math.ceil(timeoutMs / 1000)) : Math.max(1, settings.prepareTimeoutSec ?? 300);
+      // The setting is the ceiling; a shorter attempt budget from the caller wins.
+      const settingSec = Math.max(1, settings.prepareTimeoutSec ?? 300);
+      const waitSec = timeoutMs > 0 ? Math.min(settingSec, Math.max(1, Math.ceil(timeoutMs / 1000))) : settingSec;
       // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
       // tracking), exactly as for NzbDAV, and uploads it to AltMount.
       const nzb = await grabNzb(source.nzbUrl, source.title, undefined, logPrefix, source.indexerName, source.searchExitIp);
@@ -182,24 +194,24 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       const text = raw.slice(0, 300);
       if (res.status === 408) {
         // AltMount keeps working on it; KaijuFlow just stopped waiting.
-        throw nzbdavError(`AltMount did not finish preparing within ${waitSec}s`, true, false);
+        throw sourceFailure(`AltMount did not finish preparing within ${waitSec}s`, true, false);
       }
       if (res.status === 400 || res.status === 422) {
-        throw nzbdavError(`AltMount rejected the Source (${res.status}): ${text}`, false, true);
+        throw sourceFailure(`AltMount rejected the Source (${res.status}): ${text}`, false, true);
       }
       // A failed queue item ("NZB processing failed", or its error message) is the
-      // Source's fault. The two AltMount-side 500s (queue status check, progress
-      // broadcaster) are not.
-      if (res.status === 500 && !/failed to check queue status|progress broadcaster/i.test(raw)) {
-        throw nzbdavError(`AltMount could not process the Source: ${text}`, false, true);
+      // Source's fault. AltMount-side 500s (queue lookup, output listing, upload
+      // handling, progress stream) are not.
+      if (res.status === 500 && !BACKEND_SIDE_500.test(raw)) {
+        throw sourceFailure(`AltMount could not process the Source: ${text}`, false, true);
       }
       if (!res.ok) {
         throw new Error(`AltMount returned status ${res.status}: ${text}`);
       }
       let streams: StreamsEntry[] = [];
       try { streams = (JSON.parse(raw) as { streams?: StreamsEntry[] }).streams ?? []; } catch { /* no streams */ }
-      const entry = streams.find(s => s.url && virtualPathOf(s.url, baseUrl()));
-      if (!entry?.url) throw nzbdavError('AltMount returned no playable file for this Source', false, true);
+      const entry = streams.find(s => s.url && virtualPathOf(s.url, baseUrl()) && isReady(s));
+      if (!entry?.url) throw sourceFailure('AltMount returned no ready file for this Source', false, true);
       const nzoId = String(entry._queue_item_id ?? '');
       onJob?.(nzoId);
       console.log(`${logPrefix}  \u2705 AltMount prepared the Source (${entry._cached ? 'reused' : entry._queue_status || 'ready'})`);
@@ -217,9 +229,13 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
           const resp = await fetch(url, { headers: { ...headers, Range: 'bytes=0-0' }, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
           await resp.body?.cancel().catch(() => {});
           if (resp.status === 404 || resp.status === 410) {
-            throw nzbdavError(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
+            throw sourceFailure(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
           }
-          if (resp.status === 206 || resp.status === 200) return;
+          if (resp.status === 206 || resp.status === 200) {
+            const total = /^bytes 0-0\/(\d+)$/.exec(resp.headers.get('content-range') ?? '')?.[1];
+            if (total && !video.videoSize) video.videoSize = parseInt(total, 10);
+            return;
+          }
           console.warn(`${logPrefix}  \u26A0\uFE0F AltMount probe returned ${resp.status}`);
         } catch (err) {
           if (isSourceFailure(err)) throw err;
@@ -228,7 +244,7 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
         attempt++;
         if (attempt < PROBE_MAX_ATTEMPTS) await new Promise(r => setTimeout(r, PROBE_RETRY_DELAY_MS));
       }
-      throw nzbdavError(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
+      throw sourceFailure(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
     },
 
     // Best effort and a no-op for now: AltMount cancels need a login, not the API key.

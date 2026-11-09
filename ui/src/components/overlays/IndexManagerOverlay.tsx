@@ -34,6 +34,7 @@ import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../../constants';
 interface IndexManagerOverlayProps {
   onClose: () => void;
   config: Config | null;
+  backend: 'nzbdav' | 'altmount';
   setConfig: React.Dispatch<React.SetStateAction<Config | null>>;
   indexManager: 'newznab' | 'prowlarr' | 'nzbhydra';
   setIndexManager: React.Dispatch<React.SetStateAction<'newznab' | 'prowlarr' | 'nzbhydra'>>;
@@ -229,6 +230,7 @@ interface IndexManagerOverlayProps {
 }
 
 export function IndexManagerOverlay({
+  backend,
   onClose,
   config,
   setConfig,
@@ -701,6 +703,11 @@ export function IndexManagerOverlay({
                 </div>
               </div>
 
+              {/* Library features read NzbDAV's library: unavailable under AltMount (#24) */}
+              <div className={`space-y-4 ${backend === 'altmount' ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={backend === 'altmount'}>
+                {backend === 'altmount' && (
+                  <div className="text-xs text-amber-400/80 italic">Library features are unavailable with the AltMount Backend.</div>
+                )}
               {/* Display Library in Results — own card */}
               <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-3">
@@ -944,6 +951,7 @@ export function IndexManagerOverlay({
                     </div>
                   )}
                 </div>
+              </div>
               </div>
 
               {/* Season Packs — own card, separate from Search Settings */}

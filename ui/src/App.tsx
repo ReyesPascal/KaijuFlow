@@ -584,6 +584,7 @@ function App() {
       {/* Indexer Manager Overlay */}
       {ac.activeOverlay === 'indexManager' && (
         <IndexManagerOverlay
+          backend={ac.backend}
           onClose={() => ac.setActiveOverlay(null)}
           config={ac.config}
           setConfig={ac.setConfig}

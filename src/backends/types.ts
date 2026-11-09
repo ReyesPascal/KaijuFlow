@@ -113,6 +113,18 @@ export class PrepareCancelledError extends Error {
 }
 
 /**
+ * Build the error a Backend throws when the Source itself is bad (isSourceFailure
+ * is true for it). The flag keeps its historical NzbDAV name for compatibility.
+ */
+export function sourceFailure(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
+  const err = new Error(message) as Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };
+  err.isNzbdavFailure = true;
+  err.isTimeout = isTimeout;
+  err.isEpisodeSpecific = isEpisodeSpecific;
+  return err;
+}
+
+/**
  * True when the error says the Source itself is bad (mark it dead), as opposed
  * to the Backend being unreachable or misconfigured (don't mark it dead).
  */

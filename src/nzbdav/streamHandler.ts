@@ -227,7 +227,10 @@ export async function prepareStream(
   }
 
   // Steps 1-3: hand the Source to the Backend and wait for its video.
-  const video = await backend.prepare(source, { logPrefix, timeoutMs: 0 });
+  // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
+  const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
+  const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;
+  const video = await backend.prepare(source, { logPrefix, timeoutMs: remainingMs });
 
   // Step 4: Verify the video is actually servable (first byte).
   try {
