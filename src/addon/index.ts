@@ -23,6 +23,7 @@ import { addonBuilder } from 'stremio-addon-sdk';
 const _require = createRequire(import.meta.url);
 const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
+import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
 import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildNzbdavConfig, buildEpisodePattern, buildDateEpisodePattern, isNzbdavLibraryConfigured, isUltimateFallbackActive, clearResolvedSessions } from '../nzbdav/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
@@ -192,7 +193,7 @@ async function resolveTitleAndBuildSearchCtx(args: {
 }
 
 // Stream handler - called when user wants to watch something
-builder.defineStreamHandler(async ({ type, id }) => {
+builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
   try {
     // Check if addon is disabled
     if (!config.addonEnabled) {
@@ -602,7 +603,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     console.error('❌ Stream handler error:', error);
     return { streams: [] };
   }
-});
+}));
 
 export { manifest as addonManifest };
 export default builder.getInterface();

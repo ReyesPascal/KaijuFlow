@@ -218,7 +218,7 @@ export async function prepareStream(
     if (ready && !isVideoPathBroken(ready.videoPath)) {
       // The probe is the freshness check here (stillPrepared would send the same request).
       try {
-        await backend.probe(ready, { logPrefix });
+        await backend.probe(ready, { logPrefix, title, source: indexerName });
         console.log(`${logPrefix}\u2705 Stream ready (${backend.label}, reused): ${title}\n`);
         return ready;
       } catch (err) {
@@ -236,7 +236,7 @@ export async function prepareStream(
 
   // Step 4: Verify the video is actually servable (first byte).
   try {
-    await backend.probe(video, { logPrefix });
+    await backend.probe(video, { logPrefix, title, source: indexerName });
   } catch (err) {
     markVideoPathBroken(video.videoPath);
     throw err;

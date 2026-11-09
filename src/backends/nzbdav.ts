@@ -14,7 +14,8 @@ import { encodeWebdavPath, nzbdavError } from '../nzbdav/utils.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
 import { NZBDAV_CAPABILITIES } from './capabilities.js';
 import { grabSourceNzb } from './sourceNzb.js';
-import { PrepareCancelledError, isSourceFailure, type Backend, type BackendStatus, type MediaRequest } from './types.js';
+import { timeStep } from '../utils/stepTiming.js';
+import { PrepareCancelledError, isSourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
 
 const PROBE_TIMEOUT_MS = 10_000;
 const PROBE_RETRY_BASE_MS = 2_000;
@@ -34,6 +35,37 @@ export function createNzbdavBackend(config: NZBDavConfig): Backend {
   };
 
   const cancel = (jobId: string, reason?: string) => cancelJob(jobId, config, reason);
+
+  // GET the first byte (the retries are part of the step).
+  const probeFirstByte = async (video: PreparedVideo, logPrefix: string): Promise<void> => {
+    const { url, headers } = mediaRequest(video.videoPath);
+    const probeHeaders = { ...headers, 'Range': 'bytes=0-0' };
+    let attempt = 0;
+    while (attempt < PROBE_MAX_RETRIES) {
+      try {
+        const resp = await fetch(url, { headers: probeHeaders, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+        await resp.body?.cancel().catch(() => {});
+        if (resp.status === 404 || resp.status === 410) {
+          throw nzbdavError(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
+        }
+        if (resp.status === 206 || resp.status === 200) return;
+        attempt++;
+        console.warn(`${logPrefix}  ⚠️ Probe returned ${resp.status} — retrying (${attempt}/${PROBE_MAX_RETRIES})...`);
+      } catch (err) {
+        if (isSourceFailure(err)) throw err;
+        attempt++;
+        if (attempt >= PROBE_MAX_RETRIES) {
+          console.warn(`${logPrefix}  ⚠️ Probe failed after ${attempt} attempts: ${(err as Error).message}`);
+          break;
+        }
+        console.warn(`${logPrefix}  ⚠️ Probe attempt ${attempt}/${PROBE_MAX_RETRIES} failed (${(err as Error).message}) — retrying in ${Math.round(PROBE_RETRY_BASE_MS / 1000)}s`);
+      }
+      if (attempt < PROBE_MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, Math.min(PROBE_RETRY_BASE_MS * Math.pow(2, attempt - 1), 10_000)));
+      }
+    }
+    throw nzbdavError(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
+  };
 
   return {
     id: 'nzbdav',
@@ -58,51 +90,33 @@ export function createNzbdavBackend(config: NZBDavConfig): Backend {
       // The shared step grabs the NZB (grab tracking after validation, so
       // cache hits precached by health checks do not double-count).
       const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
-      const nzoId = await submitNzb(nzb, source.title, config, source.contentType, logPrefix);
+      const label = { source: source.indexerName, title: source.title };
+      const nzoId = await timeStep(
+        { step: 'upload', ...label },
+        () => submitNzb(nzb, source.title, config, source.contentType, logPrefix),
+        id => ({ job: id }),
+      );
       onJob?.(nzoId);
       if (isCancelled?.()) {
         cancel(nzoId, 'health check failed (late cancel)').catch(() => {});
         throw new PrepareCancelledError();
       }
-      await waitForJobCompletion(nzoId, config, remainingMs, pollIntervalMs, source.contentType, logPrefix);
-      if (isCancelled?.()) throw new PrepareCancelledError();
-      const video = await waitForVideoFile(nzoId, source.title, config, source.episodePattern, source.contentType, source.episodesInSeason, logPrefix);
+      // The Backend's import: the job finishing, then its video showing up.
+      const video = await timeStep({ step: 'import_wait', ...label, job: nzoId }, async () => {
+        await waitForJobCompletion(nzoId, config, remainingMs, pollIntervalMs, source.contentType, logPrefix);
+        if (isCancelled?.()) throw new PrepareCancelledError();
+        return waitForVideoFile(nzoId, source.title, config, source.episodePattern, source.contentType, source.episodesInSeason, logPrefix);
+      });
       return { nzoId, videoPath: video.path, videoSize: video.size };
     },
 
     // GET the first byte. HEAD isn't reliable: NzbDAV answers 200 for HEAD
     // even when content is gone. Large files can take a moment to become
     // servable after the job completes, so retry once with a delay.
-    async probe(video, opts = {}) {
-      const { logPrefix = '' } = opts;
-      const { url, headers } = mediaRequest(video.videoPath);
-      const probeHeaders = { ...headers, 'Range': 'bytes=0-0' };
-      let attempt = 0;
-      while (attempt < PROBE_MAX_RETRIES) {
-        try {
-          const resp = await fetch(url, { headers: probeHeaders, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-          await resp.body?.cancel().catch(() => {});
-          if (resp.status === 404 || resp.status === 410) {
-            throw nzbdavError(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
-          }
-          if (resp.status === 206 || resp.status === 200) return;
-          attempt++;
-          console.warn(`${logPrefix}  ⚠️ Probe returned ${resp.status} — retrying (${attempt}/${PROBE_MAX_RETRIES})...`);
-        } catch (err) {
-          if (isSourceFailure(err)) throw err;
-          attempt++;
-          if (attempt >= PROBE_MAX_RETRIES) {
-            console.warn(`${logPrefix}  ⚠️ Probe failed after ${attempt} attempts: ${(err as Error).message}`);
-            break;
-          }
-          console.warn(`${logPrefix}  ⚠️ Probe attempt ${attempt}/${PROBE_MAX_RETRIES} failed (${(err as Error).message}) — retrying in ${Math.round(PROBE_RETRY_BASE_MS / 1000)}s`);
-        }
-        if (attempt < PROBE_MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, Math.min(PROBE_RETRY_BASE_MS * Math.pow(2, attempt - 1), 10_000)));
-        }
-      }
-      throw nzbdavError(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
-    },
+    probe: (video, opts = {}) => timeStep(
+      { step: 'first_byte', source: opts.source, title: opts.title, job: video.nzoId },
+      () => probeFirstByte(video, opts.logPrefix ?? ''),
+    ),
 
     cancel,
 
