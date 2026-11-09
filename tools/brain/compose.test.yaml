@@ -48,7 +48,7 @@ services:
     image: nzbdav/nzbdav@sha256:fc44a9d33adceddc4397eb660b4fcaf1917e23323fb80dea0645f56db129562f
     container_name: nzbdav-test
     environment:
-      LOG_LEVEL: warning
+      LOG_LEVEL: information  # live runs "warning"; the run report needs NzbDAV's import lines (#62 review)
       PUID: "1000"
       PGID: "1000"
     ports: ["3001:3000"]

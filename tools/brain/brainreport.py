@@ -149,8 +149,22 @@ def nzbdav_imports(text):
     return recs
 
 
-LIMIT_RE = re.compile(r'(?i)limit (?:has been )?(?:reached|exceeded)|(?:daily|grab|api|download|request)s? limit'
-                      r'|too many requests|http[ /]*429|status[=: ]*429|code[=: ]*"?429|retry in \d+ ?min')
+# The wordings the sides really print when an indexer says "limit reached" (read from the live logs, read-only):
+#  - the indexer's own newznab text, passed on by AltMount ("newznab API error 500: Request limit reached. Retry in
+#    113 minutes", "search returned HTTP 429 (althub)") and by KaijuFlow's searchers,
+#  - Usenet Ultimate: "Search error for <indexer>:" followed by a line "Status: 429",
+#  - KaijuFlow's NZB grab (src/nzbdav/nzbdavApi.ts): "Failed to download NZB from <indexer>: 429 ...",
+#  - the stand-in's own "LIMIT_REACHED indexer=<slug>" line.
+# Loose phrases ("api limit", "limit reached" alone) are not used: "Backup processing limit reached" is a benign
+# KaijuFlow line.
+LIMIT_RE = re.compile(
+    r'(?i)\b(?:request|grab|api|download|daily|nzb)s? limits? (?:has been |was )?(?:reached|exceeded)'
+    r'|LIMIT_REACHED indexer='
+    r'|\bHTTP 429\b'
+    r'|Failed to download NZB from .+: 429\b'
+    r'|Request failed with status code 429'
+    r'|(?:^|\s)Status: 429\s*$'
+    r'|retry in \d+ minutes?')
 
 
 def scrub_text(s):
@@ -160,11 +174,13 @@ def scrub_text(s):
 
 def limit_event(text, indexers):
     """First line that says an indexer's limit was reached: {indexer, time, line} or None."""
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
         if not LIMIT_RE.search(line):
             continue
         m = re.match(r'(\d{4}-\d\d-\d\dT[\d:.]+Z?)', line)
-        name = next((n for n in indexers if n.lower() in line.lower()), 'unknown')
+        near = line + ' ' + (lines[i - 1] if i else '')  # UU prints the indexer on the line before "Status: 429"
+        name = next((n for n in indexers if n.lower() in near.lower()), 'unknown')
         return {'indexer': name, 'time': m.group(1) if m else None, 'line': scrub_text(line)[:300]}
     return None
 
@@ -207,6 +223,45 @@ def visit_metrics(v):
     }
 
 
+def _norm(text):
+    return re.sub(r'[^a-z0-9]+', '', str(text).lower())
+
+
+def attribute_steps(visit, steps, end=None):
+    """The step lines that belong to one visit of one side.
+
+    Search-side lines (indexer_page, health_batch) carry `ref`: kept when ref is the visit's id, from the visit's start until
+    `end` (the start of that side's next visit; None = no end), however late they are written. Prepare-side lines carry the
+    release `title` of the Source: only the Source that was played is kept, found by (1) its name in the played stream's text
+    and otherwise (2) work that began after this visit began, so a previous title's background work cannot land here.
+    """
+    lo = parse_ts(visit['t_start']) - datetime.timedelta(seconds=1)
+
+    def inside(s):
+        try:
+            t = parse_ts(s['t'])
+        except (KeyError, ValueError):
+            return False
+        return t >= lo and (end is None or t < end)
+
+    out = [s for s in steps if s.get('step') in SEARCH_STEPS and s.get('ref') == visit.get('id') and inside(s)]
+    prep = [s for s in steps if s.get('step') not in SEARCH_STEPS and inside(s) and s.get('title')]
+    groups = {}
+    for s in prep:
+        begun = parse_ts(s['t']) - datetime.timedelta(milliseconds=s.get('ms', 0))
+        g = groups.setdefault(s['title'], {'begun': begun, 'lines': []})
+        g['begun'] = min(g['begun'], begun)
+        g['lines'].append(s)
+    played = ' '.join(str(t.get('title', '')) for t in visit.get('tries', [])[:1])
+    pick = [t for t in groups if len(_norm(t)) >= 8 and _norm(t) in _norm(played)]
+    if not pick:
+        fresh = [t for t, g in groups.items() if g['begun'] >= lo]
+        pick = sorted(fresh, key=lambda t: groups[t]['begun'])[:1]
+    for t in pick:
+        out += groups[t]['lines']
+    return sorted(out, key=lambda s: s['t'])
+
+
 def classify_failure(v):
     if v.get('ok'):
         return None
@@ -223,11 +278,19 @@ def classify_failure(v):
 
 # --------------------------------------------------------------------------- settings and diff
 
-SECRET_KEY = re.compile(r'(?i)key|secret|pass|token|jwt|login|user|auth|cookie|credential')
+SECRET_WORDS = {'key', 'keys', 'apikey', 'secret', 'secrets', 'pass', 'passwd', 'password', 'passwords', 'token', 'tokens',
+                'jwt', 'login', 'logins', 'user', 'username', 'auth', 'authorization', 'cookie', 'cookies',
+                'credential', 'credentials'}
+
+
+def is_secret_name(name):
+    """True when one whole word of the setting name (camelCase, snake_case, kebab-case) is a secret word."""
+    words = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', name))
+    return any(w in SECRET_WORDS for w in re.split(r'[^A-Za-z0-9]+', words.lower()) if w)
 
 
 def _scrub_value(k, v):
-    if SECRET_KEY.search(k.split('.')[-1].split('[')[0]) and v not in (None, '', False, True):
+    if is_secret_name(k.split('.')[-1].split('[')[0]) and v not in (None, '', False, True):
         return '***'
     return scrub_text(v) if isinstance(v, str) else v
 
@@ -280,8 +343,15 @@ def flatten_yaml(text):
     return out
 
 
-def diff_runs(prev, cur):
-    """Plain list of every difference between two run metas (settings, code, titles, indexers, time of day)."""
+def _stamp(d):
+    return f'{d:%Y-%m-%d %H:%M} UTC'
+
+
+def diff_runs(prev, cur, nulls=None):
+    """Plain list of every difference between two run metas (settings, code, titles, indexers, time of day).
+
+    nulls: metas of the null runs that lie between the two (see null_runs_between); they are counted with their times.
+    """
     if prev is None:
         return ['No earlier run to compare with: this is the first one.']
     out = []
@@ -302,14 +372,34 @@ def diff_runs(prev, cur):
             out.append(f"{label} added: {', '.join(x for x in b if x not in a)}")
         if [x for x in a if x not in b]:
             out.append(f"{label} removed: {', '.join(x for x in a if x not in b)}")
-    try:
-        h1, h2 = parse_ts(prev['started']), parse_ts(cur['started'])
-        gap = abs(h1.hour - h2.hour)
-        if min(gap, 24 - gap) >= 2:
-            out.append(f'Time of day: {h1:%H:%M} UTC -> {h2:%H:%M} UTC')
+    if not out:
+        out.append('Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.')
+    try:  # the time of day of both runs is always listed (indexers can answer differently by time of day)
+        out.append(f"Time of day: previous run {_stamp(parse_ts(prev['started']))}, this run {_stamp(parse_ts(cur['started']))}")
     except (KeyError, ValueError):
         pass
-    return out or ['Nothing changed (same settings, KaijuFlow code, titles, indexers and time of day).']
+    if nulls:
+        when = ', '.join(_stamp(parse_ts(n['started'])) for n in nulls if n.get('started'))
+        out.append(f"{len(nulls)} null run{'' if len(nulls) == 1 else 's'} (stopped by an indexer limit, results not used) "
+                   f"lie between the two runs: {when}")
+    return out
+
+
+def null_runs_between(root, since, exclude=None):
+    """meta.json of every null run in the runs root that started after `since` (ISO time), oldest first."""
+    found = []
+    if not os.path.isdir(root):
+        return found
+    for d in sorted(os.listdir(root)):
+        if d == exclude:
+            continue
+        try:
+            meta = json.loads(_slurp(os.path.join(root, d, 'meta.json')))
+        except (OSError, ValueError):
+            continue
+        if meta.get('status') == 'null' and meta.get('started') and parse_ts(meta['started']) > parse_ts(since):
+            found.append(meta)
+    return sorted(found, key=lambda m: m['started'])
 
 
 # --------------------------------------------------------------------------- report

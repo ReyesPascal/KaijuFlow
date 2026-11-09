@@ -14,7 +14,7 @@ import { getAxiosProxyConfig, probeSearchExitIp } from '../proxy.js';
 import { parseNewznabXmlWithMeta } from './newznabClient.js';
 import { stripDiacritics, isTextSearchMatch, tagSeasonPack, normalizeTitle, extractTitleFromRelease, runSeriesPackQueries, buildSeriesPackPaginationMaxPages, buildSeasonPackPaginationMaxPages, extractSeasonTokens } from './titleMatching.js';
 import { slog, withSubBuffer } from './searchLogger.js';
-import { timeStep } from '../utils/stepTiming.js';
+import { timeIndexerPage } from '../utils/stepTiming.js';
 
 // Return the proxy exit IP only when pre- and post-request probes agree.
 // A disagreement means the VPN rotated while the axios call was in flight;
@@ -121,7 +121,7 @@ export class UsenetSearcher {
       // leave searchExitIp undefined so the grab fails closed instead of
       // racing the verifier into a false match. See consensusSearchIp.
       const preIp = isZyclops ? undefined : await probeSearchExitIp(this.indexer.url, 'search', this.indexer.name, true);
-      const response = await timeStep({ step: 'indexer_page', source: this.indexer.name, page: 1 }, () => axios.get(effectiveUrl, {
+      const response = await timeIndexerPage(this.indexer.name, 1, () => axios.get(effectiveUrl, {
         params,
         timeout: this.getTimeoutMs(),
         headers: { 'User-Agent': userAgent },
@@ -158,7 +158,7 @@ export class UsenetSearcher {
             // Double-probe per page so a rotation during this page's axios
             // call can't stamp the wrong IP. See consensusSearchIp.
             const pagePreIp = isZyclops ? undefined : await probeSearchExitIp(this.indexer.url, 'search', this.indexer.name, true);
-            const pageResponse = await timeStep({ step: 'indexer_page', source: this.indexer.name, page }, () => axios.get(effectiveUrl, {
+            const pageResponse = await timeIndexerPage(this.indexer.name, page, () => axios.get(effectiveUrl, {
               params: { ...params, offset: currentOffset },
               timeout: this.getTimeoutMs(),
               headers: { 'User-Agent': userAgent },
@@ -264,7 +264,7 @@ export class UsenetSearcher {
       // SAFETY: Skip proxy when Zyclops is enabled, Zyclops IS the proxy.
       // Double-probe (pre/post) and stamp only on agreement. See consensusSearchIp.
       const preIp = isZyclops ? undefined : await probeSearchExitIp(this.indexer.url, 'movie-search', this.indexer.name, true);
-      const response = await timeStep({ step: 'indexer_page', source: this.indexer.name, page: 1 }, () => axios.get(effectiveUrl, {
+      const response = await timeIndexerPage(this.indexer.name, 1, () => axios.get(effectiveUrl, {
         params,
         timeout: this.getTimeoutMs(),
         headers: { 'User-Agent': userAgent },
@@ -301,7 +301,7 @@ export class UsenetSearcher {
             // Double-probe per page so a rotation during this page's axios
             // call can't stamp the wrong IP. See consensusSearchIp.
             const pagePreIp = isZyclops ? undefined : await probeSearchExitIp(this.indexer.url, 'movie-search', this.indexer.name, true);
-            const pageResponse = await timeStep({ step: 'indexer_page', source: this.indexer.name, page }, () => axios.get(effectiveUrl, {
+            const pageResponse = await timeIndexerPage(this.indexer.name, page, () => axios.get(effectiveUrl, {
               params: { ...params, offset: currentOffset },
               timeout: this.getTimeoutMs(),
               headers: { 'User-Agent': userAgent },
@@ -574,7 +574,7 @@ export class UsenetSearcher {
         // SAFETY: Skip proxy when Zyclops is enabled, Zyclops IS the proxy.
         // Double-probe (pre/post) and stamp only on agreement. See consensusSearchIp.
         const preIp = isZyclops ? undefined : await probeSearchExitIp(this.indexer.url, 'tv-search', this.indexer.name, true);
-        const response = await timeStep({ step: 'indexer_page', source: this.indexer.name, page: 1 }, () => axios.get(effectiveUrl, {
+        const response = await timeIndexerPage(this.indexer.name, 1, () => axios.get(effectiveUrl, {
           params,
           timeout: this.getTimeoutMs(),
           headers: { 'User-Agent': userAgent },
@@ -622,7 +622,7 @@ export class UsenetSearcher {
             // Double-probe per page so a rotation during this page's axios
             // call can't stamp the wrong IP. See consensusSearchIp.
             const pagePreIp = isZyclops ? undefined : await probeSearchExitIp(this.indexer.url, 'tv-search', this.indexer.name, true);
-            const pageResponse = await timeStep({ step: 'indexer_page', source: this.indexer.name, page }, () => axios.get(effectiveUrl, {
+            const pageResponse = await timeIndexerPage(this.indexer.name, page, () => axios.get(effectiveUrl, {
               params: { ...params, offset: currentOffset },
               timeout: this.getTimeoutMs(),
               headers: { 'User-Agent': userAgent },

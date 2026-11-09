@@ -20,6 +20,8 @@ def nzb_bytes(n):
 class FakeIndexer(http.server.BaseHTTPRequestHandler):
     hits = 0
     limit = False
+    json_escaped = True  # for o=json answers: escape slashes like PHP does
+    error_body = None  # when set, every request is answered with this body
 
     def log_message(self, *a):
         pass
@@ -29,6 +31,8 @@ class FakeIndexer(http.server.BaseHTTPRequestHandler):
         cls.hits += 1
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        if cls.error_body is not None:
+            return self.send(200, 'application/json', cls.error_body)
         if q.get('apikey') != REAL_KEY:
             return self.send(200, 'text/xml', b'<error code="100" description="Incorrect user credentials"/>')
         if cls.limit:
@@ -37,6 +41,13 @@ class FakeIndexer(http.server.BaseHTTPRequestHandler):
             return self.send(200, 'application/x-nzb', nzb_bytes(int(q['id'])))
         off = int(q.get('offset', 0))
         base = f'http://127.0.0.1:{self.server.server_port}'
+        if q.get('o') == 'json':
+            links = [f'{base}/api?t=get&id={i}&apikey={REAL_KEY}' for i in range(off, min(off + PAGE, 7))]
+            body = json.dumps({'item': [{'title': f'Rel {i}', 'link': u, 'enclosure': {'@attributes': {'url': u}}}
+                                        for i, u in enumerate(links, off)]}).encode()
+            if cls.json_escaped:
+                body = body.replace(b'/', b'\\/')
+            return self.send(200, 'application/json', body)
         items = ''.join(
             f'<item><title>Rel {i} &amp; co</title><link>{base}/api?t=get&amp;id={i}&amp;apikey={REAL_KEY}</link>'
             f'<enclosure url="{base}/api?t=get&amp;id={i}&amp;apikey={REAL_KEY}" length="5" type="application/x-nzb"/></item>'
@@ -72,7 +83,7 @@ class StandinTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        FakeIndexer.hits, FakeIndexer.limit = 0, False
+        FakeIndexer.hits, FakeIndexer.limit, FakeIndexer.json_escaped, FakeIndexer.error_body = 0, False, True, None
         self.fake = serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), FakeIndexer))
         self.cfg = {'indexers': {'fake': {'url': f'http://127.0.0.1:{self.fake.server_port}', 'apikey': REAL_KEY}}}
         self.store = os.path.join(self.tmp, 'store')
@@ -157,6 +168,92 @@ class StandinTest(unittest.TestCase):
         FakeIndexer.limit = False
         _, pbase = self.standin('replay')
         self.assertEqual(fetch(f'{pbase}/fake/api?t=search&q=limited&apikey=d')[0], 404)  # never stored
+
+    def json_links(self, body):
+        text = body.decode().replace('\\/', '/')
+        return [i['link'] for i in json.loads(text)['item']]
+
+    def json_crawl(self, base):
+        out = []
+        for off in (0, 3, 6):
+            st, body = fetch(f'{base}/fake/api?t=search&q=x&o=json&offset={off}&apikey=dummy')
+            self.assertEqual(st, 200)
+            out.append(body)
+            for url in self.json_links(body):
+                self.assertTrue(url.startswith(base + '/'), 'JSON NZB link must lead back to the stand-in: ' + url)
+                out.append(fetch(url)[1])
+        return out
+
+    def test_json_answers_have_links_rewritten_escaped_and_unescaped(self):
+        for escaped in (True, False):
+            FakeIndexer.json_escaped = escaped
+            self.tmp2 = tempfile.mkdtemp()
+            self.addCleanup(shutil.rmtree, self.tmp2, True)
+            self.store = os.path.join(self.tmp2, 'store')
+            s, base = self.standin('record')
+            blob = b''.join(self.json_crawl(base))
+            self.assertNotIn(REAL_KEY.encode(), blob)
+            self.assertNotIn(b'127.0.0.1:%d' % self.fake.server_port, blob)
+
+    def test_json_record_then_replay_is_byte_identical(self):
+        rec, rbase = self.standin('record')
+        port = rec.server_port
+        recorded = self.json_crawl(rbase)
+        rec.shutdown()
+        rec.server_close()
+        self.fake.shutdown()
+        self.fake.server_close()
+        _, pbase = self.standin('replay', port=port)
+        for i, (a, b) in enumerate(zip(recorded, self.json_crawl(pbase))):
+            self.assertBytes(a, b, f'answer {i}')
+
+    def test_no_real_key_reaches_a_side_or_the_store_in_any_body(self):
+        bodies = {
+            'xml': b'<error code="100" description="bad key %s"/>' % REAL_KEY.encode(),
+            'json-escaped': json.dumps({'error': {'@attributes': {'code': '100', 'description': 'k ' + REAL_KEY}}}).encode(),
+            'json-plain': ('{"msg": "' + REAL_KEY + '", "u": "http://elsewhere.example/x?apikey=' + REAL_KEY + '"}').encode(),
+            'urlencoded': b'key=' + REAL_KEY.encode(),
+        }
+        s, base = self.standin('record')
+        for name, body in bodies.items():
+            FakeIndexer.error_body = body
+            st, got = fetch(f'{base}/fake/api?t=search&q={name}&apikey=dummy')
+            self.assertNotIn(REAL_KEY.encode(), got, name)
+        stored = b''
+        for root, _, files in os.walk(self.store):
+            for f in files:
+                stored += open(os.path.join(root, f), 'rb').read()
+        self.assertNotIn(REAL_KEY.encode(), stored)
+
+    def test_json_limit_error_is_detected(self):
+        for body in (b'{"error":{"@attributes":{"code":"500","description":"Request limit reached"}}}',
+                     b'{"error":{"@attributes":{"code":"429","description":"x"}}}',
+                     b'{"error":{"code":"100","description":"API limit exceeded"}}'):
+            self.assertTrue(indexer_standin.is_limit(200, body), body)
+        for body in (b'{"error":{"@attributes":{"code":"100","description":"Incorrect user credentials"}}}',
+                     b'{"item":[]}', b'not json'):
+            self.assertFalse(indexer_standin.is_limit(200, body), body)
+
+    def test_json_limit_answer_writes_marker(self):
+        s, base = self.standin('record')
+        FakeIndexer.error_body = b'{"error":{"@attributes":{"code":"500","description":"Daily limit reached"}}}'
+        fetch(f'{base}/fake/api?t=search&q=l&o=json&apikey=d')
+        self.assertTrue(s.state.limit_reached)
+
+    def test_record_nzb_token_for_another_host_is_refused(self):
+        import base64
+        other = http.server.ThreadingHTTPServer(('127.0.0.1', 0), FakeIndexer)
+        serve(other)
+        self.addCleanup(other.server_close)
+        self.addCleanup(other.shutdown)
+        s, base = self.standin('record')
+        hits = FakeIndexer.hits
+        for host in (f'127.0.0.1:{other.server_port}', f'127.0.0.1:{self.fake.server_port}@127.0.0.1:{other.server_port}'):
+            url = f'http://{host}/api?t=get&id=1&apikey={{KEY}}'
+            token = base64.urlsafe_b64encode(url.encode()).decode().rstrip('=')
+            st, _ = fetch(f'{base}/fake/nzb/{token}')
+            self.assertEqual(st, 403)
+        self.assertEqual(FakeIndexer.hits, hits)  # nothing was sent anywhere
 
 
 if __name__ == '__main__':

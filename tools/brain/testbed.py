@@ -20,9 +20,11 @@ import time
 import urllib.error
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+from common import DEFAULT_TEST_DIR  # noqa: E402
+
 PROJECT = "kaijuflow-test"
 COMPOSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "compose.test.yaml")
-DEFAULT_TEST_DIR = "/home/ryan/kaijuflow-test"
 TEST_CONTAINERS = ["kaijuflow-test", "uu-test", "nzbdav-test", "altmount-addon-test", "altmount-kf-test"]
 
 # side -> compose service, kind, config folder, template folder, port

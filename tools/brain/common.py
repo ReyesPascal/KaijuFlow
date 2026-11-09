@@ -5,6 +5,7 @@ The scripts run under `python3 -I`, which leaves the script's folder off sys.pat
 """
 import hashlib, json, os, statistics, sys, time, urllib.request, urllib.error
 
+DEFAULT_TEST_DIR = '/home/ryan/kaijuflow-test'  # config folders with secrets; outside the repo (env TEST_DIR overrides in the tools)
 FAILURE_SIZE = 1242455  # UU/KaijuFlow failure video, served when a Source cannot play
 TITLES = [
     ('movie', 'tt1375666', 'Inception'), ('movie', 'tt0816692', 'Interstellar'),
@@ -105,10 +106,10 @@ def play_stream(stream):
             'title': ' '.join((stream.get('name', '') + ' ' + stream.get('title', '')).split())[:140]}
 
 
-def seek_reads(url, size, percents=(50, 90)):
+def seek_reads(url, size):
     """Seconds to the first byte of a 64 KiB read at each percent of the file, None when the read failed."""
     out = {}
-    for pct in percents:
+    for pct in (50, 90):
         off = size * pct // 100
         st, h, body, t = get(url, f'{off}-{off + 65535}', timeout=120, limit=65536)
         out[str(pct)] = round(t.get('first_byte', t['ready']), 2) if st in (200, 206) and body else None

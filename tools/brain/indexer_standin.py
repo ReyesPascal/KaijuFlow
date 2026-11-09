@@ -15,6 +15,9 @@ No real indexer is contacted in replay mode.
 import argparse, signal, base64, hashlib, http.server, json, os, re, sys, threading, time, urllib.error, urllib.request
 from urllib.parse import urlparse, parse_qsl, quote
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+from common import DEFAULT_TEST_DIR  # noqa: E402
+
 KEY_PARAM = 'apikey'
 SAFE = re.compile(r'^[A-Za-z0-9._-]+$')
 LIMIT_EXIT = 3
@@ -27,12 +30,36 @@ def is_limit(status, body):
         return True
     if len(body) > 4096:
         return False
+    if body.lstrip()[:1] == b'{':
+        return _json_limit(body)
     m = re.search(rb'<error\b[^>]*>', body)
     if not m:
         return False
     tag = m.group(0).lower()
     code = re.search(rb'code="(\d+)"', tag)
     return bool(code and code.group(1) in (b'429', b'500')) or b'limit' in tag
+
+
+def _json_limit(body):
+    """newznab JSON error: {"error": {"@attributes": {"code": "500", "description": "..."}}} (or without @attributes)."""
+    try:
+        err = json.loads(body).get('error')
+    except (ValueError, AttributeError):
+        return False
+    if isinstance(err, dict):
+        err = err.get('@attributes', err)
+    if not isinstance(err, dict):
+        return isinstance(err, str) and 'limit' in err.lower()
+    return str(err.get('code')) in ('429', '500') or 'limit' in json.dumps(err).lower()
+
+
+def scrub(body, key):
+    """Defence in depth: no occurrence of the real key (plain, URL-encoded or JSON-escaped) leaves the stand-in."""
+    escaped = json.dumps(key)[1:-1]
+    for form in {key, quote(key), quote(key, safe=''), escaped, escaped.replace('/', '\\/')}:
+        if form:
+            body = body.replace(form.encode(), b'***')
+    return body
 
 
 class State:
@@ -106,7 +133,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if len(parts) == 3 and parts[1] == 'nzb':
             token = parts[2]
             key = cache_key('nzb', [('token', token)])
-            real_url = lambda ix: base64.urlsafe_b64decode(token + '=' * (-len(token) % 4)).decode().replace('{KEY}', ix['apikey'])
+
+            def real_url(ix):
+                """The decoded link, or None when it does not lead to the configured indexer's own host."""
+                raw = base64.urlsafe_b64decode(token + '=' * (-len(token) % 4)).decode()
+                a, b = urlparse(raw), urlparse(ix['url'])
+                if (a.scheme, a.netloc) != (b.scheme, b.netloc):
+                    return None
+                return raw.replace('{KEY}', ix['apikey'])
             return self.serve(slug, key, f'nzb {token[:12]}', real_url, base, rewrite=False)
         if len(parts) == 2 and parts[1] == 'api':
             items = sorted((k, v) for k, v in q if k != KEY_PARAM)
@@ -131,17 +165,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             st.log(f'MISS {slug} {shown}')
             return self.reply(404, 'text/plain', b'not recorded')
         ix = st.cfg['indexers'][slug]
-        status, ctype, body = fetch_real(real_url(ix))
+        url = real_url(ix)
+        if url is None:
+            st.log(f'REFUSED {slug} {shown} (token leads to another host)')
+            return self.reply(403, 'text/plain', b'refused')
+        status, ctype, body = fetch_real(url)
         if is_limit(status, body):
             info = {'indexer': slug, 'time': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'status': status,
-                    'answer': body[:300].decode('utf-8', 'replace').replace(ix['apikey'], '***'), 'request': shown}
+                    'answer': scrub(body[:300], ix['apikey']).decode('utf-8', 'replace'), 'request': shown}
             st.limit_reached = info
             os.makedirs(st.store, exist_ok=True)
             wr(os.path.join(st.store, 'LIMIT_REACHED.json'), json.dumps(info))
             st.log(f'LIMIT_REACHED indexer={slug} at={info["time"]} status={status}')
-            return self.reply(status, ctype, body.replace(ix['apikey'].encode(), b'***'))
+            return self.reply(status, ctype, scrub(body, ix['apikey']))
         if rewrite:
             body = rewrite_links(body, ix, slug)
+        body = scrub(body, ix['apikey'])
         os.makedirs(d, exist_ok=True)
         wr(p + '.body', body)
         wr(p + '.meta.json', json.dumps({'status': status, 'content_type': ctype, 'request': shown}))
@@ -152,10 +191,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def rewrite_links(body, ix, slug):
     """Point every link on the real indexer's host to the stand-in; the key becomes {KEY} inside the token."""
     o = urlparse(ix['url'])
-    pat = re.compile(re.escape(f'{o.scheme}://{o.netloc}').encode() + rb'[^\s"\'<>]*')
+    # '/' may be JSON-escaped as '\/' in o=json answers; the rewritten link is plain (still valid JSON)
+    pat = re.compile(re.escape(o.scheme).encode() + rb':(?:\\?/){2}' + re.escape(o.netloc).encode() + rb'[^\s"\'<>]*')
 
     def sub(m):
-        real = m.group(0).decode().replace('&amp;', '&').replace(ix['apikey'], '{KEY}').replace(quote(ix['apikey']), '{KEY}')
+        real = m.group(0).decode().replace('\\/', '/').replace('\\u0026', '&').replace('&amp;', '&').replace(ix['apikey'], '{KEY}').replace(quote(ix['apikey']), '{KEY}')
         token = base64.urlsafe_b64encode(real.encode()).decode().rstrip('=')
         return HOST_MARK + b'/nzb/' + token.encode()  # HOST_MARK becomes http://<host>:<port>/<slug> when served
     return pat.sub(sub, body)
@@ -181,7 +221,7 @@ def make_server(cfg, store, mode, listname, port=1340, bind='0.0.0.0'):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--mode', required=True, choices=['record', 'replay'])
-    ap.add_argument('--config', default='/home/ryan/kaijuflow-test/indexers.json')
+    ap.add_argument('--config', default=os.path.join(DEFAULT_TEST_DIR, 'indexers.json'))
     ap.add_argument('--store', required=True)
     ap.add_argument('--list', required=True, dest='listname')
     ap.add_argument('--port', type=int, default=1340)
