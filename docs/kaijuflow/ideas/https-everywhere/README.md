@@ -1,6 +1,6 @@
 # Idea: HTTPS everywhere (manifest works on Apple and Android, no warnings)
 
-Status: **idea, not planned.** Captured 2026-11-09 from a chat with the owner, to grill later. Nothing here is decided until the grill session settles it.
+Status: **idea, not planned.** Captured 2026-11-09 from a chat with the owner, to grill later. Nothing here is decided until the grill session settles it, except the starting domain (`thefetchingcat.com`, below).
 
 Research behind this: [`../../research/APPLE_HTTPS_MANIFEST.md`](../../research/APPLE_HTTPS_MANIFEST.md).
 
@@ -31,7 +31,7 @@ Speed: encryption is not a concern. Brain's i7-8665U measured about 4 GB/s AES-G
 
 ## How KaijuFlow would get a certificate itself
 
-1. **Point the name at itself.** It sets a DNS name, like `abc123.kf.yourdomain.com`, to point at its LAN IP, and updates it if the IP changes.
+1. **Point the name at itself.** It sets a DNS name, like `abc123.kf.thefetchingcat.com`, to point at its LAN IP, and updates it if the IP changes.
 2. **Ask Let's Encrypt for a certificate** using the DNS-01 challenge.
 3. **Prove ownership.** It puts the challenge code in a TXT record. No public reachability or open ports are needed.
 4. **Serve HTTPS** with that certificate on its own port.
@@ -48,7 +48,7 @@ Worker outline (free plan, the domain stays at Porkbun, so nameservers and stati
 1. Owner's manual steps:
    - Make a free Cloudflare account.
    - Turn on Porkbun API access **for this one domain only** and create an API key and secret.
-   - Pick a subdomain for installs, e.g. `kf.yourdomain.com`.
+   - Pick a subdomain for installs, e.g. `kf.thefetchingcat.com`.
 2. Set up the project: `npm create cloudflare@latest kaijuflow-names`, then `wrangler secret put PORKBUN_API_KEY` (and the secret). The Porkbun key lives only in the Worker; it is never shipped in KaijuFlow.
 3. Add a Workers KV store that records which install owns which name.
 4. Add four endpoints:
@@ -89,7 +89,7 @@ Porkbun note: API keys can usually change every domain on the account that has A
 
 ## KaijuFlow code changes (small, not a rewrite)
 
-KaijuFlow already builds every manifest and stream link from the incoming request: protocol and Host header, plus `X-Forwarded-Port`. See `src/utils/urlHelpers.ts:19-41`, used at `src/server.ts:197,204` and throughout `src/nzbdav/streamHandler.ts`. A request over `https://abc123.kf…` already gets `https://abc123.kf…` links back. The changes:
+KaijuFlow already builds every manifest and stream link from the incoming request: protocol and Host header, plus `X-Forwarded-Port`. See `src/utils/urlHelpers.ts:19-41`, used at `src/server.ts:197,204` and throughout `src/nzbdav/streamHandler.ts`. A request over `https://abc123.kf.thefetchingcat.com` already gets `https://abc123.kf.thefetchingcat.com` links back. The changes:
 
 1. **Show the HTTPS link** in the settings page, QR code and install button once it's on.
 2. **`BASE_URL` override** (`src/utils/urlHelpers.ts:20-23`). An `http://` `BASE_URL` currently wins over everything. Requests that arrive over HTTPS must not get an `http` base.
@@ -97,10 +97,28 @@ KaijuFlow already builds every manifest and stream link from the incoming reques
 4. **Background jobs** (health checks, auto-queue) keep calling KaijuFlow over loopback (`src/addon/streamBuilder.ts:43`). No change.
 5. **Keep the `http://` port working** alongside HTTPS so nothing breaks on update. Some apps already work over http on Android TVs (e.g. ARVIO). Users reinstall the addon once with the new link, because Stremio stores the exact install URL.
 
+## Domain (decided to start)
+
+- **`thefetchingcat.com`** (Porkbun, Porkbun nameservers) is the starting domain. On 2026-11-09 the owner removed the old website records. A `dig` that day returned no A records for the root, `www`, or a random subdomain, so the parking-page wildcard is gone too.
+- The old site sent `Strict-Transport-Security: max-age=31536000; includeSubDomains`. Browsers that visited it will force HTTPS on every subdomain for up to a year. That's harmless here because the plan is HTTPS-only, but plain `http://` on a `thefetchingcat.com` name will not work in those browsers.
+- A dedicated domain (like Plex's separate `plex.direct`) can come later if KaijuFlow is shared widely. Ruled out for now: `.lol`, because some blockers filter cheap endings, and `.us`, because WHOIS privacy isn't allowed (both unverified, from general knowledge).
+
+## Deliverables the owner asked for
+
+1. **An owner setup walkthrough**: plain-language, step by step, with every click in Porkbun and Cloudflare and every command on Brain, written so the owner can follow it alone. It covers:
+   - Porkbun API access for `thefetchingcat.com` only
+   - the Cloudflare account and Worker deploy
+   - the secrets
+   - a staging test on the test container
+   - switching to the real Let's Encrypt
+   - how to check it's healthy later
+2. **The easiest possible user experience.** The target is zero setup: install KaijuFlow, open it, scan a QR code or tap "Install in Stremio", and it works on Android and Apple with no warnings. Every manual step that remains has to justify itself in the grill.
+
 ## Open questions for the grill
 
+- Domain layout on `thefetchingcat.com`: which subdomain holds user names (`kf.`, `u.`, …)? Does the root stay empty, or get a KaijuFlow landing page (served by the Worker or GitHub Pages)?
 - Is the owner OK running the Worker long-term, with every user depending on it?
-- Name format: random id (`abc123.kf…`) or IP-in-name like Plex (`192-168-1-50.abc123…`)? IP-in-name needs a custom DNS server, not just Porkbun records.
+- Name format: random id (`abc123.kf.thefetchingcat.com`) or IP-in-name like Plex (`192-168-1-50.abc123…`)? IP-in-name needs a custom DNS server, not just Porkbun records.
 - Which HTTPS port? (1338 is the Brain test container; pick something else, e.g. 8443.)
 - Keep HTTPS opt-in, or on by default with the wizard?
 - Should `http://` stay on forever, or be switchable off?
