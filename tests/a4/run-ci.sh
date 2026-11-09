@@ -6,6 +6,8 @@ ROOT="$PWD"
 # app source (HEAD) instead of requiring the untouched v1.4.1 import
 # (c83a3c733b6394eb140a1c0a1dc500010a9f22e5). Uncommitted edits are refused.
 git diff --quiet HEAD -- src ui/src || { echo "SOURCE-DIFF: uncommitted app changes; commit first"; exit 10; }
+# dist/ is what the scenarios copy and run: refuse one older than src/ (use the npm scripts, they build first).
+[[ -f dist/server.js && -z "$(find src -type f -newer dist/server.js -print -quit)" ]] || { echo "STALE-DIST: dist/ is missing or older than src/; run npm run build (npm run test:integration / test:a4 do it)"; exit 16; }
 before="$(mktemp)"
 after="$(mktemp)"
 git ls-files -- src ui/src | LC_ALL=C sort | while IFS= read -r f; do sha256sum "$f"; done > "$before"

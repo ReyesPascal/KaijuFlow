@@ -14,6 +14,7 @@ export async function createFakeAltmount(listen) {
   const submitFields = []; // { season, episode } per submit (strings as received, or undefined)
   let base = '';
   let down = false;
+  let nextQueueId = 1; // real AltMount queue ids are integers
 
   base = await listen(async (req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
@@ -95,13 +96,13 @@ export async function createFakeAltmount(listen) {
     submitFields,
     /** Register a movie Source the fake will accept. Returns its NZB link. */
     addMovie(tag, title, media) {
-      sources.set(tag, { tag, title, files: [{ media, path: `/movies/${title}/${tag}.mkv` }], queueId: `q-${tag}`, submits: 0, completed: false });
+      sources.set(tag, { tag, title, files: [{ media, path: `/movies/${title}/${tag}.mkv` }], queueId: nextQueueId++, submits: 0, completed: false });
       return `${base}/${tag}.nzb`;
     },
     /** Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}]. */
     addSeries(tag, title, episodes) {
       const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}.mkv` }));
-      sources.set(tag, { tag, title, files, queueId: `q-${tag}`, submits: 0, completed: false });
+      sources.set(tag, { tag, title, files, queueId: nextQueueId++, submits: 0, completed: false });
       return `${base}/${tag}.nzb`;
     },
     /** Register a Source whose queue item fails. */
