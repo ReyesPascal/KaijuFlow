@@ -12,6 +12,7 @@ export async function createFakeAltmount(listen) {
   const requests = [];
   const submitKinds = []; // 'file' | 'nzb_url' per submit
   let base = '';
+  let down = false;
 
   base = await listen(async (req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
@@ -26,6 +27,9 @@ export async function createFakeAltmount(listen) {
       res.end(`<nzb><file subject="${tag}"/></nzb>`);
       return;
     }
+
+    // Unreachable Backend: drop every Backend connection (the NZB link stays served, it is the indexer's).
+    if (down) { req.destroy(); return; }
 
     if (req.method === 'POST' && path === '/api/nzb/streams') {
       const chunks = []; for await (const c of req) chunks.push(c);
@@ -46,6 +50,10 @@ export async function createFakeAltmount(listen) {
       const src = sources.get(tag);
       if (!src) return json(400, { error: 'unknown NZB' });
       src.submits++;
+      // Failed queue item: pinned handler answers 500 "NZB processing failed" (not 400/422).
+      if (src.rejected) return json(500, { error: 'NZB processing failed' });
+      // Not ready in time: AltMount answers 408 with the queue ID; the queued work is NOT cancelled.
+      if (src.neverReady) { await new Promise(r => setTimeout(r, 300)); return json(408, { error: 'Timeout waiting for stream', details: src.queueId }); }
       const cached = src.completed;
       src.completed = true;
       return json(200, { streams: [{
@@ -71,6 +79,20 @@ export async function createFakeAltmount(listen) {
       sources.set(tag, { tag, title, media, path: `/movies/${title}/${tag}.mkv`, queueId: `q-${tag}`, submits: 0, completed: false });
       return `${base}/${tag}.nzb`;
     },
+    /** Register a Source whose queue item fails. */
+    addRejected(tag, title) {
+      const nzb = this.addMovie(tag, title, Buffer.from('unused'));
+      sources.get(tag).rejected = true;
+      return nzb;
+    },
+    /** Register a Source that never becomes ready (408 after a short wait). */
+    addNeverReady(tag, title) {
+      const nzb = this.addMovie(tag, title, Buffer.from('unused'));
+      sources.get(tag).neverReady = true;
+      return nzb;
+    },
+    /** Make the Backend unreachable (true) or reachable again (false). */
+    setDown(v) { down = v; },
     submitsFor(tag) { return sources.get(tag)?.submits ?? 0; },
     /** KaijuFlow settings that point the AltMount Backend at this fake. */
     configure(configData) {

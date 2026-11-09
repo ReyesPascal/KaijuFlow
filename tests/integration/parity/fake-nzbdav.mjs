@@ -8,6 +8,7 @@ export async function createFakeNzbdav(listen) {
   const sources = new Map(); // nzb tag -> { title, media, path, job, submitted, completed }
   const requests = [];
   let base = '';
+  let down = false;
 
   const propfindEntry = (href, dir) => `<d:response><d:href>${href}</d:href><d:propstat><d:prop><d:resourcetype>${dir ? '<d:collection/>' : ''}</d:resourcetype><d:getcontentlength>${dir ? 0 : ADVERTISED_SIZE}</d:getcontentlength><d:getcontenttype>${dir ? 'httpd/unix-directory' : 'video/x-matroska'}</d:getcontenttype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`;
 
@@ -24,6 +25,8 @@ export async function createFakeNzbdav(listen) {
       res.end(`<nzb><file subject="${tag}"><groups><group>alt.synthetic</group></groups><segments><segment bytes="64" number="1">${tag}@invalid</segment></segments></file></nzb>`);
       return;
     }
+    // Unreachable Backend: drop every Backend connection (the NZB link stays served, it is the indexer's).
+    if (down) { req.destroy(); return; }
     if (path === '/api') {
       const mode = u.searchParams.get('mode');
       if (mode === 'addfile') {
@@ -36,7 +39,7 @@ export async function createFakeNzbdav(listen) {
       }
       if (mode === 'queue') { json({ queue: { slots: [] } }); return; }
       if (mode === 'history') {
-        json({ history: { slots: [...sources.values()].filter(s => s.submits > 0).map(s => ({ nzo_id: s.job, status: 'Completed', name: s.title })) } });
+        json({ history: { slots: [...sources.values()].filter(s => s.submits > 0).map(s => ({ nzo_id: s.job, status: s.rejected ? 'Failed' : 'Completed', name: s.title, fail_message: s.rejected ? 'Synthetic rejection: missing articles' : undefined })) } });
         return;
       }
       json({ status: true }); return;
@@ -64,6 +67,15 @@ export async function createFakeNzbdav(listen) {
       sources.set(tag, { tag, title, media, dir, path: `${dir}/${tag}.mkv`, job: `job-${tag}`, submits: 0 });
       return `${base}/${tag}.nzb`;
     },
+    /** Register a Source the Backend accepts then fails (job ends Failed). */
+    addRejected(tag, title) {
+      const nzb = this.addMovie(tag, title, Buffer.from('unused'));
+      sources.get(tag).rejected = true;
+      return nzb;
+    },
+    /** Make the Backend unreachable (true) or reachable again (false). */
+    setDown(v) { down = v; },
+    // No addNeverReady: KaijuFlow gives NzbDAV no preparation time limit.
     submitsFor(tag) { return sources.get(tag)?.submits ?? 0; },
     /** KaijuFlow settings that point the NzbDAV Backend at this fake. */
     configure(configData) {

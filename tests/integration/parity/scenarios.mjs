@@ -59,10 +59,68 @@ export const scenarios = [
   },
 ];
 
+/** The failure video is a long video/mp4, much bigger than the synthetic media. */
+function assertFailureVideo(r, media) {
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'video/mp4', 'player should get the failure video');
+  assert.ok(r.body.length > media.length, 'failure video is not the Backend media');
+}
+
+const failureScenarios = [
+  {
+    // A Source the Backend rejects: failure video, then marked dead (the repeat is
+    // answered without asking the Backend again).
+    id: 'rejected-source-failure-video-and-dead',
+    async run({ kaijuflow, backend }) {
+      const title = 'KaijuFlow.Parity.Rejected.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addRejected('rejected', title);
+      assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), mediaFor('rejected'));
+      assert.equal(backend.submitsFor('rejected'), 1);
+      assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), mediaFor('rejected'));
+      assert.equal(backend.submitsFor('rejected'), 1, 'dead Source should not be submitted again');
+    },
+  },
+  {
+    // Only for Backends with a preparation time limit (AltMount). NzbDAV has none.
+    id: 'never-ready-failure-video-and-dead',
+    needs: 'addNeverReady',
+    async run({ kaijuflow, backend }) {
+      const title = 'KaijuFlow.Parity.NeverReady.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addNeverReady('neverready', title);
+      assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), mediaFor('neverready'));
+      assert.equal(backend.submitsFor('neverready'), 1);
+      assert.ok(!backend.requests.some(q => /cancel/.test(q.path)), 'a timeout is not a cancel');
+      assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), mediaFor('neverready'));
+      assert.equal(backend.submitsFor('neverready'), 1, 'timed-out Source should be marked dead');
+    },
+  },
+  {
+    // Backend down: the player gets the failure video but the Source is NOT dead,
+    // so it plays once the Backend is back.
+    id: 'unreachable-backend-not-dead',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('unreachable');
+      const title = 'KaijuFlow.Parity.Unreachable.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addMovie('unreachable', title, media);
+      backend.setDown(true);
+      try {
+        assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
+      } finally {
+        backend.setDown(false);
+      }
+      const r = await play(streamUrl(kaijuflow, nzb, title));
+      assert.equal(r.status, 200);
+      assert.deepEqual(r.body, media, 'Source should play once the Backend is reachable');
+    },
+  },
+];
+scenarios.push(...failureScenarios);
+
 /** Run every scenario against one fake Backend. Returns per-scenario results. */
 export async function runParity({ kaijuflow, backend }) {
   const results = [];
   for (const s of scenarios) {
+    if (s.needs && typeof backend[s.needs] !== 'function') { results.push({ id: s.id, status: 'pass', skipped: `Backend has no ${s.needs}` }); continue; }
     const before = backend.requests.length;
     try {
       await s.run({ kaijuflow, backend });
