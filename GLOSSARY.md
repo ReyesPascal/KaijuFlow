@@ -33,3 +33,13 @@ _Avoid_: streamer, engine, provider (providers are Usenet servers)
 **Parity**:
 The bar for supporting a new Backend: any Source that plays through NzbDAV also plays through the new Backend, seeking works, and a Source that fails shows the failure video and is not offered again.
 _Avoid_: compatibility, support (unqualified)
+
+### Preparing a Source
+
+**Scrambled RAR set**:
+A Source whose RAR parts are named only by numbers that do not match their real volume order.
+_Avoid_: obfuscated release (obfuscated names can still be in order), broken RAR, shuffled parts
+
+**Unscramble**:
+Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend.
+_Avoid_: reorder, repair, fix names
