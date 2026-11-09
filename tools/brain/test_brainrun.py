@@ -41,7 +41,14 @@ class FakeIO:
         self.calls.append(('sleep', s))
 
     def git_info(self):
-        return self.commit, False
+        return 'repo-head-must-not-be-recorded', False
+
+    def image_label(self):
+        return self.commit
+
+    def preflight(self, mode):
+        self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
+        return list(getattr(self, 'problems', []))
 
     def snapshot(self):
         return json.loads(json.dumps(self.settings))
@@ -135,6 +142,13 @@ class RunTest(unittest.TestCase):
         self.assertTrue(read(os.path.join(d, 'report.md')).split('\n')[0].startswith('Across 2 titles'))
         self.assertIn('MISS', read(os.path.join(d, 'logs', 'standin.log')))
         self.assertEqual(run['standin_misses'], 1)
+
+    def test_run_record_commit_comes_from_the_image_label_after_a_preflight(self):
+        io = FakeIO(commit='c-from-label')
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        self.assertEqual(run['commit'], 'c-from-label')
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['commit'], 'c-from-label')
+        self.assertEqual(io.calls_preflight, ['run'])
 
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())

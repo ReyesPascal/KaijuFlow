@@ -58,6 +58,23 @@ NzbDAV's import-line format (the `addfile` request and the "completed/finished/i
 
 Code: `brainreport.py` (log parsing, medians, failure split, diff, report, run folder and INDEX.md; pure logic), `brainrun.py` (orchestration), tests `test_brainreport.py` and `test_brainrun.py` (fakes and fixture logs, run in CI).
 
+## Settings table and preflight (spec #72, ticket #74)
+
+**Settings command.** `python3 -I tools/brain/testbed.py settings [--limit 100]` prints every test copy's settings as a table and the connection budget (per copy, total, provider limit), read straight from the copies' config files (KaijuFlow and Usenet Ultimate `config.json`, NzbDAV's database, each AltMount's `config.yaml`). Keys, logins and passwords are never printed. It replaces the hand-written table in SETTINGS.md. The run record's `settings.json` comes from the same reader (`testbed.read_settings`), so the table and the "what changed" list agree. The connection budget counts the NewsHosting login only: health-check cap (KaijuFlow, Usenet Ultimate), main providers (NzbDAV types 1 and 2; its backup login has its own limit and is shown beside it), enabled non-backup providers (AltMount).
+
+**Preflight.** `python3 -I tools/brain/brainrun.py preflight [--for run|record] --store <store> --list <list> [--rebuild-image] [--provider-limit 100] [--key-file PATH]` prints one plain sentence per problem and exits 1, or exits 0 with `Setup is right ...`. `--store` and `--list` are only needed for `--for run`. `brainrun.py run` starts with the same check and stops before creating a run folder when it fails. Checks:
+
+1. the `kaijuflow:test` image's `kaijuflow.commit` label equals the repository's commit and the tree is clean (`--rebuild-image` runs `docker build --label kaijuflow.commit=<commit> -t kaijuflow:test .` when the label differs; it never builds from a dirty tree);
+2. record only: the key file (default `<test dir>/indexers.json`) exists, is readable only by the owner, and names exactly the indexers switched on in every test copy (only the names are read, so per-indexer settings added later are fine);
+3. every indexer address in every test copy (also switched-off ones, plus Easynews or Prowlarr when on) is `http://host.docker.internal:1340/<slug>` with or without `/api`;
+4. the caps add up to at most the provider limit (default 100);
+5. the stand-in's port 1340 is free;
+6. run only: the recording `<store>/<list>/<slug>/` holds at least one answer for each switched-on indexer.
+
+Indexers are compared by the slug in the stand-in address, because each copy names them its own way (`NinjaCentral` vs `ninja`). The tools carry no indexer names. The run record's `commit` is the image label, not the repository's HEAD.
+
+**For the record command (#75).** Call `brainrun.preflight('record', cfg, io)` (or `'run'`); it returns a list of sentences, `[]` meaning go, and `brainrun.preflight_command(mode, cfg, io)` prints them and returns the exit code. `cfg` needs `test_dir`, `store`, `listname`; optional `limit`, `standin_port`, `key_file`, `rebuild_image`. `io` is the runner's IO object (`RealIO`) and needs `git_info`, `image_label`, `rebuild_image`, `setup_report`, `key_state`, `port_free`, `recording`; `FakeIO` in the tests shows the shortcut (`io.preflight(mode)`). Tests: `test_settings.py`, `test_preflight.py`.
+
 ## Step lines (`[KF-STEP]`)
 
 KaijuFlow writes one line per timed step to stdout (`src/utils/stepTiming.ts`): `[KF-STEP] ` followed by a one-line JSON object. `docker logs -t` prefixes are fine: parse from the first `[KF-STEP] ` (`json.loads(line.split("[KF-STEP] ", 1)[1])`). Lines carry names, titles and numbers only, never URLs or keys.
