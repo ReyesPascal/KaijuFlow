@@ -265,7 +265,7 @@ export function DashboardTab({
                     </div>
                     <div className="text-3xl font-bold group-hover:text-purple-400 group-active:text-purple-400 transition-colors">
                       {config.streamingMode === 'nzbdav'
-                        ? <>{backend === 'altmount' ? 'AltMount' : 'NzbDAV'}<span className="text-lg font-normal text-purple-400 ml-2">+ {!ufActive ? 'Dual-Stage Proxy' : nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
+                        ? <>{backend === 'altmount' ? 'AltMount' : 'NzbDAV'}<span className="text-lg font-normal text-purple-400 ml-2">+ {!ufActive && backend !== 'altmount' ? 'Dual-Stage Proxy' : nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
                         : 'Native'}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
