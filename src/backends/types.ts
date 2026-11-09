@@ -51,6 +51,13 @@ export interface PrepareOptions {
   isCancelled?: () => boolean;
 }
 
+/** Options for probe. `title` and `source` only label the first-byte step line (#61). */
+export interface ProbeOptions {
+  logPrefix?: string;
+  title?: string;
+  source?: string;
+}
+
 /** A fetchable media URL plus the request headers it needs (server side only). */
 export interface MediaRequest {
   url: URL;
@@ -86,7 +93,7 @@ export interface Backend {
   prepare(source: BackendSource, opts?: PrepareOptions): Promise<PreparedVideo>;
 
   /** Probe: confirm the first byte is servable. Throws a Source failure if not. */
-  probe(video: PreparedVideo, opts?: { logPrefix?: string }): Promise<void>;
+  probe(video: PreparedVideo, opts?: ProbeOptions): Promise<void>;
 
   /** Cancel: best effort only. Never proof that the Backend's work stopped. */
   cancel(jobId: string, reason?: string): Promise<void>;
