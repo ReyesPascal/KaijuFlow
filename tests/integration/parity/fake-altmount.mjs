@@ -70,10 +70,14 @@ export async function createFakeAltmount(listen) {
       if (src.neverReady) { await new Promise(r => setTimeout(r, 300)); return json(408, { error: 'Timeout waiting for stream', details: src.queueId }); }
       const cached = src.completed;
       src.completed = true;
-      return json(200, { streams: [{
-        url: `${base}/api/files/stream?path=${encodeURIComponent(file.path)}&download_key=${DOWNLOAD_KEY}`,
-        title: src.title, name: 'AltMount', _queue_item_id: src.queueId, _queue_status: src.queueStatus ?? (cached ? 'completed' : 'streamable'), _cached: cached,
-      }] });
+      // Pinned v0.4.0 StremioStreamsResponse: the queue fields sit next to `streams`.
+      return json(200, {
+        streams: [{
+          url: `${base}/api/files/stream?path=${encodeURIComponent(file.path)}&download_key=${DOWNLOAD_KEY}`,
+          title: src.title, name: 'AltMount',
+        }],
+        _queue_item_id: src.queueId, _queue_status: src.queueStatus ?? (cached ? 'completed' : 'streamable'), _cached: cached,
+      });
     }
 
     if ((req.method === 'GET' || req.method === 'HEAD') && path === '/api/files/stream') {

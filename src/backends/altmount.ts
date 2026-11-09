@@ -94,10 +94,12 @@ const configError = (what: string) => new Error(`AltMount ${what} is not set - c
 /** AltMount 500 answers that say AltMount had a problem, not that the Source failed. */
 const BACKEND_SIDE_500 = /failed to check queue status|queue item not found|failed to list output media files|failed to fetch completed item|progress broadcaster closed unexpectedly|failed to open uploaded file|failed to read uploaded file|failed to process nzb/i;
 
-/** Ready means streamable or completed, or a reused completed entry. */
-const isReady = (e: StreamsEntry) => e._cached === true || e._queue_status === 'streamable' || e._queue_status === 'completed';
-
-interface StreamsEntry { url?: string; _queue_item_id?: string | number; _queue_status?: string; _cached?: boolean }
+/**
+ * Reply of `POST /api/nzb/streams` (pinned v0.4.0 StremioStreamsResponse).
+ * `_queue_item_id`, `_queue_status` and `_cached` sit next to `streams`, not
+ * inside each entry.
+ */
+interface StreamsReply { streams?: { url?: string }[]; _queue_item_id?: string | number; _queue_status?: string; _cached?: boolean }
 
 /** Virtual path of the media, taken from the `path` of the URL AltMount returned. */
 function virtualPathOf(entryUrl: string, base: string): string | null {
@@ -107,6 +109,23 @@ function virtualPathOf(entryUrl: string, base: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The media AltMount says is ready, from the raw reply body. Ready means the
+ * reply is streamable or completed, or a reused completed item; the file is
+ * the first entry whose URL carries a virtual path.
+ */
+export function readyMediaOf(raw: string, base: string): { queueId: string; videoPath: string; cached: boolean; status: string } | null {
+  let reply: StreamsReply;
+  try { reply = JSON.parse(raw) as StreamsReply; } catch { return null; }
+  const ready = reply._cached === true || reply._queue_status === 'streamable' || reply._queue_status === 'completed';
+  if (!ready) return null;
+  for (const s of reply.streams ?? []) {
+    const videoPath = s.url ? virtualPathOf(s.url, base) : null;
+    if (videoPath) return { queueId: String(reply._queue_item_id ?? ''), videoPath, cached: reply._cached === true, status: reply._queue_status ?? '' };
+  }
+  return null;
 }
 
 /**
@@ -210,14 +229,11 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       if (!res.ok) {
         throw new Error(`AltMount returned status ${res.status}: ${text}`);
       }
-      let streams: StreamsEntry[] = [];
-      try { streams = (JSON.parse(raw) as { streams?: StreamsEntry[] }).streams ?? []; } catch { /* no streams */ }
-      const entry = streams.find(s => s.url && virtualPathOf(s.url, baseUrl()) && isReady(s));
-      if (!entry?.url) throw sourceFailure('AltMount returned no ready file for this Source', false, true);
-      const nzoId = String(entry._queue_item_id ?? '');
-      onJob?.(nzoId);
-      console.log(`${logPrefix}  \u2705 AltMount prepared the Source (${entry._cached ? 'reused' : entry._queue_status || 'ready'})`);
-      return { nzoId, videoPath: virtualPathOf(entry.url, baseUrl())!, videoSize: 0 };
+      const media = readyMediaOf(raw, baseUrl());
+      if (!media) throw sourceFailure('AltMount returned no ready file for this Source', false, true);
+      onJob?.(media.queueId);
+      console.log(`${logPrefix}  \u2705 AltMount prepared the Source (${media.cached ? 'reused' : media.status || 'ready'})`);
+      return { nzoId: media.queueId, videoPath: media.videoPath, videoSize: 0 };
     },
 
     // GET the first byte (HEAD isn't proof the file is readable). A cached
