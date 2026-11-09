@@ -221,6 +221,7 @@ export interface HealthChecksState {
   smartAdditionalRuns: number;
   smartMinHealthy: number;
   maxConnections: number;
+  maxTotalConnections: number;
   autoQueueMode: 'off' | 'top' | 'all';
   hideBlocked: boolean;
   libraryPreCheck: boolean;

@@ -105,6 +105,7 @@ export interface ConfigData {
     usenetUsername?: string;
     usenetPassword?: string;
     maxConnections?: number;
+    maxTotalConnections?: number;
   };
   ultimateFallback?: {
     enabled: boolean;

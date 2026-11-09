@@ -26,7 +26,12 @@ export {
 } from './archiveGrouper.js';
 
 // NNTP connection management
-export { connectToUsenet, NntpConnectionPool } from './nntpConnection.js';
+export {
+  connectToUsenet,
+  NntpConnectionPool,
+  setHealthCheckConnectionCap,
+  DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
+} from './nntpConnection.js';
 
 // Article checking
 export { checkArticlesDetailed, checkArticlesOnProvider, checkArticlesMultiProvider } from './articleChecker.js';
