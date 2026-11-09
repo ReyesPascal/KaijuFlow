@@ -214,7 +214,8 @@ export async function prepareStream(
   // The probe below still runs. NzbDAV is unchanged: its library lookup above is authoritative.
   if (!backend.library && backend.id !== 'nzbdav') {
     const ready = findReadyStream(nzbUrl, title, episodePattern, backend.id);
-    if (ready && !isVideoPathBroken(ready.videoPath) && await backend.stillPrepared(ready.videoPath)) {
+    if (ready && !isVideoPathBroken(ready.videoPath)) {
+      // The probe is the freshness check here (stillPrepared would send the same request).
       try {
         await backend.probe(ready, { logPrefix });
         console.log(`${logPrefix}\u2705 Stream ready (${backend.label}, reused): ${title}\n`);
