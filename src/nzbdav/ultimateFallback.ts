@@ -573,7 +573,7 @@ export async function ultimateFallbackFromCandidates(
         if (cs.cancelled) { cs.nzbdavStatus = 'failed'; return null; }
 
         // Step 4: Probe video is servable
-        await backend.probe(video, { logPrefix });
+        await backend.probe(video, { logPrefix, title: cs.candidate.title, source: cs.candidate.indexerName });
 
         // Step 5: Write to readyCache so stream handler can deliver
         const cacheKey = getCacheKey(cs.candidate.nzbUrl, cs.candidate.title) + (cachePattern ? `:${cachePattern}` : '');

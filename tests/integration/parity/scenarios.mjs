@@ -248,6 +248,39 @@ const failureScenarios = [
       }
     },
   },
+  {
+    // #61: every Backend logs the same shared steps, once each per play, one
+    // parseable line per step. NzbDAV also logs the upload; AltMount's one
+    // request covers upload and import, so its import_wait says so.
+    id: 'step-timing-lines',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('steptiming');
+      const title = 'KaijuFlow.Parity.StepTiming.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addMovie('steptiming', title, media);
+      const lines = [];
+      const saved = console.log;
+      console.log = (...a) => { lines.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); };
+      let r;
+      try { r = await play(streamUrl(kaijuflow, nzb, title)); } finally { console.log = saved; }
+      assert.equal(r.status, 200, 'movie should play');
+      const recs = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+      const mine = recs.filter(x => x.title === title || x.step === 'first_byte');
+      const stepsOf = name => mine.filter(x => x.step === name);
+      for (const name of ['nzb_fetch', 'unscramble', 'import_wait', 'first_byte']) assert.equal(stepsOf(name).length, 1, `${name} should be logged once`);
+      assert.equal(stepsOf('unscramble')[0].result, 'not-scrambled');
+      assert.equal(stepsOf('nzb_fetch')[0].source, 'Parity');
+      if (backend.submitKinds) {
+        assert.equal(stepsOf('upload').length, 0, 'AltMount has no separate upload step');
+        assert.equal(stepsOf('import_wait')[0].includes_upload, true);
+      } else {
+        assert.equal(stepsOf('upload').length, 1, 'upload should be logged once');
+        assert.equal(stepsOf('upload')[0].job, stepsOf('import_wait')[0].job, 'upload and import_wait name the same job');
+      }
+      assert.equal(stepsOf('first_byte')[0].job, stepsOf('import_wait')[0].job ?? stepsOf('upload')[0].job);
+      for (const x of mine) assert.equal(typeof x.ms, 'number');
+      assert.doesNotMatch(lines.filter(l => l.startsWith('[KF-STEP] ')).join('\n'), /apikey|api_key|https?:\/\//i, 'step lines carry no key or URL');
+    },
+  },
 ];
 scenarios.push(...failureScenarios);
 

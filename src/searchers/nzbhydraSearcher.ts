@@ -17,6 +17,7 @@ import { isTextSearchMatch, stripDiacritics, tagSeasonPack, runSeriesPackQueries
 import { slog, withSubBuffer } from '../parsers/searchLogger.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
+import { timeIndexerPage } from '../utils/stepTiming.js';
 
 export class NzbhydraSearcher {
   private authHeader?: string;
@@ -557,11 +558,11 @@ export class NzbhydraSearcher {
       const headers: Record<string, string> = { 'User-Agent': userAgent };
       if (this.authHeader) headers['Authorization'] = this.authHeader;
 
-      const response = await axios.get(url, {
+      const response = await timeIndexerPage('NZBHydra', 1, () => axios.get(url, {
         params,
         timeout: this.getTimeoutMs(),
         headers,
-      });
+      }));
 
       const { results, total } = await parseNewznabXmlWithMeta(response.data);
       slog(`   📥 NZBHydra returned ${results.length} results${total ? ` (total: ${total})` : ''}`);
@@ -574,11 +575,11 @@ export class NzbhydraSearcher {
         for (let page = 2; page <= extraPages + 1 && currentOffset < total; page++) {
           slog(`   📄 Fetching page ${page} (offset ${currentOffset})...`);
           try {
-            const pageResp = await axios.get(url, {
+            const pageResp = await timeIndexerPage('NZBHydra', page, () => axios.get(url, {
               params: { ...params, offset: currentOffset },
               timeout: this.getTimeoutMs(),
               headers,
-            });
+            }));
             const pageData = await parseNewznabXmlWithMeta(pageResp.data);
             if (pageData.results.length === 0) break;
             results.push(...pageData.results);

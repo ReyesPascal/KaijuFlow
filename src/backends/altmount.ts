@@ -13,6 +13,7 @@ import { config as globalConfig } from '../config/index.js';
 import { createHash } from 'node:crypto';
 import { ALTMOUNT_CAPABILITIES } from './capabilities.js';
 import { grabSourceNzb } from './sourceNzb.js';
+import { timeStep } from '../utils/stepTiming.js';
 import { PrepareCancelledError, isSourceFailure, sourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
 
 const TEST_CONNECTION_TIMEOUT_MS = 15_000;
@@ -156,6 +157,33 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
     return { url, headers: {} };
   };
 
+  // GET the first byte; the retries are part of the step.
+  const probeFirstByte = async (video: PreparedVideo, logPrefix: string): Promise<void> => {
+    const { url, headers } = mediaRequest(video.videoPath);
+    let attempt = 0;
+    while (attempt < PROBE_MAX_ATTEMPTS) {
+      try {
+        const resp = await fetch(url, { headers: { ...headers, Range: 'bytes=0-0' }, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+        await resp.body?.cancel().catch(() => {});
+        if (resp.status === 404 || resp.status === 410) {
+          throw sourceFailure(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
+        }
+        if (resp.status === 206 || resp.status === 200) {
+          const total = /^bytes 0-0\/(\d+)$/.exec(resp.headers.get('content-range') ?? '')?.[1];
+          if (total && !video.videoSize) video.videoSize = parseInt(total, 10);
+          return;
+        }
+        console.warn(`${logPrefix}  \u26A0\uFE0F AltMount probe returned ${resp.status}`);
+      } catch (err) {
+        if (isSourceFailure(err)) throw err;
+        console.warn(`${logPrefix}  \u26A0\uFE0F AltMount probe attempt ${attempt + 1}/${PROBE_MAX_ATTEMPTS} failed: ${(err as Error).message}`);
+      }
+      attempt++;
+      if (attempt < PROBE_MAX_ATTEMPTS) await new Promise(r => setTimeout(r, PROBE_RETRY_DELAY_MS));
+    }
+    throw sourceFailure(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
+  };
+
   return {
     id: 'altmount',
     label: 'AltMount',
@@ -178,6 +206,7 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
     async prepare(source, opts = {}) {
       const { logPrefix = '', timeoutMs = 0, onJob, isCancelled } = opts;
       if (!settings.apiKey) throw configError('API key');
+      const apiKey = settings.apiKey;
       // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
       // tracking) through the shared step, exactly as for NzbDAV, and uploads it.
       const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
@@ -195,42 +224,46 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
         form.append('episode', String(se.episode));
       }
       console.log(`${logPrefix}  \u{1F4E4} Sending Source to AltMount (waits up to ${waitSec}s)`);
-      let res: Response;
-      try {
-        res = await fetch(new URL('/api/nzb/streams', baseUrl()), {
-          method: 'POST',
-          headers: { 'X-Api-Key': settings.apiKey },
-          body: form,
-          signal: AbortSignal.timeout(waitSec * 1000 + SUBMIT_GRACE_MS),
-        });
-      } catch (err) {
-        // Unreachable AltMount: not the Source's fault, so not a Source failure.
-        throw new Error(`AltMount is not reachable (${(err as Error).message})`);
-      }
-      if (isCancelled?.()) {
-        await res.body?.cancel().catch(() => {});
-        throw new PrepareCancelledError();
-      }
-      const raw = await res.text().catch(() => '');
-      const text = raw.slice(0, 300);
-      if (res.status === 408) {
-        // AltMount keeps working on it; KaijuFlow just stopped waiting.
-        throw sourceFailure(`AltMount did not finish preparing within ${waitSec}s`, true, false);
-      }
-      if (res.status === 400 || res.status === 422) {
-        throw sourceFailure(`AltMount rejected the Source (${res.status}): ${text}`, false, true);
-      }
-      // A failed queue item ("NZB processing failed", or its error message) is the
-      // Source's fault. AltMount-side 500s (queue lookup, output listing, upload
-      // handling, progress stream) are not.
-      if (res.status === 500 && !BACKEND_SIDE_500.test(raw)) {
-        throw sourceFailure(`AltMount could not process the Source: ${text}`, false, true);
-      }
-      if (!res.ok) {
-        throw new Error(`AltMount returned status ${res.status}: ${text}`);
-      }
-      const media = readyMediaOf(raw, baseUrl());
-      if (!media) throw sourceFailure('AltMount returned no ready file for this Source', false, true);
+      // One request uploads the NZB and waits for AltMount's import, so one step covers both.
+      const media = await timeStep({ step: 'import_wait', source: source.indexerName, title: source.title, includes_upload: true }, async () => {
+        let res: Response;
+        try {
+          res = await fetch(new URL('/api/nzb/streams', baseUrl()), {
+            method: 'POST',
+            headers: { 'X-Api-Key': apiKey },
+            body: form,
+            signal: AbortSignal.timeout(waitSec * 1000 + SUBMIT_GRACE_MS),
+          });
+        } catch (err) {
+          // Unreachable AltMount: not the Source's fault, so not a Source failure.
+          throw new Error(`AltMount is not reachable (${(err as Error).message})`);
+        }
+        if (isCancelled?.()) {
+          await res.body?.cancel().catch(() => {});
+          throw new PrepareCancelledError();
+        }
+        const raw = await res.text().catch(() => '');
+        const text = raw.slice(0, 300);
+        if (res.status === 408) {
+          // AltMount keeps working on it; KaijuFlow just stopped waiting.
+          throw sourceFailure(`AltMount did not finish preparing within ${waitSec}s`, true, false);
+        }
+        if (res.status === 400 || res.status === 422) {
+          throw sourceFailure(`AltMount rejected the Source (${res.status}): ${text}`, false, true);
+        }
+        // A failed queue item ("NZB processing failed", or its error message) is the
+        // Source's fault. AltMount-side 500s (queue lookup, output listing, upload
+        // handling, progress stream) are not.
+        if (res.status === 500 && !BACKEND_SIDE_500.test(raw)) {
+          throw sourceFailure(`AltMount could not process the Source: ${text}`, false, true);
+        }
+        if (!res.ok) {
+          throw new Error(`AltMount returned status ${res.status}: ${text}`);
+        }
+        const ready = readyMediaOf(raw, baseUrl());
+        if (!ready) throw sourceFailure('AltMount returned no ready file for this Source', false, true);
+        return ready;
+      }, ready => ({ job: ready.queueId }));
       onJob?.(media.queueId);
       console.log(`${logPrefix}  \u2705 AltMount prepared the Source (${media.cached ? 'reused' : media.status || 'ready'})`);
       return { nzoId: media.queueId, videoPath: media.videoPath, videoSize: 0 };
@@ -238,32 +271,10 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
 
     // GET the first byte (HEAD isn't proof the file is readable). A cached
     // entry skipped AltMount's own byte probe, so this always runs.
-    async probe(video, opts = {}) {
-      const { logPrefix = '' } = opts;
-      const { url, headers } = mediaRequest(video.videoPath);
-      let attempt = 0;
-      while (attempt < PROBE_MAX_ATTEMPTS) {
-        try {
-          const resp = await fetch(url, { headers: { ...headers, Range: 'bytes=0-0' }, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-          await resp.body?.cancel().catch(() => {});
-          if (resp.status === 404 || resp.status === 410) {
-            throw sourceFailure(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
-          }
-          if (resp.status === 206 || resp.status === 200) {
-            const total = /^bytes 0-0\/(\d+)$/.exec(resp.headers.get('content-range') ?? '')?.[1];
-            if (total && !video.videoSize) video.videoSize = parseInt(total, 10);
-            return;
-          }
-          console.warn(`${logPrefix}  \u26A0\uFE0F AltMount probe returned ${resp.status}`);
-        } catch (err) {
-          if (isSourceFailure(err)) throw err;
-          console.warn(`${logPrefix}  \u26A0\uFE0F AltMount probe attempt ${attempt + 1}/${PROBE_MAX_ATTEMPTS} failed: ${(err as Error).message}`);
-        }
-        attempt++;
-        if (attempt < PROBE_MAX_ATTEMPTS) await new Promise(r => setTimeout(r, PROBE_RETRY_DELAY_MS));
-      }
-      throw sourceFailure(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
-    },
+    probe: (video, opts = {}) => timeStep(
+      { step: 'first_byte', source: opts.source, title: opts.title, job: video.nzoId },
+      () => probeFirstByte(video, opts.logPrefix ?? ''),
+    ),
 
     // Deliberately a no-op (checked against pinned AltMount source, #3). The only
     // API-key route, SAB `mode=queue&name=delete`, just deletes the import_queue
