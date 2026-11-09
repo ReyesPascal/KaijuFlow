@@ -22,7 +22,7 @@ function startFakeNntp(missingIds: Set<string>): Promise<net.Server> {
     open++;
     peak = Math.max(peak, open);
     sockets.add(sock);
-    // A connection stops counting once the server sees the client close it.
+    // A connection stops counting once the server handles QUIT or sees the client close it.
     let counted = true;
     const gone = () => { if (counted) { counted = false; open--; } sockets.delete(sock); };
     sock.on('end', gone);
@@ -35,7 +35,8 @@ function startFakeNntp(missingIds: Set<string>): Promise<net.Server> {
       const lines = buf.split('\r\n');
       buf = lines.pop() || '';
       for (const line of lines) {
-        if (line.startsWith('AUTHINFO USER')) sock.write('381 more\r\n');
+        if (line.startsWith('QUIT')) { gone(); sock.end('205 bye\r\n'); }
+        else if (line.startsWith('AUTHINFO USER')) sock.write('381 more\r\n');
         else if (line.startsWith('AUTHINFO PASS')) sock.write('281 ok\r\n');
         else if (line.startsWith('STAT')) {
           const id = line.slice(line.indexOf('<') + 1, line.lastIndexOf('>'));

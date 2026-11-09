@@ -116,6 +116,26 @@ export async function connectToUsenet(provider: NntpProvider): Promise<NntpSocke
   return socket;
 }
 
+/**
+ * Close a healthy connection politely: send QUIT and our FIN, then wait for
+ * the server to close its side. The slot is freed on 'close', which only
+ * fires after the server has seen us go, so the provider never counts the
+ * old and the next connection at the same time. Falls back to destroy.
+ */
+export function closeGracefully(socket: NntpSocket, timeoutMs = 2000): void {
+  if (socket.destroyed) return;
+  if (!socket.writable) {
+    socket.destroy();
+    return;
+  }
+  const timer = setTimeout(() => socket.destroy(), timeoutMs);
+  timer.unref?.();
+  socket.once('close', () => clearTimeout(timer));
+  socket.on('error', () => socket.destroy());
+  socket.resume(); // drain the server's QUIT reply so its FIN is read
+  socket.end('QUIT\r\n');
+}
+
 function openAuthenticatedSocket(provider: NntpProvider): Promise<NntpSocket> {
   return new Promise((resolve, reject) => {
     let resolved = false;
@@ -244,8 +264,12 @@ export class NntpConnectionPool {
 
   release(provider: { host: string; port: number; username: string }, socket: NntpSocket): void {
     // Someone is waiting for a slot under the cap: close instead of parking.
-    if (socket.destroyed || !socket.writable || limiter.hasWaiters) {
+    if (socket.destroyed || !socket.writable) {
       try { socket.destroy(); } catch {}
+      return;
+    }
+    if (limiter.hasWaiters) {
+      closeGracefully(socket);
       return;
     }
     const k = this.key(provider);
@@ -260,7 +284,7 @@ export class NntpConnectionPool {
       this.unregisterIdle.delete(socket);
       const i = parked.indexOf(socket);
       if (i >= 0) parked.splice(i, 1);
-      try { socket.destroy(); } catch {}
+      closeGracefully(socket);
     }));
   }
 
@@ -269,7 +293,7 @@ export class NntpConnectionPool {
     this.unregisterIdle.clear();
     for (const [, stack] of this.pools) {
       for (const socket of stack) {
-        try { socket.destroy(); } catch {}
+        closeGracefully(socket);
       }
     }
     this.pools.clear();
