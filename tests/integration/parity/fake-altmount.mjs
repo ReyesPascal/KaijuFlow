@@ -8,9 +8,10 @@ export const API_KEY = 'synthetic-altmount-key';
 const DOWNLOAD_KEY = crypto.createHash('sha256').update(API_KEY).digest('hex');
 
 export async function createFakeAltmount(listen) {
-  const sources = new Map(); // tag -> { tag, title, media, path, queueId, submits, completed }
+  const sources = new Map(); // tag -> { tag, title, files[{season,episode,media,path}], queueId, submits, completed }
   const requests = [];
   const submitKinds = []; // 'file' | 'nzb_url' per submit
+  const submitFields = []; // { season, episode } per submit (strings as received, or undefined)
   let base = '';
 
   base = await listen(async (req, res) => {
@@ -45,19 +46,30 @@ export async function createFakeAltmount(listen) {
       }
       const src = sources.get(tag);
       if (!src) return json(400, { error: 'unknown NZB' });
+      // Episode selection, as AltMount does it: a pack needs season+episode, and the answer is that episode's file.
+      const season = field('season'), episode = field('episode');
+      submitFields.push({ season, episode });
+      let file = src.files[0];
+      if (src.files.length > 1) {
+        if (!season || !episode) return json(400, { error: 'Episode not specified' });
+        file = src.files.find(f => String(f.season) === season && String(f.episode) === episode);
+        if (!file) return json(400, { error: 'Episode not found in NZB' });
+      } else if (season && episode && src.files[0].season != null && (String(file.season) !== season || String(file.episode) !== episode)) {
+        return json(400, { error: 'Episode not found in NZB' });
+      }
       src.submits++;
       const cached = src.completed;
       src.completed = true;
       return json(200, { streams: [{
-        url: `${base}/api/files/stream?path=${encodeURIComponent(src.path)}&download_key=${DOWNLOAD_KEY}`,
+        url: `${base}/api/files/stream?path=${encodeURIComponent(file.path)}&download_key=${DOWNLOAD_KEY}`,
         title: src.title, name: 'AltMount', _queue_item_id: src.queueId, _queue_status: cached ? 'completed' : 'streamable', _cached: cached,
       }] });
     }
 
     if ((req.method === 'GET' || req.method === 'HEAD') && path === '/api/files/stream') {
       if (u.searchParams.get('download_key') !== DOWNLOAD_KEY) { res.writeHead(401); res.end(); return; }
-      const src = [...sources.values()].find(s => s.completed && s.path === u.searchParams.get('path'));
-      if (src) { serveBytes(req, res, src.media); return; }
+      const file = [...sources.values()].filter(s => s.completed).flatMap(s => s.files).find(f => f.path === u.searchParams.get('path'));
+      if (file) { serveBytes(req, res, file.media); return; }
     }
     res.writeHead(404); res.end();
   });
@@ -66,9 +78,16 @@ export async function createFakeAltmount(listen) {
     name: 'altmount',
     requests,
     submitKinds,
+    submitFields,
     /** Register a movie Source the fake will accept. Returns its NZB link. */
     addMovie(tag, title, media) {
-      sources.set(tag, { tag, title, media, path: `/movies/${title}/${tag}.mkv`, queueId: `q-${tag}`, submits: 0, completed: false });
+      sources.set(tag, { tag, title, files: [{ media, path: `/movies/${title}/${tag}.mkv` }], queueId: `q-${tag}`, submits: 0, completed: false });
+      return `${base}/${tag}.nzb`;
+    },
+    /** Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}]. */
+    addSeries(tag, title, episodes) {
+      const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}.mkv` }));
+      sources.set(tag, { tag, title, files, queueId: `q-${tag}`, submits: 0, completed: false });
       return `${base}/${tag}.nzb`;
     },
     submitsFor(tag) { return sources.get(tag)?.submits ?? 0; },
