@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
+import { assertBytes } from './parity/bytes.mjs';
 import {createHash} from 'node:crypto';
 const root=process.env.A4_APP_ROOT, output=process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root+'/../app-import.started'));
@@ -78,7 +79,7 @@ try {
   report.stages.push('original stream builder generates metadata and NzbDAV tile envelope');
   const response=await fetch(tile.url,{signal:AbortSignal.timeout(20000)});
   const delivered=Buffer.from(await response.arrayBuffer());
-  assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'video/x-matroska');assert.equal(Number(response.headers.get('content-length')),64);assert.deepEqual(delivered,media);
+  assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'video/x-matroska');assert.equal(Number(response.headers.get('content-length')),64);assertBytes(delivered,media);
   assert.ok(submitted && uploaded.includes('fixture@invalid'));
   for(const mode of ['addfile','queue','history'])assert.ok(requests.some(r=>r.mode===mode));
   assert.ok(requests.some(r=>r.method==='PROPFIND'));assert.ok(requests.some(r=>r.range==='bytes=0-0'));

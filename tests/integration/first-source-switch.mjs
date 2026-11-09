@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
+import { assertBytes } from './parity/bytes.mjs';
 const root=process.env.A4_APP_ROOT, output=process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root+'/../app-import.started'));
 assert.match(root,/kaijuflow-a4-[^/]+\/positive\/work$/);
@@ -68,7 +69,7 @@ try {
   const delivered=Buffer.from(await response.arrayBuffer());
   const elapsedMs=Date.now()-started;
   assert.equal(response.status,200,'expected source 2 to play');
-  assert.deepEqual(delivered,media,'expected source 2 bytes');
+  assertBytes(delivered,media,'expected source 2 bytes');
   assert.ok(elapsedMs>=SWITCH_MS,`served before the switch window (${elapsedMs} ms)`);
   assert.ok(elapsedMs<SWITCH_MS+8000,`switch took too long (${elapsedMs} ms)`);
   assert.ok(submitted.has('slow-job'),'source 1 was never submitted');
