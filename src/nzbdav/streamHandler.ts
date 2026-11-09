@@ -204,7 +204,7 @@ export async function prepareStream(
     if (isVideoPathBroken(existing.videoPath)) {
       console.log(`${logPrefix}\u{1F6AB} Library hit skipped (video path broken): ${existing.videoPath}`);
     } else {
-      console.log(`${logPrefix}\u2705 Stream ready (from library): ${title}\n`);
+      console.log(`${logPrefix}\u2705 Stream ready (${backend.label} library): ${title}\n`);
       return existing;
     }
   }
@@ -221,7 +221,7 @@ export async function prepareStream(
   }
 
   const totalElapsed = Math.round((Date.now() - budgetStart) / 1000);
-  console.log(`${logPrefix}\u2705 Stream ready: ${title} (${totalElapsed}s total)\n`);
+  console.log(`${logPrefix}\u2705 Stream ready (${backend.label}): ${title} (${totalElapsed}s total)\n`);
 
   clearVideoPathBroken(video.videoPath);
   return video;
