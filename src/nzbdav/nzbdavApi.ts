@@ -25,16 +25,13 @@ export function resolveCategory(config: NZBDavConfig, contentType?: string): str
 }
 
 /**
- * Submit NZB to NZBDav and return the nzo_id.
- * `searchExitIp` carries the proxy exit IP that was live when this candidate's
- * search ran. verifyProxyCircuit compares against it so a rotation+new-search
- * between the original search and this grab cannot silently pass verification.
+ * NZB grab shared by every Backend: cached copy or indexer download through
+ * the proxy (exit-IP check), content validation and grab tracking. Returns the
+ * NZB text. Throws Source failures (nzbdavError) for bad downloads/content.
  */
-export async function submitNzb(
+export async function grabNzb(
   nzbUrl: string,
   title: string,
-  config: NZBDavConfig,
-  contentType?: string,
   budgetMs?: number,
   logPrefix = '',
   indexerName?: string,
@@ -101,6 +98,30 @@ export async function submitNzb(
     trackGrab(indexerForLog, title);
   }
 
+  return nzbContent;
+}
+
+/**
+ * Submit NZB to NZBDav and return the nzo_id.
+ * `searchExitIp` carries the proxy exit IP that was live when this candidate's
+ * search ran. verifyProxyCircuit compares against it so a rotation+new-search
+ * between the original search and this grab cannot silently pass verification.
+ */
+export async function submitNzb(
+  nzbUrl: string,
+  title: string,
+  config: NZBDavConfig,
+  contentType?: string,
+  budgetMs?: number,
+  logPrefix = '',
+  indexerName?: string,
+  searchExitIp?: string,
+): Promise<string> {
+  const budgetStart = Date.now();
+  const remainingBudget = () => budgetMs ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 30000;
+  const indexerForLog = indexerName?.trim() || '(unknown)';
+  const nzbContent = await grabNzb(nzbUrl, title, budgetMs, logPrefix, indexerName, searchExitIp);
+
   // Submit to NZBDav
   const category = resolveCategory(config, contentType);
   const baseUrl = config.url.replace(/\/$/, '');
@@ -131,7 +152,9 @@ export async function submitNzb(
     if ((err as Error).name === 'AbortError') {
       throw nzbdavError(`NZBDav submission timed out after ${Math.round(submitTimeoutMs / 1000)}s`, true);
     }
-    throw nzbdavError(`NZBDav submission failed: ${(err as Error).message}`);
+    // Network error: NzbDAV is unreachable. That is the Backend's problem, not the
+    // Source's, so this is a plain error and the Source is not marked dead (#20).
+    throw new Error(`NZBDav unreachable, submission failed: ${(err as Error).message}`);
   }
   clearTimeout(submitTimeout);
 

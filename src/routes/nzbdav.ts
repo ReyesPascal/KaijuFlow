@@ -16,8 +16,9 @@ import https from 'https';
 import { PassThrough } from 'stream';
 import type { Config } from '../types.js';
 import type { NZBDavConfig } from '../nzbdav/index.js';
-import { encodeWebdavPath, WebDav404Error, buildNzbdavConfig } from '../nzbdav/utils.js';
+import { encodeWebdavPath, WebDav404Error, buildNzbdavConfig, isLibraryBackendActive } from '../nzbdav/utils.js';
 import { getActiveBackend } from '../backends/index.js';
+import { isBackendId } from '../backends/types.js';
 import { cleanupHistoryForPath } from '../nzbdav/historyApi.js';
 import { posix as pathPosix } from 'path';
 import { evictReadyByVideoPath, evictReadyByVideoPathPrefix, clearVideoPathState, markVideoPathBroken, markLibraryBypass } from '../nzbdav/streamCache.js';
@@ -47,7 +48,7 @@ export function createNzbdavRoutes(deps: NzbdavDeps): Router {
 
   // NZBDav test connection endpoint (dashboard status + settings "test connection")
   router.post('/test', async (req, res) => {
-    const status = await getActiveBackend().status(req.body ?? {});
+    const status = await getActiveBackend(undefined, isBackendId(req.body?.backend) ? req.body.backend : undefined).status(req.body ?? {});
     const body: { message: string; testPath?: string } = { message: status.message };
     if (status.testPath !== undefined) body.testPath = status.testPath;
     res.status(status.httpStatus).json(body);
@@ -117,6 +118,12 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
   // libraryRunOnCacheHit (see the inline comment below). Returns 204 (no body)
   // — Stremio shows a brief toast and the user backs out; marker is set as a
   // background side-effect.
+  // Library screens are NzbDAV-only: with AltMount active these links are dead.
+  router.use(['/library-bypass', '/library-delete', '/library-delete-all'], (_req, res, next) => {
+    if (!isLibraryBackendActive()) { res.status(404).end(); return; }
+    next();
+  });
+
   router.get('/library-bypass', async (req, res) => {
     // Source of truth for manifestKey is req.params (already validated by the
     // validateManifestKey middleware mounted upstream). The sk query param is

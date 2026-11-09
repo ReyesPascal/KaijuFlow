@@ -11,8 +11,14 @@
 import type { StreamData } from '../nzbdav/types.js';
 import type { RawResult } from '../types.js';
 import type { SearchContext } from '../addon/searchOrchestrator.js';
+import type { BackendCapabilities } from './capabilities.js';
 
-export type BackendId = 'nzbdav';
+export const BACKEND_IDS = ['nzbdav', 'altmount'] as const;
+export type BackendId = (typeof BACKEND_IDS)[number];
+
+export function isBackendId(v: unknown): v is BackendId {
+  return (BACKEND_IDS as readonly unknown[]).includes(v);
+}
 
 /** A prepared video: the Backend's media reference, its size and job id. */
 export type PreparedVideo = StreamData;
@@ -63,6 +69,8 @@ export interface BackendStatus {
 export interface Backend {
   readonly id: BackendId;
   readonly label: string;
+  /** What this Backend supports beyond prepare/probe/stream (library, Ultimate Fallback). */
+  readonly capabilities: BackendCapabilities;
 
   /** Already prepared: existing prepared media for this Source, or null. Never prepares. */
   findPrepared(source: BackendSource, opts?: { logPrefix?: string; quiet?: boolean }): Promise<PreparedVideo | null>;
@@ -105,6 +113,18 @@ export class PrepareCancelledError extends Error {
     super('Prepare cancelled');
     this.name = 'PrepareCancelledError';
   }
+}
+
+/**
+ * Build the error a Backend throws when the Source itself is bad (isSourceFailure
+ * is true for it). The flag keeps its historical NzbDAV name for compatibility.
+ */
+export function sourceFailure(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
+  const err = new Error(message) as Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };
+  err.isNzbdavFailure = true;
+  err.isTimeout = isTimeout;
+  err.isEpisodeSpecific = isEpisodeSpecific;
+  return err;
 }
 
 /**

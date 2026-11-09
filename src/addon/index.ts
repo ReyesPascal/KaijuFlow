@@ -24,7 +24,7 @@ const _require = createRequire(import.meta.url);
 const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildNzbdavConfig, buildEpisodePattern, buildDateEpisodePattern, isNzbdavLibraryConfigured, clearResolvedSessions } from '../nzbdav/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildNzbdavConfig, buildEpisodePattern, buildDateEpisodePattern, isNzbdavLibraryConfigured, isUltimateFallbackActive, clearResolvedSessions } from '../nzbdav/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { runLibraryGate } from './libraryGate.js';
@@ -349,7 +349,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       // Ultimate-Fallback takes priority — handles health checking + nzbdav internally.
       // Guarded by streamingMode=nzbdav: UF resolves via NZBDav, so running it for other modes
       // wastes cycles and produces a tile URL the handler can't serve.
-      if (config.ultimateFallback?.enabled && config.streamingMode === 'nzbdav') {
+      if (isUltimateFallbackActive() && config.ultimateFallback && config.streamingMode === 'nzbdav') {
         // On-tile-selection: defer UF until the user clicks the lobby tile.
         // The lobby handler in streamHandler.ts triggers UF there.
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
@@ -431,8 +431,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
       // on-tile-selection mode (UF defers submit until click). Skipped when UF
       // is in on-results mode — UF already submits at search time and would
       // race auto-queue on the same NZBs.
-      const ufSubmitsAtSearch = config.ultimateFallback?.enabled
-        && config.ultimateFallback.whenToResolve !== 'on-tile-selection';
+      const ufSubmitsAtSearch = isUltimateFallbackActive()
+        && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
       if (!ufSubmitsAtSearch) {
         autoQueueToNzbdav(allResults, healthMap, titleMeta.type, titleMeta.season, titleMeta.episode, titleMeta.episodesInSeason);
       }

@@ -46,6 +46,7 @@ export interface DashboardTabProps {
   enabledIndexersCount: number;
   syncedIndexers: SyncedIndexer[];
   nzbdavConnectionStatus: 'connected' | 'disconnected' | 'unconfigured' | 'checking' | null;
+  backend: 'nzbdav' | 'altmount';
   nzbdavStreamingMethod: 'pipe' | 'proxy' | 'direct';
   streamingMode: 'nzbdav' | 'stremio';
   proxyMode: 'disabled' | 'http';
@@ -91,6 +92,7 @@ export function DashboardTab({
   enabledIndexersCount,
   syncedIndexers,
   nzbdavConnectionStatus,
+  backend,
   nzbdavStreamingMethod,
   streamingMode,
   proxyMode,
@@ -116,10 +118,13 @@ export function DashboardTab({
   const [nzbDbReady, setNzbDbReady] = useState(0);
   const [nzbDbFailed, setNzbDbFailed] = useState(0);
   const prevOverlayRef = useRef<typeof activeOverlay | undefined>(undefined);
+  // NzbDAV-only screens (NZB database, Ultimate Fallback) need NzbDAV streaming mode AND the NzbDAV Backend.
+  const nzbdavOnly = streamingMode === 'nzbdav' && backend === 'nzbdav';
+  const ufActive = ultimateFallback.enabled && nzbdavOnly;
   const libraryEnabled = (config.searchConfig?.librarySearchThreshold ?? 0) > 0;
 
   useEffect(() => {
-    if (streamingMode !== 'nzbdav') return;
+    if (!nzbdavOnly) return;
     const prev = prevOverlayRef.current;
     prevOverlayRef.current = activeOverlay;
     // Only refetch on mount or when the nzbDatabase overlay closes
@@ -131,7 +136,7 @@ export function DashboardTab({
       }
     }).catch(() => {
     });
-  }, [streamingMode, activeOverlay, apiFetch]);
+  }, [nzbdavOnly, activeOverlay, apiFetch]);
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 animate-fade-in-up">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -260,7 +265,7 @@ export function DashboardTab({
                     </div>
                     <div className="text-3xl font-bold group-hover:text-purple-400 group-active:text-purple-400 transition-colors">
                       {config.streamingMode === 'nzbdav'
-                        ? <>NzbDAV<span className="text-lg font-normal text-purple-400 ml-2">+ {!ultimateFallback.enabled ? 'Dual-Stage Proxy' : nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
+                        ? <>{backend === 'altmount' ? 'AltMount' : 'NzbDAV'}<span className="text-lg font-normal text-purple-400 ml-2">+ {!ufActive && backend !== 'altmount' ? 'Dual-Stage Proxy' : nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
                         : 'Native'}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -310,10 +315,10 @@ export function DashboardTab({
                       "card p-4 cursor-move group hover:!border-amber-400/50 hover:!shadow-amber-400/30 active:!border-amber-400/50 active:!shadow-amber-400/30 transition-all",
                       isDragging && "opacity-50 scale-95",
                       isOver && "ring-2 ring-amber-400 scale-105",
-                      streamingMode !== 'nzbdav' && "opacity-50 pointer-events-none"
+                      !nzbdavOnly && "opacity-50 pointer-events-none"
                     )}
                     onClick={() => {
-                      if (!draggedCard && streamingMode === 'nzbdav') setActiveOverlay('nzbDatabase');
+                      if (!draggedCard && nzbdavOnly) setActiveOverlay('nzbDatabase');
                     }}
                   >
                     <div className="flex items-center gap-3 mb-2">
@@ -330,8 +335,8 @@ export function DashboardTab({
                       <span className="text-red-400 ml-1">{nzbDbFailed}</span>
                       <span className="text-slate-300 text-2xl ml-1">Dead</span>
                     </div>
-                    {streamingMode !== 'nzbdav' && (
-                      <span className="text-xs text-slate-600 mt-1">NZB Database is only available in NzbDAV streaming mode</span>
+                    {!nzbdavOnly && (
+                      <span className="text-xs text-slate-600 mt-1">NZB Database is only available with the NzbDAV Backend in NzbDAV streaming mode</span>
                     )}
                   </div>
                 ),
@@ -746,25 +751,25 @@ export function DashboardTab({
                     onDragEnd={handleCardDragEnd}
                     className={clsx(
                       "card p-4 group transition-all relative overflow-hidden",
-                      streamingMode !== 'nzbdav'
+                      !nzbdavOnly
                         ? "opacity-50 cursor-not-allowed"
                         : "cursor-move hover:!border-amber-400/50 hover:!shadow-amber-500/30 active:!border-amber-400/50 active:!shadow-amber-500/30",
                       isDragging && "opacity-50 scale-95",
                       isOver && "ring-2 ring-amber-400 scale-105",
-                      ultimateFallback.enabled && streamingMode === 'nzbdav' && "!border-amber-500/30"
+                      ufActive && nzbdavOnly && "!border-amber-500/30"
                     )}
                     onClick={() => {
-                      if (!draggedCard && streamingMode === 'nzbdav') setActiveOverlay('ultimateFallback');
+                      if (!draggedCard && nzbdavOnly) setActiveOverlay('ultimateFallback');
                     }}
                   >
-                    {ultimateFallback.enabled && (
+                    {ufActive && (
                       <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 via-transparent to-yellow-500/5" />
                     )}
                     <div className="relative flex items-center gap-3 mb-2">
                       <GripVertical className="w-4 h-4 text-slate-600" />
                       <div className={clsx(
                         "w-6 h-6 rounded-lg flex items-center justify-center",
-                        ultimateFallback.enabled
+                        ufActive
                           ? "bg-gradient-to-br from-amber-500 to-yellow-600 shadow-lg shadow-amber-500/25"
                           : "bg-slate-700"
                       )}>
@@ -772,25 +777,25 @@ export function DashboardTab({
                       </div>
                       <span className={clsx(
                         "text-sm font-medium",
-                        ultimateFallback.enabled
+                        ufActive
                           ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent"
                           : "text-slate-400"
                       )}>Ultimate Fallback</span>
                     </div>
                     <div className={clsx(
                       "relative text-3xl font-bold transition-colors",
-                      ultimateFallback.enabled
+                      ufActive
                         ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent"
                         : "group-hover:text-amber-400 group-active:text-amber-400"
                     )}>
-                      {ultimateFallback.enabled
+                      {ufActive
                         ? <>Enabled{ultimateFallback.desiredBackups > 0 && <span className="text-lg font-normal text-amber-400 ml-2">+ {ultimateFallback.desiredBackups} NZB Backup{ultimateFallback.desiredBackups === 1 ? '' : 's'}</span>}</>
-                        : 'Disabled'}
+                        : backend === 'altmount' ? 'Unavailable' : 'Disabled'}
                     </div>
                     <div className="relative text-xs text-slate-500 mt-1">
-                      {ultimateFallback.enabled
+                      {ufActive
                         ? `${ultimateFallback.candidateCount} candidate${ultimateFallback.candidateCount !== 1 ? 's' : ''} · ${ultimateFallback.preferenceMode === 'priority' ? 'Priority' : 'Speed'} mode`
-                        : 'Click to configure \u2192'}
+                        : backend === 'altmount' ? 'Unavailable with the AltMount Backend' : 'Click to configure \u2192'}
                     </div>
                   </div>
                 ),

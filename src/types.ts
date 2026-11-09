@@ -199,6 +199,11 @@ export interface Config {
   nzbhydraTimeoutEnabled: boolean;
   nzbhydraTimeout: number;
   zyclopsEndpoint?: string;            // Zyclops API endpoint URL (default: https://zyclops.elfhosted.com)
+  backend: import('./backends/types.js').BackendId;             // Backend used in the Backend streaming mode (default nzbdav)
+  altmountUrl?: string;
+  altmountApiKey?: string;
+  altmountCategory: string;                   // Accessor default 'kaijuflow'
+  altmountPrepareTimeout: number;             // Seconds, accessor default 300
   nzbdavUrl?: string;
   nzbdavApiKey?: string;
   nzbdavWebdavUrl?: string;

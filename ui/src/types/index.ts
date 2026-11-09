@@ -167,6 +167,11 @@ export interface Config {
   nzbhydraPassword?: string;
   nzbhydraTimeoutEnabled?: boolean;
   nzbhydraTimeout?: number;
+  backend?: 'nzbdav' | 'altmount';
+  altmountUrl?: string;
+  altmountApiKey?: string;
+  altmountCategory?: string;
+  altmountPrepareTimeout?: number;
   nzbdavUrl?: string;
   nzbdavApiKey?: string;
   nzbdavWebdavUrl?: string;

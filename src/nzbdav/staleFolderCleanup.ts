@@ -19,7 +19,7 @@
 
 import type { FileStat } from 'webdav';
 import { configData, saveConfigFile } from '../config/schema.js';
-import { buildNzbdavConfig, encodeWebdavPath } from './utils.js';
+import { buildNzbdavConfig, encodeWebdavPath, isLibraryBackendActive } from './utils.js';
 import { getWebdavClient } from './webdavClient.js';
 import { folderHasPlayableVideo } from './videoDiscovery.js';
 import { cleanupHistoryForPath } from './historyApi.js';
@@ -54,6 +54,7 @@ async function staleCleanupWebdavDelete(targetPath: string): Promise<{ ok: boole
 export async function runStaleLibraryFolderCleanup(): Promise<void> {
   if ((configData.staleLibraryFolderCleanupVersion ?? 0) >= STALE_LIBRARY_FOLDER_CLEANUP_VERSION) return;
 
+  if (!isLibraryBackendActive()) return;
   const nzbdavConfig = buildNzbdavConfig();
   if (!nzbdavConfig.webdavUrl && !nzbdavConfig.url) return;
 

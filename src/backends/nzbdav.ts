@@ -12,6 +12,7 @@ import { checkNzbLibrary, checkLibraryVideoPath, waitForVideoFile, videoPathExis
 import { searchLibrary } from '../nzbdav/librarySearch.js';
 import { encodeWebdavPath, nzbdavError } from '../nzbdav/utils.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
+import { NZBDAV_CAPABILITIES } from './capabilities.js';
 import { PrepareCancelledError, isSourceFailure, type Backend, type BackendStatus, type MediaRequest } from './types.js';
 
 const PROBE_TIMEOUT_MS = 10_000;
@@ -36,6 +37,7 @@ export function createNzbdavBackend(config: NZBDavConfig): Backend {
   return {
     id: 'nzbdav',
     label: 'NzbDAV',
+    capabilities: NZBDAV_CAPABILITIES,
 
     library: { search: ctx => searchLibrary(ctx, config) },
 

@@ -17,7 +17,7 @@ import { buildStreamFilename } from '../parsers/metadataParsers.js';
 import { getActiveBackend } from '../backends/index.js';
 import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../nzbdav/streamCache.js';
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
-import { buildEpisodePattern, buildDateEpisodePattern } from '../nzbdav/utils.js';
+import { buildEpisodePattern, buildDateEpisodePattern, isLibraryBackendActive, isUltimateFallbackActive } from '../nzbdav/utils.js';
 import { getTvAllowMultiEpisode } from '../config/accessors.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
@@ -209,6 +209,7 @@ export async function coordinateHealthChecks(
   // Content already downloaded is marked as verified ('Library') instantly.
   const libraryPreCheckEnabled = (config.healthChecks?.libraryPreCheck !== false)
     && config.streamingMode === 'nzbdav'
+    && isLibraryBackendActive()
     && config.nzbdavWebdavUrl
     && config.nzbdavWebdavUser;
 
@@ -548,8 +549,8 @@ export function autoQueueToNzbdav(
   // UF in on-results mode submits NZBs at search time itself; running auto-queue
   // would race on the same titles (NzbDAV has had 500s on concurrent inserts).
   // on-tile-selection defers UF's submit until click, so auto-queue is safe there.
-  const ufSubmitsAtSearch = config.ultimateFallback?.enabled
-    && config.ultimateFallback.whenToResolve !== 'on-tile-selection';
+  const ufSubmitsAtSearch = isUltimateFallbackActive()
+    && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
   if (!config.healthChecks?.enabled || !mode || mode === 'off' || config.streamingMode !== 'nzbdav'
       || allResults.length === 0 || ufSubmitsAtSearch) {
     return;
@@ -558,6 +559,8 @@ export function autoQueueToNzbdav(
   // Packed into the tile envelope so the stream handler resolves the nzbdav
   // category correctly for auto-queued submits.
   const ty = toContentType(type);
+  // Auto-queued tiles go through the stream route, so the active Backend prepares them.
+  const backendLabel = getActiveBackend().label;
 
   const sendToNzbdav = (result: any, reason: string) => {
     try {
@@ -594,7 +597,7 @@ export function autoQueueToNzbdav(
       const proxyUrl = `${SELF_URL}/${autoManifestKey}/nzbdav/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}?t=${tileT}&auto=true`;
       fetch(proxyUrl).catch(err => console.error('❌ Auto-queue failed:', err));
     } catch (error) {
-      console.error('❌ Auto-queue to NZBDav failed:', error);
+      console.error(`❌ Auto-queue to ${backendLabel} failed:`, error);
     }
   };
 
@@ -622,7 +625,7 @@ export function autoQueueToNzbdav(
       return true;
     });
     if (verified.length > 0) {
-      console.log(`🚀 Auto-queueing all ${verified.length} verified result(s) to NZBDav`);
+      console.log(`🚀 Auto-queueing all ${verified.length} verified result(s) to ${backendLabel}`);
       // Serialize submissions — NZBDav's database chokes on concurrent inserts
       (async () => {
         for (let i = 0; i < verified.length; i++) {
