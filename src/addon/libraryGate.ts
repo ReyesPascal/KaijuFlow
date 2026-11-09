@@ -18,7 +18,7 @@
  */
 
 import { config } from '../config/index.js';
-import { searchLibrary } from '../nzbdav/librarySearch.js';
+import { getActiveBackend } from '../backends/index.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
 import type { SearchContext } from './searchOrchestrator.js';
 import type { ResolvedTitleInfo } from './titleResolver.js';
@@ -67,7 +67,7 @@ export async function runLibraryGate(
 
   console.log('');
   console.log('═══ Ultimate Library ' + '═'.repeat(42));
-  const libraryResults = await searchLibrary(searchCtx, buildNzbdavConfig());
+  const libraryResults = await getActiveBackend(buildNzbdavConfig()).library?.search(searchCtx) ?? [];
   if (libraryResults.length === 0) {
     return { shortCircuited: false, libraryResults: [] };
   }
