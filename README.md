@@ -25,7 +25,7 @@ Use fabricated credentials and synthetic fixtures for testing. Keep provider cre
 - [Next session](docs/kaijuflow/audit/NEXT_SESSION.md)
 - [Source manifest](docs/kaijuflow/upstream-v1.4.1-manifest.json) and [validation evidence](docs/kaijuflow/import-verification.json)
 
-Brain and its working containers and streaming configuration are outside this development task. No production deployment is authorized. KaijuNNTP remains a separate, dormant candidate pending an architecture decision.
+Brain and its working containers and streaming configuration are outside this development task. No production deployment is authorized.
 
 ## License
 

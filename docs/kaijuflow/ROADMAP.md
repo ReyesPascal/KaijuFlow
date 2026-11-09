@@ -8,7 +8,6 @@ KaijuFlow preserves the entire upstream application. Each phase uses scoped bran
 | B — Dependencies and security | Dependency/licensing review, sensitive-data handling, API compatibility, NNTP TLS validation | Scoped fixes and compatibility/security evidence |
 | C — Health reliability | Smart and Fixed modes, sampling, multi-provider fallback, cache awareness, stop conditions, timeouts | Synthetic regression fixtures and comparable pre/post metrics |
 | D — Streaming reliability | Ultimate Fallback, ready/dead caches, NzbDAV, HTTP range/seek, original-quality 4K playback | Failure recovery and playback measurements on equivalent hardware and sources |
-| E — KaijuNNTP decision | Evaluate service extraction against measured latency, reliability, and maintainability | Written architecture decision before implementing a separate verifier |
 | F — Integration and deployment | Isolated integration, private images, recovery rehearsal, rollout proposal | Recorded image/config rollback procedure and explicit production approval |
 
 ## Remaining baseline work
