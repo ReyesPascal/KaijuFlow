@@ -9,6 +9,7 @@ import type { UsenetProvider } from '../types.js';
 import type { HealthCheckResult, HealthCheckOptions } from './types.js';
 import { NntpConnectionPool } from './nntpConnection.js';
 import { performHealthCheck } from './healthCheckPipeline.js';
+import { logStep } from '../utils/stepTiming.js';
 
 /**
  * Perform health checks on multiple NZBs concurrently.
@@ -33,6 +34,7 @@ export async function performBatchHealthChecks(
   const queue = [...nzbUrls];
   const pool = new NntpConnectionPool();
   let circuitAborted = false;
+  const batchStart = Date.now();
 
   try {
     const processNext = async (): Promise<void> => {
@@ -64,6 +66,9 @@ export async function performBatchHealthChecks(
     await Promise.all(workers);
   } finally {
     pool.destroyAll();
+    // One line per batch (#61): the Sources are the indexers the batch's NZBs came from.
+    const indexers = [...new Set(nzbUrls.map(u => indexerByUrl?.get(u)).filter((n): n is string => !!n))];
+    logStep({ step: 'health_batch', ms: Date.now() - batchStart, count: nzbUrls.length, checked: results.size, indexers });
   }
 
   return { results, circuitAborted };
