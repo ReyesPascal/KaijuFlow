@@ -164,6 +164,7 @@ app.use('/api/health-check', createHealthCheckRoutes({
   updateProvider,
   deleteProvider,
   reorderProviders,
+  verifyTlsCertificates: () => config.healthChecks?.verifyTlsCertificates !== false,
 }));
 
 app.use('/api/search-config', createExternalApiRoutes());

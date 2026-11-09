@@ -275,6 +275,7 @@ export const config: Config = {
         smartMinHealthy: 1,
         maxConnections: 12,
         maxTotalConnections: DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
+        verifyTlsCertificates: true,
         autoQueueMode: 'all' as const,
         hideBlocked: true,
         libraryPreCheck: true,
@@ -318,6 +319,7 @@ export const config: Config = {
       smartMinHealthy: hc.smartMinHealthy ?? 1,
       maxConnections: hc.maxConnections ?? 12,
       maxTotalConnections: hc.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
+      verifyTlsCertificates: hc.verifyTlsCertificates !== false,
       autoQueueMode: hc.autoQueueMode ?? 'all',
       libraryPreCheck: hc.libraryPreCheck !== false,
     };

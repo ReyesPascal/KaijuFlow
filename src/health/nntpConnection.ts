@@ -8,6 +8,9 @@
  * (KaijuFlow finding 6), so health checks never hold more Usenet connections
  * than the cap across all workers, batches and providers combined. That
  * leaves the rest of the provider's connection limit for playback.
+ *
+ * TLS certificates are checked by default (finding 7). The "Verify TLS
+ * Certificates" setting can turn the check off for a server the owner trusts.
  */
 
 import * as net from 'net';
@@ -93,6 +96,50 @@ class ConnectionLimiter {
 
 const limiter = new ConnectionLimiter();
 
+let verifyTlsCertificates = true;
+
+/** Turn TLS certificate checking on or off (the "Verify TLS Certificates" setting, default on). */
+export function setVerifyTlsCertificates(enabled: boolean): void {
+  verifyTlsCertificates = enabled !== false;
+}
+
+/** TLS options for an NNTP connection; `verify` turns certificate checking on. */
+export function nntpTlsOptions(host: string, port: number, verify = verifyTlsCertificates): tls.ConnectionOptions {
+  return { host, port, rejectUnauthorized: verify };
+}
+
+/**
+ * Turn an invalid-certificate error into one that says what failed and names
+ * the setting that controls it. Other errors are returned unchanged.
+ */
+export function describeTlsError(err: Error, host: string, port: number): Error {
+  if (!isCertificateError(err)) return err;
+  return new Error(
+    `TLS certificate check failed for ${host}:${port}: ${err.message}. ` +
+    `Fix the server's certificate, or turn off "Verify TLS Certificates" in Health Checks settings if you trust this server.`,
+    { cause: err },
+  );
+}
+
+const CERTIFICATE_ERROR_CODES = new Set([
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'CERT_HAS_EXPIRED',
+  'CERT_NOT_YET_VALID',
+  'CERT_UNTRUSTED',
+  'CERT_REVOKED',
+  'CERT_SIGNATURE_FAILURE',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+]);
+
+function isCertificateError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  return typeof code === 'string' && CERTIFICATE_ERROR_CODES.has(code);
+}
+
 /** Set the total health-check connection cap (the "Max Total Connections" setting, 1-100). */
 export function setHealthCheckConnectionCap(cap: number): void {
   limiter.setCap(cap);
@@ -151,7 +198,7 @@ function openAuthenticatedSocket(provider: NntpProvider): Promise<NntpSocket> {
     let buffer = '';
 
     const socket = provider.useTLS
-      ? tls.connect({ host: provider.host, port: provider.port, rejectUnauthorized: false })
+      ? tls.connect(nntpTlsOptions(provider.host, provider.port))
       : net.connect({ host: provider.host, port: provider.port });
     socket.setNoDelay(true);
 
@@ -209,7 +256,7 @@ function openAuthenticatedSocket(provider: NntpProvider): Promise<NntpSocket> {
       if (!resolved) {
         resolved = true;
         clearTimeout(timeout);
-        reject(error);
+        reject(describeTlsError(error, provider.host, provider.port));
       }
     };
 

@@ -365,6 +365,7 @@ export interface HealthCheckConfig {
   maxTotalConnections: number;   // Total Usenet connections health checks may hold at once, all workers and providers combined (finding 6)
   autoQueueMode: 'off' | 'top' | 'all';  // Auto-queue mode: off, top verified result, or all verified results
   hideBlocked: boolean;          // Filter out blocked NZBs from results
+  verifyTlsCertificates: boolean; // Reject NNTP servers with invalid TLS certificates (finding 7; default on)
   libraryPreCheck: boolean;      // Check NZBDav library before NNTP checks — skip checking content already downloaded
   healthCheckIndexers?: Record<string, boolean>; // Per-indexer health check enable/disable
 }

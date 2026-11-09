@@ -13,6 +13,7 @@
 import { Router } from 'express';
 import type { UsenetProvider } from '../types.js';
 import { requireAuth } from '../auth/authMiddleware.js';
+import { nntpTlsOptions, describeTlsError } from '../health/nntpConnection.js';
 
 interface HealthCheckDeps {
   getProviders: () => UsenetProvider[];
@@ -20,11 +21,13 @@ interface HealthCheckDeps {
   updateProvider: (id: string, updates: Partial<UsenetProvider>) => UsenetProvider;
   deleteProvider: (id: string) => void;
   reorderProviders: (orderedIds: string[]) => void;
+  /** The "Verify TLS Certificates" setting (finding 7). */
+  verifyTlsCertificates: () => boolean;
 }
 
 export function createHealthCheckRoutes(deps: HealthCheckDeps): Router {
   const router = Router();
-  const { getProviders, addProvider, updateProvider, deleteProvider, reorderProviders } = deps;
+  const { getProviders, addProvider, updateProvider, deleteProvider, reorderProviders, verifyTlsCertificates } = deps;
 
   // Usenet provider connection test endpoint
   router.post('/test', async (req, res) => {
@@ -51,7 +54,7 @@ export function createHealthCheckRoutes(deps: HealthCheckDeps): Router {
         let buffer = '';
 
         socket = useTLS
-          ? tlsModule.connect({ host, port, rejectUnauthorized: false })
+          ? tlsModule.connect(nntpTlsOptions(host, port, verifyTlsCertificates()))
           : netModule.connect({ host, port });
 
         socket.on('data', (data: Buffer) => {
@@ -101,7 +104,7 @@ export function createHealthCheckRoutes(deps: HealthCheckDeps): Router {
           clearTimeout(timeout);
           res.status(500).json({
             success: false,
-            message: `Connection error: ${error.message}`
+            message: `Connection error: ${describeTlsError(error, host, port).message}`
           });
           resolve();
         });

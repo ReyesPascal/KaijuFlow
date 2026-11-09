@@ -10,7 +10,7 @@ One row per finding, in fix order. Update the Status column when a fix merges. O
 | 4 | Settings autosave race: an older save response overwrites a newer setting in the UI. | `ui/src/hooks/useAppConfig.ts` | Medium | Fixed (PR #8), test A4-REACT-ORDER |
 | 5 | No time limit when preparing a first play (`getAttemptBudgetMs` returns 0). PTP gives up after about 42 s before KaijuFlow falls back. | D06, `src/nzbdav/streamHandler.ts` | High | Fixed (PR #9): after 25 s, try the next source and keep the first warming (not marked dead). Only applies with Ultimate Fallback on. Test INT-FIRST-SOURCE-SWITCH-001 |
 | 6 | Health checks have no total NNTP connection cap (workers × providers). They can starve playback. | N05 | Medium | Fixed (#25): one cap on all health-check connections, default 8, setting "Max Total Connections". Extra checks queue; verdicts unchanged. Test `tests/unit/health-connection-cap.test.ts` |
-| 7 | TLS certificate checks are off (`rejectUnauthorized: false`). Make it a setting, defaulting to on. | `src/health/nntpConnection.ts` | Medium (security) | Open |
+| 7 | TLS certificate checks are off (`rejectUnauthorized: false`). Make it a setting, defaulting to on. | `src/health/nntpConnection.ts`, `src/routes/healthCheck.ts` | Medium (security) | Fixed (#26): setting "Verify TLS Certificates" (Health Checks), on by default for new and existing configs. An invalid certificate fails health checks and Test Connection with a clear error that names the setting. Test `tests/unit/tls-certificate-check.test.ts` |
 | 8 | Part of a TVDB login response is logged when the token is missing. | `src/idResolver.ts` | Low | Open |
 
 IDs like D06, D14 and N05 point to the [NzbDAV](references/nzbdav/README.md) and [NNTP](references/nntp/README.md) references.
