@@ -11,8 +11,8 @@ import { pipeline } from 'stream';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
-import { getActiveBackend, type BackendSource } from '../backends/index.js';
-import { getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
+import { getActiveBackend, isSourceFailure, type BackendSource } from '../backends/index.js';
+import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isNzbdavBackendActive, isUltimateFallbackActive } from './utils.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
@@ -206,6 +206,23 @@ export async function prepareStream(
     } else {
       console.log(`${logPrefix}\u2705 Stream ready (${backend.label} library): ${title}\n`);
       return existing;
+    }
+  }
+
+  // Backends without a library (AltMount) have nothing to look up, so reuse what
+  // this Backend already made for the Source (ready cache) when it is still there.
+  // The probe below still runs. NzbDAV is unchanged: its library lookup above is authoritative.
+  if (!backend.library && backend.id !== 'nzbdav') {
+    const ready = findReadyStream(nzbUrl, title, episodePattern, backend.id);
+    if (ready && !isVideoPathBroken(ready.videoPath) && await backend.stillPrepared(ready.videoPath)) {
+      try {
+        await backend.probe(ready, { logPrefix });
+        console.log(`${logPrefix}\u2705 Stream ready (${backend.label}, reused): ${title}\n`);
+        return ready;
+      } catch (err) {
+        markVideoPathBroken(ready.videoPath);
+        if (!isSourceFailure(err)) throw err;
+      }
     }
   }
 
@@ -471,6 +488,15 @@ function logUltimateLibraryStream(decoded: string): void {
  * Supports automatic fallback: if the chosen NZB fails, tries the next candidates
  * from the fallback group until one succeeds or all are exhausted.
  */
+/**
+ * Delivery method for the first response of a Stream. NzbDAV with Ultimate
+ * Fallback off keeps forcing proxy (unchanged); AltMount honours the setting.
+ */
+function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
+  const method = globalConfig.nzbdavStreamingMethod ?? 'proxy';
+  return isUltimateFallbackActive() || !isNzbdavBackendActive() ? method : 'proxy';
+}
+
 export async function handleStream(
   req: Request,
   res: ExpressResponse,
@@ -504,8 +530,7 @@ export async function handleStream(
     }
     logUltimateLibraryStream(decoded);
     const lobbyFallbackOn = isUltimateFallbackActive();
-    let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-    if (!lobbyFallbackOn) mode = 'proxy';
+    const mode = deliveryMethod();
     if (mode === 'direct') {
       res.redirect(302, backend.directUrl(decoded));
     } else if (proxyFn && !lobbyFallbackOn) {
@@ -694,7 +719,7 @@ export async function handleStream(
   const isFreshRequest = candidateStart === 0;
   if (isFreshRequest && candidates.length > 0 && !isUfTileRequest) {
     {
-      const dedupKey = getCacheKey(candidates[0].nzbUrl, candidates[0].title) + (cachePattern ? `:${cachePattern}` : '');
+      const dedupKey = `${backend.id}|` + getCacheKey(candidates[0].nzbUrl, candidates[0].title) + (cachePattern ? `:${cachePattern}` : '');
       const cached = recentDeliveries.get(dedupKey);
       if (cached
         && Date.now() - cached.timestamp < DEDUP_CACHE_TTL_MS
@@ -795,8 +820,7 @@ export async function handleStream(
 
           // Ultimate-Fallback resolved — deliver the stream
           const lobbyFallbackOn = isUltimateFallbackActive();
-          let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-          if (!lobbyFallbackOn) mode = 'proxy';
+          const mode = deliveryMethod();
           const lastLobby = lastDeliveryLog.get(streamData.videoPath);
           const shouldLogLobby = !lastLobby || lastLobby.mode !== mode;
           const nowTs = Date.now();
@@ -870,8 +894,7 @@ export async function handleStream(
       const idxTag = usable.candidateIndex !== undefined ? `#${usable.candidateIndex} ` : '';
       console.log(`👑 Ultimate-Fallback [${sessionKey}] Primary path no longer available — falling back to backup: ${idxTag}${usable.title} [${usable.indexerName}]`);
       const lobbyFallbackOn = isUltimateFallbackActive();
-      let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-      if (!lobbyFallbackOn) mode = 'proxy';
+      const mode = deliveryMethod();
       if (mode === 'direct') {
         res.redirect(302, backend.directUrl(usable.videoPath));
       } else if (proxyFn && !lobbyFallbackOn) {
@@ -1141,8 +1164,7 @@ export async function handleStream(
       // logging/dedup consistency; /v's proxyVideoStream independently reads
       // config on each range request, so seeks honor the user's current method.
       const fallbackOn = isUltimateFallbackActive();
-      let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-      if (!fallbackOn) mode = 'proxy';
+      const mode = deliveryMethod();
       const last = lastDeliveryLog.get(streamData.videoPath);
       const shouldLogDelivery = !last || last.mode !== mode;
       lastDeliveryLog.set(streamData.videoPath, { mode, at: Date.now() });
@@ -1154,12 +1176,12 @@ export async function handleStream(
       // requests for the same click hit dedup, even when fallback-chain walked
       // past the click and resolved a later candidate.
       const dedupCandidate = candidates[0] ?? candidate;
-      const dedupKey = getCacheKey(dedupCandidate.nzbUrl, dedupCandidate.title) + (cachePattern ? `:${cachePattern}` : '');
+      const dedupKey = `${backend.id}|` + getCacheKey(dedupCandidate.nzbUrl, dedupCandidate.title) + (cachePattern ? `:${cachePattern}` : '');
       recentDeliveries.set(dedupKey, { streamData, streamingMethod: mode, timestamp: Date.now() });
       // Also key on the resolved candidate's URL so direct second-clicks of the
       // resolved tile (different click URL) also dedup.
       if (candidate !== dedupCandidate) {
-        const resolvedKey = getCacheKey(candidate.nzbUrl, candidate.title) + (cachePattern ? `:${cachePattern}` : '');
+        const resolvedKey = `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (cachePattern ? `:${cachePattern}` : '');
         recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now() });
       }
 

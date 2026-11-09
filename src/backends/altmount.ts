@@ -4,7 +4,9 @@
  * (POST /api/nzb/streams, as an uploaded file); its answer names the media's virtual path,
  * which is the media identity (`videoPath`) everywhere in KaijuFlow. Media is
  * fetched from AltMount's file route with the download key kept server side.
- * Not yet: TV episode selection, library reuse, cancel.
+ * #21: TV. Season and episode go to AltMount as form fields, so a season pack
+ * plays the requested episode.
+ * Not yet: library reuse, cancel.
  */
 
 import { config as globalConfig } from '../config/index.js';
@@ -96,6 +98,20 @@ function virtualPathOf(entryUrl: string, base: string): string | null {
   }
 }
 
+/**
+ * Season and episode numbers behind a Source's episode selection. The stream
+ * route builds `episodePattern` from them (buildEpisodePattern, optionally
+ * wrapped with a date alternative); read them back the same way the NzbDAV
+ * file picker does: first S<digits>, first E<digits> (the chain-aware
+ * pattern's `E\d+` has no digits, so it is skipped).
+ */
+export function seasonEpisodeOf(episodePattern?: string): { season: number; episode: number } | null {
+  if (!episodePattern) return null;
+  const s = /S(\d+)/i.exec(episodePattern)?.[1];
+  const e = /E(\d+)/i.exec(episodePattern)?.[1];
+  return s && e ? { season: parseInt(s, 10), episode: parseInt(e, 10) } : null;
+}
+
 export function createAltmountBackend(settings: AltmountSettings): Backend {
   const baseUrl = () => {
     if (!settings.url) throw configError('URL');
@@ -140,6 +156,11 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       form.append('file', new Blob([nzb], { type: 'application/x-nzb' }), `${source.title}.nzb`);
       form.append('category', settings.category || 'kaijuflow');
       form.append('timeout', String(waitSec));
+      const se = seasonEpisodeOf(source.episodePattern);
+      if (se) {
+        form.append('season', String(se.season));
+        form.append('episode', String(se.episode));
+      }
       console.log(`${logPrefix}  \u{1F4E4} Sending Source to AltMount (waits up to ${waitSec}s)`);
       let res: Response;
       try {
