@@ -19,7 +19,7 @@ export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, del
 export { ultimateFallbackFromCandidates, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';
 
 // Shared utilities
-export { buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isNzbdavLibraryConfigured } from './utils.js';
+export { buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isNzbdavLibraryConfigured, isNzbdavBackendActive, isUltimateFallbackActive } from './utils.js';
 
 // Stream handler (Express endpoint)
 export { handleStream } from './streamHandler.js';

@@ -17,7 +17,7 @@ import { buildStreamFilename } from '../parsers/metadataParsers.js';
 import { getActiveBackend } from '../backends/index.js';
 import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../nzbdav/streamCache.js';
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
-import { buildEpisodePattern, buildDateEpisodePattern } from '../nzbdav/utils.js';
+import { buildEpisodePattern, buildDateEpisodePattern, isNzbdavBackendActive, isUltimateFallbackActive } from '../nzbdav/utils.js';
 import { getTvAllowMultiEpisode } from '../config/accessors.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
@@ -209,6 +209,7 @@ export async function coordinateHealthChecks(
   // Content already downloaded is marked as verified ('Library') instantly.
   const libraryPreCheckEnabled = (config.healthChecks?.libraryPreCheck !== false)
     && config.streamingMode === 'nzbdav'
+    && isNzbdavBackendActive()
     && config.nzbdavWebdavUrl
     && config.nzbdavWebdavUser;
 
@@ -548,8 +549,8 @@ export function autoQueueToNzbdav(
   // UF in on-results mode submits NZBs at search time itself; running auto-queue
   // would race on the same titles (NzbDAV has had 500s on concurrent inserts).
   // on-tile-selection defers UF's submit until click, so auto-queue is safe there.
-  const ufSubmitsAtSearch = config.ultimateFallback?.enabled
-    && config.ultimateFallback.whenToResolve !== 'on-tile-selection';
+  const ufSubmitsAtSearch = isUltimateFallbackActive()
+    && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
   if (!config.healthChecks?.enabled || !mode || mode === 'off' || config.streamingMode !== 'nzbdav'
       || allResults.length === 0 || ufSubmitsAtSearch) {
     return;

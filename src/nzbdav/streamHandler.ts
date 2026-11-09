@@ -14,7 +14,7 @@ import path from 'path';
 import { getActiveBackend, type BackendSource } from '../backends/index.js';
 import { getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
-import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig } from './utils.js';
+import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isNzbdavBackendActive, isUltimateFallbackActive } from './utils.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -495,6 +495,7 @@ export async function handleStream(
   // emit this query param so no other source can spoof it.
   const libraryVideoPathParam = req.query.libraryVideoPath as string | undefined;
   if (libraryVideoPathParam) {
+    if (!isNzbdavBackendActive()) { res.status(404).end(); return; } // Library is NzbDAV-only
     const decoded = decodeURIComponent(libraryVideoPathParam);
     if (!decoded.startsWith('/content/')) {
       console.warn(`⚠️ Rejected library stream — path not under /content/: ${libraryVideoPathParam}`);
@@ -502,7 +503,7 @@ export async function handleStream(
       return;
     }
     logUltimateLibraryStream(decoded);
-    const lobbyFallbackOn = globalConfig.ultimateFallback?.enabled === true;
+    const lobbyFallbackOn = isUltimateFallbackActive();
     let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
     if (!lobbyFallbackOn) mode = 'proxy';
     if (mode === 'direct') {
@@ -575,7 +576,7 @@ export async function handleStream(
 
   // UF tile clicks send only `sk` (no nzb/title) and rely on the lobby block below.
   // Regular requests must still provide nzb+title.
-  const isUfTileRequest = !userPick && !!sessionKey && !nzbUrl && globalConfig.ultimateFallback?.enabled === true;
+  const isUfTileRequest = !userPick && !!sessionKey && !nzbUrl && isUltimateFallbackActive();
   if (!isUfTileRequest && (!nzbUrl || !title)) {
     res.status(400).send('Missing required parameters: nzb, title');
     return;
@@ -614,7 +615,7 @@ export async function handleStream(
     candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp });
   }
 
-  const fallbackEnabled = globalConfig.ultimateFallback?.enabled === true;
+  const fallbackEnabled = isUltimateFallbackActive();
   const maxFallbacksSetting = globalConfig.ultimateFallback?.maxAttempts ?? 0; // 0 = unlimited (try all)
 
   // Check whether this request should produce detailed logs.
@@ -703,7 +704,7 @@ export async function handleStream(
         // no library check, no submission. If the file is gone we fall through
         // to a fresh candidate loop via the live videoPathExists gate above.
         if (verbose) console.log(`📦 Stream dedup hit (delivered ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
-        const fallbackOn = globalConfig.ultimateFallback?.enabled === true;
+        const fallbackOn = isUltimateFallbackActive();
         const sizeSuffix = cached.streamData.videoSize ? ` (${formatBytes(cached.streamData.videoSize)})` : '';
         // Dedup the per-mode delivery log on this videoPath so repeat probes
         // don't spam the same line. lastDeliveryLog is shared with primary delivery.
@@ -740,11 +741,11 @@ export async function handleStream(
   // When Ultimate-Fallback is active and the user didn't explicitly pick a
   // stream tile (user_pick=1), await its session promise instead of starting
   // our own nzbdav submission. Self-redirect keeps ExoPlayer alive.
-  if (!userPick && globalConfig.ultimateFallback?.enabled && sessionKey) {
+  if (!userPick && isUltimateFallbackActive() && sessionKey) {
     // On-tile-selection mode: UF didn't fire on search; trigger it here so
     // the existing await-flow below picks up the new session promise.
     if (
-      globalConfig.ultimateFallback.whenToResolve === 'on-tile-selection'
+      globalConfig.ultimateFallback?.whenToResolve === 'on-tile-selection'
       && globalConfig.streamingMode === 'nzbdav'
       && !getSessionPromise(sessionKey)
     ) {
@@ -753,7 +754,7 @@ export async function handleStream(
         console.log(`👑 UF tile click but no fallback group (sk=${sessionKey}, fbg=${fallbackGroupId}) — falling through`);
       } else {
         console.log(`👑 UF fired on tile click [${sessionKey}]`);
-        const ur = globalConfig.ultimateFallback;
+        const ur = globalConfig.ultimateFallback!;
         const onTileCachePattern = (group.type === 'series' && group.season && group.episode)
           ? buildEpisodePattern(parseInt(group.season, 10), parseInt(group.episode, 10), getTvAllowMultiEpisode(globalConfig))
           : undefined;
@@ -793,7 +794,7 @@ export async function handleStream(
           }
 
           // Ultimate-Fallback resolved — deliver the stream
-          const lobbyFallbackOn = globalConfig.ultimateFallback?.enabled === true;
+          const lobbyFallbackOn = isUltimateFallbackActive();
           let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
           if (!lobbyFallbackOn) mode = 'proxy';
           const lastLobby = lastDeliveryLog.get(streamData.videoPath);
@@ -868,7 +869,7 @@ export async function handleStream(
     if (usable) {
       const idxTag = usable.candidateIndex !== undefined ? `#${usable.candidateIndex} ` : '';
       console.log(`👑 Ultimate-Fallback [${sessionKey}] Primary path no longer available — falling back to backup: ${idxTag}${usable.title} [${usable.indexerName}]`);
-      const lobbyFallbackOn = globalConfig.ultimateFallback?.enabled === true;
+      const lobbyFallbackOn = isUltimateFallbackActive();
       let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
       if (!lobbyFallbackOn) mode = 'proxy';
       if (mode === 'direct') {
@@ -990,7 +991,7 @@ export async function handleStream(
   // user_pick + UF enabled: honor the click, try only that NZB, fall into UF lobby on failure.
   // Otherwise (UF tile click / lobby fall-through): prefer UF's pre-vetted backups, then
   // resume sequential from after the last vetted URL.
-  const ufLobbyAvailable = globalConfig.ultimateFallback?.enabled === true;
+  const ufLobbyAvailable = isUltimateFallbackActive();
   const sessionBackups = sessionKey ? getSessionBackups(sessionKey) : null;
   if (userPick && redirectCount === 0) {
     console.log(`🎯 User-pick attempt: userPickFallback=${globalConfig.ultimateFallback?.userPickFallback ?? 'failure-video'}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
@@ -1139,7 +1140,7 @@ export async function handleStream(
       // When fallback is off, the initial-delivery mode still forces proxy for
       // logging/dedup consistency; /v's proxyVideoStream independently reads
       // config on each range request, so seeks honor the user's current method.
-      const fallbackOn = globalConfig.ultimateFallback?.enabled === true;
+      const fallbackOn = isUltimateFallbackActive();
       let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
       if (!fallbackOn) mode = 'proxy';
       const last = lastDeliveryLog.get(streamData.videoPath);
@@ -1236,7 +1237,7 @@ export async function handleStream(
       if (
         userPick
         && sessionKey
-        && globalConfig.ultimateFallback?.enabled
+        && isUltimateFallbackActive()
         && globalConfig.ultimateFallback?.userPickFallback === 'uf-lobby'
         && redirectCount < MAX_SELF_REDIRECTS
         && !res.headersSent
@@ -1255,7 +1256,7 @@ export async function handleStream(
       }
       if (
         userPick
-        && globalConfig.ultimateFallback?.enabled
+        && isUltimateFallbackActive()
         && globalConfig.ultimateFallback?.userPickFallback === 'failure-video'
         && !res.headersSent
       ) {
@@ -1271,7 +1272,7 @@ export async function handleStream(
   if (
     userPick
     && sessionKey
-    && globalConfig.ultimateFallback?.enabled
+    && isUltimateFallbackActive()
     && globalConfig.ultimateFallback?.userPickFallback === 'uf-lobby'
     && redirectCount < MAX_SELF_REDIRECTS
     && !res.headersSent
