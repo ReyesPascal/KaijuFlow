@@ -17,7 +17,7 @@ import { buildStreamFilename } from '../parsers/metadataParsers.js';
 import { getActiveBackend } from '../backends/index.js';
 import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../nzbdav/streamCache.js';
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
-import { buildEpisodePattern, buildDateEpisodePattern, isNzbdavBackendActive, isUltimateFallbackActive } from '../nzbdav/utils.js';
+import { buildEpisodePattern, buildDateEpisodePattern, isLibraryBackendActive, isUltimateFallbackActive } from '../nzbdav/utils.js';
 import { getTvAllowMultiEpisode } from '../config/accessors.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
@@ -209,7 +209,7 @@ export async function coordinateHealthChecks(
   // Content already downloaded is marked as verified ('Library') instantly.
   const libraryPreCheckEnabled = (config.healthChecks?.libraryPreCheck !== false)
     && config.streamingMode === 'nzbdav'
-    && isNzbdavBackendActive()
+    && isLibraryBackendActive()
     && config.nzbdavWebdavUrl
     && config.nzbdavWebdavUser;
 

@@ -12,6 +12,7 @@
 import { config as globalConfig } from '../config/index.js';
 import { createHash } from 'node:crypto';
 import { grabNzb } from '../nzbdav/nzbdavApi.js';
+import { ALTMOUNT_CAPABILITIES } from './capabilities.js';
 import { PrepareCancelledError, isSourceFailure, sourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
 
 const TEST_CONNECTION_TIMEOUT_MS = 15_000;
@@ -139,6 +140,7 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
   return {
     id: 'altmount',
     label: 'AltMount',
+    capabilities: ALTMOUNT_CAPABILITIES,
 
     // No search-time library for AltMount yet: always prepare.
     findPrepared: async () => null,
@@ -247,7 +249,12 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       throw sourceFailure(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
     },
 
-    // Best effort and a no-op for now: AltMount cancels need a login, not the API key.
+    // Deliberately a no-op (checked against pinned AltMount source, #3). The only
+    // API-key route, SAB `mode=queue&name=delete`, just deletes the import_queue
+    // row; it does not stop a running worker (sabnzbd_handlers.go:708,
+    // queue_repository.go:54). The REST DELETE refuses processing jobs for that
+    // reason, and a timed-out job is still processing. So it would be row
+    // deletion under a live worker, not a cancel. Cancel is best effort anyway.
     cancel: async () => {},
 
     mediaRequest,

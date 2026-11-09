@@ -16,7 +16,7 @@ import https from 'https';
 import { PassThrough } from 'stream';
 import type { Config } from '../types.js';
 import type { NZBDavConfig } from '../nzbdav/index.js';
-import { encodeWebdavPath, WebDav404Error, buildNzbdavConfig, isNzbdavBackendActive } from '../nzbdav/utils.js';
+import { encodeWebdavPath, WebDav404Error, buildNzbdavConfig, isLibraryBackendActive } from '../nzbdav/utils.js';
 import { getActiveBackend } from '../backends/index.js';
 import { isBackendId } from '../backends/types.js';
 import { cleanupHistoryForPath } from '../nzbdav/historyApi.js';
@@ -120,7 +120,7 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
   // background side-effect.
   // Library screens are NzbDAV-only: with AltMount active these links are dead.
   router.use(['/library-bypass', '/library-delete', '/library-delete-all'], (_req, res, next) => {
-    if (!isNzbdavBackendActive()) { res.status(404).end(); return; }
+    if (!isLibraryBackendActive()) { res.status(404).end(); return; }
     next();
   });
 

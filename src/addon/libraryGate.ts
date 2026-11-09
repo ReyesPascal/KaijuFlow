@@ -23,7 +23,7 @@ import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js'
 import type { SearchContext } from './searchOrchestrator.js';
 import type { ResolvedTitleInfo } from './titleResolver.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
-import { isNzbdavBackendActive } from '../nzbdav/utils.js';
+import { isLibraryBackendActive } from '../nzbdav/utils.js';
 
 export interface LibraryGateResult {
   /** True when post-filter library results meet the configured threshold and the indexer flow should be skipped. */
@@ -62,7 +62,7 @@ export async function runLibraryGate(
   const libraryTypeAllowed = type === 'movie'
     ? config.searchConfig?.libraryApplyToMovies !== false
     : config.searchConfig?.libraryApplyToSeries !== false;
-  if (libraryThreshold <= 0 || !libraryTypeAllowed || config.streamingMode !== 'nzbdav' || !isNzbdavBackendActive() || !config.nzbdavUrl) {
+  if (libraryThreshold <= 0 || !libraryTypeAllowed || config.streamingMode !== 'nzbdav' || !isLibraryBackendActive() || !config.nzbdavUrl) {
     return { shortCircuited: false, libraryResults: [] };
   }
 

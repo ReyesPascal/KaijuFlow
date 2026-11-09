@@ -6,6 +6,7 @@
 import { config as globalConfig } from '../config/index.js';
 import { hasSeriesPackKeyword, extractSeasonTokens } from '../parsers/titleMatching.js';
 import type { NZBDavConfig } from './types.js';
+import { backendCapabilities } from '../backends/capabilities.js';
 
 /**
  * Build an episode pattern regex for matching season/episode in filenames.
@@ -94,17 +95,17 @@ export function buildNzbdavConfig(): NZBDavConfig {
   };
 }
 
-/** True when NzbDAV is the active Backend (NzbDAV-only screens and features need this). */
-export function isNzbdavBackendActive(): boolean {
-  return globalConfig.backend === 'nzbdav';
+/** True when the active Backend has a library (library screens, search and cleanup need this). */
+export function isLibraryBackendActive(): boolean {
+  return backendCapabilities().library;
 }
 
 /**
- * Ultimate Fallback is NzbDAV-only: with AltMount active it acts as off even
+ * Ultimate Fallback needs the Backend's ultimateFallback capability (NzbDAV only): with AltMount active it acts as off even
  * if the saved setting is enabled. Use instead of reading `ultimateFallback.enabled`.
  */
 export function isUltimateFallbackActive(): boolean {
-  return globalConfig.ultimateFallback?.enabled === true && isNzbdavBackendActive();
+  return globalConfig.ultimateFallback?.enabled === true && backendCapabilities().ultimateFallback;
 }
 
 /**
@@ -115,7 +116,7 @@ export function isUltimateFallbackActive(): boolean {
  */
 export function isNzbdavLibraryConfigured(): boolean {
   return globalConfig.streamingMode === 'nzbdav'
-    && isNzbdavBackendActive()
+    && isLibraryBackendActive()
     && !!globalConfig.nzbdavWebdavUrl
     && !!globalConfig.nzbdavWebdavUser;
 }

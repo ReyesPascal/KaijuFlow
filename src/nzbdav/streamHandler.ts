@@ -14,7 +14,8 @@ import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
 import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
-import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isNzbdavBackendActive, isUltimateFallbackActive } from './utils.js';
+import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isLibraryBackendActive, isUltimateFallbackActive } from './utils.js';
+import { backendCapabilities } from '../backends/capabilities.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -498,7 +499,7 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
  */
 function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
   const method = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-  return isUltimateFallbackActive() || !isNzbdavBackendActive() ? method : 'proxy';
+  return isUltimateFallbackActive() || !backendCapabilities().ultimateFallback ? method : 'proxy';
 }
 
 /**
@@ -530,7 +531,7 @@ export async function handleStream(
   // emit this query param so no other source can spoof it.
   const libraryVideoPathParam = req.query.libraryVideoPath as string | undefined;
   if (libraryVideoPathParam) {
-    if (!isNzbdavBackendActive()) { res.status(404).end(); return; } // Library is NzbDAV-only
+    if (!isLibraryBackendActive()) { res.status(404).end(); return; } // Library needs the library capability
     const decoded = decodeURIComponent(libraryVideoPathParam);
     if (!decoded.startsWith('/content/')) {
       console.warn(`⚠️ Rejected library stream — path not under /content/: ${libraryVideoPathParam}`);

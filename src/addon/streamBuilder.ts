@@ -17,7 +17,7 @@ import { parseQuality, parseCodec, parseSource, parseVisualTag, parseAudioTag, p
 import type { Stream, AutoPlayConfig } from '../types.js';
 import type { HealthCheckResult } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
-import { createFallbackGroup, isNzbdavBackendActive, isUltimateFallbackActive, type FallbackCandidate } from '../nzbdav/index.js';
+import { createFallbackGroup, isLibraryBackendActive, isUltimateFallbackActive, type FallbackCandidate } from '../nzbdav/index.js';
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
 import { registerDeleteAllTargets } from '../nzbdav/deleteAllTargetsStore.js';
 import { buildStreamDisplay } from './streamDisplay.js';
@@ -240,7 +240,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
     // libraryVideoPath query param and serves the file directly without the NZB
     // grab cycle. URL is shaped as a single query param so Infuse's iOS handoff
     // (which strips everything after the first '&') doesn't drop the path.
-    if (result.origin === 'library' && result.libraryVideoPath && config.streamingMode === 'nzbdav' && isNzbdavBackendActive()) {
+    if (result.origin === 'library' && result.libraryVideoPath && config.streamingMode === 'nzbdav' && isLibraryBackendActive()) {
       const streamManifestKey = requestContext.getStore()?.manifestKey || '';
       const base = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/nzbdav/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}`;
       const tileUrl = `${base}?libraryVideoPath=${encodeURIComponent(result.libraryVideoPath)}`;

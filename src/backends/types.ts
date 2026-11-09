@@ -11,6 +11,7 @@
 import type { StreamData } from '../nzbdav/types.js';
 import type { RawResult } from '../types.js';
 import type { SearchContext } from '../addon/searchOrchestrator.js';
+import type { BackendCapabilities } from './capabilities.js';
 
 export const BACKEND_IDS = ['nzbdav', 'altmount'] as const;
 export type BackendId = (typeof BACKEND_IDS)[number];
@@ -68,6 +69,8 @@ export interface BackendStatus {
 export interface Backend {
   readonly id: BackendId;
   readonly label: string;
+  /** What this Backend supports beyond prepare/probe/stream (library, Ultimate Fallback). */
+  readonly capabilities: BackendCapabilities;
 
   /** Already prepared: existing prepared media for this Source, or null. Never prepares. */
   findPrepared(source: BackendSource, opts?: { logPrefix?: string; quiet?: boolean }): Promise<PreparedVideo | null>;
