@@ -26,3 +26,11 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: npm run test:unit
+      - name: Brain tools compile and lint (tools/brain/*.py)
+        run: |
+          python3 -m py_compile tools/brain/*.py
+          pipx run ruff==0.6.9 check tools/brain
+      - name: Working tree is clean after build and tests
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"

@@ -8,53 +8,21 @@ i.e. KaijuFlow's prepare incl. the Backend), time to the first byte, the 64 KiB 
 90% seek reads, and on the test container the Unscramble time from KaijuFlow's log. Medians per side
 are printed as a Markdown table and written next to the JSON (<out>.md).
 """
-import hashlib, json, os, re, statistics, subprocess, sys, time, urllib.request, urllib.error
+import hashlib, json, os, re, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+from common import FAILURE_SIZE, finish, fmt, get, med, pick_titles, took  # noqa: E402
 
 U = sys.argv[1] if len(sys.argv) > 1 else ''  # the user id in the manifest URL
 SIDES = {'nzbdav': 'http://localhost:1337', 'altmount': 'http://localhost:1338'}
 LOG_CONTAINER = {'altmount': 'kaijuflow-test'}  # sides whose KaijuFlow log we can read for Unscramble lines
-FAILURE_SIZE = 1242455  # failure video
-TITLES = [
-    ('movie', 'tt1375666', 'Inception'), ('movie', 'tt0816692', 'Interstellar'),
-    ('movie', 'tt15398776', 'Oppenheimer'), ('movie', 'tt0133093', 'The Matrix'),
-    ('movie', 'tt1160419', 'Dune'), ('movie', 'tt0468569', 'The Dark Knight'),
-    ('movie', 'tt0110912', 'Pulp Fiction'), ('series', 'tt0903747:1:1', 'Breaking Bad S01E01'),
-    ('series', 'tt7366338:1:2', 'Chernobyl S01E02'), ('series', 'tt0944947:2:3', 'Game of Thrones S02E03'),
-]
 UNSCRAMBLE_RE = re.compile(r'Unscrambled RAR set: (\d+) parts .*?\((\d+) ms\)|Unscramble skipped \(([^,]+), (\d+) parts, (\d+) ms\)')
-
-
-def took(t):
-    """Total time of a get(), or the time to the headers when the body read did not finish."""
-    return t.get('total', t['ready'])
 
 
 def rfc3339(ts):
     """docker logs --since/--until with sub-second precision."""
     return time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(ts)) + f'.{int((ts % 1) * 1e9):09d}Z'
-
-
-def get(url, rng=None, timeout=330, limit=70000):
-    """status, headers, body, timings {ready, first_byte (when a body is read), total} in seconds."""
-    req = urllib.request.Request(url, headers={'Range': f'bytes={rng}'} if rng else {})
-    t = time.time()
-    timings = {}
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            timings['ready'] = time.time() - t
-            first = r.read(1) if limit else b''
-            if limit:
-                timings['first_byte'] = time.time() - t
-            body = first + (r.read(limit - 1) if limit else r.read())
-            timings['total'] = time.time() - t
-            return r.status, dict(r.headers), body, timings
-    except urllib.error.HTTPError as e:
-        timings.setdefault('ready', time.time() - t)
-        return e.code, dict(e.headers), b'', timings
-    except Exception as e:  # noqa
-        timings.setdefault('ready', time.time() - t)
-        return None, {'error': str(e)}, b'', timings
 
 
 def unscramble_from_log(container, since, until):
@@ -103,10 +71,6 @@ def side(name, base, kind, vid):
     return out
 
 
-def fmt(v, unit=''):
-    return '-' if v is None else f'{v}{unit}'
-
-
 def speed_table(results):
     """Markdown table: both sides per row, medians per side."""
     cols = [('ready_s', 'ready s'), ('first_byte_s', '1st byte s'), ('seek50', 'seek 50% s'), ('seek90', 'seek 90% s')]
@@ -136,7 +100,6 @@ def speed_table(results):
         else:
             utxt = '-'
         lines.append(f"| {row['title']} | {plays} | " + ' | '.join(cells) + f" | {utxt} | {'yes' if row.get('bytes_match') else 'no'} |")
-    med = lambda xs: round(statistics.median(xs), 2) if xs else None  # noqa
     lines.append('| **Median** | | ' + ' | '.join(' / '.join(fmt(med(series[s][key])) for s in SIDES) for key, _ in cols) +
                  f" | {fmt(med(unscr), ' ms')} | |")
     lines.append('')
@@ -146,12 +109,9 @@ def speed_table(results):
 
 
 def main():
+    started = time.time()
     results = []
-    only = [t.strip() for t in os.environ.get('PARITY_TITLES', '').split(',') if t.strip()]
-    titles = [t for t in TITLES if not only or any(o.lower() in t[2].lower() for o in only)]
-    if not titles:
-        sys.exit(f'PARITY_TITLES={only} matches none of: ' + ', '.join(t[2] for t in TITLES))
-    for kind, vid, label in titles:
+    for kind, vid, label in pick_titles('PARITY_TITLES'):
         with ThreadPoolExecutor(2) as ex:
             futs = {n: ex.submit(side, n, b, kind, vid) for n, b in SIDES.items()}
             row = {'title': label, 'id': vid, **{n: f.result() for n, f in futs.items()}}
@@ -168,6 +128,7 @@ def main():
     table = speed_table(results)
     open(re.sub(r'\.json$', '', sys.argv[2]) + '.md', 'w').write(table + '\n')
     print(table)
+    finish(started)
 
 
 if len(sys.argv) != 3:
