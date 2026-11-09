@@ -11,6 +11,17 @@ interface StreamingOverlayProps {
   setConfig: React.Dispatch<React.SetStateAction<Config | null>>;
   streamingMode: 'nzbdav' | 'stremio';
   setStreamingMode: React.Dispatch<React.SetStateAction<'nzbdav' | 'stremio'>>;
+  backend: 'nzbdav' | 'altmount';
+  setBackend: React.Dispatch<React.SetStateAction<'nzbdav' | 'altmount'>>;
+  altmountUrl: string;
+  setAltmountUrl: React.Dispatch<React.SetStateAction<string>>;
+  altmountApiKey: string;
+  setAltmountApiKey: React.Dispatch<React.SetStateAction<string>>;
+  altmountCategory: string;
+  setAltmountCategory: React.Dispatch<React.SetStateAction<string>>;
+  altmountPrepareTimeout: number;
+  setAltmountPrepareTimeout: React.Dispatch<React.SetStateAction<number>>;
+  backendMessage: string;
   nzbdavUrl: string;
   setNzbdavUrl: React.Dispatch<React.SetStateAction<string>>;
   nzbdavApiKey: string;
@@ -44,6 +55,17 @@ export function StreamingOverlay({
   setConfig,
   streamingMode,
   setStreamingMode,
+  backend,
+  setBackend,
+  altmountUrl,
+  setAltmountUrl,
+  altmountApiKey,
+  setAltmountApiKey,
+  altmountCategory,
+  setAltmountCategory,
+  altmountPrepareTimeout,
+  setAltmountPrepareTimeout,
+  backendMessage,
   nzbdavUrl,
   setNzbdavUrl,
   nzbdavApiKey,
@@ -99,15 +121,57 @@ export function StreamingOverlay({
               className="input flex-1 max-w-xs"
             >
               <option value="stremio" disabled>Stremio Native (Unavailable)</option>
-              <option value="nzbdav">NzbDAV</option>
+              <option value="nzbdav">Backend (NzbDAV or AltMount)</option>
             </select>
             <p className="text-xs text-slate-500 mt-2">
-              <strong>NzbDAV:</strong> Stream through a hosted NzbDAV WebDAV server instance
+              <strong>Backend:</strong> Stream through a hosted Backend that prepares the chosen Source
             </p>
           </div>
 
           {streamingMode === 'nzbdav' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Backend</label>
+              <select
+                value={backend}
+                onChange={(e) => setBackend(e.target.value as 'nzbdav' | 'altmount')}
+                className="input flex-1 max-w-xs"
+              >
+                <option value="nzbdav">NzbDAV</option>
+                <option value="altmount">AltMount</option>
+              </select>
+              <p className="text-xs text-slate-500 mt-2">
+                Switching Backend keeps the other Backend's settings, so you can switch back at any time.
+              </p>
+            </div>
+          )}
+
+          {streamingMode === 'nzbdav' && (
             <div className="space-y-4">
+              {backend === 'altmount' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">AltMount URL</label>
+                    <input type="text" value={altmountUrl} onChange={(e) => setAltmountUrl(e.target.value)} placeholder="http://altmount:8080" className="input" />
+                    <p className="text-xs text-slate-500 mt-1">AltMount's Stremio integration must be turned on in AltMount's settings.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">AltMount API Key</label>
+                    <input type="password" value={altmountApiKey} onChange={(e) => setAltmountApiKey(e.target.value)} placeholder="Your AltMount API key" className="input" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Category</label>
+                      <input type="text" value={altmountCategory} onChange={(e) => setAltmountCategory(e.target.value)} placeholder="kaijuflow" className="input" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Prepare Timeout (seconds)</label>
+                      <input type="number" min={1} value={altmountPrepareTimeout} onChange={(e) => setAltmountPrepareTimeout(Math.max(1, parseInt(e.target.value, 10) || 300))} className="input" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500">Direct delivery hands the player a link that contains AltMount's access key. Keep proxy delivery unless the player is on a trusted network.</p>
+                </div>
+              )}
+              {backend === 'nzbdav' && (<>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">NzbDAV URL</label>
                 <input type="text" value={nzbdavUrl} onChange={(e) => setNzbdavUrl(e.target.value)} placeholder="http://localhost:3000" className="input" />
@@ -155,6 +219,7 @@ export function StreamingOverlay({
                   </div>
                 </div>
               </div>
+              </>)}
               {/* Stream Buffer Size — hidden in direct mode (no buffer needed); method + range follow effectiveMethod */}
               {effectiveMethod !== 'direct' && (
               <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-3">
@@ -213,19 +278,22 @@ export function StreamingOverlay({
                       {nzbdavConnectionStatus === 'unconfigured' && 'Not configured'}
                       {!nzbdavConnectionStatus && 'Not tested'}
                     </div>
+                    {backend === 'altmount' && backendMessage && nzbdavConnectionStatus !== 'checking' && (
+                      <div className="text-xs text-slate-400 mt-1">{backendMessage}</div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={checkNzbdavConnection} className="btn text-sm">
                     Test Connection
                   </button>
-                  <button
+                  {backend === 'nzbdav' && (<button
                     onClick={sendNzbdavTestNzb}
                     disabled={nzbdavTestNzbStatus === 'sending' || !nzbdavUrl}
                     className="btn text-sm"
                   >
                     {nzbdavTestNzbStatus === 'sending' ? 'Sending...' : 'Send Test NZB'}
-                  </button>
+                  </button>)}
                 </div>
               </div>
               {nzbdavTestNzbMessage && (

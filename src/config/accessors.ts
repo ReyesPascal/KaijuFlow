@@ -63,6 +63,21 @@ export const config: Config = {
   get indexManager() {
     return envEnum('INDEX_MANAGER', ['newznab', 'prowlarr', 'nzbhydra']) || configData.indexManager;
   },
+  get backend(): 'nzbdav' | 'altmount' {
+    return envEnum('BACKEND', ['nzbdav', 'altmount']) || configData.backend || 'nzbdav';
+  },
+  get altmountUrl() {
+    return envStr('ALTMOUNT_URL') || configData.altmountUrl;
+  },
+  get altmountApiKey() {
+    return envStr('ALTMOUNT_API_KEY') || configData.altmountApiKey;
+  },
+  get altmountCategory() {
+    return envStr('ALTMOUNT_CATEGORY') || configData.altmountCategory || 'kaijuflow';
+  },
+  get altmountPrepareTimeout() {
+    return Math.max(1, configData.altmountPrepareTimeout ?? 300);
+  },
   get nzbdavUrl() {
     return envStr('NZBDAV_URL') || configData.nzbdavUrl;
   },

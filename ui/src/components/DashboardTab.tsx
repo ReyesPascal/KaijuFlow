@@ -46,6 +46,7 @@ export interface DashboardTabProps {
   enabledIndexersCount: number;
   syncedIndexers: SyncedIndexer[];
   nzbdavConnectionStatus: 'connected' | 'disconnected' | 'unconfigured' | 'checking' | null;
+  backend: 'nzbdav' | 'altmount';
   nzbdavStreamingMethod: 'pipe' | 'proxy' | 'direct';
   streamingMode: 'nzbdav' | 'stremio';
   proxyMode: 'disabled' | 'http';
@@ -91,6 +92,7 @@ export function DashboardTab({
   enabledIndexersCount,
   syncedIndexers,
   nzbdavConnectionStatus,
+  backend,
   nzbdavStreamingMethod,
   streamingMode,
   proxyMode,
@@ -260,7 +262,7 @@ export function DashboardTab({
                     </div>
                     <div className="text-3xl font-bold group-hover:text-purple-400 group-active:text-purple-400 transition-colors">
                       {config.streamingMode === 'nzbdav'
-                        ? <>NzbDAV<span className="text-lg font-normal text-purple-400 ml-2">+ {!ultimateFallback.enabled ? 'Dual-Stage Proxy' : nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
+                        ? <>{backend === 'altmount' ? 'AltMount' : 'NzbDAV'}<span className="text-lg font-normal text-purple-400 ml-2">+ {!ultimateFallback.enabled ? 'Dual-Stage Proxy' : nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
                         : 'Native'}
                     </div>
                     <div className="flex items-center gap-2 mt-1">

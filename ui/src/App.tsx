@@ -746,6 +746,17 @@ function App() {
           setConfig={ac.setConfig}
           streamingMode={ac.streamingMode}
           setStreamingMode={ac.setStreamingMode}
+          backend={ac.backend}
+          setBackend={ac.setBackend}
+          altmountUrl={ac.altmountUrl}
+          setAltmountUrl={ac.setAltmountUrl}
+          altmountApiKey={ac.altmountApiKey}
+          setAltmountApiKey={ac.setAltmountApiKey}
+          altmountCategory={ac.altmountCategory}
+          setAltmountCategory={ac.setAltmountCategory}
+          altmountPrepareTimeout={ac.altmountPrepareTimeout}
+          setAltmountPrepareTimeout={ac.setAltmountPrepareTimeout}
+          backendMessage={ac.backendMessage}
           nzbdavUrl={ac.nzbdavUrl}
           setNzbdavUrl={ac.setNzbdavUrl}
           nzbdavApiKey={ac.nzbdavApiKey}
@@ -1078,6 +1089,7 @@ function App() {
             enabledIndexersCount={enabledIndexersCount}
             syncedIndexers={ac.syncedIndexers}
             nzbdavConnectionStatus={ac.nzbdavConnectionStatus}
+            backend={ac.backend}
             nzbdavStreamingMethod={ac.nzbdavStreamingMethod}
             streamingMode={ac.streamingMode}
             proxyMode={ac.proxyMode}

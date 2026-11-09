@@ -115,6 +115,12 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
 
   // ─── Streaming & Index Manager ──────────────────────────────────────
   const [streamingMode, setStreamingMode] = useState<'nzbdav' | 'stremio'>('nzbdav');
+  const [backend, setBackend] = useState<'nzbdav' | 'altmount'>('nzbdav');
+  const [altmountUrl, setAltmountUrl] = useState('');
+  const [altmountApiKey, setAltmountApiKey] = useState('');
+  const [altmountCategory, setAltmountCategory] = useState('kaijuflow');
+  const [altmountPrepareTimeout, setAltmountPrepareTimeout] = useState(300);
+  const [backendMessage, setBackendMessage] = useState('');
   const [indexManager, setIndexManager] = useState<'newznab' | 'prowlarr' | 'nzbhydra'>('newznab');
 
   // ─── Proxy ──────────────────────────────────────────────────────────
@@ -373,10 +379,10 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   useEffect(() => {
     if (!initialLoadDone.current) return;
     const timer = setTimeout(() => saveSettings({
-      streamingMode, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod,
+      streamingMode, backend, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod,
     }), 500);
     return () => clearTimeout(timer);
-  }, [streamingMode, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod, saveSettings]);
+  }, [streamingMode, backend, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod, saveSettings]);
 
   // Auto-save: NZB database settings
   useEffect(() => {
@@ -563,7 +569,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       return;
     }
     setNzbdavConnectionStatus(null);
-  }, [streamingMode, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword]);
+  }, [streamingMode, backend, altmountUrl, altmountApiKey, altmountCategory, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword]);
 
   // Check proxy when proxy mode changes
   useEffect(() => {
@@ -893,6 +899,11 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setNzbhydraPassword(data.nzbhydraPassword || '');
       setNzbhydraTimeoutEnabled(data.nzbhydraTimeoutEnabled !== false);
       setNzbhydraTimeout(data.nzbhydraTimeout ?? DEFAULT_INDEXER_TIMEOUT_SECONDS);
+      setBackend(data.backend === 'altmount' ? 'altmount' : 'nzbdav');
+      setAltmountUrl(data.altmountUrl || '');
+      setAltmountApiKey(data.altmountApiKey || '');
+      setAltmountCategory(data.altmountCategory || 'kaijuflow');
+      setAltmountPrepareTimeout(data.altmountPrepareTimeout ?? 300);
       setNzbdavUrl(data.nzbdavUrl || 'http://localhost:3000');
       setNzbdavApiKey(data.nzbdavApiKey || '');
       setNzbdavWebdavUrl(data.nzbdavWebdavUrl || 'http://localhost:3000');
@@ -922,13 +933,31 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       // Also auto-test NzbDAV connection on startup (inline to avoid stale closure)
       setTimeout(async () => {
         initialLoadDone.current = true;
-        if ((data.streamingMode || 'nzbdav') === 'nzbdav' && data.nzbdavUrl) {
+        if ((data.streamingMode || 'nzbdav') === 'nzbdav' && data.backend === 'altmount') {
+          if (!data.altmountUrl) {
+            setNzbdavConnectionStatus('unconfigured');
+          } else {
+            setNzbdavConnectionStatus('checking');
+            try {
+              const testResp = await apiFetch('/api/nzbdav/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backend: 'altmount' }),
+                signal: AbortSignal.timeout(20_000),
+              });
+              setNzbdavConnectionStatus(testResp.ok ? 'connected' : 'disconnected');
+            } catch {
+              setNzbdavConnectionStatus('disconnected');
+            }
+          }
+        } else if ((data.streamingMode || 'nzbdav') === 'nzbdav' && data.nzbdavUrl) {
           setNzbdavConnectionStatus('checking');
           try {
             const testResp = await apiFetch('/api/nzbdav/test', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                backend: 'nzbdav',
                 url: data.nzbdavUrl,
                 apiKey: data.nzbdavApiKey || '',
                 webdavUrl: data.nzbdavWebdavUrl || '',
@@ -1000,6 +1029,30 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       return;
     }
 
+    if (backend === 'altmount') {
+      if (!altmountUrl) {
+        setNzbdavConnectionStatus('unconfigured');
+        setBackendMessage('AltMount URL is required');
+        return;
+      }
+      setNzbdavConnectionStatus('checking');
+      setBackendMessage('');
+      try {
+        const response = await apiFetch('/api/nzbdav/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ backend: 'altmount', altmountUrl, altmountApiKey, altmountCategory }),
+        });
+        const body = await response.json().catch(() => ({ message: '' }));
+        setBackendMessage(body.message || '');
+        setNzbdavConnectionStatus(response.ok ? 'connected' : 'disconnected');
+      } catch {
+        setBackendMessage('Connection failed');
+        setNzbdavConnectionStatus('disconnected');
+      }
+      return;
+    }
+
     if (!nzbdavUrl) {
       setNzbdavConnectionStatus('unconfigured');
       return;
@@ -1011,6 +1064,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          backend: 'nzbdav',
           url: nzbdavUrl,
           apiKey: nzbdavApiKey,
           webdavUrl: nzbdavWebdavUrl,
@@ -1382,6 +1436,13 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     nzbhydraTimeoutEnabled, setNzbhydraTimeoutEnabled,
     nzbhydraTimeout, setNzbhydraTimeout,
 
+    // Backend
+    backend, setBackend,
+    altmountUrl, setAltmountUrl,
+    altmountApiKey, setAltmountApiKey,
+    altmountCategory, setAltmountCategory,
+    altmountPrepareTimeout, setAltmountPrepareTimeout,
+    backendMessage,
     // NzbDAV
     nzbdavUrl, setNzbdavUrl,
     nzbdavApiKey, setNzbdavApiKey,

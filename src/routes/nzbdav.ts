@@ -47,7 +47,7 @@ export function createNzbdavRoutes(deps: NzbdavDeps): Router {
 
   // NZBDav test connection endpoint (dashboard status + settings "test connection")
   router.post('/test', async (req, res) => {
-    const status = await getActiveBackend().status(req.body ?? {});
+    const status = await getActiveBackend(undefined, req.body?.backend === 'altmount' || req.body?.backend === 'nzbdav' ? req.body.backend : undefined).status(req.body ?? {});
     const body: { message: string; testPath?: string } = { message: status.message };
     if (status.testPath !== undefined) body.testPath = status.testPath;
     res.status(status.httpStatus).json(body);

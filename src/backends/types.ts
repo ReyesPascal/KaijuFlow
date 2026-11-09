@@ -12,7 +12,7 @@ import type { StreamData } from '../nzbdav/types.js';
 import type { RawResult } from '../types.js';
 import type { SearchContext } from '../addon/searchOrchestrator.js';
 
-export type BackendId = 'nzbdav';
+export type BackendId = 'nzbdav' | 'altmount';
 
 /** A prepared video: the Backend's media reference, its size and job id. */
 export type PreparedVideo = StreamData;

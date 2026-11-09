@@ -364,6 +364,12 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   }
 }
 
+// Backend setting (spec #16): existing installs keep NzbDAV; every NzbDAV setting is left as is.
+if (!configData.backend) {
+  configData.backend = 'nzbdav';
+  saveConfigFile(configData);
+}
+
 // Migrate NZB Fallback → Ultimate Fallback. UF fully replaces fallback semantics;
 // migrants land on the new UF default baseline (on-tile-selection + failure-video)
 // rather than deriving from prior NZB Fallback toggles — fresh start.

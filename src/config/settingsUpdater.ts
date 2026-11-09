@@ -55,6 +55,11 @@ export function updateSettings(settings: {
   nzbhydraTimeoutEnabled?: boolean;
   nzbhydraTimeout?: number;
   zyclopsEndpoint?: string;
+  backend?: 'nzbdav' | 'altmount';
+  altmountUrl?: string;
+  altmountApiKey?: string;
+  altmountCategory?: string;
+  altmountPrepareTimeout?: number;
   nzbdavUrl?: string;
   nzbdavApiKey?: string;
   nzbdavWebdavUrl?: string;
@@ -201,6 +206,22 @@ export function updateSettings(settings: {
   }
   if (settings.zyclopsEndpoint !== undefined) {
     configData.zyclopsEndpoint = settings.zyclopsEndpoint;
+  }
+  if (settings.backend !== undefined) {
+    if (settings.backend !== 'nzbdav' && settings.backend !== 'altmount') throw new Error('backend must be nzbdav or altmount');
+    configData.backend = settings.backend;
+  }
+  if (settings.altmountUrl !== undefined) {
+    configData.altmountUrl = settings.altmountUrl;
+  }
+  if (settings.altmountApiKey !== undefined) {
+    configData.altmountApiKey = settings.altmountApiKey;
+  }
+  if (settings.altmountCategory !== undefined) {
+    configData.altmountCategory = settings.altmountCategory.trim() || 'kaijuflow';
+  }
+  if (settings.altmountPrepareTimeout !== undefined) {
+    configData.altmountPrepareTimeout = Math.max(1, Math.round(Number(settings.altmountPrepareTimeout)) || 300);
   }
   if (settings.nzbdavUrl !== undefined) {
     configData.nzbdavUrl = settings.nzbdavUrl;

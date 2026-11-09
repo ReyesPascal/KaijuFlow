@@ -45,6 +45,13 @@ export interface ConfigData {
   nzbdavPipeBufferMB?: number;
   nzbdavProxyEnabled?: boolean;
   nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';
+  /** Backend used when streamingMode is 'nzbdav' (the Backend mode). Migrated to 'nzbdav'. */
+  backend?: 'nzbdav' | 'altmount';
+  altmountUrl?: string;
+  altmountApiKey?: string;
+  altmountCategory?: string;
+  /** Seconds AltMount may take to prepare a Source. */
+  altmountPrepareTimeout?: number;
   healthyNzbDbMode?: 'time' | 'storage';
   healthyNzbDbTTL?: number;
   healthyNzbDbMaxSizeMB?: number;
