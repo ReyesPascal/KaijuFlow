@@ -3,6 +3,7 @@
 // on what the player receives and on the fake Backend's recorded requests.
 import assert from 'node:assert/strict';
 import { assertBytes } from './bytes.mjs';
+import { scrambledRarSet } from './fake-nntp.mjs';
 
 const mediaFor = tag => Buffer.from(`KaijuFlow parity bytes for ${tag}: 0123456789abcdefghijklmnopqrstuvwxyz`);
 
@@ -106,6 +107,36 @@ export const scenarios = [
       if (backend.submitFields) { const f = backend.submitFields.at(-1); assert.deepEqual({ season: f.season, episode: f.episode }, { season: '1', episode: '3' }); };
     },
   },
+  {
+    // Scrambled RAR set (#44, ADR 0005): RAR5 parts named only by numbers,
+    // shuffled, starting at .10 like Interstellar NOSiViD on 1338. KaijuFlow
+    // Unscrambles it from the first articles on the fake news server, so every
+    // Backend gets <name>.partNN.rar in real volume order and it plays.
+    id: 'scrambled-rar-set-plays',
+    needs: 'addScrambled',
+    async run({ kaijuflow, backend, news }) {
+      assert.ok(news, 'harness must start the fake news server (useFakeNews)');
+      const media = mediaFor('scrambled');
+      const title = 'KaijuFlow.Parity.Scrambled.2026.2160p.WEB-DL.H265';
+      const base = '9f3c1a7e5b2d4c6e8a0b';
+      const set = scrambledRarSet({ base, parts: 12, startAt: 10, tag: 'scrambled' });
+      for (const [id, bytes] of set.articles) news.articles.set(id, bytes);
+      const renamed = byVolume => set.parts.reduce((nzb, p, i) => nzb.replace(`&quot;${p.name}&quot;`, `&quot;${base}.part${String((byVolume ? p.volume : i) + 1).padStart(2, '0')}.rar&quot;`), set.nzb);
+      const nzb = backend.addScrambled('scrambled', title, media, set);
+      if (backend.rarVolumeCheck) {
+        // The fake AltMount behaves like real v0.4.0 on 1338: without Unscramble this Source fails.
+        assert.ok(backend.rarVolumeCheck(set.nzb), 'scrambled original must be rejected (Interstellar)');
+        assert.ok(backend.rarVolumeCheck(renamed(false)), 'renamed in name order must be rejected (renametest)');
+        assert.equal(backend.rarVolumeCheck(renamed(true)), null, 'renamed in real order must be accepted (ordertest)');
+      }
+      const r = await play(streamUrl(kaijuflow, nzb, title));
+      assert.equal(r.status, 200, 'Scrambled RAR set should play');
+      assertBytes(r.body, media, 'delivered bytes should match the Backend media');
+      assert.equal(backend.submitsFor('scrambled'), 1);
+      // The uploaded NZB is the original with only the part names changed, in real volume order.
+      assert.deepEqual(backend.uploadedNzbs('scrambled'), [renamed(true)], 'uploaded NZB should be Unscrambled, nothing else changed');
+    },
+  },
 ];
 
 /** The failure video is a long video/mp4, much bigger than the synthetic media. */
@@ -166,13 +197,13 @@ const failureScenarios = [
 scenarios.push(...failureScenarios);
 
 /** Run every scenario against one fake Backend. Returns per-scenario results. */
-export async function runParity({ kaijuflow, backend }) {
+export async function runParity({ kaijuflow, backend, news }) {
   const results = [];
   for (const s of scenarios) {
     if (s.needs && typeof backend[s.needs] !== 'function') { results.push({ id: s.id, status: 'pass', skipped: `Backend has no ${s.needs}` }); continue; }
     const before = backend.requests.length;
     try {
-      await s.run({ kaijuflow, backend });
+      await s.run({ kaijuflow, backend, news });
       results.push({ id: s.id, status: 'pass' });
     } catch (e) {
       results.push({ id: s.id, status: 'fail', error: String(e), requests: backend.requests.slice(before).slice(-15) });

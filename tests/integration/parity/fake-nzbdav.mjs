@@ -1,6 +1,7 @@
 // Fake NzbDAV Backend for the Parity suite: SAB-style API + WebDAV over loopback HTTP.
 // Synthetic NZBs and synthetic media bytes only. Records every request it gets.
 import { serveBytes } from './serve-bytes.mjs';
+import { nzbTag } from './fake-rar-rules.mjs';
 
 const ADVERTISED_SIZE = 128 * 1024 * 1024; // meets KaijuFlow's 100 MiB video threshold
 
@@ -9,6 +10,7 @@ export async function createFakeNzbdav(listen) {
   const requests = [];
   let base = '';
   let down = false;
+  const uploads = new Map(); // tag -> uploaded NZB texts
 
   const propfindEntry = (href, dir) => `<d:response><d:href>${href}</d:href><d:propstat><d:prop><d:resourcetype>${dir ? '<d:collection/>' : ''}</d:resourcetype><d:getcontentlength>${dir ? 0 : ADVERTISED_SIZE}</d:getcontentlength><d:getcontenttype>${dir ? 'httpd/unix-directory' : 'video/x-matroska'}</d:getcontenttype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`;
 
@@ -22,6 +24,7 @@ export async function createFakeNzbdav(listen) {
       const tag = path.slice(1, -4);
       if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
       res.setHeader('Content-Type', 'application/x-nzb');
+      if (sources.get(tag).nzb) { res.end(sources.get(tag).nzb); return; }
       res.end(`<nzb><file subject="${tag}"><groups><group>alt.synthetic</group></groups><segments><segment bytes="64" number="1">${tag}@invalid</segment></segments></file></nzb>`);
       return;
     }
@@ -31,8 +34,10 @@ export async function createFakeNzbdav(listen) {
       const mode = u.searchParams.get('mode');
       if (mode === 'addfile') {
         let body = ''; for await (const c of req) body += c;
-        const src = [...sources.values()].find(s => body.includes(`subject="${s.tag}"`));
+        const file = /filename="[^"]*"\r\nContent-Type: [^\r]*\r\n\r\n([\s\S]*?)\r\n--/.exec(body)?.[1] ?? body;
+        const src = sources.get(nzbTag(file));
         if (!src) { json({ status: false, error: 'unknown nzb' }); return; }
+        uploads.set(src.tag, [...(uploads.get(src.tag) ?? []), file]);
         src.submits++;
         json({ status: true, nzo_ids: [src.job] });
         return;
@@ -74,6 +79,17 @@ export async function createFakeNzbdav(listen) {
       sources.set(tag, { tag, title, dir, files, job: `job-${tag}`, submits: 0 });
       return `${base}/${tag}.nzb`;
     },
+    /**
+     * Register a Scrambled RAR set Source (set from scrambledRarSet, built with
+     * tag = this tag). NzbDAV reads RAR headers, so part names don't matter to it.
+     */
+    addScrambled(tag, title, media, set) {
+      const nzb = this.addMovie(tag, title, media);
+      sources.get(tag).nzb = set.nzb;
+      return nzb;
+    },
+    /** The NZB texts KaijuFlow uploaded for a Source, in order. */
+    uploadedNzbs(tag) { return uploads.get(tag) ?? []; },
     /** Register a Source the Backend accepts then fails (job ends Failed). */
     addRejected(tag, title) {
       const nzb = this.addMovie(tag, title, Buffer.from('unused'));

@@ -3,6 +3,7 @@
 // Same contract as fake NzbDAV: { name, requests[], addMovie(tag,title,media)->nzbUrl, submitsFor(tag), configure(configData) }.
 import crypto from 'node:crypto';
 import { serveBytes } from './serve-bytes.mjs';
+import { nzbTag, rarVolumeCheck } from './fake-rar-rules.mjs';
 
 export const API_KEY = 'synthetic-altmount-key';
 const DOWNLOAD_KEY = crypto.createHash('sha256').update(API_KEY).digest('hex');
@@ -15,6 +16,8 @@ export async function createFakeAltmount(listen) {
   let base = '';
   let down = false;
   let nextQueueId = 1; // real AltMount queue ids are integers
+  const uploads = new Map(); // tag -> uploaded NZB texts
+  const volumeOf = new Map(); // first-article id -> real RAR5 volume, for Scrambled RAR sets
 
   base = await listen(async (req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
@@ -26,7 +29,7 @@ export async function createFakeAltmount(listen) {
       const tag = path.slice(1, -4);
       if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { 'Content-Type': 'application/x-nzb' });
-      res.end(`<nzb><file subject="${tag}"/></nzb>`);
+      res.end(sources.get(tag).nzb ?? `<nzb><file subject="${tag}"/></nzb>`);
       return;
     }
 
@@ -43,7 +46,7 @@ export async function createFakeAltmount(listen) {
       const nzbUrl = field('nzb_url');
       if (!fileMatch && !nzbUrl) return json(400, { error: 'No file provided' });
       let tag;
-      if (fileMatch) { tag = /subject="([^"]+)"/.exec(fileMatch[1])?.[1]; submitKinds.push('file'); }
+      if (fileMatch) { tag = nzbTag(fileMatch[1]); submitKinds.push('file'); uploads.set(tag, [...(uploads.get(tag) ?? []), fileMatch[1]]); }
       else {
         const fetched = await fetch(nzbUrl).catch(() => null);
         if (!fetched?.ok) return json(400, { error: 'could not fetch NZB' });
@@ -63,6 +66,8 @@ export async function createFakeAltmount(listen) {
         return json(400, { error: 'Episode not found in NZB' });
       }
       src.submits++;
+      // AltMount v0.4.0 RAR volume rules: a failed queue item, answered like any other.
+      if (fileMatch && rarVolumeCheck(fileMatch[1], volumeOf)) return json(500, { error: 'NZB processing failed' });
       // Scripted answer (status + body) for a Source, to exercise AltMount's other error answers.
       if (src.scripted) return json(src.scripted.status, src.scripted.body);
       // Failed queue item: pinned handler answers 500 "NZB processing failed" (not 400/422).
@@ -105,6 +110,21 @@ export async function createFakeAltmount(listen) {
       sources.set(tag, { tag, title, files, queueId: nextQueueId++, submits: 0, completed: false });
       return `${base}/${tag}.nzb`;
     },
+    /**
+     * Register a Scrambled RAR set Source (set from scrambledRarSet, built with
+     * tag = this tag). The fake applies AltMount v0.4.0's RAR volume rules to
+     * the uploaded NZB, so it plays only when the parts are named in real order.
+     */
+    addScrambled(tag, title, media, set) {
+      const nzb = this.addMovie(tag, title, media);
+      sources.get(tag).nzb = set.nzb;
+      for (const p of set.parts) volumeOf.set(p.firstId, p.volume);
+      return nzb;
+    },
+    /** Why real AltMount v0.4.0 would fail this NZB's RAR set, or null if it would accept it. */
+    rarVolumeCheck(nzbText) { return rarVolumeCheck(nzbText, volumeOf); },
+    /** The NZB texts KaijuFlow uploaded for a Source, in order. */
+    uploadedNzbs(tag) { return uploads.get(tag) ?? []; },
     /** Register a Source whose queue item fails. */
     addRejected(tag, title) {
       const nzb = this.addMovie(tag, title, Buffer.from('unused'));
