@@ -5,7 +5,7 @@ import { serveBytes } from './serve-bytes.mjs';
 const ADVERTISED_SIZE = 128 * 1024 * 1024; // meets KaijuFlow's 100 MiB video threshold
 
 export async function createFakeNzbdav(listen) {
-  const sources = new Map(); // nzb tag -> { title, media, path, job, submitted, completed }
+  const sources = new Map(); // nzb tag -> { title, files[{name,media,path}], dir, job, submits }
   const requests = [];
   let base = '';
 
@@ -42,15 +42,15 @@ export async function createFakeNzbdav(listen) {
       json({ status: true }); return;
     }
     if (req.method === 'PROPFIND') {
-      const src = [...sources.values()].find(s => s.submits > 0 && (path.replace(/\/+$/, '') === s.dir || path === s.path));
+      const src = [...sources.values()].find(s => s.submits > 0 && (path.replace(/\/+$/, '') === s.dir || s.files.some(f => f.path === path)));
       if (!src) { res.writeHead(404); res.end(); return; }
       res.writeHead(207, { 'Content-Type': 'application/xml' });
-      res.end('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">' + propfindEntry(src.dir + '/', true) + propfindEntry(src.path, false) + '</d:multistatus>');
+      res.end('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">' + propfindEntry(src.dir + '/', true) + src.files.map(f => propfindEntry(f.path, false)).join('') + '</d:multistatus>');
       return;
     }
     if (req.method === 'GET' || req.method === 'HEAD') {
-      const src = [...sources.values()].find(s => s.submits > 0 && path === s.path);
-      if (src) { serveBytes(req, res, src.media); return; }
+      const file = [...sources.values()].filter(s => s.submits > 0).flatMap(s => s.files).find(f => f.path === path);
+      if (file) { serveBytes(req, res, file.media); return; }
     }
     res.writeHead(404); res.end();
   });
@@ -61,7 +61,14 @@ export async function createFakeNzbdav(listen) {
     /** Register a movie Source the fake will accept. Returns its NZB link. */
     addMovie(tag, title, media) {
       const dir = `/content/Movies/${title}`;
-      sources.set(tag, { tag, title, media, dir, path: `${dir}/${tag}.mkv`, job: `job-${tag}`, submits: 0 });
+      sources.set(tag, { tag, title, dir, files: [{ media, path: `${dir}/${tag}.mkv` }], job: `job-${tag}`, submits: 0 });
+      return `${base}/${tag}.nzb`;
+    },
+    /** Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}]. */
+    addSeries(tag, title, episodes) {
+      const dir = `/content/TV/${title}`;
+      const files = episodes.map(e => ({ ...e, path: `${dir}/${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}.mkv` }));
+      sources.set(tag, { tag, title, dir, files, job: `job-${tag}`, submits: 0 });
       return `${base}/${tag}.nzb`;
     },
     submitsFor(tag) { return sources.get(tag)?.submits ?? 0; },
@@ -70,7 +77,7 @@ export async function createFakeNzbdav(listen) {
       Object.assign(configData, {
         streamingMode: 'nzbdav', indexManager: 'manual',
         nzbdavUrl: base, nzbdavWebdavUrl: base, nzbdavApiKey: 'synthetic-key',
-        nzbdavWebdavUser: '', nzbdavWebdavPassword: '', nzbdavMoviesCategory: 'Movies',
+        nzbdavWebdavUser: '', nzbdavWebdavPassword: '', nzbdavMoviesCategory: 'Movies', nzbdavTvCategory: 'TV',
         nzbdavStreamingMethod: 'proxy',
         ultimateFallback: { ...configData.ultimateFallback, enabled: false },
       });

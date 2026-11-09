@@ -15,6 +15,11 @@ async function play(url, range) {
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
+function seriesUrl(kaijuflow, nzbUrl, title, season, episode, pack) {
+  const t = Buffer.from(JSON.stringify({ url: nzbUrl, title, indexer: 'Parity', ty: 'series', season, episode, ...(pack ? { seasonpack: 1, epcount: 3 } : {}) })).toString('base64url');
+  return `${kaijuflow}/stremio/synthetic-manifest/nzbdav/stream/series.mkv?t=${t}`;
+}
+
 export const scenarios = [
   {
     id: 'movie-plays',
@@ -55,6 +60,33 @@ export const scenarios = [
       const r = await play(streamUrl(kaijuflow, nzb, title), `bytes=${media.length + 100}-`);
       assert.equal(r.status, 200, 'range past the end should fall back to the whole file');
       assert.deepEqual(r.body, media, 'fallback body should be the whole file from byte 0');
+    },
+  },
+  {
+    id: 'episode-plays',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('episode');
+      const title = 'KaijuFlow.Parity.Show.S02E05.1080p.WEB-DL.H264';
+      const nzb = backend.addSeries('episode', title, [{ season: 2, episode: 5, media }]);
+      const r = await play(seriesUrl(kaijuflow, nzb, title, 2, 5, false));
+      assert.equal(r.status, 200, 'single-episode Source should play');
+      assert.deepEqual(r.body, media);
+      assert.equal(backend.submitsFor('episode'), 1);
+    },
+  },
+  {
+    // The pack holds three episodes; the player asked for E03 and must get E03's bytes.
+    id: 'season-pack',
+    async run({ kaijuflow, backend }) {
+      const eps = [1, 2, 3].map(e => ({ season: 1, episode: e, media: mediaFor(`pack-e${e}`) }));
+      const title = 'KaijuFlow.Parity.Pack.S01.1080p.WEB-DL.H264';
+      const nzb = backend.addSeries('pack', title, eps);
+      const r = await play(seriesUrl(kaijuflow, nzb, title, 1, 3, true));
+      assert.equal(r.status, 200, 'season pack should play');
+      assert.deepEqual(r.body, eps[2].media, 'the requested episode, not another one');
+      assert.equal(backend.submitsFor('pack'), 1);
+      // AltMount is told which episode to pick.
+      if (backend.submitFields) assert.deepEqual(backend.submitFields.at(-1), { season: '1', episode: '3' });
     },
   },
 ];
