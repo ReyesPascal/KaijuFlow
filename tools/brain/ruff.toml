@@ -1,0 +1,4 @@
+# The Brain tools are compact one-file scripts; CI lints them for bugs, not layout.
+# F = pyflakes: undefined names, unused imports and variables, bad f-strings. Syntax is covered by py_compile.
+[lint]
+select = ["F"]

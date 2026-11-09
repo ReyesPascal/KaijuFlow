@@ -39,7 +39,7 @@ def main():
                 break
             try:
                 r = c.cmd(f'STAT <{a[2]}>')
-            except Exception as e:  # reconnect once
+            except Exception:  # reconnect once
                 c = Conn(host, port, user, pw)
                 r = c.cmd(f'STAT <{a[2]}>')
             if r.startswith('223'):
