@@ -122,13 +122,13 @@ export const scenarios = [
       const set = scrambledRarSet({ base, parts: 12, startAt: 10, tag: 'scrambled' });
       for (const [id, bytes] of set.articles) news.articles.set(id, bytes);
       const renamed = byVolume => set.parts.reduce((nzb, p, i) => nzb.replace(`&quot;${p.name}&quot;`, `&quot;${base}.part${String((byVolume ? p.volume : i) + 1).padStart(2, '0')}.rar&quot;`), set.nzb);
+      const nzb = backend.addScrambled('scrambled', title, media, set);
       if (backend.rarVolumeCheck) {
         // The fake AltMount behaves like real v0.4.0 on 1338: without Unscramble this Source fails.
         assert.ok(backend.rarVolumeCheck(set.nzb), 'scrambled original must be rejected (Interstellar)');
         assert.ok(backend.rarVolumeCheck(renamed(false)), 'renamed in name order must be rejected (renametest)');
         assert.equal(backend.rarVolumeCheck(renamed(true)), null, 'renamed in real order must be accepted (ordertest)');
       }
-      const nzb = backend.addScrambled('scrambled', title, media, set);
       const r = await play(streamUrl(kaijuflow, nzb, title));
       assert.equal(r.status, 200, 'Scrambled RAR set should play');
       assertBytes(r.body, media, 'delivered bytes should match the Backend media');
