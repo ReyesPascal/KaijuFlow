@@ -24,7 +24,7 @@ Older handoffs are in git history. Replace this section; don't append below it.
 **Open for the owner**
 - AltMount queue cleanup (approved 2026-11-09, not yet done): remove the addon test imports under categories Movies and TV (99 rows after the two runs, 59 failed) and keep the `kaijuflow` category while Backend tests continue. The frontend's `DELETE /api/queue/...` routes need a JWT from `POST /api/auth/login` (the API key is not accepted there, and AltMount's SABnzbd API is disabled in its config), so this is done in AltMount's web UI (Queue, filter by category, Clear completed and Clear failed) or with the owner's login.
 
-**Next: spec #58, "measure and optimize KaijuFlow with AltMount before InfiniDysk"** (grilled with the owner 2026-11-09). Ten tickets, each its own PR and session, worked blockers-first:
+**Next: spec #58, "measure and optimize KaijuFlow with AltMount before InfiniDysk"** (grilled with the owner 2026-11-09). Nine tickets (#67, a NinjaCentral-only run, was dropped by the owner), each its own PR and session, worked blockers-first:
 
 | Ticket | What | Blocked by |
 |---|---|---|
@@ -36,10 +36,9 @@ Older handoffs are in git history. Replace this section; don't append below it.
 | #64 | Tune settings one at a time on every side, each run recorded | #63 |
 | #65 | Move an indexer's Sources down after it says "limit reached" | #64 |
 | #66 | One first-article pass per health-checked Source, with the Backend's acceptance check (replaces the old not-RAR5 speedup) | #64 |
-| #67 | NinjaCentral-only run, anecdotal | #65 #66 |
-| #68 | Final run against the targets in #58 | #67 |
+| #68 | Final run against the targets in #58 | #65 #66 |
 
-Targets, records and order are in #58. Owner rules from the grill: measure before optimizing; every run kept with its settings and what changed since the previous run; Source count is not part of any verdict; test copies only, nothing live touched.
+Targets, records and order are in #58. Owner rules from the grill: measure before optimizing; every run kept with its settings and what changed since the previous run; an indexer "limit reached" during a run aborts it and records it as null; Source count is not part of any verdict; test copies only, nothing live touched.
 
 **Blocked:** InfiniDysk 1.x waits until the owner says the current setup is satisfactory after #68. Benchmarks later ([plan](../performance/BENCHMARK_PLAN.md)).
 
