@@ -14,7 +14,7 @@ import type { CacheEntry, StreamData, NZBDavConfig } from './types.js';
 import type { BackendId } from '../backends/types.js';
 import { config as globalConfig } from '../config/index.js';
 import { clearFallbackGroups } from './fallbackManager.js';
-import { clearDeliveryLog, MULTI_EPISODE_BLOCKED_ERROR, VIDEO_NOT_FOUND_ERROR } from './utils.js';
+import { clearDeliveryLog, pruneIndexerUnavailableMarks, MULTI_EPISODE_BLOCKED_ERROR, VIDEO_NOT_FOUND_ERROR } from './utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -195,7 +195,8 @@ function loadCacheFromDisk(): void {
     if (readyCache.size) console.log(`💾 Loaded ${readyCache.size} ready streams from disk`);
   } catch {}
   try {
-    const raw = JSON.parse(fs.readFileSync(DEAD_NZB_CACHE_FILE, 'utf-8')) as Record<string, SerializedDeadEntry>;
+    const stored = JSON.parse(fs.readFileSync(DEAD_NZB_CACHE_FILE, 'utf-8')) as Record<string, SerializedDeadEntry>;
+    const { kept: raw, dropped } = pruneIndexerUnavailableMarks(stored);
     for (const [key, entry] of Object.entries(raw)) {
       const expiresAt = entry.expiresAt || Infinity;
       if (expiresAt > now) {
@@ -231,6 +232,10 @@ function loadCacheFromDisk(): void {
       }
     }
     if (deadNzbCache.size) console.log(`💾 Loaded ${deadNzbCache.size} dead NZBs from disk`);
+    if (dropped.length) {
+      console.log(`🧹 Dropped ${dropped.length} dead mark(s) caused by an unavailable indexer, not a bad Source (ADR 0004)`);
+      saveCacheToDisk();
+    }
   } catch {}
 }
 

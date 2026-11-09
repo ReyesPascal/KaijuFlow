@@ -194,6 +194,30 @@ const failureScenarios = [
     },
   },
   {
+    // Indexer unavailable (#51, ADR 0004): the NZB grab gets a 429, so the player
+    // gets the failure video, but the Source is NOT dead and nothing reached the
+    // Backend; once the indexer answers again the same Source plays.
+    id: 'indexer-unavailable-not-dead',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('ratelimited');
+      const title = 'KaijuFlow.Parity.RateLimited.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addMovie('ratelimited', title, media);
+      for (const status of [429, 503]) {
+        backend.setIndexerDown(status);
+        try {
+          assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
+        } finally {
+          backend.setIndexerDown(0);
+        }
+        assert.equal(backend.submitsFor('ratelimited'), 0, `nothing should reach the Backend without an NZB (indexer ${status})`);
+      }
+      const r = await play(streamUrl(kaijuflow, nzb, title));
+      assert.equal(r.status, 200, 'the Source should play once the indexer answers again');
+      assertBytes(r.body, media);
+      assert.equal(backend.submitsFor('ratelimited'), 1);
+    },
+  },
+  {
     // Unscramble can't finish (#45, ADR 0004 + 0005): a first article is
     // missing, so the original NZB goes up unchanged and the Backend decides.
     // A Backend that rejects number-named sets (AltMount v0.4.0) answers with
