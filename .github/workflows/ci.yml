@@ -30,6 +30,7 @@ jobs:
         run: |
           python3 -m py_compile tools/brain/*.py
           pipx run ruff==0.6.9 check tools/brain
+          python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
       - name: Working tree is clean after build and tests
         run: |
           git status --porcelain

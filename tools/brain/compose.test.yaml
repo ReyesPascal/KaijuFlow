@@ -1,0 +1,103 @@
+# Test copies of every side for the spec #58 measurements (ticket #60).
+# Own compose project, container names, network and config folders: no compose command on this
+# file can reach a live container (usenet-ultimate, nzbdav, altmount-altmount-1, ds-xml-proxy).
+# Config folders hold secrets and live outside the repo in ${TEST_DIR}.
+# Run with:  docker compose --env-file /home/ryan/kaijuflow-test/.env -f tools/brain/compose.test.yaml <command>
+name: kaijuflow-test
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-host: &host
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  # KaijuFlow side (1338), Backend = altmount-kf (8087)
+  kaijuflow:
+    <<: *host
+    image: kaijuflow:test
+    container_name: kaijuflow-test
+    environment:
+      BASE_URL: http://192.168.4.40:1338
+      PORT: "1337"
+    ports: ["1338:1337"]
+    volumes: ["${TEST_DIR:?}/config:/app/config"]
+    restart: "no"
+    mem_limit: 2g
+    networks: [net]
+    logging: *logging
+
+  # Usenet Ultimate side (1339), Backend = nzbdav (3001); same image as live (v1.4.1)
+  uu:
+    <<: *host
+    image: ghcr.io/dsmart33/usenet-ultimate:v1.4.1
+    container_name: uu-test
+    environment:
+      BASE_URL: http://192.168.4.40:1339
+      NZBDAV_PROXY_ENABLED: "true"
+    ports: ["1339:1337"]
+    volumes: ["${TEST_DIR:?}/uu/config:/app/config"]
+    restart: "no"
+    mem_limit: 2g
+    networks: [net]
+    logging: *logging
+
+  nzbdav:
+    image: nzbdav/nzbdav@sha256:fc44a9d33adceddc4397eb660b4fcaf1917e23323fb80dea0645f56db129562f
+    container_name: nzbdav-test
+    environment:
+      LOG_LEVEL: warning
+      PUID: "1000"
+      PGID: "1000"
+    ports: ["3001:3000"]
+    volumes: ["${TEST_DIR:?}/nzbdav/config:/config"]
+    restart: "no"
+    mem_limit: 2g
+    networks:
+      net:
+        aliases: [nzbdav]
+    logging: *logging
+
+  # AltMount side (8086): Backend and addon in one container, as AltMount's own addon runs
+  altmount-addon:
+    <<: *host
+    image: ghcr.io/kipsilabs/altmount:v0.4.0
+    container_name: altmount-addon-test
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: America/Chicago
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in the test folder .env}
+      COOKIE_DOMAIN: localhost
+    ports: ["8086:8080"]
+    volumes: ["${TEST_DIR:?}/altmount-addon/config:/config"]
+    restart: "no"
+    mem_limit: 2g
+    networks: [net]
+    logging: *logging
+
+  # KaijuFlow's own AltMount (8087)
+  altmount-kf:
+    <<: *host
+    image: ghcr.io/kipsilabs/altmount:v0.4.0
+    container_name: altmount-kf-test
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: America/Chicago
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in the test folder .env}
+      COOKIE_DOMAIN: localhost
+    ports: ["8087:8080"]
+    volumes: ["${TEST_DIR:?}/altmount-kf/config:/config"]
+    restart: "no"
+    mem_limit: 2g
+    networks: [net]
+    logging: *logging
+
+networks:
+  net:
+    name: kaijuflow-test-net
