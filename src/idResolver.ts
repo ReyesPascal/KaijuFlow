@@ -825,11 +825,15 @@ async function getTvdbToken(): Promise<string | null> {
         console.log('🔗 TVDB token obtained successfully');
         return token;
       }
-      console.warn('⚠️  TVDB login response missing token:', JSON.stringify(response.data).substring(0, 200));
+      // Never log the response body: it can echo back account details.
+      console.warn(`⚠️  TVDB login failed: no token in response (status ${response.status})`);
     } catch (error: any) {
       const status = error.response?.status;
-      const msg = error.response?.data ? JSON.stringify(error.response.data).substring(0, 200) : (error as Error).message;
-      console.warn(`⚠️  Failed to authenticate with TVDB (${status || 'network error'}):`, msg);
+      if (status) {
+        console.warn(`⚠️  TVDB login failed (status ${status})`);
+      } else {
+        console.warn(`⚠️  TVDB login failed (network error: ${(error as Error).message})`);
+      }
     }
 
     return null;
