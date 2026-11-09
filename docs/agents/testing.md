@@ -8,3 +8,4 @@ Commands are the `package.json` scripts. The things they don't tell you:
 - **Comparing bytes:** use `assertBytes` from `tests/integration/parity/bytes.mjs`. `tests/unit/byte-compare-guard.test.ts` fails on `deepEqual` over bytes, because its mismatch diff can take tens of GB.
 - **Parity:** shared scenarios live in `tests/integration/parity/scenarios.mjs` and run against every fake Backend (`parity-nzbdav.mjs`, `parity-altmount.mjs`).
 - **Fake Backends:** their replies must keep the real Backend's layout. `tests/unit/fake-backend-shape.test.ts` compares them with replies captured on Brain (`tests/fixtures/backends/`); when a real Backend changes, capture a new reply there.
+- **Live checks on Brain** (Parity on real Backends, article checks): `tools/brain/README.md`. Owner's OK first.

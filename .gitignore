@@ -30,4 +30,4 @@ npm-debug.log*
 # Local test reports and bundles written by tests/*/run-ci.sh and scripts/prepare-a4-hook.sh
 /integration-results-*.json
 /a4-*results.json
-/ui/.a4-hook.cjs
+/ui/.a4-hook.cjs__pycache__/
