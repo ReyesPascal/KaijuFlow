@@ -27,7 +27,7 @@ try {
     if (req.method !== 'POST' || req.url !== '/api/nzb/streams') { res.statusCode = 404; return res.end('not found'); }
     req.resume();
     if (req.headers['x-api-key'] !== GOOD) { res.statusCode = 401; return res.end('{"error":"unauthorized"}'); }
-    if (mode === 'integration-off') { res.statusCode = 503; return res.end('{"error":"Stremio integration is disabled"}'); }
+    if (mode === 'integration-off') { res.statusCode = 404; return res.end('{"error":"Stremio integration is disabled"}'); }
     res.statusCode = 400; res.setHeader('Content-Type', 'application/json'); res.end('{"error":"file or nzb_url is required"}');
   });
   const dead = 'http://127.0.0.1:1';

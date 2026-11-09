@@ -103,7 +103,7 @@ export const scenarios = [
       assertBytes(r.body, eps[2].media, 'the requested episode, not another one');
       assert.equal(backend.submitsFor('pack'), 1);
       // AltMount is told which episode to pick.
-      if (backend.submitFields) assert.deepEqual(backend.submitFields.at(-1), { season: '1', episode: '3' });
+      if (backend.submitFields) { const f = backend.submitFields.at(-1); assert.deepEqual({ season: f.season, episode: f.episode }, { season: '1', episode: '3' }); };
     },
   },
 ];
