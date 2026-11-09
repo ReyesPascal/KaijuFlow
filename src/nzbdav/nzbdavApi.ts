@@ -28,6 +28,7 @@ export function resolveCategory(config: NZBDavConfig, contentType?: string): str
  * NZB grab shared by every Backend: cached copy or indexer download through
  * the proxy (exit-IP check), content validation and grab tracking. Returns the
  * NZB text. Throws Source failures (nzbdavError) for bad downloads/content.
+ * Backends don't call it: they go through grabSourceNzb (src/backends/sourceNzb.ts).
  */
 export async function grabNzb(
   nzbUrl: string,
@@ -92,7 +93,7 @@ export async function grabNzb(
 
   // Single grab-tracking chokepoint. Cache hits skip this; invalid NZBs throw above.
   // EasyNews is tracked one layer up in the /nzb route, because its real indexer
-  // fetch happens inside that route's POST to easynews.com, not in submitNzb's
+  // fetch happens inside that route's POST to easynews.com, not in this
   // proxyFetch (which just loops back to the local handler).
   if (freshlyDownloaded && indexerForLog.toLowerCase() !== 'easynews') {
     trackGrab(indexerForLog, title);
@@ -102,25 +103,19 @@ export async function grabNzb(
 }
 
 /**
- * Submit NZB to NZBDav and return the nzo_id.
- * `searchExitIp` carries the proxy exit IP that was live when this candidate's
- * search ran. verifyProxyCircuit compares against it so a rotation+new-search
- * between the original search and this grab cannot silently pass verification.
+ * Upload NZB text to NZBDav and return the nzo_id. The NZB comes from the
+ * shared grab-then-hand-to-Backend step (src/backends/sourceNzb.ts).
  */
 export async function submitNzb(
-  nzbUrl: string,
+  nzbContent: string,
   title: string,
   config: NZBDavConfig,
   contentType?: string,
   budgetMs?: number,
   logPrefix = '',
-  indexerName?: string,
-  searchExitIp?: string,
 ): Promise<string> {
   const budgetStart = Date.now();
   const remainingBudget = () => budgetMs ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 30000;
-  const indexerForLog = indexerName?.trim() || '(unknown)';
-  const nzbContent = await grabNzb(nzbUrl, title, budgetMs, logPrefix, indexerName, searchExitIp);
 
   // Submit to NZBDav
   const category = resolveCategory(config, contentType);
@@ -239,8 +234,8 @@ export async function prefetchNzb(nzbUrl: string, logPrefix = '', quiet = false,
     if (!quiet) console.log(`${logPrefix}  ✅ Prefetched NZB (${nzbContent.length} bytes)`);
 
     // The indexer fetch just succeeded. Track here so UF-driven prefetches count
-    // even when the subsequent submitNzb call hits cache. EasyNews skips for
-    // the same reason as submitNzb: its real fetch happens in the /nzb route.
+    // even when the subsequent grabNzb call hits cache. EasyNews skips for
+    // the same reason as grabNzb: its real fetch happens in the /nzb route.
     if (title) {
       const tracked = indexerName?.trim() || '(unknown)';
       if (tracked.toLowerCase() !== 'easynews') {

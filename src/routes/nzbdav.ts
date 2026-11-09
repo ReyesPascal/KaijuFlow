@@ -440,9 +440,10 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
       console.log(`\u{1F39F}\uFE0F /stream hit: kind=${kind} filename=${req.params.filename ?? '-'} q=[${qKeys}] ua=${(req.headers['user-agent'] ?? '').slice(0, 80)}`);
     }
 
-    // Grab tracking now occurs inside `submitNzb` when the NZB is fetched
-    // from the indexer. Cache hits at nzbdavApi.ts:40 short-circuit before
-    // the fetch, providing natural dedup; no route-level wrapper needed.
+    // Grab tracking occurs inside `grabNzb` (called by the shared step in
+    // src/backends/sourceNzb.ts) when the NZB is fetched from the indexer.
+    // Cache hits short-circuit before the fetch, providing natural dedup; no
+    // route-level wrapper needed.
 
     const nzbdavConfig = buildNzbdavConfig();
 

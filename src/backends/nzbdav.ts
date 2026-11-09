@@ -13,6 +13,7 @@ import { searchLibrary } from '../nzbdav/librarySearch.js';
 import { encodeWebdavPath, nzbdavError } from '../nzbdav/utils.js';
 import type { NZBDavConfig } from '../nzbdav/types.js';
 import { NZBDAV_CAPABILITIES } from './capabilities.js';
+import { grabSourceNzb } from './sourceNzb.js';
 import { PrepareCancelledError, isSourceFailure, type Backend, type BackendStatus, type MediaRequest } from './types.js';
 
 const PROBE_TIMEOUT_MS = 10_000;
@@ -54,15 +55,16 @@ export function createNzbdavBackend(config: NZBDavConfig): Backend {
 
     async prepare(source, opts = {}) {
       const { logPrefix = '', timeoutMs = 0, pollIntervalMs, onJob, isCancelled } = opts;
-      // Grab tracking lives inside submitNzb after content validation, so
-      // cache hits (precached by health checks) do not double-count.
-      const nzoId = await submitNzb(source.nzbUrl, source.title, config, source.contentType, undefined, logPrefix, source.indexerName, source.searchExitIp);
+      // The shared step grabs the NZB (grab tracking after validation, so
+      // cache hits precached by health checks do not double-count).
+      const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
+      const nzoId = await submitNzb(nzb, source.title, config, source.contentType, undefined, logPrefix);
       onJob?.(nzoId);
       if (isCancelled?.()) {
         cancel(nzoId, 'health check failed (late cancel)').catch(() => {});
         throw new PrepareCancelledError();
       }
-      await waitForJobCompletion(nzoId, config, timeoutMs, pollIntervalMs, source.contentType, logPrefix);
+      await waitForJobCompletion(nzoId, config, remainingMs, pollIntervalMs, source.contentType, logPrefix);
       if (isCancelled?.()) throw new PrepareCancelledError();
       const video = await waitForVideoFile(nzoId, source.title, config, source.episodePattern, source.contentType, source.episodesInSeason, logPrefix);
       return { nzoId, videoPath: video.path, videoSize: video.size };

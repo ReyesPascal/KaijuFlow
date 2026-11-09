@@ -61,3 +61,29 @@ test('only the Backend slot and config compare Backend ids', () => {
   }
   assert.deepEqual(violations, [], 'ask backendCapabilities() / backend.capabilities instead of comparing Backend ids');
 });
+
+// #43 (spec #42): every Backend's prepare gets its NZB through the one shared
+// grab-then-hand-to-Backend step (src/backends/sourceNzb.ts), the single place
+// Unscramble plugs in. No Backend calls grabNzb itself.
+const GRAB_OWNERS = ['backends/sourceNzb.ts', 'nzbdav/nzbdavApi.ts'];
+
+test('only the shared step calls grabNzb', () => {
+  const violations: string[] = [];
+  for (const file of sourceFiles(SRC)) {
+    const rel = path.relative(SRC, file).split(path.sep).join('/');
+    if (GRAB_OWNERS.includes(rel)) continue;
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (/\bgrabNzb\b/.test(line) && !/^\s*(\/\/|\*)/.test(line)) violations.push(`${rel}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(violations, [], 'get the NZB from grabSourceNzb (src/backends/sourceNzb.ts) instead');
+});
+
+test('the NzbDAV upload takes the NZB text, not an indexer URL', () => {
+  const api = fs.readFileSync(path.join(SRC, 'nzbdav/nzbdavApi.ts'), 'utf8');
+  const submit = api.slice(api.indexOf('export async function submitNzb'));
+  const body = submit.slice(0, submit.indexOf('\n}\n'));
+  assert.ok(!/\bgrabNzb\b/.test(body), 'submitNzb must not grab; the shared step hands it the NZB');
+  assert.ok(fs.existsSync(path.join(SRC, 'backends/sourceNzb.ts')), 'shared step src/backends/sourceNzb.ts is missing');
+});
