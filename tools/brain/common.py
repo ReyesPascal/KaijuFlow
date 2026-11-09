@@ -3,7 +3,7 @@
 parity.py and search.py both import this, so their tables stay comparable: change the title list here only.
 The scripts run under `python3 -I`, which leaves the script's folder off sys.path; each one adds it before importing.
 """
-import os, statistics, sys, time, urllib.request, urllib.error
+import json, os, statistics, sys, time, urllib.request, urllib.error
 
 FAILURE_SIZE = 1242455  # UU/KaijuFlow failure video, served when a Source cannot play
 TITLES = [
@@ -16,11 +16,17 @@ TITLES = [
 
 
 def pick_titles(env_name):
-    """TITLES, or the subset whose label contains one of the comma-separated names in os.environ[env_name]."""
+    """The title list, or the subset whose label contains one of the comma-separated names in os.environ[env_name].
+
+    TITLES_FILE=<path.json> swaps the list for another one (a JSON list of [kind, id, label]), e.g. fresh titles
+    that no Backend on Brain has played, for a cold run.
+    """
+    path = os.environ.get('TITLES_FILE')
+    pool = [tuple(t) for t in json.load(open(path))] if path else TITLES
     only = [t.strip() for t in os.environ.get(env_name, '').split(',') if t.strip()]
-    titles = [t for t in TITLES if not only or any(o.lower() in t[2].lower() for o in only)]
+    titles = [t for t in pool if not only or any(o.lower() in t[2].lower() for o in only)]
     if not titles:
-        sys.exit(f'{env_name}={only} matches none of: ' + ', '.join(t[2] for t in TITLES))
+        sys.exit(f'{env_name}={only} matches none of: ' + ', '.join(t[2] for t in pool))
     return titles
 
 
