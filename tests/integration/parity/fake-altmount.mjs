@@ -15,6 +15,7 @@ export async function createFakeAltmount(listen) {
   const submitFields = []; // { season, episode } per submit (strings as received, or undefined)
   let base = '';
   let down = false;
+  let indexerDown = 0; // HTTP status the NZB link answers while the indexer is "down" (0 = serves the NZB)
   let nextQueueId = 1; // real AltMount queue ids are integers
   const uploads = new Map(); // tag -> uploaded NZB texts
   const volumeOf = new Map(); // first-article id -> real RAR5 volume, for Scrambled RAR sets
@@ -28,6 +29,7 @@ export async function createFakeAltmount(listen) {
     if (path.endsWith('.nzb')) {
       const tag = path.slice(1, -4);
       if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
+      if (indexerDown) { res.writeHead(indexerDown, { 'Retry-After': '60' }); res.end('indexer unavailable'); return; }
       res.writeHead(200, { 'Content-Type': 'application/x-nzb' });
       res.end(sources.get(tag).nzb ?? `<nzb><file subject="${tag}"/></nzb>`);
       return;
@@ -151,6 +153,8 @@ export async function createFakeAltmount(listen) {
     },
     /** Make the Backend unreachable (true) or reachable again (false). */
     setDown(v) { down = v; },
+    /** Make the indexer answer this HTTP status for every NZB link (0 = serve the NZB again). */
+    setIndexerDown(status) { indexerDown = status; },
     submitsFor(tag) { return sources.get(tag)?.submits ?? 0; },
     /** KaijuFlow settings that point the AltMount Backend at this fake. */
     configure(configData) {

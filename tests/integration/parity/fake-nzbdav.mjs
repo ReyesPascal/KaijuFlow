@@ -10,6 +10,7 @@ export async function createFakeNzbdav(listen) {
   const requests = [];
   let base = '';
   let down = false;
+  let indexerDown = 0; // HTTP status the NZB link answers while the indexer is "down" (0 = serves the NZB)
   const uploads = new Map(); // tag -> uploaded NZB texts
 
   const propfindEntry = (href, dir) => `<d:response><d:href>${href}</d:href><d:propstat><d:prop><d:resourcetype>${dir ? '<d:collection/>' : ''}</d:resourcetype><d:getcontentlength>${dir ? 0 : ADVERTISED_SIZE}</d:getcontentlength><d:getcontenttype>${dir ? 'httpd/unix-directory' : 'video/x-matroska'}</d:getcontenttype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`;
@@ -23,6 +24,7 @@ export async function createFakeNzbdav(listen) {
     if (path.endsWith('.nzb')) {
       const tag = path.slice(1, -4);
       if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
+      if (indexerDown) { res.writeHead(indexerDown, { 'Retry-After': '60' }); res.end('indexer unavailable'); return; }
       res.setHeader('Content-Type', 'application/x-nzb');
       if (sources.get(tag).nzb) { res.end(sources.get(tag).nzb); return; }
       res.end(`<nzb><file subject="${tag}"><groups><group>alt.synthetic</group></groups><segments><segment bytes="64" number="1">${tag}@invalid</segment></segments></file></nzb>`);
@@ -98,6 +100,8 @@ export async function createFakeNzbdav(listen) {
     },
     /** Make the Backend unreachable (true) or reachable again (false). */
     setDown(v) { down = v; },
+    /** Make the indexer answer this HTTP status for every NZB link (0 = serve the NZB again). */
+    setIndexerDown(status) { indexerDown = status; },
     // No addNeverReady: KaijuFlow gives NzbDAV no preparation time limit.
     submitsFor(tag) { return sources.get(tag)?.submits ?? 0; },
     /** KaijuFlow settings that point the NzbDAV Backend at this fake. */

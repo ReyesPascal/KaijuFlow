@@ -30,7 +30,11 @@ export function resolveCategory(config: NZBDavConfig, contentType?: string): str
 /**
  * NZB grab shared by every Backend: cached copy or indexer download through
  * the proxy (exit-IP check), content validation and grab tracking. Returns the
- * NZB text. Throws Source failures (nzbdavError) for bad downloads/content.
+ * NZB text. Throws a Source failure (nzbdavError) only for bad content: an
+ * invalid NZB body, an indexer error payload, or a link the indexer says is
+ * gone. An indexer that is unavailable or refuses us (429, 5xx, 401/403,
+ * network error, download timeout) throws a plain error, so the player gets
+ * the failure video and the Source stays alive (ADR 0004, #51).
  * Backends don't call it: they go through grabSourceNzb (src/backends/sourceNzb.ts).
  */
 export async function grabNzb(
@@ -67,15 +71,25 @@ export async function grabNzb(
       }, indexerName);
     } catch (err) {
       clearTimeout(timeout);
+      // The indexer, not the Source, failed: no dead mark (ADR 0004).
       if ((err as Error).name === 'AbortError') {
-        throw nzbdavError(`NZB download timed out after ${Math.round(downloadTimeoutMs / 1000)}s for ${indexerForLog}`, true);
+        throw new Error(`NZB download timed out after ${Math.round(downloadTimeoutMs / 1000)}s for ${indexerForLog}`);
       }
-      throw nzbdavError(`NZB download failed for ${indexerForLog}: ${(err as Error).message}`);
+      throw new Error(`NZB download failed for ${indexerForLog}: ${(err as Error).message}`);
     }
     clearTimeout(timeout);
 
     if (!nzbResponse.ok) {
-      throw nzbdavError(`Failed to download NZB from ${indexerForLog}: ${nzbResponse.status} ${nzbResponse.statusText}`);
+      const status = `${nzbResponse.status} ${nzbResponse.statusText}`.trim();
+      // Rate limit, server error or refused credentials: the indexer is unavailable to us,
+      // the Source is not bad (ADR 0004, #51). Any other 4xx (404, 410) means the link is gone.
+      if (nzbResponse.status === 429 || nzbResponse.status >= 500) {
+        throw new Error(`Failed to download NZB from ${indexerForLog}: ${status} (indexer unavailable, Source kept)`);
+      }
+      if (nzbResponse.status === 401 || nzbResponse.status === 403) {
+        throw new Error(`Indexer ${indexerForLog} refused the NZB download: ${status} (check its API key; Source kept)`);
+      }
+      throw nzbdavError(`Failed to download NZB from ${indexerForLog}: ${status}`);
     }
 
     nzbContent = await nzbResponse.text();
