@@ -59,7 +59,8 @@ try {
   await step('only queue-failed 500s are Source failures; Backend-side 500/503 are not', async () => {
     let i = 0;
     for (const m of ['Failed to check queue status', 'Queue item not found', 'Failed to list output media files', 'Failed to fetch completed item',
-      'Progress broadcaster closed unexpectedly', 'Failed to open uploaded file', 'Failed to read uploaded file']) {
+      'Progress broadcaster closed unexpectedly', 'Failed to open uploaded file', 'Failed to read uploaded file',
+      'Failed to process NZB']) {
       const e = await failureOf(fake.addScripted('b' + i++, 'B', 500, { error: m }));
       assert.ok(!isSourceFailure(e), m);
     }

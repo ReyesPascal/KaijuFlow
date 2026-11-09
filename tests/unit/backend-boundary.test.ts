@@ -41,3 +41,23 @@ test('only the Backend slot calls NzbDAV client code', () => {
   }
   assert.deepEqual(violations, [], 'call the active Backend (src/backends/) instead');
 });
+
+// Retro of #16: callers ask the active Backend what it can do (its
+// capabilities, src/backends/capabilities.ts) rather than checking which
+// Backend id is selected, so adding a Backend (InfiniDysk) touches only
+// src/backends/. The Backend setting itself is parsed in src/config/.
+const ID_COMPARE_OWNERS = ['backends/', 'config/'];
+
+test('only the Backend slot and config compare Backend ids', () => {
+  const idCompareRe = /(?:[\w.]*backend[\w.]*|\.id)\s*[!=]==?\s*['"](?:nzbdav|altmount)['"]|['"](?:nzbdav|altmount)['"]\s*[!=]==?\s*[\w.]*backend/gi;
+  const violations: string[] = [];
+  for (const file of sourceFiles(SRC)) {
+    const rel = path.relative(SRC, file).split(path.sep).join('/');
+    if (ID_COMPARE_OWNERS.some(o => rel.startsWith(o))) continue;
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      for (const m of line.matchAll(idCompareRe)) violations.push(`${rel}:${i + 1} ${m[0]}`);
+    });
+  }
+  assert.deepEqual(violations, [], 'ask backendCapabilities() / backend.capabilities instead of comparing Backend ids');
+});

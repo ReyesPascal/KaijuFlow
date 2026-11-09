@@ -35,3 +35,21 @@ The existing map covers submission, polling/cancellation, WebDAV library travers
 AltMount can fit the **selected NZB → preparation handle/state → selected virtual file and media access** portion of that boundary. Two observed integration surfaces are synchronous stream resolution and SAB/queue preparation with separate lookup. Neither requires delegating KF discovery/indexers/ranking/source fallback to AltMount. AltMount's own addon search/scoring and health/ARR automation are additional features, not required owners of KF responsibilities. KF health eligibility and backend file-read/repair status must remain distinct. This is a fit inference from the pinned APIs, not an accepted adapter design. [AltMount routes](https://github.com/kipsilabs/altmount/blob/276157560ecd510de127c69b5368aaa0e0ce4277/internal/api/server.go), [KF baseline](https://github.com/ReyesPascal/KaijuFlow/blob/6565c1a7c810e2cb2bf7d4e1239e545adbd4236e/docs/kaijuflow/references/nzbdav/ARCHITECTURE.md).
 
 The owner still needs to choose the preparation surface, KF readiness/probe policy, selection responsibility, reachable delivery/auth strategy, cancellation ownership for shared work, and retention/deletion policy. NzbDAV's /content/category/title and /.ids/job lookup rules, cached XML flow, automatic retries and proxy buffering are not portable contracts merely because both services advertise SAB/WebDAV. Verify deployed versions and actual request/seek/cancellation behavior later using the existing benchmark plan; no comparative speed or replacement recommendation follows from this research.
+
+## Reply codes KaijuFlow relies on (pinned v0.4.0, checked 2026-11-09)
+
+Read from `internal/api/nzb_stremio_handlers.go`, `sabnzbd_handlers.go` and `internal/database/queue_repository.go` at tag commit 276157560ecd510de127c69b5368aaa0e0ce4277. `POST /api/nzb/streams` checks in this order, so a request with no NZB is a cheap connection test:
+
+| Reply | Meaning | KaijuFlow treats it as |
+|---|---|---|
+| 404 "Stremio integration is disabled in configuration" | integration off (checked first) | Backend misconfigured, Source not dead |
+| 401 "Invalid X-Api-Key" / "Authentication required" | wrong or missing key (checked second) | Backend misconfigured, Source not dead |
+| 400 "No file provided" | no NZB in the request (checked third) | connection test OK |
+| 400 "Episode not specified" / 422 bad file type or size | the Source as sent can't be used | Source failure |
+| 500 "NZB processing failed", or 500 carrying the queue item's own error message | the queue item failed | Source failure |
+| 500 "Failed to check queue status", "Queue item not found", "Failed to list output media files", "Failed to fetch completed item", "Progress broadcaster closed unexpectedly", "Failed to open/read uploaded file", "Failed to process NZB" (saving or queueing the NZB failed) | AltMount-side fault | Backend error, Source not dead |
+| 503 "Configuration not available" | AltMount not ready | Backend error, Source not dead |
+| 408 TIMEOUT (queue id in details) | not ready in `timeout` seconds; the queued work keeps running | Source failure (never ready), not a cancel |
+| 200 with `_queue_status` streamable/completed or `_cached: true` | ready | ready |
+
+**Cancel.** There is no API-key cancel. `POST /api/queue/:id/cancel` needs JWT. The SAB route `mode=queue&name=delete` accepts the API key but only deletes the `import_queue` row; it does not stop a running worker. So KaijuFlow's AltMount `cancel` is a no-op.

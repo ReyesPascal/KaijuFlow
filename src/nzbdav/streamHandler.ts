@@ -213,7 +213,7 @@ export async function prepareStream(
   // Backends without a library (AltMount) have nothing to look up, so reuse what
   // this Backend already made for the Source (ready cache) when it is still there.
   // The probe below still runs. NzbDAV is unchanged: its library lookup above is authoritative.
-  if (!backend.library && backend.id !== 'nzbdav') {
+  if (!backend.capabilities.library) {
     const ready = findReadyStream(nzbUrl, title, episodePattern, backend.id);
     if (ready && !isVideoPathBroken(ready.videoPath)) {
       // The probe is the freshness check here (stillPrepared would send the same request).
