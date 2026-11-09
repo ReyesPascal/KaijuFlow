@@ -166,6 +166,12 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       if (res.status === 400 || res.status === 422) {
         throw nzbdavError(`AltMount rejected the Source (${res.status}): ${text}`, false, true);
       }
+      // A failed queue item ("NZB processing failed", or its error message) is the
+      // Source's fault. The two AltMount-side 500s (queue status check, progress
+      // broadcaster) are not.
+      if (res.status === 500 && !/failed to check queue status|progress broadcaster/i.test(raw)) {
+        throw nzbdavError(`AltMount could not process the Source: ${text}`, false, true);
+      }
       if (!res.ok) {
         throw new Error(`AltMount returned status ${res.status}: ${text}`);
       }
