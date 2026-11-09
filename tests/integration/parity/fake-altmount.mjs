@@ -52,7 +52,7 @@ export async function createFakeAltmount(listen) {
       if (!src) return json(400, { error: 'unknown NZB' });
       // Episode selection, as AltMount does it: a pack needs season+episode, and the answer is that episode's file.
       const season = field('season'), episode = field('episode');
-      submitFields.push({ season, episode });
+      submitFields.push({ season, episode, timeout: field('timeout') });
       let file = src.files[0];
       if (src.files.length > 1) {
         if (!season || !episode) return json(400, { error: 'Episode not specified' });
@@ -62,6 +62,8 @@ export async function createFakeAltmount(listen) {
         return json(400, { error: 'Episode not found in NZB' });
       }
       src.submits++;
+      // Scripted answer (status + body) for a Source, to exercise AltMount's other error answers.
+      if (src.scripted) return json(src.scripted.status, src.scripted.body);
       // Failed queue item: pinned handler answers 500 "NZB processing failed" (not 400/422).
       if (src.rejected) return json(500, { error: 'NZB processing failed' });
       // Not ready in time: AltMount answers 408 with the queue ID; the queued work is NOT cancelled.
@@ -70,7 +72,7 @@ export async function createFakeAltmount(listen) {
       src.completed = true;
       return json(200, { streams: [{
         url: `${base}/api/files/stream?path=${encodeURIComponent(file.path)}&download_key=${DOWNLOAD_KEY}`,
-        title: src.title, name: 'AltMount', _queue_item_id: src.queueId, _queue_status: cached ? 'completed' : 'streamable', _cached: cached,
+        title: src.title, name: 'AltMount', _queue_item_id: src.queueId, _queue_status: src.queueStatus ?? (cached ? 'completed' : 'streamable'), _cached: cached,
       }] });
     }
 
@@ -108,6 +110,18 @@ export async function createFakeAltmount(listen) {
     addNeverReady(tag, title) {
       const nzb = this.addMovie(tag, title, Buffer.from('unused'));
       sources.get(tag).neverReady = true;
+      return nzb;
+    },
+    /** Register a Source AltMount answers with a fixed status and JSON body. */
+    addScripted(tag, title, status, body) {
+      const nzb = this.addMovie(tag, title, Buffer.from('unused'));
+      sources.get(tag).scripted = { status, body };
+      return nzb;
+    },
+    /** Register a Source whose 200 answer reports a queue status that is not ready (e.g. 'queued'). */
+    addNotReady(tag, title, queueStatus) {
+      const nzb = this.addMovie(tag, title, Buffer.from('unused'));
+      sources.get(tag).queueStatus = queueStatus;
       return nzb;
     },
     /** Make the Backend unreachable (true) or reachable again (false). */

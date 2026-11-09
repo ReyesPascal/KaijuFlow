@@ -9,6 +9,7 @@
  *   env var > config.json > hardcoded default
  */
 
+import { BACKEND_IDS, type BackendId } from '../backends/types.js';
 import type { Config, SearchConfig, HealthCheckConfig, AutoPlayConfig, StreamDisplayConfig, SyncedIndexer, UltimateFallbackConfig } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { getLatestVersions } from '../versionFetcher.js';
@@ -63,8 +64,8 @@ export const config: Config = {
   get indexManager() {
     return envEnum('INDEX_MANAGER', ['newznab', 'prowlarr', 'nzbhydra']) || configData.indexManager;
   },
-  get backend(): 'nzbdav' | 'altmount' {
-    return envEnum('BACKEND', ['nzbdav', 'altmount']) || configData.backend || 'nzbdav';
+  get backend(): BackendId {
+    return envEnum('BACKEND', [...BACKEND_IDS]) || configData.backend || 'nzbdav';
   },
   get altmountUrl() {
     return envStr('ALTMOUNT_URL') || configData.altmountUrl;

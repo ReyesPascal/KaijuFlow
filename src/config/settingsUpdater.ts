@@ -10,6 +10,7 @@ import { DEFAULT_INDEXER_TIMEOUT_SECONDS, SERIES_PACK_KEYWORDS } from '../types.
 import { configData, saveConfigFile } from './schema.js';
 import { enforceZyclopsEnabled } from './indexerCrud.js';
 import { validateRulesBlock } from '../rules/importers.js';
+import { isBackendId, type BackendId } from '../backends/types.js';
 
 // Clamp a timeout value to the integer-seconds domain. Rejects non-finite/non-number input.
 function coerceTimeoutSeconds(raw: unknown): number | undefined {
@@ -55,7 +56,7 @@ export function updateSettings(settings: {
   nzbhydraTimeoutEnabled?: boolean;
   nzbhydraTimeout?: number;
   zyclopsEndpoint?: string;
-  backend?: 'nzbdav' | 'altmount';
+  backend?: BackendId;
   altmountUrl?: string;
   altmountApiKey?: string;
   altmountCategory?: string;
@@ -208,7 +209,7 @@ export function updateSettings(settings: {
     configData.zyclopsEndpoint = settings.zyclopsEndpoint;
   }
   if (settings.backend !== undefined) {
-    if (settings.backend !== 'nzbdav' && settings.backend !== 'altmount') throw new Error('backend must be nzbdav or altmount');
+    if (!isBackendId(settings.backend)) throw new Error('backend must be nzbdav or altmount');
     configData.backend = settings.backend;
   }
   if (settings.altmountUrl !== undefined) {

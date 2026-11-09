@@ -10,6 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { UsenetIndexer, UsenetProvider, SearchConfig, AutoPlayConfig, SyncedIndexer, StreamDisplayConfig, FilterConfig } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
+import type { BackendId } from '../backends/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,7 +47,7 @@ export interface ConfigData {
   nzbdavProxyEnabled?: boolean;
   nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';
   /** Backend used when streamingMode is 'nzbdav' (the Backend mode). Migrated to 'nzbdav'. */
-  backend?: 'nzbdav' | 'altmount';
+  backend?: BackendId;
   altmountUrl?: string;
   altmountApiKey?: string;
   altmountCategory?: string;

@@ -12,7 +12,12 @@ import type { StreamData } from '../nzbdav/types.js';
 import type { RawResult } from '../types.js';
 import type { SearchContext } from '../addon/searchOrchestrator.js';
 
-export type BackendId = 'nzbdav' | 'altmount';
+export const BACKEND_IDS = ['nzbdav', 'altmount'] as const;
+export type BackendId = (typeof BACKEND_IDS)[number];
+
+export function isBackendId(v: unknown): v is BackendId {
+  return (BACKEND_IDS as readonly unknown[]).includes(v);
+}
 
 /** A prepared video: the Backend's media reference, its size and job id. */
 export type PreparedVideo = StreamData;
