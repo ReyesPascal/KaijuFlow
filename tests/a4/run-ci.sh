@@ -2,6 +2,8 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 ROOT="$PWD"
+# dist/ is what the scenarios copy and run: refuse one older than src/ (use the npm scripts, they build first).
+[[ -f dist/server.js && -z "$(find src -type f -newer dist/server.js -print -quit)" ]] || { echo "STALE-DIST: dist/ is missing or older than src/; run npm run build (npm run test:integration / test:a4 do it)"; exit 16; }
 # KaijuFlow: the audit is closed and fixes are allowed, so test the committed
 # app source (HEAD) instead of requiring the untouched v1.4.1 import
 # (c83a3c733b6394eb140a1c0a1dc500010a9f22e5). Uncommitted edits are refused.
