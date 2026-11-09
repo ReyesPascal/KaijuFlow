@@ -11,8 +11,8 @@
 
 import { config as globalConfig } from '../config/index.js';
 import { createHash } from 'node:crypto';
-import { grabNzb } from '../nzbdav/nzbdavApi.js';
 import { ALTMOUNT_CAPABILITIES } from './capabilities.js';
+import { grabSourceNzb } from './sourceNzb.js';
 import { PrepareCancelledError, isSourceFailure, sourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
 
 const TEST_CONNECTION_TIMEOUT_MS = 15_000;
@@ -178,13 +178,13 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
     async prepare(source, opts = {}) {
       const { logPrefix = '', timeoutMs = 0, onJob, isCancelled } = opts;
       if (!settings.apiKey) throw configError('API key');
+      // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
+      // tracking) through the shared step, exactly as for NzbDAV, and uploads it.
+      const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
+      if (isCancelled?.()) throw new PrepareCancelledError();
       // The setting is the ceiling; a shorter attempt budget from the caller wins.
       const settingSec = Math.max(1, settings.prepareTimeoutSec ?? 300);
-      const waitSec = timeoutMs > 0 ? Math.min(settingSec, Math.max(1, Math.ceil(timeoutMs / 1000))) : settingSec;
-      // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
-      // tracking), exactly as for NzbDAV, and uploads it to AltMount.
-      const nzb = await grabNzb(source.nzbUrl, source.title, undefined, logPrefix, source.indexerName, source.searchExitIp);
-      if (isCancelled?.()) throw new PrepareCancelledError();
+      const waitSec = remainingMs > 0 ? Math.min(settingSec, Math.max(1, Math.ceil(remainingMs / 1000))) : settingSec;
       const form = new FormData();
       form.append('file', new Blob([nzb], { type: 'application/x-nzb' }), `${source.title}.nzb`);
       form.append('category', settings.category || 'kaijuflow');
