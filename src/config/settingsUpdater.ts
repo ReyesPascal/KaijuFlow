@@ -114,6 +114,7 @@ export function updateSettings(settings: {
     smartBatchSize?: number;
     smartAdditionalRuns?: number;
     maxConnections?: number;
+    maxTotalConnections?: number;
     autoQueueMode?: 'off' | 'top' | 'all';
     hideBlocked: boolean;
     healthCheckIndexers?: Record<string, boolean>;

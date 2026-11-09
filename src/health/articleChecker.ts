@@ -9,7 +9,7 @@
 import * as net from 'net';
 import * as tls from 'tls';
 import type { UsenetProvider } from '../types.js';
-import { connectToUsenet, NntpConnectionPool } from './nntpConnection.js';
+import { connectToUsenet, closeGracefully, NntpConnectionPool } from './nntpConnection.js';
 
 /**
  * Check which articles exist on a Usenet connection
@@ -146,9 +146,12 @@ export async function checkArticlesOnProvider(
   }
   const socket = await connectToUsenet(provider);
   try {
-    return await checkArticlesDetailed(socket, messageIds);
-  } finally {
+    const result = await checkArticlesDetailed(socket, messageIds);
+    closeGracefully(socket);
+    return result;
+  } catch (err) {
     socket.destroy();
+    throw err;
   }
 }
 

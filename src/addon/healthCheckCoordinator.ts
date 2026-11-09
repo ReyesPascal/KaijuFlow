@@ -11,7 +11,7 @@
 
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
-import { performBatchHealthChecks, type HealthCheckResult, type HealthCheckOptions } from '../health/index.js';
+import { performBatchHealthChecks, setHealthCheckConnectionCap, type HealthCheckResult, type HealthCheckOptions } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
 import { buildStreamFilename } from '../parsers/metadataParsers.js';
 import { checkNzbLibrary } from '../nzbdav/videoDiscovery.js';
@@ -149,6 +149,7 @@ export async function coordinateHealthChecks(
     sampleCount: config.healthChecks?.sampleCount ?? 7,
   };
   const inspectionMethod = config.healthChecks.inspectionMethod || 'smart';
+  setHealthCheckConnectionCap(config.healthChecks.maxTotalConnections);
   const maxConnections = inspectionMethod === 'smart'
     ? (config.healthChecks?.smartBatchSize || 3)
     : (config.healthChecks?.nzbsToInspect || 6);

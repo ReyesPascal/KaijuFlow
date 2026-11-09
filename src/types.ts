@@ -362,6 +362,7 @@ export interface HealthCheckConfig {
   smartAdditionalRuns: number;   // Additional batches if threshold not met (0-5; default 1)
   smartMinHealthy: number;       // Healthy results required before smart mode stops (1-10; default 1)
   maxConnections: number;        // Max concurrent health check workers
+  maxTotalConnections: number;   // Total Usenet connections health checks may hold at once, all workers and providers combined (finding 6)
   autoQueueMode: 'off' | 'top' | 'all';  // Auto-queue mode: off, top verified result, or all verified results
   hideBlocked: boolean;          // Filter out blocked NZBs from results
   libraryPreCheck: boolean;      // Check NZBDav library before NNTP checks — skip checking content already downloaded

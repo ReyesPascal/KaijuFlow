@@ -14,6 +14,7 @@ import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { getLatestVersions } from '../versionFetcher.js';
 import { configData, ZYCLOPS_DEFAULT_ENDPOINT } from './schema.js';
 import { UF_TIMEOUT_DEFAULTS } from '../nzbdav/timeoutDefaults.js';
+import { DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 
 /** Parse a 'true'/'false' env var string. Returns undefined if not set. */
 function envBool(name: string): boolean | undefined {
@@ -273,6 +274,7 @@ export const config: Config = {
         smartAdditionalRuns: 1,
         smartMinHealthy: 1,
         maxConnections: 12,
+        maxTotalConnections: DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
         autoQueueMode: 'all' as const,
         hideBlocked: true,
         libraryPreCheck: true,
@@ -315,6 +317,7 @@ export const config: Config = {
       smartAdditionalRuns: hc.smartAdditionalRuns ?? 1,
       smartMinHealthy: hc.smartMinHealthy ?? 1,
       maxConnections: hc.maxConnections ?? 12,
+      maxTotalConnections: hc.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
       autoQueueMode: hc.autoQueueMode ?? 'all',
       libraryPreCheck: hc.libraryPreCheck !== false,
     };

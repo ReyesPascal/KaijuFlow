@@ -6,6 +6,7 @@ import { Heart, X } from 'lucide-react';
 import clsx from 'clsx';
 import type { Config, HealthChecksState, UsenetProvider, Indexer, SyncedIndexer } from '../../types';
 import { ProviderManager } from '../shared/ProviderManager';
+import { DEFAULT_HEALTH_CHECKS } from '../../constants';
 interface HealthChecksOverlayProps {
   onClose: () => void;
   config: Config | null;
@@ -340,21 +341,30 @@ export default function HealthChecksOverlay({
                 </>
               )}
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Connections</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Max Total Connections</label>
                 {(() => {
                   const poolProviderCount = healthChecks.providers.filter(p => p.enabled && p.type === 'pool').length;
                   const batchCount = healthChecks.inspectionMethod === 'smart'
                     ? healthChecks.smartBatchSize
                     : (healthChecks.nzbsToInspect || 6);
-                  const totalConnections = batchCount * Math.max(1, poolProviderCount);
+                  const wanted = batchCount * Math.max(1, poolProviderCount);
+                  const cap = healthChecks.maxTotalConnections ?? DEFAULT_HEALTH_CHECKS.maxTotalConnections;
                   return (
                     <>
-                      <div className="input w-full cursor-default opacity-70">
-                        {totalConnections}
-                      </div>
+                      <input
+                        type="number"
+                        value={healthChecks.maxTotalConnections ?? ''}
+                        onChange={(e) => setHealthChecks({ ...healthChecks, maxTotalConnections: e.target.value === '' ? ('' as any) : parseInt(e.target.value) || 1 })}
+                        onFocus={(e) => e.target.select()}
+                        onBlur={(e) => { if (e.target.value === '' || parseInt(e.target.value) < 1) setHealthChecks(prev => ({ ...prev, maxTotalConnections: DEFAULT_HEALTH_CHECKS.maxTotalConnections })); }}
+                        min="1"
+                        max="100"
+                        className="input w-full"
+                      />
                       <p className="text-xs text-slate-500 mt-1">
-                        {batchCount} {healthChecks.inspectionMethod === 'smart' ? 'batch' : 'NZBs'} × {Math.max(1, poolProviderCount)} pool provider{poolProviderCount !== 1 ? 's' : ''}.
-                        {' '}<span className="text-amber-400/80">These connections plus any NzbDAV connections must not exceed your provider's maximum allowed connections.</span>
+                        Health checks never hold more Usenet connections than this, across all checks and providers combined (default {DEFAULT_HEALTH_CHECKS.maxTotalConnections}, max 100). Extra checks wait their turn; results are the same, only slower.
+                        {' '}Without the cap they would use up to {wanted} ({batchCount} {healthChecks.inspectionMethod === 'smart' ? 'batch' : 'NZBs'} × {Math.max(1, poolProviderCount)} pool provider{poolProviderCount !== 1 ? 's' : ''}){typeof cap === 'number' && wanted > cap ? `, so ${wanted - cap} will queue` : ''}.
+                        {' '}<span className="text-amber-400/80">This number plus your NzbDAV or AltMount connections must not exceed your provider's maximum allowed connections.</span>
                       </p>
                     </>
                   );
@@ -461,6 +471,7 @@ export default function HealthChecksOverlay({
                     smartAdditionalRuns: 1,
                     smartMinHealthy: 1,
                     maxConnections: 12,
+                    maxTotalConnections: DEFAULT_HEALTH_CHECKS.maxTotalConnections,
                     autoQueueMode: 'all',
                     hideBlocked: true,
                     libraryPreCheck: true,

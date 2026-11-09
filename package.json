@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:unit": "node --import tsx --test --test-force-exit tests/unit/*.test.ts",
     "release:patch": "bash release.sh patch",
     "release:minor": "bash release.sh minor",
     "release:major": "bash release.sh major",

@@ -18,7 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { getLatestVersions } from '../versionFetcher.js';
 import { performHealthCheck } from '../health/healthCheckPipeline.js';
-import { NntpConnectionPool } from '../health/nntpConnection.js';
+import { NntpConnectionPool, setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk } from './streamCache.js';
 import { submitNzb, waitForJobCompletion, cancelJob, prefetchNzb } from './nzbdavApi.js';
@@ -320,6 +320,7 @@ export async function ultimateFallbackFromCandidates(
   const userAgent = globalConfig.userAgents?.nzbDownload || getLatestVersions().chrome;
   const healthCheckEnabled = globalConfig.ultimateFallback?.healthCheckEnabled !== false;
   const hasProviders = healthCheckEnabled && providers.length > 0;
+  if (hasProviders) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   const pool = hasProviders ? new NntpConnectionPool() : undefined;
   if (!healthCheckEnabled) {
     console.log(`${tag} 🏥 Health checking disabled — submitting candidates direct to nzbdav`);

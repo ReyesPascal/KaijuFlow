@@ -124,6 +124,7 @@ export const DEFAULT_HEALTH_CHECKS = {
   smartAdditionalRuns: 1,
   smartMinHealthy: 1,
   maxConnections: 12,
+  maxTotalConnections: 8,
   autoQueueMode: 'all' as 'off' | 'top' | 'all',
   hideBlocked: true,
   libraryPreCheck: true,
