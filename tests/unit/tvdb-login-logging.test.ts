@@ -28,9 +28,11 @@ const tvdb = http.createServer((req, res) => {
 await new Promise<void>(resolve => tvdb.listen(0, '127.0.0.1', resolve));
 const tvdbBase = `http://127.0.0.1:${(tvdb.address() as AddressInfo).port}`;
 
-// Send the resolver's TVDB calls to the fake server instead of the real one.
+// Send the resolver's TVDB calls to the fake server instead of the real one,
+// or to a port nothing listens on when a test wants a network error.
+let unreachable = false;
 const interceptor = axios.interceptors.request.use(cfg => {
-  cfg.url = cfg.url?.replace('https://api4.thetvdb.com', tvdbBase);
+  cfg.url = cfg.url?.replace('https://api4.thetvdb.com', unreachable ? 'http://127.0.0.1:1' : tvdbBase);
   return cfg;
 });
 
@@ -79,6 +81,16 @@ test('a rejected login (401) logs the failure and status, no body', async () => 
   assert.match(logs, /TVDB login failed/);
   assert.match(logs, /401/);
   assert.doesNotMatch(logs, new RegExp(SECRET));
+});
+
+test('a login that never reaches TVDB logs the failure as a network error', async () => {
+  unreachable = true;
+  try {
+    const logs = await captureLogs(lookUp);
+    assert.match(logs, /TVDB login failed \(network error: /);
+  } finally {
+    unreachable = false;
+  }
 });
 
 test('a successful login logs only what it did before', async () => {
