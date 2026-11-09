@@ -6,6 +6,7 @@ import { Heart, X } from 'lucide-react';
 import clsx from 'clsx';
 import type { Config, HealthChecksState, UsenetProvider, Indexer, SyncedIndexer } from '../../types';
 import { ProviderManager } from '../shared/ProviderManager';
+import { DEFAULT_HEALTH_CHECKS } from '../../constants';
 interface HealthChecksOverlayProps {
   onClose: () => void;
   config: Config | null;
@@ -347,7 +348,7 @@ export default function HealthChecksOverlay({
                     ? healthChecks.smartBatchSize
                     : (healthChecks.nzbsToInspect || 6);
                   const wanted = batchCount * Math.max(1, poolProviderCount);
-                  const cap = healthChecks.maxTotalConnections ?? 8;
+                  const cap = healthChecks.maxTotalConnections ?? DEFAULT_HEALTH_CHECKS.maxTotalConnections;
                   return (
                     <>
                       <input
@@ -355,13 +356,13 @@ export default function HealthChecksOverlay({
                         value={healthChecks.maxTotalConnections ?? ''}
                         onChange={(e) => setHealthChecks({ ...healthChecks, maxTotalConnections: e.target.value === '' ? ('' as any) : parseInt(e.target.value) || 1 })}
                         onFocus={(e) => e.target.select()}
-                        onBlur={(e) => { if (e.target.value === '' || parseInt(e.target.value) < 1) setHealthChecks(prev => ({ ...prev, maxTotalConnections: 8 })); }}
+                        onBlur={(e) => { if (e.target.value === '' || parseInt(e.target.value) < 1) setHealthChecks(prev => ({ ...prev, maxTotalConnections: DEFAULT_HEALTH_CHECKS.maxTotalConnections })); }}
                         min="1"
                         max="100"
                         className="input w-full"
                       />
                       <p className="text-xs text-slate-500 mt-1">
-                        Health checks never hold more Usenet connections than this, across all checks and providers combined (default 8). Extra checks wait their turn; results are the same, only slower.
+                        Health checks never hold more Usenet connections than this, across all checks and providers combined (default {DEFAULT_HEALTH_CHECKS.maxTotalConnections}, max 100). Extra checks wait their turn; results are the same, only slower.
                         {' '}Without the cap they would use up to {wanted} ({batchCount} {healthChecks.inspectionMethod === 'smart' ? 'batch' : 'NZBs'} × {Math.max(1, poolProviderCount)} pool provider{poolProviderCount !== 1 ? 's' : ''}){typeof cap === 'number' && wanted > cap ? `, so ${wanted - cap} will queue` : ''}.
                         {' '}<span className="text-amber-400/80">This number plus your NzbDAV or AltMount connections must not exceed your provider's maximum allowed connections.</span>
                       </p>
@@ -470,7 +471,7 @@ export default function HealthChecksOverlay({
                     smartAdditionalRuns: 1,
                     smartMinHealthy: 1,
                     maxConnections: 12,
-                    maxTotalConnections: 8,
+                    maxTotalConnections: DEFAULT_HEALTH_CHECKS.maxTotalConnections,
                     autoQueueMode: 'all',
                     hideBlocked: true,
                     libraryPreCheck: true,

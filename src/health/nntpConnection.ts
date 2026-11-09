@@ -18,6 +18,7 @@ type NntpProvider = { host: string; port: number; useTLS: boolean; username: str
 
 /** Default total health-check connections, shared by all workers and providers. */
 export const DEFAULT_HEALTH_CHECK_CONNECTION_CAP = 8;
+const MAX_HEALTH_CHECK_CONNECTION_CAP = 100;
 
 /**
  * Counts open health-check connections against the cap. A slot is held from
@@ -33,7 +34,12 @@ class ConnectionLimiter {
 
   setCap(cap: number): void {
     const n = Math.floor(cap);
-    this.cap = Number.isFinite(n) && n >= 1 ? n : DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
+    this.cap = Number.isFinite(n) && n >= 1
+      ? Math.min(n, MAX_HEALTH_CHECK_CONNECTION_CAP)
+      : DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
+    // Cap lowered: close idle pooled sockets now instead of waiting for them.
+    let excess = this.open - this.cap;
+    while (excess-- > 0 && this.idle.size > 0) this.evictOneIdle();
     while (this.open < this.cap && this.waiters.length > 0) {
       this.open++;
       this.waiters.shift()!();
@@ -87,7 +93,7 @@ class ConnectionLimiter {
 
 const limiter = new ConnectionLimiter();
 
-/** Set the total health-check connection cap (the "max total connections" setting). */
+/** Set the total health-check connection cap (the "Max Total Connections" setting, 1-100). */
 export function setHealthCheckConnectionCap(cap: number): void {
   limiter.setCap(cap);
 }
