@@ -10,10 +10,10 @@ try, time to the first byte of the first Stream that plays, and how many of the 
 but won't play). Sides run one after the other (not in parallel) so the indexers are not hit by three searches at
 once; the order rotates per title. Medians per side are printed as a Markdown table and written to <out>.md.
 """
-import hashlib, json, os, re, sys, time
+import json, os, re, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
-from common import FAILURE_SIZE, finish, fmt, get, med, pick_titles, total_size  # noqa: E402
+from common import finish, fmt, get, med, pick_titles, play_stream as play  # noqa: E402
 
 if len(sys.argv) != 4:
     sys.exit('usage: python3 -I tools/brain/search.py <user-id> <altmount-download-key> <out.json>')
@@ -29,30 +29,6 @@ if not SIDES:
     sys.exit(f'SEARCH_SIDES={_only} matches none of: ' + ', '.join(n for n, _ in ALL_SIDES))
 SHORT = {'altmount-addon': 'AM', 'kaijuflow-altmount': 'KF', 'uu-nzbdav': 'UU'}
 TRIES = int(os.environ.get('SEARCH_TRIES', '3'))
-
-
-def play(stream):
-    """One 64 KiB read at the start of a Stream: does it play, and how fast."""
-    url = stream.get('url', '')
-    if not url:
-        return {'plays': False, 'note': 'no url (external player stream?)'}
-    st, h, body, t = get(url, '0-65535', timeout=120, limit=65536)
-    size = total_size(st, h)
-    ctype = (h.get('Content-Type') or h.get('content-type') or '').split(';')[0]
-    ok = st in (200, 206) and len(body) >= 1024 and size != FAILURE_SIZE
-    note = None
-    if size == FAILURE_SIZE:
-        note = 'failure video'
-    elif st is None:
-        note = h.get('error', 'network error')[:120]
-    elif st not in (200, 206):
-        note = f'HTTP {st}'
-    elif len(body) < 1024:
-        note = f'{len(body)} bytes'
-    return {'plays': ok, 'status': st, 'ready_s': round(t['ready'], 2), 'first_byte_s': round(t.get('first_byte', t['ready']), 2),
-            'total_s': round(t.get('total', t['ready']), 2), 'size': size, 'ctype': ctype, 'note': note,
-            'sha': hashlib.sha256(body).hexdigest()[:16] if ok else None,
-            'title': ' '.join((stream.get('name', '') + ' ' + stream.get('title', '')).split())[:140]}
 
 
 def side(base, kind, vid):
