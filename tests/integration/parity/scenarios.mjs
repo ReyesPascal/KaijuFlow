@@ -193,6 +193,35 @@ const failureScenarios = [
       assertBytes(r.body, media, 'Source should play once the Backend is reachable');
     },
   },
+  {
+    // Unscramble can't finish (#45, ADR 0004 + 0005): a first article is
+    // missing, so the original NZB goes up unchanged and the Backend decides.
+    // A Backend that rejects number-named sets (AltMount v0.4.0) answers with
+    // a failure: failure video, Source marked dead. One that reads the RAR
+    // headers (NzbDAV) plays it. KaijuFlow never marks it dead itself.
+    id: 'unscramble-cant-finish-original-uploaded',
+    needs: 'addScrambled',
+    async run({ kaijuflow, backend, news }) {
+      assert.ok(news, 'harness must start the fake news server (useFakeNews)');
+      const media = mediaFor('cantfinish');
+      const title = 'KaijuFlow.Parity.CantFinish.2026.2160p.WEB-DL.H265';
+      const set = scrambledRarSet({ base: '7d2e9c4b1a6f', parts: 8, startAt: 10, tag: 'cantfinish' });
+      const missing = set.parts[2].firstId;
+      for (const [id, bytes] of set.articles) if (id !== missing) news.articles.set(id, bytes);
+      const nzb = backend.addScrambled('cantfinish', title, media, set);
+      const backendRejects = backend.rarVolumeCheck ? backend.rarVolumeCheck(set.nzb) !== null : false;
+      const r = await play(streamUrl(kaijuflow, nzb, title));
+      assert.deepEqual(backend.uploadedNzbs('cantfinish'), [set.nzb], 'the original NZB should be uploaded unchanged');
+      if (backendRejects) {
+        assertFailureVideo(r, media);
+        assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
+        assert.equal(backend.submitsFor('cantfinish'), 1, 'the rejected Source should be marked dead');
+      } else {
+        assert.equal(r.status, 200, 'a Backend that reads RAR headers plays the original');
+        assertBytes(r.body, media);
+      }
+    },
+  },
 ];
 scenarios.push(...failureScenarios);
 
