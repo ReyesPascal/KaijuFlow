@@ -41,6 +41,7 @@ interface StreamingOverlayProps {
   nzbdavPipeBufferMB: number;
   setNzbdavPipeBufferMB: React.Dispatch<React.SetStateAction<number>>;
   nzbdavStreamingMethod: 'pipe' | 'proxy' | 'direct';
+  setNzbdavStreamingMethod: React.Dispatch<React.SetStateAction<'pipe' | 'proxy' | 'direct'>>;
   ultimateFallbackEnabled: boolean;
   nzbdavConnectionStatus: 'connected' | 'disconnected' | 'unconfigured' | 'checking' | null;
   nzbdavTestNzbStatus: 'idle' | 'sending' | 'success' | 'error';
@@ -85,6 +86,7 @@ export function StreamingOverlay({
   nzbdavPipeBufferMB,
   setNzbdavPipeBufferMB,
   nzbdavStreamingMethod,
+  setNzbdavStreamingMethod,
   ultimateFallbackEnabled,
   nzbdavConnectionStatus,
   nzbdavTestNzbStatus,
@@ -92,8 +94,8 @@ export function StreamingOverlay({
   checkNzbdavConnection,
   sendNzbdavTestNzb,
 }: StreamingOverlayProps) {
-  // Backend forces proxy when UF is off — mirror here so the UI stays truthful
-  const effectiveMethod = !ultimateFallbackEnabled ? 'proxy' as const : nzbdavStreamingMethod;
+  // NzbDAV forces proxy when UF is off; AltMount honours the setting. Mirror here so the UI stays truthful
+  const effectiveMethod = backend !== 'altmount' && !ultimateFallbackEnabled ? 'proxy' as const : nzbdavStreamingMethod;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => onClose()}>
       <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl border border-slate-700/50 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
@@ -166,6 +168,28 @@ export function StreamingOverlay({
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Prepare Timeout (seconds)</label>
                       <input type="number" min={1} value={altmountPrepareTimeout} onChange={(e) => setAltmountPrepareTimeout(Math.max(1, parseInt(e.target.value, 10) || 300))} className="input" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Delivery Method</label>
+                    <div className="flex gap-2" role="radiogroup">
+                      {(['proxy', 'pipe', 'direct'] as const).map((method) => (
+                        <button
+                          key={method}
+                          type="button"
+                          role="radio"
+                          aria-checked={nzbdavStreamingMethod === method}
+                          onClick={() => setNzbdavStreamingMethod(method)}
+                          className={clsx(
+                            "flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-colors",
+                            nzbdavStreamingMethod === method
+                              ? "bg-purple-500/20 border-purple-500/50 text-purple-300"
+                              : "bg-slate-700/50 border-slate-600 text-slate-400 hover:text-slate-300"
+                          )}
+                        >
+                          {method === 'pipe' ? 'Pipe' : method === 'proxy' ? 'Dual-Stage Proxy' : 'Direct'}
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <p className="text-xs text-slate-500">Direct delivery hands the player a link that contains AltMount's access key. Keep proxy delivery unless the player is on a trusted network.</p>

@@ -471,6 +471,15 @@ function logUltimateLibraryStream(decoded: string): void {
  * Supports automatic fallback: if the chosen NZB fails, tries the next candidates
  * from the fallback group until one succeeds or all are exhausted.
  */
+/**
+ * Delivery method for the first response of a Stream. NzbDAV with Ultimate
+ * Fallback off keeps forcing proxy (unchanged); AltMount honours the setting.
+ */
+function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
+  const method = globalConfig.nzbdavStreamingMethod ?? 'proxy';
+  return isUltimateFallbackActive() || !isNzbdavBackendActive() ? method : 'proxy';
+}
+
 export async function handleStream(
   req: Request,
   res: ExpressResponse,
@@ -504,8 +513,7 @@ export async function handleStream(
     }
     logUltimateLibraryStream(decoded);
     const lobbyFallbackOn = isUltimateFallbackActive();
-    let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-    if (!lobbyFallbackOn) mode = 'proxy';
+    const mode = deliveryMethod();
     if (mode === 'direct') {
       res.redirect(302, backend.directUrl(decoded));
     } else if (proxyFn && !lobbyFallbackOn) {
@@ -795,8 +803,7 @@ export async function handleStream(
 
           // Ultimate-Fallback resolved — deliver the stream
           const lobbyFallbackOn = isUltimateFallbackActive();
-          let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-          if (!lobbyFallbackOn) mode = 'proxy';
+          const mode = deliveryMethod();
           const lastLobby = lastDeliveryLog.get(streamData.videoPath);
           const shouldLogLobby = !lastLobby || lastLobby.mode !== mode;
           const nowTs = Date.now();
@@ -870,8 +877,7 @@ export async function handleStream(
       const idxTag = usable.candidateIndex !== undefined ? `#${usable.candidateIndex} ` : '';
       console.log(`👑 Ultimate-Fallback [${sessionKey}] Primary path no longer available — falling back to backup: ${idxTag}${usable.title} [${usable.indexerName}]`);
       const lobbyFallbackOn = isUltimateFallbackActive();
-      let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-      if (!lobbyFallbackOn) mode = 'proxy';
+      const mode = deliveryMethod();
       if (mode === 'direct') {
         res.redirect(302, backend.directUrl(usable.videoPath));
       } else if (proxyFn && !lobbyFallbackOn) {
@@ -1141,8 +1147,7 @@ export async function handleStream(
       // logging/dedup consistency; /v's proxyVideoStream independently reads
       // config on each range request, so seeks honor the user's current method.
       const fallbackOn = isUltimateFallbackActive();
-      let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-      if (!fallbackOn) mode = 'proxy';
+      const mode = deliveryMethod();
       const last = lastDeliveryLog.get(streamData.videoPath);
       const shouldLogDelivery = !last || last.mode !== mode;
       lastDeliveryLog.set(streamData.videoPath, { mode, at: Date.now() });

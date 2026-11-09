@@ -779,6 +779,7 @@ function App() {
           nzbdavPipeBufferMB={ac.nzbdavPipeBufferMB}
           setNzbdavPipeBufferMB={ac.setNzbdavPipeBufferMB}
           nzbdavStreamingMethod={ac.nzbdavStreamingMethod}
+          setNzbdavStreamingMethod={ac.setNzbdavStreamingMethod}
           ultimateFallbackEnabled={ac.ultimateFallback.enabled && ac.backend === 'nzbdav'}
           checkNzbdavConnection={ac.checkNzbdavConnection}
           sendNzbdavTestNzb={ac.sendNzbdavTestNzb}
