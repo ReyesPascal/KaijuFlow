@@ -26,6 +26,8 @@ export const scenarios = [
       assert.equal(r.status, 200, 'movie should play');
       assert.deepEqual(r.body, media, 'delivered bytes should match the Backend media');
       assert.equal(backend.submitsFor('movie'), 1, 'NZB should be submitted once');
+      // AltMount: KaijuFlow grabs the NZB itself and uploads it; it never hands over the link.
+      if (backend.submitKinds) assert.deepEqual(backend.submitKinds, ['file'], 'KaijuFlow should send a file, never nzb_url');
     },
   },
   {

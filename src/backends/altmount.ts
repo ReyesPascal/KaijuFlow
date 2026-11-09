@@ -1,7 +1,7 @@
 /**
  * AltMount Backend (spec #16). #18: settings and reachability check.
  * #19: movie Sources. The selected NZB goes to AltMount's stream route
- * (POST /api/nzb/streams, by link); its answer names the media's virtual path,
+ * (POST /api/nzb/streams, as an uploaded file); its answer names the media's virtual path,
  * which is the media identity (`videoPath`) everywhere in KaijuFlow. Media is
  * fetched from AltMount's file route with the download key kept server side.
  * Not yet: TV episode selection, library reuse, cancel.
@@ -9,6 +9,7 @@
 
 import { config as globalConfig } from '../config/index.js';
 import { createHash } from 'node:crypto';
+import { grabNzb } from '../nzbdav/nzbdavApi.js';
 import { nzbdavError } from '../nzbdav/utils.js';
 import { PrepareCancelledError, isSourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
 
@@ -131,8 +132,12 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       const { logPrefix = '', timeoutMs = 0, onJob, isCancelled } = opts;
       if (!settings.apiKey) throw configError('API key');
       const waitSec = timeoutMs > 0 ? Math.max(1, Math.ceil(timeoutMs / 1000)) : Math.max(1, settings.prepareTimeoutSec ?? 300);
+      // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
+      // tracking), exactly as for NzbDAV, and uploads it to AltMount.
+      const nzb = await grabNzb(source.nzbUrl, source.title, undefined, logPrefix, source.indexerName, source.searchExitIp);
+      if (isCancelled?.()) throw new PrepareCancelledError();
       const form = new FormData();
-      form.append('nzb_url', source.nzbUrl);
+      form.append('file', new Blob([nzb], { type: 'application/x-nzb' }), `${source.title}.nzb`);
       form.append('category', settings.category || 'kaijuflow');
       form.append('timeout', String(waitSec));
       console.log(`${logPrefix}  \u{1F4E4} Sending Source to AltMount (waits up to ${waitSec}s)`);

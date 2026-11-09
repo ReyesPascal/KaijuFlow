@@ -10,6 +10,7 @@ const DOWNLOAD_KEY = crypto.createHash('sha256').update(API_KEY).digest('hex');
 export async function createFakeAltmount(listen) {
   const sources = new Map(); // tag -> { tag, title, media, path, queueId, submits, completed }
   const requests = [];
+  const submitKinds = []; // 'file' | 'nzb_url' per submit
   let base = '';
 
   base = await listen(async (req, res) => {
@@ -31,12 +32,19 @@ export async function createFakeAltmount(listen) {
       const body = Buffer.concat(chunks).toString('latin1');
       const field = name => new RegExp(`name="${name}"\\r\\n\\r\\n([^\\r]*)\\r\\n`).exec(body)?.[1];
       if (req.headers['x-api-key'] !== API_KEY) return json(401, { error: 'unauthorized' });
+      // Accept a `file` upload or an `nzb_url`; record which one KaijuFlow used.
+      const fileMatch = /name="file"; filename="[^"]*"\r\nContent-Type: [^\r]*\r\n\r\n([\s\S]*?)\r\n--/.exec(body);
       const nzbUrl = field('nzb_url');
-      if (!nzbUrl) return json(400, { error: 'No file provided' });
-      const fetched = await fetch(nzbUrl).catch(() => null);
-      const tag = new URL(nzbUrl).pathname.slice(1, -4);
+      if (!fileMatch && !nzbUrl) return json(400, { error: 'No file provided' });
+      let tag;
+      if (fileMatch) { tag = /subject="([^"]+)"/.exec(fileMatch[1])?.[1]; submitKinds.push('file'); }
+      else {
+        const fetched = await fetch(nzbUrl).catch(() => null);
+        if (!fetched?.ok) return json(400, { error: 'could not fetch NZB' });
+        tag = new URL(nzbUrl).pathname.slice(1, -4); submitKinds.push('nzb_url');
+      }
       const src = sources.get(tag);
-      if (!fetched?.ok || !src) return json(400, { error: 'could not fetch NZB' });
+      if (!src) return json(400, { error: 'unknown NZB' });
       src.submits++;
       const cached = src.completed;
       src.completed = true;
@@ -57,6 +65,7 @@ export async function createFakeAltmount(listen) {
   return {
     name: 'altmount',
     requests,
+    submitKinds,
     /** Register a movie Source the fake will accept. Returns its NZB link. */
     addMovie(tag, title, media) {
       sources.set(tag, { tag, title, media, path: `/movies/${title}/${tag}.mkv`, queueId: `q-${tag}`, submits: 0, completed: false });
