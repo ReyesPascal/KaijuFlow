@@ -25,8 +25,18 @@ TITLES = [
 UNSCRAMBLE_RE = re.compile(r'Unscrambled RAR set: (\d+) parts .*?\((\d+) ms\)|Unscramble skipped \(([^,]+), (\d+) parts, (\d+) ms\)')
 
 
+def took(t):
+    """Total time of a get(), or the time to the headers when the body read did not finish."""
+    return t.get('total', t['ready'])
+
+
+def rfc3339(ts):
+    """docker logs --since/--until with sub-second precision."""
+    return time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(ts)) + f'.{int((ts % 1) * 1e9):09d}Z'
+
+
 def get(url, rng=None, timeout=330, limit=70000):
-    """status, headers, body, timings {ready, first_byte, total} in seconds."""
+    """status, headers, body, timings {ready, first_byte (when a body is read), total} in seconds."""
     req = urllib.request.Request(url, headers={'Range': f'bytes={rng}'} if rng else {})
     t = time.time()
     timings = {}
@@ -34,7 +44,8 @@ def get(url, rng=None, timeout=330, limit=70000):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             timings['ready'] = time.time() - t
             first = r.read(1) if limit else b''
-            timings['first_byte'] = time.time() - t
+            if limit:
+                timings['first_byte'] = time.time() - t
             body = first + (r.read(limit - 1) if limit else r.read())
             timings['total'] = time.time() - t
             return r.status, dict(r.headers), body, timings
@@ -49,10 +60,12 @@ def get(url, rng=None, timeout=330, limit=70000):
 def unscramble_from_log(container, since, until):
     """Unscramble line(s) KaijuFlow logged in the window: {parts, ms, reason?}."""
     try:
-        log = subprocess.run(['docker', 'logs', container, '--since', str(int(since)), '--until', str(int(until) + 1)],
+        log = subprocess.run(['docker', 'logs', container, '--since', rfc3339(since), '--until', rfc3339(until + 0.5)],
                              capture_output=True, text=True, timeout=30)
     except Exception as e:  # noqa
         return {'error': str(e)}
+    if log.returncode != 0:
+        return {'error': f'docker logs exit {log.returncode}: {log.stderr.strip()[:200]}'}
     out = []
     for m in UNSCRAMBLE_RE.finditer(log.stdout + log.stderr):
         if m.group(1):
@@ -67,7 +80,7 @@ def side(name, base, kind, vid):
     st, _, body, t = get(f"{base}/{U}/stream/{kind}/{vid}.json", timeout=120, limit=0)
     streams = json.loads(body or b'{}').get('streams', []) if st == 200 else []
     out['sources'] = len(streams)
-    out['search_s'] = round(t.get('total', t['ready']), 1)
+    out['search_s'] = round(took(t), 1)
     if not streams:
         return out
     url = streams[0]['url']
@@ -77,14 +90,14 @@ def side(name, base, kind, vid):
     play_ended = time.time()
     total = int(h.get('Content-Range', h.get('content-range', '/0')).split('/')[-1] or 0) if st == 206 else int(h.get('Content-Length', 0) or 0)
     out.update(play_status=st, ready_s=round(t['ready'], 2), first_byte_s=round(t.get('first_byte', t['ready']), 2),
-               start_s=round(t.get('total', t['ready']), 2), size=total, ctype=h.get('Content-Type'),
+               start_s=round(took(t), 2), size=total, ctype=h.get('Content-Type'),
                failure_video=(total == FAILURE_SIZE), head_sha=hashlib.sha256(body).hexdigest()[:16])
     if name in LOG_CONTAINER:
         out['unscramble'] = unscramble_from_log(LOG_CONTAINER[name], play_started, play_ended)
     if st in (200, 206) and total and total != FAILURE_SIZE:
         for label, off in (('seek50', total // 2), ('seek90', total * 9 // 10)):
             st2, h2, b2, t2 = get(url, f'{off}-{off + 65535}')
-            out[label] = {'status': st2, 'bytes': len(b2), 's': round(t2.get('total', t2['ready']), 2),
+            out[label] = {'status': st2, 'bytes': len(b2), 's': round(took(t2), 2),
                           'first_byte_s': round(t2.get('first_byte', t2['ready']), 2),
                           'range': h2.get('Content-Range'), 'sha': hashlib.sha256(b2).hexdigest()[:16]}
     return out
@@ -136,6 +149,8 @@ def main():
     results = []
     only = [t.strip() for t in os.environ.get('PARITY_TITLES', '').split(',') if t.strip()]
     titles = [t for t in TITLES if not only or any(o.lower() in t[2].lower() for o in only)]
+    if not titles:
+        sys.exit(f'PARITY_TITLES={only} matches none of: ' + ', '.join(t[2] for t in TITLES))
     for kind, vid, label in titles:
         with ThreadPoolExecutor(2) as ex:
             futs = {n: ex.submit(side, n, b, kind, vid) for n, b in SIDES.items()}
@@ -144,9 +159,9 @@ def main():
         same = a.get('size') and a.get('size') == n.get('size')
         row['same_file'] = bool(same)
         if same:
-            row['bytes_match'] = all(
-                a.get(k, {}).get('sha') == n.get(k, {}).get('sha') if k != 'head_sha' else a.get(k) == n.get(k)
-                for k in ('head_sha', 'seek50', 'seek90'))
+            # Start, 50% and 90% reads must all be present on both sides and identical.
+            shas = [(a.get('head_sha'), n.get('head_sha'))] + [(a.get(k, {}).get('sha'), n.get(k, {}).get('sha')) for k in ('seek50', 'seek90')]
+            row['bytes_match'] = all(x and x == y for x, y in shas)
         results.append(row)
         print(json.dumps(row), flush=True)
     json.dump(results, open(sys.argv[2], 'w'), indent=2)
