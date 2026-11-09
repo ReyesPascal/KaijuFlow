@@ -222,6 +222,7 @@ export interface HealthChecksState {
   smartMinHealthy: number;
   maxConnections: number;
   maxTotalConnections: number;
+  verifyTlsCertificates: boolean;
   autoQueueMode: 'off' | 'top' | 'all';
   hideBlocked: boolean;
   libraryPreCheck: boolean;

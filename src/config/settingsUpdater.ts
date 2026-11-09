@@ -115,6 +115,7 @@ export function updateSettings(settings: {
     smartAdditionalRuns?: number;
     maxConnections?: number;
     maxTotalConnections?: number;
+    verifyTlsCertificates?: boolean;
     autoQueueMode?: 'off' | 'top' | 'all';
     hideBlocked: boolean;
     healthCheckIndexers?: Record<string, boolean>;

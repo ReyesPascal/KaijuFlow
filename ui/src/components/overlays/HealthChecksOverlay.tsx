@@ -192,6 +192,21 @@ export default function HealthChecksOverlay({
                     Check the NzbDAV library before running NNTP health checks. Content already downloaded is instantly marked as verified, skipping expensive segment checks. (NzbDAV streaming mode only)
                   </p>
                 </div>
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={healthChecks.verifyTlsCertificates ?? DEFAULT_HEALTH_CHECKS.verifyTlsCertificates}
+                      onChange={(e) => setHealthChecks({ ...healthChecks, verifyTlsCertificates: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-pink-500 focus:ring-pink-500 focus:ring-offset-slate-800"
+                    />
+                    <span className="text-sm font-medium text-slate-300">Verify TLS Certificates</span>
+                  </label>
+                  <p className="text-xs text-slate-500 mt-1 ml-7">
+                    Reject Usenet servers whose TLS certificate is invalid, expired, self-signed or for a different hostname (default on). Applies to health checks and Test Connection.
+                    {' '}<span className="text-amber-400/80">Turning this off lets anyone between you and the server (on your network or ISP) pose as your provider and read your Usenet username and password. Only turn it off for a server you trust, such as one with a self-signed certificate on your own network.</span>
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -472,6 +487,7 @@ export default function HealthChecksOverlay({
                     smartMinHealthy: 1,
                     maxConnections: 12,
                     maxTotalConnections: DEFAULT_HEALTH_CHECKS.maxTotalConnections,
+                    verifyTlsCertificates: DEFAULT_HEALTH_CHECKS.verifyTlsCertificates,
                     autoQueueMode: 'all',
                     hideBlocked: true,
                     libraryPreCheck: true,

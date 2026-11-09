@@ -13,6 +13,7 @@
 import { Router } from 'express';
 import type { UsenetProvider } from '../types.js';
 import { requireAuth } from '../auth/authMiddleware.js';
+import { tlsConnectOptions, describeTlsError } from '../health/nntpConnection.js';
 
 interface HealthCheckDeps {
   getProviders: () => UsenetProvider[];
@@ -51,7 +52,7 @@ export function createHealthCheckRoutes(deps: HealthCheckDeps): Router {
         let buffer = '';
 
         socket = useTLS
-          ? tlsModule.connect({ host, port, rejectUnauthorized: false })
+          ? tlsModule.connect(tlsConnectOptions(host, port))
           : netModule.connect({ host, port });
 
         socket.on('data', (data: Buffer) => {
@@ -101,7 +102,7 @@ export function createHealthCheckRoutes(deps: HealthCheckDeps): Router {
           clearTimeout(timeout);
           res.status(500).json({
             success: false,
-            message: `Connection error: ${error.message}`
+            message: `Connection error: ${describeTlsError(error, host, port).message}`
           });
           resolve();
         });

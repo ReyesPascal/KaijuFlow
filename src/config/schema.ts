@@ -106,6 +106,7 @@ export interface ConfigData {
     usenetPassword?: string;
     maxConnections?: number;
     maxTotalConnections?: number;
+    verifyTlsCertificates?: boolean;
   };
   ultimateFallback?: {
     enabled: boolean;
