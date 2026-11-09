@@ -43,3 +43,13 @@ _Avoid_: obfuscated release (obfuscated names can still be in order), broken RAR
 **Unscramble**:
 Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend.
 _Avoid_: reorder, repair, fix names
+
+### Measuring
+
+**Cold start**:
+The first play of a Source on a Backend, when the Backend has never held it and must import it before the video can start.
+_Avoid_: first play (unqualified), fresh start
+
+**Warm start**:
+A later play of a Source the Backend already holds, so the video starts from what the Backend has.
+_Avoid_: cached play, repeat play

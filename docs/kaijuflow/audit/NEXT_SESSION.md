@@ -1,4 +1,4 @@
-# Next session: KaijuFlow (as of 2026-11-09, after the cold speed run)
+# Next session: KaijuFlow (as of 2026-11-09, after the cold speed run and the #58 grill)
 
 Older handoffs are in git history. Replace this section; don't append below it.
 
@@ -24,10 +24,24 @@ Older handoffs are in git history. Replace this section; don't append below it.
 **Open for the owner**
 - AltMount queue cleanup (approved 2026-11-09, not yet done): remove the addon test imports under categories Movies and TV (99 rows after the two runs, 59 failed) and keep the `kaijuflow` category while Backend tests continue. The frontend's `DELETE /api/queue/...` routes need a JWT from `POST /api/auth/login` (the API key is not accepted there, and AltMount's SABnzbd API is disabled in its config), so this is done in AltMount's web UI (Queue, filter by category, Clear completed and Clear failed) or with the owner's login.
 
-**Next, in order** (each step its own PR, with a test)
-1. Add InfiniDysk 1.x (stable) as a Backend; 2.x once it leaves beta. It gets the same Unscrambled NZB through the shared step.
-2. **Faster `not-rar5` answer in Unscramble** (owner approved 2026-11-09; after InfiniDysk unless pulled forward). `unscrambleSet` in `src/archive/unscramble.ts` reads the first article of every number-named part before it can say `not-rar5` (227 parts on 8 connections took 699 ms; 0.6 to 1.6 s per cold import in the cold run). Read one part first and fan out only when it is RAR5; the renamed path, the time limit and the Parity scenario stay as they are. Unit test in the Unscramble tests for the one-part short cut; `tools/brain/parity.py` shows the saving on a cold import.
-3. Benchmarks later ([plan](../performance/BENCHMARK_PLAN.md)).
+**Next: spec #58, "measure and optimize KaijuFlow with AltMount before InfiniDysk"** (grilled with the owner 2026-11-09). Ten tickets, each its own PR and session, worked blockers-first:
+
+| Ticket | What | Blocked by |
+|---|---|---|
+| #59 | Indexer stand-in: record once, replay to every side | none |
+| #60 | Test copies of every side (UU v1.4.1 + NzbDAV, AltMount for the addon, AltMount for KaijuFlow) and a cold reset | none |
+| #61 | KaijuFlow logs the duration of every step | none |
+| #62 | Test tools merge every side's step times into a plain-language report; every run recorded in `brain-runs/` with "what changed since the last run" | #59 #60 #61 |
+| #63 | Baseline run on today's settings, after 18:00 UTC (12 pm Central) | #62 |
+| #64 | Tune settings one at a time on every side, each run recorded | #63 |
+| #65 | Move an indexer's Sources down after it says "limit reached" | #64 |
+| #66 | One first-article pass per health-checked Source, with the Backend's acceptance check (replaces the old not-RAR5 speedup) | #64 |
+| #67 | NinjaCentral-only run, anecdotal | #65 #66 |
+| #68 | Final run against the targets in #58 | #67 |
+
+Targets, records and order are in #58. Owner rules from the grill: measure before optimizing; every run kept with its settings and what changed since the previous run; Source count is not part of any verdict; test copies only, nothing live touched.
+
+**Blocked:** InfiniDysk 1.x waits until the owner says the current setup is satisfactory after #68. Benchmarks later ([plan](../performance/BENCHMARK_PLAN.md)).
 
 Out of scope for now: library page and library delete for new Backends; several Backends at once; RAR4 Scrambled RAR sets (uploaded unchanged, logged).
 
