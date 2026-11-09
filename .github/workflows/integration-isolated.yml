@@ -1,6 +1,10 @@
 name: Post-A4 single discovery-to-stream integration
-# Closed bounded milestones: retained for explicit reproduction only.
+# Runs on every PR to main (and pushes to main), plus on demand.
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -1,6 +1,10 @@
 name: A4 disposable network-isolated synthetic tests
-# Closed bounded milestones: retained for explicit reproduction only.
+# Runs on every PR to main (and pushes to main), plus on demand.
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -28,10 +32,7 @@ jobs:
       - name: Compile original application without starting it
         run: npm run build
       - name: Prepare original React hook test bundle without executing app
-        run: |
-          npm ci --prefix ui --ignore-scripts --no-audit --no-fund
-          npm install --prefix ui --no-save --package-lock=false --ignore-scripts --no-audit --no-fund react-test-renderer@18.3.1
-          ./ui/node_modules/.bin/esbuild ui/src/hooks/useAppConfig.ts --bundle --platform=node --format=cjs --external:react --outfile=ui/.a4-hook.cjs
+        run: bash scripts/prepare-a4-hook.sh
       - name: Isolation proof, negative gate injection, and synthetic behavior
         id: a4
         continue-on-error: true
