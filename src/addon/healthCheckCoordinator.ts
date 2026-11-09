@@ -14,7 +14,7 @@ import { getLatestVersions } from '../versionFetcher.js';
 import { performBatchHealthChecks, setHealthCheckConnectionCap, type HealthCheckResult, type HealthCheckOptions } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
 import { buildStreamFilename } from '../parsers/metadataParsers.js';
-import { checkNzbLibrary } from '../nzbdav/videoDiscovery.js';
+import { getActiveBackend } from '../backends/index.js';
 import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../nzbdav/streamCache.js';
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
 import { buildEpisodePattern, buildDateEpisodePattern } from '../nzbdav/utils.js';
@@ -29,7 +29,7 @@ const SELF_URL = getSelfUrl();
 
 /**
  * Mark candidates that already exist in the NZBDav library by calling
- * checkNzbLibrary in parallel. Skips entries already in healthResults so
+ * the active Backend's already-prepared lookup in parallel. Skips entries already in healthResults so
  * concurrent callers (libraryPreCheck + displayLibraryInResults) don't
  * double-probe the same URL. Library hits are tagged
  * `{status:'verified', message:'Library', playable:true}` so the existing
@@ -60,15 +60,13 @@ export async function markLibraryHits(
   // Mirrors the search-side alias-fallback gate.
   const datePattern = buildDateEpisodePattern(episodeAired);
   let hits = 0;
+  const backend = getActiveBackend(nzbdavConfig);
   await Promise.all(unchecked.map(async (r) => {
     try {
-      let result = await checkNzbLibrary(
-        r.title, nzbdavConfig, episodePattern, contentType, episodesInSeason, '', true,
-      );
+      const source = { nzbUrl: r.link, title: r.title, contentType, episodesInSeason };
+      let result = await backend.findPrepared({ ...source, episodePattern }, { quiet: true });
       if (!result && datePattern) {
-        result = await checkNzbLibrary(
-          r.title, nzbdavConfig, datePattern, contentType, episodesInSeason, '', true,
-        );
+        result = await backend.findPrepared({ ...source, episodePattern: datePattern }, { quiet: true });
       }
       if (result) {
         healthResults.set(r.link, { status: 'verified', message: 'Library', playable: true });
@@ -88,7 +86,7 @@ export async function markLibraryHits(
         }
       }
     } catch {
-      // Non-fatal — checkNzbLibrary only re-throws errors flagged isNzbdavFailure;
+      // Non-fatal — findPrepared only re-throws errors flagged isNzbdavFailure;
       // transient WebDAV blips don't break the search response.
     }
   }));

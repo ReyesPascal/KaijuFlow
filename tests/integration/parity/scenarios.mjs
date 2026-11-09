@@ -1,0 +1,73 @@
+// Parity scenarios: one shared set, run against every fake Backend.
+// Each scenario drives KaijuFlow's real stream route over HTTP and asserts only
+// on what the player receives and on the fake Backend's recorded requests.
+import assert from 'node:assert/strict';
+
+const mediaFor = tag => Buffer.from(`KaijuFlow parity bytes for ${tag}: 0123456789abcdefghijklmnopqrstuvwxyz`);
+
+function streamUrl(kaijuflow, nzbUrl, title) {
+  const t = Buffer.from(JSON.stringify({ url: nzbUrl, title, indexer: 'Parity', ty: 'movie' })).toString('base64url');
+  return `${kaijuflow}/stremio/synthetic-manifest/nzbdav/stream/movie.mkv?t=${t}`;
+}
+
+async function play(url, range) {
+  const res = await fetch(url, { headers: range ? { Range: range } : {}, signal: AbortSignal.timeout(20000) });
+  return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
+}
+
+export const scenarios = [
+  {
+    id: 'movie-plays',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('movie');
+      const title = 'KaijuFlow.Parity.Movie.2026.2160p.WEB-DL.H265';
+      const nzb = backend.addMovie('movie', title, media);
+      const r = await play(streamUrl(kaijuflow, nzb, title));
+      assert.equal(r.status, 200, 'movie should play');
+      assert.deepEqual(r.body, media, 'delivered bytes should match the Backend media');
+      assert.equal(backend.submitsFor('movie'), 1, 'NZB should be submitted once');
+    },
+  },
+  {
+    id: 'byte-range-206',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('range');
+      const title = 'KaijuFlow.Parity.Range.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addMovie('range', title, media);
+      const r = await play(streamUrl(kaijuflow, nzb, title), 'bytes=10-29');
+      assert.equal(r.status, 206, 'range request should return 206');
+      assert.deepEqual(r.body, media.subarray(10, 30), 'range body should be the requested slice');
+      assert.equal(r.headers.get('content-range'), `bytes 10-29/${media.length}`);
+    },
+  },
+  {
+    // Owner decision 2026-11-09 (#17): a range past the end is NOT answered
+    // with 416. KaijuFlow retries without Range and serves the whole file
+    // from byte 0, so a player carrying a stale seek position across a Source
+    // switch still recovers. Every Backend must match this.
+    id: 'bad-range-full-file',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('badrange');
+      const title = 'KaijuFlow.Parity.BadRange.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addMovie('badrange', title, media);
+      const r = await play(streamUrl(kaijuflow, nzb, title), `bytes=${media.length + 100}-`);
+      assert.equal(r.status, 200, 'range past the end should fall back to the whole file');
+      assert.deepEqual(r.body, media, 'fallback body should be the whole file from byte 0');
+    },
+  },
+];
+
+/** Run every scenario against one fake Backend. Returns per-scenario results. */
+export async function runParity({ kaijuflow, backend }) {
+  const results = [];
+  for (const s of scenarios) {
+    const before = backend.requests.length;
+    try {
+      await s.run({ kaijuflow, backend });
+      results.push({ id: s.id, status: 'pass' });
+    } catch (e) {
+      results.push({ id: s.id, status: 'fail', error: String(e), requests: backend.requests.slice(before).slice(-15) });
+    }
+  }
+  return results;
+}

@@ -16,6 +16,8 @@ cp -a "$A4_ROOT/dist" "$A4_RUN_DIR/work/dist"
 cp "$A4_ROOT/package.json" "$A4_RUN_DIR/work/package.json"
 cp -a "$A4_ROOT/node_modules" "$A4_RUN_DIR/work/node_modules"
 cp "$A4_ROOT"/tests/integration/*.mjs "$A4_RUN_DIR/work/"
+# Shared Parity helpers live in a subfolder so they are not run as scenarios.
+cp -a "$A4_ROOT/tests/integration/parity" "$A4_RUN_DIR/work/parity"
 mkdir -p "$A4_RUN_DIR/work/config"
 chown -R nobody:nogroup "$A4_RUN_DIR/work"
 printf 'integration isolation PASS\n' > "$A4_RUN_DIR/app-import.started"

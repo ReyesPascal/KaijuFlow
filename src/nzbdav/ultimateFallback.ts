@@ -21,9 +21,8 @@ import { performHealthCheck } from '../health/healthCheckPipeline.js';
 import { NntpConnectionPool, setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk } from './streamCache.js';
-import { submitNzb, waitForJobCompletion, cancelJob, prefetchNzb } from './nzbdavApi.js';
-import { checkNzbLibrary, checkLibraryVideoPath, waitForVideoFile } from './videoDiscovery.js';
-import { encodeWebdavPath, nzbdavError } from './utils.js';
+import { prefetchNzb } from './nzbdavApi.js';
+import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, NZBDavConfig, StreamData } from './types.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
@@ -260,27 +259,6 @@ async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], limit: number)
   return results;
 }
 
-/** Probe a video file via WebDAV to verify it's servable. */
-async function probeVideo(config: NZBDavConfig, videoPath: string, logPrefix: string): Promise<boolean> {
-  const webdavBase = (config.webdavUrl || config.url).replace(/\/+$/, '');
-  const probeUrl = `${webdavBase}${encodeWebdavPath(videoPath)}`;
-  const probeHeaders: Record<string, string> = { 'Range': 'bytes=0-0' };
-  if (config.webdavUser && config.webdavPassword) {
-    probeHeaders['Authorization'] = 'Basic ' + Buffer.from(`${config.webdavUser}:${config.webdavPassword}`).toString('base64');
-  }
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const resp = await fetch(probeUrl, { headers: probeHeaders, signal: AbortSignal.timeout(10_000) });
-      await resp.body?.cancel().catch(() => {});
-      if (resp.status === 206 || resp.status === 200) return true;
-      if (resp.status === 404 || resp.status === 410) return false;
-    } catch { /* retry */ }
-    if (attempt < 1) await new Promise(r => setTimeout(r, 2000));
-  }
-  console.warn(`${logPrefix}  ⚠️ Probe failed after 2 attempts`);
-  return false;
-}
-
 // ── Main pipeline ────────────────────────────────────────────────────
 
 export async function ultimateFallbackFromCandidates(
@@ -297,6 +275,7 @@ export async function ultimateFallbackFromCandidates(
 
   const controller = new AbortController();
   activeSessions.set(sessionKey, controller);
+  const backend = getActiveBackend(nzbdavConfig);
 
   // Create deferred promise — lobby awaits this to get the resolved stream
   let sessionResolveRaw!: (data: StreamData) => void;
@@ -355,9 +334,10 @@ export async function ultimateFallbackFromCandidates(
     const libraryTasks = allCandidates
       .filter(c => !isDeadNzbByUrl(c.nzbUrl))
       .map((candidate, i) => () => {
-        const probe = candidate.libraryVideoPath
-          ? checkLibraryVideoPath(candidate.libraryVideoPath, candidate.size ?? 0, nzbdavConfig, `${tag} [lib #${i + 1}] `, true)
-          : checkNzbLibrary(candidate.title, nzbdavConfig, filePattern, contentType, episodesInSeason, `${tag} [lib #${i + 1}] `, true);
+        const probe = backend.findPrepared(
+          { nzbUrl: candidate.nzbUrl, title: candidate.title, contentType, episodePattern: filePattern, episodesInSeason, knownMediaPath: candidate.libraryVideoPath, knownSize: candidate.size },
+          { logPrefix: `${tag} [lib #${i + 1}] `, quiet: true },
+        );
         return probe
           .then(data => ({ candidate, index: i, data }))
           .catch(() => ({ candidate, index: i, data: null as StreamData | null }));
@@ -576,48 +556,37 @@ export async function ultimateFallbackFromCandidates(
         // Cancel checkpoint: before HTTP starts
         if (cs.cancelled) { cs.nzbdavStatus = 'failed'; return null; }
 
-        // Step 1: Submit NZB (uses cached XML from grab chain)
-        const nzoId = await submitNzb(cs.candidate.nzbUrl, cs.candidate.title, nzbdavConfig, contentType, undefined, logPrefix, cs.candidate.indexerName, cs.candidate.searchExitIp);
-        cs.nzoId = nzoId;
-
-        // Cancel checkpoint: health check may have failed while submitNzb was in-flight
-        if (cs.cancelled) {
-          cancelJob(nzoId, nzbdavConfig, 'health check failed (late cancel)').catch(() => {});
-          cs.nzbdavStatus = 'failed';
-          return null;
-        }
-
-        // Step 2: Wait for job completion (per-mode, per-content-type budget)
-        const jobTimeoutMs = selectTimeoutMs(activeSet, contentType, cs.candidate.isSeasonPack === true);
-        await waitForJobCompletion(nzoId, nzbdavConfig, jobTimeoutMs, 250, contentType, logPrefix);
-
-        // Cancel checkpoint: health check may have failed during polling
-        if (cs.cancelled) { cs.nzbdavStatus = 'failed'; return null; }
-
-        // Step 3: Find video file (waitForVideoFile logs the result)
-        const video = await waitForVideoFile(nzoId, cs.candidate.title, nzbdavConfig, filePattern, contentType, episodesInSeason, logPrefix);
-
+        // Steps 1-3: submit (uses cached XML from grab chain), wait for the
+        // job (per-mode, per-content-type budget), find the video. Cancel
+        // checkpoints between steps: the health check may fail meanwhile.
+        const video = await backend.prepare(
+          { nzbUrl: cs.candidate.nzbUrl, title: cs.candidate.title, contentType, episodePattern: filePattern, episodesInSeason, isSeasonPack: cs.candidate.isSeasonPack, indexerName: cs.candidate.indexerName, searchExitIp: cs.candidate.searchExitIp },
+          {
+            logPrefix,
+            timeoutMs: selectTimeoutMs(activeSet, contentType, cs.candidate.isSeasonPack === true),
+            pollIntervalMs: 250,
+            onJob: jobId => { cs.nzoId = jobId; },
+            isCancelled: () => cs.cancelled === true,
+          },
+        );
         // Cancel checkpoint: health check may have failed during video discovery
         if (cs.cancelled) { cs.nzbdavStatus = 'failed'; return null; }
 
         // Step 4: Probe video is servable
-        const servable = await probeVideo(nzbdavConfig, video.path, logPrefix);
-        if (!servable) {
-          throw nzbdavError(`Video file not servable (probe failed): ${video.path}`, false, true);
-        }
+        await backend.probe(video, { logPrefix });
 
         // Step 5: Write to readyCache so stream handler can deliver
         const cacheKey = getCacheKey(cs.candidate.nzbUrl, cs.candidate.title) + (cachePattern ? `:${cachePattern}` : '');
-        const streamData: StreamData = { nzoId, videoPath: video.path, videoSize: video.size };
-        setReadyCacheEntry(cacheKey, streamData, cs.candidate.indexerName);
+        setReadyCacheEntry(cacheKey, video, cs.candidate.indexerName);
 
         cs.nzbdavStatus = 'completed';
         console.log(`${logPrefix}✅ Stream ready: ${cs.candidate.title}`);
-        return streamData;
+        return video;
       } catch (err) {
+        if (err instanceof PrepareCancelledError) { cs.nzbdavStatus = 'failed'; return null; }
         // Skip logging/cancelling if the event loop already cancelled this candidate
         if (cs.cancelled) return null;
-        if (cs.nzoId) cancelJob(cs.nzoId, nzbdavConfig, 'pipeline failure').catch(() => {});
+        if (cs.nzoId) backend.cancel(cs.nzoId, 'pipeline failure').catch(() => {});
         if ((err as any)?.isNzbdavFailure) {
           setDeadNzbEntry(cs.candidate.nzbUrl, cs.candidate.title, err as Error, cachePattern, cs.candidate.indexerName, cs.videoSize || cs.candidate.size, cs.candidate.isSeasonPack);
           cs.nzbdavDeadWritten = true;
@@ -786,7 +755,7 @@ export async function ultimateFallbackFromCandidates(
           // Flip status synchronously so hasEarlierInFlight in the same tick (via pullReplacement
           // below) doesn't see this candidate as still in-flight and re-defer parked library hits.
           cs.nzbdavStatus = 'failed';
-          if (cs.nzoId) cancelJob(cs.nzoId, nzbdavConfig, 'health check failed').catch(() => {});
+          if (cs.nzoId) backend.cancel(cs.nzoId, 'health check failed').catch(() => {});
           nzbdavPromise?.catch(() => {});
           activeNzbdavCs = null;
           nzbdavPromise = null;

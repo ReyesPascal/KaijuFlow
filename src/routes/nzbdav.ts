@@ -17,6 +17,7 @@ import { PassThrough } from 'stream';
 import type { Config } from '../types.js';
 import type { NZBDavConfig } from '../nzbdav/index.js';
 import { encodeWebdavPath, WebDav404Error, buildNzbdavConfig } from '../nzbdav/utils.js';
+import { getActiveBackend } from '../backends/index.js';
 import { cleanupHistoryForPath } from '../nzbdav/historyApi.js';
 import { posix as pathPosix } from 'path';
 import { evictReadyByVideoPath, evictReadyByVideoPathPrefix, clearVideoPathState, markVideoPathBroken, markLibraryBypass } from '../nzbdav/streamCache.js';
@@ -42,116 +43,14 @@ interface NzbdavDeps {
 
 export function createNzbdavRoutes(deps: NzbdavDeps): Router {
   const router = Router();
-  const { config, getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries, getLatestVersions } = deps;
+  const { config, getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries } = deps;
 
-  const TEST_CONNECTION_TIMEOUT_MS = 15_000;
-
-  // NZBDav test connection endpoint
+  // NZBDav test connection endpoint (dashboard status + settings "test connection")
   router.post('/test', async (req, res) => {
-    try {
-      const { url, apiKey, webdavUrl, webdavUser, webdavPassword, moviesCategory } = req.body;
-
-      if (!url) {
-        return res.status(400).json({ message: 'NZBDav URL is required' });
-      }
-
-      // Test NZBDav server connection
-      const testUrl = new URL(url);
-      const userAgent3 = config.userAgents?.nzbdavOperations || getLatestVersions().chrome;
-      const nzbdavHeaders: Record<string, string> = apiKey ? { 'X-Api-Key': apiKey, 'User-Agent': userAgent3 } : { 'User-Agent': userAgent3 };
-      const nzbdavResponse = await fetch(testUrl.toString(), {
-        headers: nzbdavHeaders,
-        signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
-      });
-
-      if (!nzbdavResponse.ok && nzbdavResponse.status !== 401) {
-        return res.status(502).json({
-          message: `NZBDav server returned status ${nzbdavResponse.status}`
-        });
-      }
-
-      // Test WebDAV connection if provided
-      if (webdavUrl) {
-        const webdavTestUrl = new URL(webdavUrl);
-        const userAgent4 = config.userAgents?.webdavOperations || getLatestVersions().chrome;
-        const webdavHeaders: Record<string, string> = webdavUser && webdavPassword ? {
-          'Authorization': 'Basic ' + Buffer.from(`${webdavUser}:${webdavPassword}`).toString('base64'),
-          'User-Agent': userAgent4
-        } : { 'User-Agent': userAgent4 };
-        const webdavResponse = await fetch(webdavTestUrl.toString(), {
-          method: 'PROPFIND',
-          headers: { ...webdavHeaders, 'Depth': '0' },
-          signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
-        });
-
-        if (webdavResponse.status === 401 || webdavResponse.status === 403) {
-          return res.status(502).json({ message: 'WebDAV authentication failed - check credentials' });
-        }
-
-        // PROPFIND returns 207 Multi-Status on success
-        if (!webdavResponse.ok && webdavResponse.status !== 207) {
-          return res.status(502).json({
-            message: `WebDAV server returned status ${webdavResponse.status}`
-          });
-        }
-      }
-
-      // Only send a test NZB if explicitly requested (avoids flooding NZBDav on page refreshes)
-      if (req.body.sendTestNzb) {
-        const testNzb = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
-<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
-  <head>
-    <meta type="title">Usenet Ultimate Test File</meta>
-  </head>
-  <file poster="test@usenet-ultimate" date="1738368000" subject="Usenet Ultimate Test [1/1] - test.txt (1 KB)">
-    <groups>
-      <group>alt.binaries.test</group>
-    </groups>
-    <segments>
-      <segment bytes="1024" number="1">test@usenet-ultimate</segment>
-    </segments>
-  </file>
-</nzb>`;
-
-        const category = moviesCategory || 'Usenet-Ultimate-Movies';
-
-        const nzbApiUrl = `${url.endsWith('/') ? url.slice(0, -1) : url}/api?mode=addfile&cat=${encodeURIComponent(category)}&nzbname=UsenetUltimate-Test${apiKey ? `&apikey=${apiKey}` : ''}`;
-
-        const formData = new FormData();
-        formData.append('nzbFile', new Blob([testNzb], { type: 'application/x-nzb' }), 'test.nzb');
-
-        const userAgent2 = config.userAgents?.nzbdavOperations || getLatestVersions().chrome;
-        const redactedNzbApiUrl = apiKey ? nzbApiUrl.replace(apiKey, '[REDACTED]') : nzbApiUrl;
-        console.log('\u{1F4E4} Request to test NZB submission:', { url: redactedNzbApiUrl, method: 'POST', headers: { 'Content-Type': 'multipart/form-data', 'User-Agent': userAgent2 } });
-        const testNzbResponse = await fetch(nzbApiUrl, {
-          method: 'POST',
-          body: formData,
-          headers: { 'User-Agent': userAgent2 },
-          signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
-        });
-
-        if (!testNzbResponse.ok) {
-          const errorText = await testNzbResponse.text();
-          return res.status(502).json({
-            message: `NZB submission test failed: ${testNzbResponse.status} - ${errorText}`
-          });
-        }
-
-        const testResult = await testNzbResponse.json();
-
-        return res.json({
-          message: 'Connection successful! Test NZB accepted.',
-          testPath: (testResult as any).path
-        });
-      }
-
-      res.json({
-        message: 'Connection successful!'
-      });
-    } catch (error) {
-      res.status(500).json({ message: `Connection failed: ${(error as Error).message}` });
-    }
+    const status = await getActiveBackend().status(req.body ?? {});
+    const body: { message: string; testPath?: string } = { message: status.message };
+    if (status.testPath !== undefined) body.testPath = status.testPath;
+    res.status(status.httpStatus).json(body);
   });
 
   // Stream cache stats endpoint
@@ -795,20 +694,15 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
 
   /** Proxy video bytes from WebDAV with auth, buffering, and transparent reconnect. */
   async function proxyVideoStream(req: any, res: any, videoPath: string, usePipeOverride?: boolean): Promise<void> {
-    const webdavBase = (config.nzbdavWebdavUrl || config.nzbdavUrl || 'http://localhost:3000').replace(/\/+$/, '');
     const safePath = encodeWebdavPath(videoPath);
-
-    const targetUrl = new URL(`${webdavBase}${safePath}`);
+    const media = getActiveBackend().mediaRequest(videoPath);
+    const targetUrl = media.url;
     const useHttps = targetUrl.protocol === 'https:';
 
     const baseHeaders: Record<string, string> = {
       'User-Agent': config.userAgents?.webdavOperations || getLatestVersions().chrome,
+      ...media.headers,
     };
-    if (config.nzbdavWebdavUser && config.nzbdavWebdavPassword) {
-      baseHeaders['Authorization'] = 'Basic ' + Buffer.from(
-        `${config.nzbdavWebdavUser}:${config.nzbdavWebdavPassword}`
-      ).toString('base64');
-    }
 
     const clientRange = parseClientRange(req.headers.range as string);
     const isFullRequest = !req.headers.range;

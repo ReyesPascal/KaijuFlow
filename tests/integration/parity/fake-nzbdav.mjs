@@ -1,0 +1,79 @@
+// Fake NzbDAV Backend for the Parity suite: SAB-style API + WebDAV over loopback HTTP.
+// Synthetic NZBs and synthetic media bytes only. Records every request it gets.
+import { serveBytes } from './serve-bytes.mjs';
+
+const ADVERTISED_SIZE = 128 * 1024 * 1024; // meets KaijuFlow's 100 MiB video threshold
+
+export async function createFakeNzbdav(listen) {
+  const sources = new Map(); // nzb tag -> { title, media, path, job, submitted, completed }
+  const requests = [];
+  let base = '';
+
+  const propfindEntry = (href, dir) => `<d:response><d:href>${href}</d:href><d:propstat><d:prop><d:resourcetype>${dir ? '<d:collection/>' : ''}</d:resourcetype><d:getcontentlength>${dir ? 0 : ADVERTISED_SIZE}</d:getcontentlength><d:getcontenttype>${dir ? 'httpd/unix-directory' : 'video/x-matroska'}</d:getcontenttype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`;
+
+  base = await listen(async (req, res) => {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    const path = decodeURIComponent(u.pathname);
+    requests.push({ method: req.method, path, mode: u.searchParams.get('mode'), range: req.headers.range || null });
+    const json = x => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(x)); };
+
+    if (path.endsWith('.nzb')) {
+      const tag = path.slice(1, -4);
+      if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
+      res.setHeader('Content-Type', 'application/x-nzb');
+      res.end(`<nzb><file subject="${tag}"><groups><group>alt.synthetic</group></groups><segments><segment bytes="64" number="1">${tag}@invalid</segment></segments></file></nzb>`);
+      return;
+    }
+    if (path === '/api') {
+      const mode = u.searchParams.get('mode');
+      if (mode === 'addfile') {
+        let body = ''; for await (const c of req) body += c;
+        const src = [...sources.values()].find(s => body.includes(`subject="${s.tag}"`));
+        if (!src) { json({ status: false, error: 'unknown nzb' }); return; }
+        src.submits++;
+        json({ status: true, nzo_ids: [src.job] });
+        return;
+      }
+      if (mode === 'queue') { json({ queue: { slots: [] } }); return; }
+      if (mode === 'history') {
+        json({ history: { slots: [...sources.values()].filter(s => s.submits > 0).map(s => ({ nzo_id: s.job, status: 'Completed', name: s.title })) } });
+        return;
+      }
+      json({ status: true }); return;
+    }
+    if (req.method === 'PROPFIND') {
+      const src = [...sources.values()].find(s => s.submits > 0 && (path.replace(/\/+$/, '') === s.dir || path === s.path));
+      if (!src) { res.writeHead(404); res.end(); return; }
+      res.writeHead(207, { 'Content-Type': 'application/xml' });
+      res.end('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">' + propfindEntry(src.dir + '/', true) + propfindEntry(src.path, false) + '</d:multistatus>');
+      return;
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const src = [...sources.values()].find(s => s.submits > 0 && path === s.path);
+      if (src) { serveBytes(req, res, src.media); return; }
+    }
+    res.writeHead(404); res.end();
+  });
+
+  return {
+    name: 'nzbdav',
+    requests,
+    /** Register a movie Source the fake will accept. Returns its NZB link. */
+    addMovie(tag, title, media) {
+      const dir = `/content/Movies/${title}`;
+      sources.set(tag, { tag, title, media, dir, path: `${dir}/${tag}.mkv`, job: `job-${tag}`, submits: 0 });
+      return `${base}/${tag}.nzb`;
+    },
+    submitsFor(tag) { return sources.get(tag)?.submits ?? 0; },
+    /** KaijuFlow settings that point the NzbDAV Backend at this fake. */
+    configure(configData) {
+      Object.assign(configData, {
+        streamingMode: 'nzbdav', indexManager: 'manual',
+        nzbdavUrl: base, nzbdavWebdavUrl: base, nzbdavApiKey: 'synthetic-key',
+        nzbdavWebdavUser: '', nzbdavWebdavPassword: '', nzbdavMoviesCategory: 'Movies',
+        nzbdavStreamingMethod: 'proxy',
+        ultimateFallback: { ...configData.ultimateFallback, enabled: false },
+      });
+    },
+  };
+}

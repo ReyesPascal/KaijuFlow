@@ -11,12 +11,10 @@ import { pipeline } from 'stream';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
-import { submitNzb, waitForJobCompletion } from './nzbdavApi.js';
-import { waitForVideoFile, checkNzbLibrary, videoPathExists } from './videoDiscovery.js';
-import { searchLibrary } from './librarySearch.js';
+import { getActiveBackend, type BackendSource } from '../backends/index.js';
 import { getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
-import { encodeWebdavPath, nzbdavError, getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig } from './utils.js';
+import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig } from './utils.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -190,106 +188,43 @@ export async function prepareStream(
   indexerName?: string,
   searchExitIp?: string,
 ): Promise<StreamData> {
-  const totalBudgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
-  const unlimited = totalBudgetMs === 0;
+  const backend = getActiveBackend(config);
+  const source: BackendSource = { nzbUrl, title, contentType, episodePattern, episodesInSeason, isSeasonPack, indexerName, searchExitIp };
   const budgetStart = Date.now();
-  const remaining = () => unlimited ? '∞' : Math.max(0, Math.round((totalBudgetMs - (Date.now() - budgetStart)) / 1000));
 
-  console.log(`\n${logPrefix}\u{1F3AC} Preparing stream: ${title}${episodePattern ? ` (selecting ${episodePattern})` : ''} [${contentType || 'unknown'}] \u23F1\uFE0F ${unlimited ? 'no limit' : `${Math.round(totalBudgetMs / 1000)}s budget`}`);
+  console.log(`\n${logPrefix}\u{1F3AC} Preparing stream (${backend.label}): ${title}${episodePattern ? ` (selecting ${episodePattern})` : ''} [${contentType || 'unknown'}] \u23F1\uFE0F no limit`);
 
-  // Step 0: Check NZB library first — authoritative freshness signal for
+  // Step 0: Already prepared? Authoritative freshness signal for
   // already-downloaded content. Runs unconditionally: it's the primary defense
-  // against re-submitting an NZB whose video already exists on WebDAV, and
-  // against serving stale in-memory cache paths (readyCache) after nzbdav
-  // evicts content.
-  const libraryResult = await checkNzbLibrary(title, config, episodePattern, contentType, episodesInSeason, logPrefix);
-  if (libraryResult) {
-    if (isVideoPathBroken(libraryResult.videoPath)) {
-      console.log(`${logPrefix}\u{1F6AB} Library hit skipped (video path broken): ${libraryResult.videoPath}`);
+  // against re-submitting a Source whose video already exists on the Backend,
+  // and against serving stale in-memory cache paths (readyCache) after the
+  // Backend evicts content.
+  const existing = await backend.findPrepared(source, { logPrefix });
+  if (existing) {
+    if (isVideoPathBroken(existing.videoPath)) {
+      console.log(`${logPrefix}\u{1F6AB} Library hit skipped (video path broken): ${existing.videoPath}`);
     } else {
       console.log(`${logPrefix}\u2705 Stream ready (from library): ${title}\n`);
-      return libraryResult;
+      return existing;
     }
   }
 
-  // Step 1: Submit NZB. Grab tracking lives inside submitNzb after content
-  // validation, so cache hits (precached by health checks) do not double-count.
-  console.log(`${logPrefix}  \u23F1\uFE0F Submitting NZB... (${remaining()}s remaining)`);
-  const nzoId = await submitNzb(nzbUrl, title, config, contentType, unlimited ? undefined : totalBudgetMs - (Date.now() - budgetStart), logPrefix, indexerName, searchExitIp);
-  console.log(`${logPrefix}  \u23F1\uFE0F NZB submitted → ${remaining()}s remaining`);
+  // Steps 1-3: hand the Source to the Backend and wait for its video.
+  const video = await backend.prepare(source, { logPrefix, timeoutMs: 0 });
 
-  // Step 2: Wait for job to complete (or fail) — remaining budget
-  await waitForJobCompletion(nzoId, config, unlimited ? 0 : totalBudgetMs - (Date.now() - budgetStart), undefined, contentType, logPrefix);
-  console.log(`${logPrefix}  \u23F1\uFE0F Job done → ${remaining()}s remaining`);
-
-  // Step 3: Find the video file — remaining budget
-  const video = await waitForVideoFile(nzoId, title, config, episodePattern, contentType, episodesInSeason, logPrefix);
-
-  // Step 4: Verify the video is actually servable via WebDAV (GET first byte).
-  // HEAD isn't reliable — NZBDav returns 200 for HEAD even when content is gone.
-  // Retry with exponential backoff using remaining budget — large files may take
-  // time to become servable after NZBDav reports the job complete.
-  const webdavBase = (config.webdavUrl || config.url).replace(/\/+$/, '');
-  const probeUrl = `${webdavBase}${encodeWebdavPath(video.path)}`;
-  const probeHeaders: Record<string, string> = { 'Range': 'bytes=0-0' };
-  if (config.webdavUser && config.webdavPassword) {
-    probeHeaders['Authorization'] = 'Basic ' + Buffer.from(`${config.webdavUser}:${config.webdavPassword}`).toString('base64');
-  }
-  const PROBE_TIMEOUT_MS = 10_000;
-  const PROBE_RETRY_BASE_MS = 2_000;
-  const PROBE_MAX_RETRIES = 2;
-  let probeAttempt = 0;
-  let probeSuccess = false;
-  while (probeAttempt < PROBE_MAX_RETRIES) {
-    const elapsed = Date.now() - budgetStart;
-    if (!unlimited && elapsed >= totalBudgetMs) break; // out of budget
-    try {
-      const timeoutMs = unlimited ? PROBE_TIMEOUT_MS : Math.min(PROBE_TIMEOUT_MS, totalBudgetMs - elapsed);
-      const probeResp = await fetch(probeUrl, { headers: probeHeaders, signal: AbortSignal.timeout(timeoutMs) });
-      if (probeResp.status === 404 || probeResp.status === 410) {
-        await probeResp.body?.cancel().catch(() => {});
-        markVideoPathBroken(video.path);
-        throw nzbdavError(`Video file not servable (${probeResp.status}): ${video.path}`, false, true);
-      }
-      if (probeResp.status === 206 || probeResp.status === 200) {
-        probeSuccess = true;
-        await probeResp.body?.cancel().catch(() => {});
-        break;
-      }
-      await probeResp.body?.cancel().catch(() => {});
-      // Unexpected status — count as an attempt and delay before retry
-      probeAttempt++;
-      console.warn(`${logPrefix}  ⚠️ Probe returned ${probeResp.status} — retrying (${probeAttempt}/${PROBE_MAX_RETRIES})...`);
-      if (probeAttempt < PROBE_MAX_RETRIES) {
-        const delay = Math.min(PROBE_RETRY_BASE_MS * Math.pow(2, probeAttempt - 1), 10_000);
-        await new Promise(r => setTimeout(r, delay));
-      }
-    } catch (err) {
-      if ((err as any).isNzbdavFailure) throw err;
-      probeAttempt++;
-      if (probeAttempt >= PROBE_MAX_RETRIES || (!unlimited && (Date.now() - budgetStart) >= totalBudgetMs)) {
-        console.warn(`${logPrefix}  ⚠️ Probe failed after ${probeAttempt} attempts: ${(err as Error).message}`);
-        break;
-      }
-      const delay = Math.min(PROBE_RETRY_BASE_MS * Math.pow(2, probeAttempt - 1), 10_000);
-      console.warn(`${logPrefix}  ⚠️ Probe attempt ${probeAttempt}/${PROBE_MAX_RETRIES} failed (${(err as Error).message}) — retrying in ${Math.round(delay / 1000)}s`);
-      await new Promise(r => setTimeout(r, delay));
-    }
-  }
-  if (!probeSuccess) {
-    markVideoPathBroken(video.path);
-    throw nzbdavError(`Video file not servable (probe failed after ${probeAttempt} attempts): ${video.path}`, false, true);
+  // Step 4: Verify the video is actually servable (first byte).
+  try {
+    await backend.probe(video, { logPrefix });
+  } catch (err) {
+    markVideoPathBroken(video.videoPath);
+    throw err;
   }
 
   const totalElapsed = Math.round((Date.now() - budgetStart) / 1000);
   console.log(`${logPrefix}\u2705 Stream ready: ${title} (${totalElapsed}s total)\n`);
 
-  clearVideoPathBroken(video.path);
-  return {
-    nzoId,
-    videoPath: video.path,
-    videoSize: video.size,
-  };
+  clearVideoPathBroken(video.videoPath);
+  return video;
 }
 
 // ============================================================================
@@ -542,6 +477,7 @@ export async function handleStream(
   config: NZBDavConfig,
   proxyFn?: (req: Request, res: ExpressResponse, videoPath: string, usePipe: boolean) => Promise<void>
 ): Promise<void> {
+  const backend = getActiveBackend(config);
   // Express returns string[] for repeated query keys (`?t=a&t=b`). Take the
   // most recent so the decoder treats it as a single string. Catches
   // accidental client double-set; not expected on the happy path.
@@ -570,10 +506,7 @@ export async function handleStream(
     let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
     if (!lobbyFallbackOn) mode = 'proxy';
     if (mode === 'direct') {
-      const webdavBase = (config.webdavUrl || config.url || '').replace(/\/+$/, '');
-      const directUrl = new URL(`${webdavBase}${encodeWebdavPath(decoded)}`);
-      if (config.webdavUser) { directUrl.username = config.webdavUser; directUrl.password = config.webdavPassword || ''; }
-      res.redirect(302, directUrl.href);
+      res.redirect(302, backend.directUrl(decoded));
     } else if (proxyFn && !lobbyFallbackOn) {
       await proxyFn(req, res, decoded, mode !== 'proxy');
     } else {
@@ -765,7 +698,7 @@ export async function handleStream(
       if (cached
         && Date.now() - cached.timestamp < DEDUP_CACHE_TTL_MS
         && !isVideoPathBroken(cached.streamData.videoPath)
-        && await videoPathExists(cached.streamData.videoPath, config)) {
+        && await backend.stillPrepared(cached.streamData.videoPath)) {
         // Serve dupes / seeks / probes using the cached videoPath — no re-prep,
         // no library check, no submission. If the file is gone we fall through
         // to a fresh candidate loop via the live videoPathExists gate above.
@@ -778,13 +711,8 @@ export async function handleStream(
         const shouldLogCachedDelivery = !lastCached || lastCached.mode !== cached.streamingMethod;
         lastDeliveryLog.set(cached.streamData.videoPath, { mode: cached.streamingMethod, at: Date.now() });
         if (cached.streamingMethod === 'direct') {
-          const webdavBase = (config.webdavUrl || config.url || '').replace(/\/+$/, '');
-          const safePath = encodeWebdavPath(cached.streamData.videoPath);
-          const directUrl = new URL(`${webdavBase}${safePath}`);
-          if (config.webdavUser) {
-            directUrl.username = config.webdavUser;
-            directUrl.password = config.webdavPassword || '';
-          }
+          const directUrl = new URL(backend.directUrl(cached.streamData.videoPath));
+          const safePath = directUrl.pathname;
           if (shouldLogCachedDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${sizeSuffix}`);
           res.redirect(302, directUrl.href);
         } else if (!fallbackOn && proxyFn) {
@@ -860,7 +788,7 @@ export async function handleStream(
           // when /v has just observed a 4xx/5xx (PROPFIND lies for evicted content
           // whose directory entry persists). Falls through to UF backups / fresh
           // resolution if either signal says the file is gone.
-          if (isVideoPathBroken(streamData.videoPath) || !await videoPathExists(streamData.videoPath, config)) {
+          if (isVideoPathBroken(streamData.videoPath) || !await backend.stillPrepared(streamData.videoPath)) {
             throw new Error('Primary path no longer available');
           }
 
@@ -898,10 +826,7 @@ export async function handleStream(
               res.redirect(302, proxyUrl.href);
             }
           } else {
-            const webdavBase = (config.webdavUrl || config.url || '').replace(/\/+$/, '');
-            const directUrl = new URL(`${webdavBase}${encodeWebdavPath(streamData.videoPath)}`);
-            if (config.webdavUser) { directUrl.username = config.webdavUser; directUrl.password = config.webdavPassword || ''; }
-            res.redirect(302, directUrl.href);
+            res.redirect(302, backend.directUrl(streamData.videoPath));
           }
           return;
         } catch (err) {
@@ -938,7 +863,7 @@ export async function handleStream(
     let usable: UfBackupStream | undefined;
     for (const b of ufBackups?.backupStreams ?? []) {
       if (isVideoPathBroken(b.videoPath)) continue;
-      if (await videoPathExists(b.videoPath, config)) { usable = b; break; }
+      if (await backend.stillPrepared(b.videoPath)) { usable = b; break; }
     }
     if (usable) {
       const idxTag = usable.candidateIndex !== undefined ? `#${usable.candidateIndex} ` : '';
@@ -947,10 +872,7 @@ export async function handleStream(
       let mode: 'pipe' | 'proxy' | 'direct' = globalConfig.nzbdavStreamingMethod ?? 'proxy';
       if (!lobbyFallbackOn) mode = 'proxy';
       if (mode === 'direct') {
-        const webdavBase = (config.webdavUrl || config.url || '').replace(/\/+$/, '');
-        const directUrl = new URL(`${webdavBase}${encodeWebdavPath(usable.videoPath)}`);
-        if (config.webdavUser) { directUrl.username = config.webdavUser; directUrl.password = config.webdavPassword || ''; }
-        res.redirect(302, directUrl.href);
+        res.redirect(302, backend.directUrl(usable.videoPath));
       } else if (proxyFn && !lobbyFallbackOn) {
         await proxyFn(req, res, usable.videoPath, mode !== 'proxy');
       } else {
@@ -1026,14 +948,14 @@ export async function handleStream(
           const season = seasonStr && !Number.isNaN(+seasonStr) ? +seasonStr : undefined;
           const episode = episodeStr && !Number.isNaN(+episodeStr) ? +episodeStr : undefined;
           try {
-            const hits = await searchLibrary({
+            const hits = await (backend.library?.search({
               type: skType,
               imdbId,
               title,
               season,
               episode,
               isAnime: false,
-            }, buildNzbdavConfig());
+            }) ?? []);
             const hitPath = hits[0]?.libraryVideoPath;
             if (hitPath) {
               console.log(`📚 UF tile: library check hit (sk=${sessionKey}) — serving ${hitPath}`);
@@ -1260,14 +1182,8 @@ export async function handleStream(
         }
       } else {
         // Direct: redirect to WebDAV URL with embedded credentials (desktop players)
-        const webdavBase = (config.webdavUrl || config.url || '').replace(/\/+$/, '');
-        const safePath = encodeWebdavPath(streamData.videoPath);
-
-        const directUrl = new URL(`${webdavBase}${safePath}`);
-        if (config.webdavUser) {
-          directUrl.username = config.webdavUser;
-          directUrl.password = config.webdavPassword || '';
-        }
+        const directUrl = new URL(backend.directUrl(streamData.videoPath));
+        const safePath = directUrl.pathname;
         if (shouldLogDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${deliverySizeSuffix}`);
         res.redirect(302, directUrl.href);
       }
