@@ -2,6 +2,9 @@
 
     python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list>
            [--runs-root DIR] [--one-page] [--titles-file titles.json] [--user-id ID] [--tries 1]
+           [--rebuild-image] [--provider-limit 100]
+    python3 -I tools/brain/brainrun.py preflight [--for run|record] --store <standin-store> --list <title-list>
+           [--rebuild-image] [--provider-limit 100] [--key-file PATH]   (the setup check alone; a run starts with it)
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke   (stand-in reachability check, see README)
 
 It starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted), resets the test copies with
@@ -17,7 +20,7 @@ import hashlib
 import json
 import os
 import shutil
-import sqlite3
+import socket
 import subprocess
 import sys
 import time
@@ -26,6 +29,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
+import testbed  # noqa: E402
 from common import DEFAULT_TEST_DIR  # noqa: E402
 
 DEFAULT_RUNS_ROOT = '/home/ryan/kaijuflow-notes/brain-runs'
@@ -66,42 +70,9 @@ def _read_text(path):
         return None
 
 
-def nzbdav_settings(db_path):
-    """NzbDAV's stored settings (ConfigItems), secrets replaced by ***."""
-    if not os.path.exists(db_path):
-        return {}
-    db = sqlite3.connect('file:%s?mode=ro' % db_path, uri=True)
-    try:
-        rows = db.execute('select ConfigName, ConfigValue from ConfigItems').fetchall()
-    except sqlite3.Error:
-        return {}
-    finally:
-        db.close()
-    out = {}
-    for name, value in rows:
-        try:
-            parsed = json.loads(value) if value and value.strip()[:1] in '{[' else None
-        except ValueError:
-            parsed = None
-        if parsed is not None:
-            out.update(br.flatten(parsed, name))
-        else:
-            out[name] = br._scrub_value(name, value)
-    return out
-
-
 def snapshot_settings(test_dir):
-    """Settings of every side with secrets removed: {side: {dotted key: value}}."""
-    td = test_dir
-    snap = {}
-    for side, rel in (('kaijuflow', 'config/config.json'), ('uu', 'uu/config/config.json')):
-        data = _read_json(os.path.join(td, rel))
-        snap[side] = br.flatten(data) if data is not None else {'(file missing)': rel}
-    snap['nzbdav'] = nzbdav_settings(os.path.join(td, 'nzbdav/config/db.sqlite'))
-    for side in ('altmount-addon', 'altmount-kf'):
-        text = _read_text(os.path.join(td, side, 'config/config.yaml'))
-        snap[side] = br.flatten_yaml(text) if text is not None else {'(file missing)': side}
-    return snap
+    """Settings of every side with secrets removed: {side: {dotted key: value}}; the settings command's reader (testbed.py)."""
+    return testbed.read_settings(test_dir)
 
 
 def one_page_config(cfg):
@@ -120,7 +91,6 @@ def one_page_config(cfg):
 class RealIO:
     def __init__(self, cfg):
         self.cfg = cfg
-        import testbed
         self.testbed = testbed
         self.backup = os.path.join(cfg['test_dir'], 'config', 'config.json.pre-brainrun')
 
@@ -138,6 +108,42 @@ class RealIO:
 
     def snapshot(self):
         return snapshot_settings(self.cfg['test_dir'])
+
+    def setup_report(self, limit):
+        return testbed.settings_report(self.cfg['test_dir'], limit)
+
+    def key_state(self, path):
+        return read_key_file(path)
+
+    def image_label(self):
+        r = subprocess.run(['docker', 'image', 'inspect', IMAGE, '--format', '{{index .Config.Labels "%s"}}' % IMAGE_LABEL],
+                           capture_output=True, text=True, timeout=60)
+        label = r.stdout.strip()
+        return label if r.returncode == 0 and label and label != '<no value>' else None
+
+    def rebuild_image(self, commit):
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        subprocess.run(['docker', 'build', '--label', f'{IMAGE_LABEL}={commit}', '-t', IMAGE, repo], check=True, timeout=1800)
+
+    def port_free(self, port):
+        with socket.socket() as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(('0.0.0.0', port))
+            except OSError:
+                return False
+        return True
+
+    def recording(self):
+        """{indexer slug: number of stored answers} for the title list; {} when there is no such folder."""
+        d = os.path.join(self.cfg['store'], self.cfg['listname'])
+        if not os.path.isdir(d):
+            return {}
+        return {slug: sum(1 for f in os.listdir(os.path.join(d, slug)) if f.endswith('.body'))
+                for slug in os.listdir(d) if os.path.isdir(os.path.join(d, slug))}
+
+    def preflight(self, mode):
+        return preflight(mode, self.cfg, self)
 
     def marker(self):
         return _read_json(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
@@ -236,6 +242,131 @@ def side_base(cfg, side):
             'altmount-addon': f"http://localhost:8086/stremio/{cfg['download_key']}"}[side]
 
 
+# --------------------------------------------------------------------------- the preflight (spec #72, ticket #74)
+
+IMAGE = 'kaijuflow:test'
+IMAGE_LABEL = 'kaijuflow.commit'
+
+
+class PreflightFailed(Exception):
+    def __init__(self, problems):
+        super().__init__(' '.join(problems))
+        self.problems = problems
+
+
+def read_key_file(path):
+    """(state, indexer slugs) of the key file. Only the indexer names are read, so new per-indexer settings do no harm.
+
+    state: 'missing', 'open' (readable by others), 'unreadable' or 'ok'.
+    """
+    try:
+        mode = os.stat(path).st_mode
+    except OSError:
+        return 'missing', []
+    if mode & 0o077:
+        return 'open', []
+    data = _read_json(path)
+    names = data.get('indexers') if isinstance(data, dict) else None
+    if not isinstance(names, dict):
+        return 'unreadable', []
+    return 'ok', sorted(str(k) for k in names)
+
+
+def _list(items):
+    return ', '.join(items) if items else 'none'
+
+
+def preflight(mode, cfg, io):
+    """Checks the setup before a record ('record') or a run ('run'). Returns plain sentences, one per problem; [] means go.
+
+    Record only: the key file. Run only: the recording exists. Everything else is checked in both.
+    """
+    if mode not in ('record', 'run'):
+        raise ValueError("preflight mode must be 'record' or 'run'")
+    problems = []
+    port = cfg.get('standin_port', 1340)
+
+    # 1. the test image was built from the commit being tested
+    commit, dirty = io.git_info()
+    label = io.image_label()
+    if dirty:
+        problems.append('The repository has uncommitted changes, so the test image cannot name the code that runs: commit them first.')
+    else:
+        if cfg.get('rebuild_image') and label != commit:
+            io.rebuild_image(commit)
+            label = io.image_label()
+        if not label:
+            problems.append(f'The test image {IMAGE} is missing or has no commit label: build it again with --rebuild-image.')
+        elif label != commit:
+            problems.append(f'The test image was built from commit {label[:7]} but the repository is at {commit[:7]}: '
+                            'build it again with --rebuild-image.')
+
+    rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
+    titles = testbed.SIDE_SHORT
+    indexer_sides = [s for s in testbed.SETTINGS_SIDES if s != 'nzbdav']
+    unreadable = [s for s in indexer_sides if rep['indexers'].get(s) is None]
+    for s in unreadable:
+        problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder.")
+    readable = [s for s in indexer_sides if s not in unreadable]
+
+    # 2. (record only) the key file names exactly the indexers every test copy has switched on
+    if mode == 'record':
+        path = cfg.get('key_file') or os.path.join(cfg['test_dir'], 'indexers.json')
+        state, key = io.key_state(path)
+        if state == 'missing':
+            problems.append(f'The key file {path} is missing: create it with one entry per indexer before recording.')
+        elif state == 'open':
+            problems.append(f'The key file {path} can be read by others: make it readable only by you (chmod 600).')
+        elif state == 'unreadable':
+            problems.append(f'The key file {path} has no "indexers" list of names: fix the file.')
+        else:
+            differ = [f'{titles[s]} switches on {_list(rep["enabled"][s])}' for s in readable if rep['enabled'][s] != key]
+            if differ:
+                problems.append(f'The key file names {_list(key)}, but ' + '; '.join(differ) + ': make them the same.')
+
+    # 3. every indexer address in every test copy is the stand-in's
+    for s in readable:
+        for r in rep['indexers'][s]:
+            if testbed.standin_slug(r['url'], port) is None:
+                problems.append(f'{r["name"]} in {titles[s]} points at {r["url"]}, not the stand-in '
+                                f'(http://{testbed.STANDIN_HOST}:{port}/<indexer>): change the address so no test can reach a real indexer.')
+
+    # 4. the connection caps fit the provider limit
+    for s in testbed.SETTINGS_SIDES:
+        if rep['caps'].get(s) is None:
+            problems.append(f"The connection cap of {titles[s]} cannot be read from its config: check the file.")
+    if rep['total'] > rep['limit']:
+        per = ', '.join(f'{titles[s]} {rep["caps"][s]}' for s in testbed.SETTINGS_SIDES if rep['caps'].get(s) is not None)
+        problems.append(f'The test copies may open {rep["total"]} connections together ({per}), over the provider limit of {rep["limit"]}: '
+                        'lower the caps.')
+
+    # 5. the stand-in's port is free
+    if not io.port_free(port):
+        problems.append(f"The stand-in's port {port} is already in use: stop whatever listens there (an earlier stand-in?) and try again.")
+
+    # 6. (run only) the recording exists and holds an answer for every enabled indexer
+    if mode == 'run':
+        have = io.recording()
+        need = sorted({slug for s in readable for slug in rep['enabled'][s]})
+        if not have:
+            problems.append(f"There is no recording for the title list '{cfg.get('listname')}' in {cfg.get('store')}: run the record command first.")
+        else:
+            gaps = [slug for slug in need if not have.get(slug)]
+            if gaps:
+                problems.append(f"The recording for '{cfg.get('listname')}' holds no answer for {_list(gaps)}: top it up with the record command.")
+    return problems
+
+
+def preflight_command(mode, cfg, io):
+    """Prints the preflight result in plain sentences; exit code 0 when the setup is right, 1 otherwise."""
+    problems = preflight(mode, cfg, io)
+    for p in problems:
+        print(p)
+    if not problems:
+        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps and port all check out.')
+    return 1 if problems else 0
+
+
 # --------------------------------------------------------------------------- the run
 
 def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
@@ -314,6 +445,9 @@ def _write(path, text):
 
 
 def run_all(cfg, io):
+    problems = io.preflight('run')
+    if problems:
+        raise PreflightFailed(problems)
     started = io.now()
     root = cfg['runs_root']
     run_dir = br.create_run_dir(root, cfg['name'], started)
@@ -326,7 +460,8 @@ def run_all(cfg, io):
     logbuf, handle, failure = {}, None, None
     try:
         run['settings'] = io.snapshot()
-        run['commit'], run['dirty'] = io.git_info()
+        run['dirty'] = io.git_info()[1]
+        run['commit'] = io.image_label()  # the commit the test image was built from, not the repository's
         _write(os.path.join(run_dir, 'settings.json'), json.dumps(run['settings'], indent=1, sort_keys=True))
         try:
             _check_cap(io)
@@ -405,11 +540,15 @@ def smoke(cfg, port=1340):
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('cmd', choices=['run', 'smoke'])
+    ap.add_argument('cmd', choices=['run', 'smoke', 'preflight'])
+    ap.add_argument('--for', dest='mode', choices=['run', 'record'], default='run', help='preflight only: check the setup for a run or for a record pass')
     ap.add_argument('--name', default='run')
     ap.add_argument('--runs-root', default=DEFAULT_RUNS_ROOT)
-    ap.add_argument('--store', required=True)
-    ap.add_argument('--list', required=True, dest='listname')
+    ap.add_argument('--store')
+    ap.add_argument('--list', dest='listname')
+    ap.add_argument('--rebuild-image', action='store_true', help='build kaijuflow:test again from the current commit when the image is not from it')
+    ap.add_argument('--provider-limit', type=int, default=testbed.PROVIDER_LIMIT)
+    ap.add_argument('--key-file')
     ap.add_argument('--test-dir', default=os.environ.get('TEST_DIR', DEFAULT_TEST_DIR))
     ap.add_argument('--user-id')
     ap.add_argument('--one-page', action='store_true', help='add the fourth side: KaijuFlow, one page per indexer')
@@ -417,20 +556,31 @@ def main(argv):
     ap.add_argument('--tries', type=int, default=1)
     ap.add_argument('--settle', type=float, default=3)
     a = ap.parse_args(argv)
+    if a.cmd != 'preflight' or a.mode == 'run':
+        if not a.store or not a.listname:
+            ap.error('--store and --list are needed')
     td = a.test_dir
     users = (_read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
     key = (_read_text(os.path.join(td, 'templates/altmount.key')) or '').strip()
     pool = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
-    listdir = os.path.join(a.store, a.listname)
+    listdir = os.path.join(a.store or '', a.listname or '')
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
                one_page=a.one_page, titles=pool, tries=a.tries, settle=a.settle,
-               indexers=sorted(os.listdir(listdir)) if os.path.isdir(listdir) else [])
+               indexers=sorted(os.listdir(listdir)) if a.store and os.path.isdir(listdir) else [],
+               rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT)
     started = time.time()
+    if a.cmd == 'preflight':
+        return preflight_command(a.mode, cfg, RealIO(cfg))
     if a.cmd == 'smoke':
         smoke(cfg)
     else:
-        run = run_all(cfg, RealIO(cfg))
+        try:
+            run = run_all(cfg, RealIO(cfg))
+        except PreflightFailed as e:
+            for p in e.problems:
+                print(p)
+            return 1
         print(f"{run['status']}: {run['dir']}")
     common.finish(started)
     return 0

@@ -3,6 +3,7 @@
     python3 -I tools/brain/testbed.py up|stop|status
     python3 -I tools/brain/testbed.py reset [side ...]    cold reset, then the emptiness check
     python3 -I tools/brain/testbed.py check [side ...]    emptiness check only
+    python3 -I tools/brain/testbed.py settings [--limit 100]   every test copy's settings and the connection budget, read from its config files
 
 Sides: nzbdav, altmount-addon, altmount-kf (Backends), uu, kaijuflow (their health/dead caches).
 Config folders (with secrets) live in TEST_DIR (default /home/ryan/kaijuflow-test), never in the repo.
@@ -18,9 +19,11 @@ import sqlite3
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import brainreport as br  # noqa: E402
 from common import DEFAULT_TEST_DIR  # noqa: E402
 
 PROJECT = "kaijuflow-test"
@@ -241,8 +244,264 @@ def check_empty(test_dir, sides=None, http=default_http):
     return problems
 
 
+# --------------------------------------------------------------------------- settings reader (spec #72, ticket #74)
+
+STANDIN_PORT = 1340
+PROVIDER_LIMIT = 100  # NewsHosting plan, owner 2026-11-09
+STANDIN_HOST = "host.docker.internal"
+SETTINGS_SIDES = ["kaijuflow", "uu", "nzbdav", "altmount-addon", "altmount-kf"]
+SIDE_TITLES = {"kaijuflow": "KaijuFlow (1338)", "uu": "Usenet Ultimate (1339)", "nzbdav": "NzbDAV (3001)",
+               "altmount-addon": "AltMount addon (8086)", "altmount-kf": "AltMount KaijuFlow (8087)"}
+SIDE_SHORT = {"kaijuflow": "KaijuFlow", "uu": "Usenet Ultimate", "nzbdav": "NzbDAV",
+              "altmount-addon": "AltMount addon", "altmount-kf": "AltMount KaijuFlow"}
+JSON_CONFIGS = {"kaijuflow": "config/config.json", "uu": "uu/config/config.json"}
+
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _read_text(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def nzbdav_settings(db_path):
+    """NzbDAV's stored settings (ConfigItems), secrets replaced by ***."""
+    if not os.path.exists(db_path):
+        return {}
+    db = sqlite3.connect("file:%s?mode=ro" % db_path, uri=True)
+    try:
+        rows = db.execute("select ConfigName, ConfigValue from ConfigItems").fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        db.close()
+    out = {}
+    for name, value in rows:
+        try:
+            parsed = json.loads(value) if value and value.strip()[:1] in "{[" else None
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            out.update(br.flatten(parsed, name))
+        else:
+            out[name] = br._scrub_value(name, value)
+    return out
+
+
+def read_settings(test_dir):
+    """Settings of every test copy with secrets removed: {side: {dotted key: value}}."""
+    snap = {}
+    for side, rel in JSON_CONFIGS.items():
+        data = _read_json(os.path.join(test_dir, rel))
+        snap[side] = br.flatten(data) if data is not None else {"(file missing)": rel}
+    snap["nzbdav"] = nzbdav_settings(os.path.join(test_dir, "nzbdav/config/db.sqlite"))
+    for side in ("altmount-addon", "altmount-kf"):
+        text = _read_text(os.path.join(test_dir, side, "config/config.yaml"))
+        snap[side] = br.flatten_yaml(text) if text is not None else {"(file missing)": side}
+    return snap
+
+
+def standin_slug(url, port=STANDIN_PORT):
+    """The indexer slug of a stand-in address (http://host.docker.internal:<port>/<slug>[/api]), else None."""
+    try:
+        u = urllib.parse.urlparse(url)
+        if u.scheme != "http" or u.hostname != STANDIN_HOST or u.port != port:
+            return None
+    except ValueError:
+        return None
+    parts = [p for p in u.path.split("/") if p]
+    if len(parts) == 1 or (len(parts) == 2 and parts[1] == "api"):
+        return parts[0]
+    return None
+
+
+def _bare(url):
+    """An address without query or login, so no key can ride along."""
+    try:
+        u = urllib.parse.urlparse(str(url))
+        return urllib.parse.urlunparse((u.scheme, u.netloc.rsplit("@", 1)[-1], u.path, "", "", ""))
+    except ValueError:
+        return "(unreadable address)"
+
+
+def read_indexers(test_dir):
+    """{side: [{"name", "url", "enabled"}] or None when the config cannot be read}; no keys, no queries.
+
+    Also lists any other route to an indexer that is switched on (Easynews, Prowlarr), under its own name.
+    """
+    out = {}
+    for side, rel in JSON_CONFIGS.items():
+        data = _read_json(os.path.join(test_dir, rel))
+        if not isinstance(data, dict):
+            out[side] = None
+            continue
+        rows = [{"name": str(i.get("name", "?")), "url": _bare(i.get("url", "")), "enabled": bool(i.get("enabled"))}
+                for i in data.get("indexers", []) if isinstance(i, dict)]
+        if data.get("easynewsEnabled"):
+            rows.append({"name": "Easynews", "url": "(Easynews)", "enabled": True})
+        out[side] = rows
+    for side in ("altmount-addon", "altmount-kf"):
+        text = _read_text(os.path.join(test_dir, side, "config/config.yaml"))
+        if text is None:
+            out[side] = None
+            continue
+        flat = br.flatten_yaml(text)
+        nums = sorted({int(m.group(1)) for k in flat for m in [re.match(r"stremio\.indexers\.newsnab\[(\d+)\]\.", k)] if m})
+        rows = []
+        for n in nums:
+            p = "stremio.indexers.newsnab[%d]." % n
+            rows.append({"name": str(flat.get(p + "name", "?")), "url": _bare(flat.get(p + "url", "")),
+                         "enabled": str(flat.get(p + "enabled", "")).lower() == "true"})
+        for k in ("stremio.indexers.prowlarr.enabled", "stremio.prowlarr.enabled"):
+            if str(flat.get(k, "")).lower() == "true":
+                rows.append({"name": "Prowlarr", "url": "(Prowlarr)", "enabled": True})
+        out[side] = rows
+    out["nzbdav"] = []
+    return out
+
+
+def enabled_slugs(rows, port=STANDIN_PORT):
+    """Sorted slugs of the switched-on indexers; an address that is not the stand-in's shows as ?name."""
+    return sorted({standin_slug(r["url"], port) or "?" + r["name"] for r in rows if r["enabled"]})
+
+
+def _int(v):
+    try:
+        return int(str(v))
+    except ValueError:
+        return None
+
+
+def connection_caps(settings):
+    """NewsHosting connections each test copy may open: {side: int or None when it cannot be read}.
+
+    KaijuFlow and Usenet Ultimate: their health-check cap. NzbDAV: its main providers (types 1 and 2; a backup login,
+    type 3, has its own limit). AltMount: its enabled providers that are not backup providers.
+    """
+    caps = {}
+    for side in ("kaijuflow", "uu"):
+        caps[side] = _int(settings.get(side, {}).get("healthChecks.maxConnections"))
+    nz = settings.get("nzbdav", {})
+    vals = [_int(nz.get("usenet.providers.Providers[%d].MaxConnections" % i)) for i in range(20)
+            if _int(nz.get("usenet.providers.Providers[%d].Type" % i)) in (1, 2)]
+    caps["nzbdav"] = sum(vals) if vals and None not in vals else None
+    for side in ("altmount-addon", "altmount-kf"):
+        flat = settings.get(side, {})
+        vals = [_int(flat.get("providers[%d].max_connections" % i)) for i in range(20)
+                if str(flat.get("providers[%d].enabled" % i)).lower() == "true"
+                and str(flat.get("providers[%d].is_backup_provider" % i)).lower() != "true"]
+        caps[side] = sum(vals) if vals and None not in vals else None
+    return caps
+
+
+def settings_report(test_dir, limit=PROVIDER_LIMIT):
+    """Everything the settings command prints and the preflight checks, from the test copies' own files."""
+    settings = read_settings(test_dir)
+    indexers = read_indexers(test_dir)
+    caps = connection_caps(settings)
+    return {"settings": settings, "indexers": indexers,
+            "enabled": {s: enabled_slugs(r) if r is not None else None for s, r in indexers.items()},
+            "caps": caps, "total": sum(c for c in caps.values() if c is not None), "limit": limit}
+
+
+def _cell(flat, *keys):
+    vals = [str(flat[k]) for k in keys if k in flat]
+    return " / ".join(vals) if vals else "-"
+
+
+def _per_indexer(flat, key, names):
+    """Name and value of each switched-on indexer of a KaijuFlow or Usenet Ultimate config."""
+    vals = []
+    for k in sorted(flat):
+        m = re.match(r"indexers\[(.+)\]\.%s$" % re.escape(key), k)
+        if m and m.group(1) in names:
+            vals.append("%s %s" % (m.group(1), flat[k]))
+    return ", ".join(vals) if vals else "-"
+
+
+def _am_timeouts(flat):
+    vals = sorted({str(v) for k, v in flat.items() if re.match(r"stremio\.indexers\.newsnab\[\d+\]\.timeout_seconds$", k)})
+    return " / ".join(v + " s" for v in vals) if vals else "-"
+
+
+def _rows(rep):
+    st = rep["settings"]
+    both = ("kaijuflow", "uu")
+    am = ("altmount-addon", "altmount-kf")
+
+    def g(s):
+        return st.get(s, {})
+
+    def on(s):
+        return {r["name"] for r in (rep["indexers"].get(s) or []) if r["enabled"]}
+
+    def per(sides, fn):
+        return {s: fn(g(s)) for s in sides}
+
+    def conns(s):
+        if rep["caps"].get(s) is None:
+            return "-"
+        extra = ""
+        if s == "nzbdav":
+            backup = [g(s).get("usenet.providers.Providers[%d].MaxConnections" % i) for i in range(20)
+                      if _int(g(s).get("usenet.providers.Providers[%d].Type" % i)) == 3]
+            extra = "".join(" (+ backup login max %s, own limit)" % b for b in backup)
+        return "max %s%s" % (rep["caps"][s], extra)
+
+    yield "Usenet connections (NewsHosting)", {s: conns(s) for s in SETTINGS_SIDES}
+    yield "Health check: samples per NZB / NZBs inspected", per(both, lambda f: _cell(f, "healthChecks.sampleCount", "healthChecks.nzbsToInspect"))
+    yield "Health check: method / batch / extra runs / min healthy", per(both, lambda f: _cell(
+        f, "healthChecks.inspectionMethod", "healthChecks.smartBatchSize", "healthChecks.smartAdditionalRuns", "healthChecks.smartMinHealthy"))
+    yield "Health check: archive inspection", per(both, lambda f: _cell(f, "healthChecks.archiveInspection"))
+    yield "Pages per enabled indexer (maxPages)", {s: _per_indexer(g(s), "maxPages", on(s)) for s in both}
+    yield "Pages: season pack / series pack extra pages", per(both, lambda f: _cell(f, "searchConfig.seasonPackAdditionalPages", "searchConfig.seriesPackAdditionalPages"))
+    yield "Indexer timeout (s)", {**{s: _per_indexer(g(s), "timeout", on(s)) for s in both}, **per(am, _am_timeouts)}
+    yield "Enabled indexers (slugs)", {s: ", ".join(rep["enabled"].get(s) or []) or "-" for s in SETTINGS_SIDES}
+    yield "Import workers (max_processor_workers)", per(am, lambda f: _cell(f, "import.max_processor_workers"))
+    yield "NzbDAV download connections / streaming priority", {"nzbdav": _cell(g("nzbdav"), "usenet.max-download-connections", "usenet.streaming-priority")}
+    yield "Import samples % / health samples % / health system on", per(am, lambda f: _cell(f, "import.segment_sample_percentage", "health.segment_sample_percentage", "health.enabled"))
+    yield "Prefetch: streaming.max_prefetch / import.max_download_prefetch", per(am, lambda f: _cell(f, "streaming.max_prefetch", "import.max_download_prefetch"))
+    yield "In-flight per connection: normal / stat / stream", per(am, lambda f: _cell(f, "providers[0].inflight_requests", "providers[0].stat_inflight_requests", "providers[0].stream_inflight_requests"))
+    yield "AltMount segment cache: on / GB / hours / MB memory", per(am, lambda f: _cell(f, "segment_cache.enabled", "segment_cache.max_size_gb", "segment_cache.expiry_hours", "segment_cache.memory_mb"))
+    yield "Cache: search results (cacheTTL s)", per(both, lambda f: _cell(f, "cacheTTL"))
+    yield "Cache: healthy NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "healthyNzbDbMode", "healthyNzbDbTTL", "healthyNzbDbMaxSizeMB"))
+    yield "Cache: dead NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "deadNzbDbMode", "deadNzbDbTTL", "deadNzbDbMaxSizeMB"))
+    yield "Cache: stream buffer / pipe buffer MB / method", {"uu": _cell(g("uu"), "nzbdavStreamBufferMB", "nzbdavPipeBufferMB", "nzbdavStreamingMethod")}
+    yield "AltMount addon: fallback ms / retries / max fallback releases", per(am, lambda f: _cell(f, "stremio.fallback_timeout_ms", "stremio.max_retries", "stremio.max_fallback_releases"))
+    yield "AltMount: fast_fail_header_only / skip_repair", per(am, lambda f: _cell(f, "stremio.fast_fail_header_only", "stremio.skip_repair"))
+    yield "AltMount: PAR2 repair / failure masking / mount type", per(am, lambda f: _cell(f, "par2_repair.enabled", "streaming.failure_masking.enabled", "mount_type"))
+
+
+def render_settings(rep):
+    """The settings table and the connection budget, as Markdown with no secret in it."""
+    lines = ["| Setting | " + " | ".join(SIDE_TITLES[s] for s in SETTINGS_SIDES) + " |",
+             "|---|" + "---|" * len(SETTINGS_SIDES)]
+    for label, cells in _rows(rep):
+        lines.append("| %s | " % label + " | ".join(str(cells.get(s, "-")) for s in SETTINGS_SIDES) + " |")
+    caps = rep["caps"]
+    per = ", ".join("%s %s" % (SIDE_SHORT[s], caps[s] if caps.get(s) is not None else "unreadable") for s in SETTINGS_SIDES)
+    verdict = "fits the provider limit" if rep["total"] <= rep["limit"] else "over the provider limit"
+    lines += ["", "Connection budget (configured caps, not actual use)", "",
+              "Per copy: %s." % per,
+              "Total: %d of %d NewsHosting connections: %s." % (rep["total"], rep["limit"], verdict)]
+    return "\n".join(lines) + "\n"
+
+
 def main(argv):
     test_dir = os.environ.get("TEST_DIR", DEFAULT_TEST_DIR)
+    if len(argv) >= 2 and argv[1] == "settings":
+        limit = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else PROVIDER_LIMIT
+        print(render_settings(settings_report(test_dir, limit)), end="")
+        return 0
     if len(argv) < 2 or argv[1] not in ("up", "stop", "status", "reset", "check"):
         print(__doc__)
         return 2
