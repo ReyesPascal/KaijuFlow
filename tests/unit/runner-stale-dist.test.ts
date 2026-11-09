@@ -7,6 +7,9 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, utimesSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO = fileURLToPath(new URL('../..', import.meta.url));
 
 const RUNNERS = ['tests/integration/run-ci.sh', 'tests/a4/run-ci.sh'];
 const OLD = new Date('2020-01-01T00:00:00Z');
@@ -17,7 +20,7 @@ function runIn(runner: string, distTime: Date, srcTime: Date) {
   try {
     mkdirSync(join(dir, 'tests/integration'), { recursive: true });
     mkdirSync(join(dir, 'tests/a4'), { recursive: true });
-    for (const r of RUNNERS) copyFileSync(r, join(dir, r));
+    for (const r of RUNNERS) copyFileSync(join(REPO, r), join(dir, r));
     mkdirSync(join(dir, 'src')); mkdirSync(join(dir, 'dist')); mkdirSync(join(dir, 'bin'));
     writeFileSync(join(dir, 'src/server.ts'), 'export {};\n');
     writeFileSync(join(dir, 'dist/server.js'), 'export {};\n');
@@ -45,5 +48,6 @@ for (const runner of RUNNERS) {
   test(`${runner} accepts a dist/ built after src/`, () => {
     const r = runIn(runner, NEW, OLD);
     assert.doesNotMatch(r.out, /STALE-DIST/);
+    assert.match(r.out, /SUDO-REACHED/, r.out); // got past the check to the next step
   });
 }

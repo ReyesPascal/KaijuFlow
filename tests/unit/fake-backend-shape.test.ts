@@ -43,6 +43,7 @@ const listen = async (handler: http.RequestListener) => {
 };
 test.after(() => { for (const s of servers) s.close(); });
 
+// Exact layout: a field the fake leaves out (like the queue fields before #35) fails too.
 test('fake AltMount streams reply has the real v0.4.0 layout', async () => {
   const fake = await createFakeAltmount(listen);
   const nzbUrl: string = fake.addMovie('shape', 'Shape.Test.2026.1080p', Buffer.from('synthetic'));
@@ -58,14 +59,21 @@ test('fake AltMount streams reply has the real v0.4.0 layout', async () => {
 
 test('fake NzbDAV queue and history replies use only real NzbDAV fields', async () => {
   const fake = await createFakeNzbdav(listen);
-  const nzbUrl: string = fake.addRejected('shape', 'Shape.Test.2026.1080p');
-  const base = new URL(nzbUrl).origin;
-  const nzb = await (await fetch(nzbUrl)).text();
-  const form = new FormData();
-  form.append('name', new Blob([nzb], { type: 'application/x-nzb' }), 'Shape.Test.2026.1080p.nzb');
-  await fetch(`${base}/api?mode=addfile&cat=Movies&output=json`, { method: 'POST', body: form });
+  // One Completed and one Failed job, so both history slot kinds are compared.
+  const links: string[] = [fake.addMovie('done', 'Shape.Done.2026.1080p', Buffer.from('synthetic')), fake.addRejected('failed', 'Shape.Failed.2026.1080p')];
+  const base = new URL(links[0]).origin;
+  for (const link of links) {
+    const form = new FormData();
+    form.append('name', new Blob([await (await fetch(link)).text()], { type: 'application/x-nzb' }), 'shape.nzb');
+    await fetch(`${base}/api?mode=addfile&cat=Movies&output=json`, { method: 'POST', body: form });
+  }
   for (const mode of ['queue', 'history']) {
     const reply = await (await fetch(`${base}/api?mode=${mode}&output=json`)).json();
-    assert.deepEqual(extraInFake(shapeOf(reply), shapeOf(fixture(`nzbdav-${mode}.json`))), [], mode);
+    const real = shapeOf(fixture(`nzbdav-${mode}.json`));
+    const slots = (reply[mode]?.slots ?? []) as unknown[];
+    for (const slot of slots.length ? slots : [undefined]) {
+      // Compare every slot, not only the first one shapeOf keeps.
+      assert.deepEqual(extraInFake(shapeOf({ ...reply, [mode]: { ...reply[mode], slots: slot ? [slot] : [] } }), real), [], mode);
+    }
   }
 });

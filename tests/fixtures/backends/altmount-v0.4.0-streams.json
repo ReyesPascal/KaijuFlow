@@ -1,9 +1,9 @@
 {
-  "_source": "Real AltMount v0.4.0 POST /api/nzb/streams reply, captured on Brain 2026-11-09 (download_key redacted). Layout fixture for tests/unit/fake-backend-shape.test.ts.",
+  "_source": "Real AltMount v0.4.0 POST /api/nzb/streams reply, captured on Brain 2026-11-09 (host and download_key replaced). Layout fixture for tests/unit/fake-backend-shape.test.ts.",
   "reply": {
     "streams": [
       {
-        "url": "http://192.168.4.40:8085/api/files/stream?path=%2Fcomplete%2Fkaijuflow%2FInterstellar.2014.2160p.WEB-DL.DTS-HD.MA.5.1.DV.HEVC-NOSiViD.ordertest%2FInterstellar.2014.2160p.WEB-DL.DTS-HD.MA.5.1.DV.HEVC-NOSiViD.ordertest.mkv&download_key=REDACTED",
+        "url": "http://altmount:8080/api/files/stream?path=%2Fcomplete%2Fkaijuflow%2FInterstellar.2014.2160p.WEB-DL.DTS-HD.MA.5.1.DV.HEVC-NOSiViD.ordertest%2FInterstellar.2014.2160p.WEB-DL.DTS-HD.MA.5.1.DV.HEVC-NOSiViD.ordertest.mkv&download_key=REDACTED",
         "title": "Interstellar.2014.2160p.WEB-DL.DTS-HD.MA.5.1.DV.HEVC-NOSiViD.ordertest.mkv",
         "name": "Interstellar.2014.2160p.WEB-DL.DTS-HD.MA.5.1.DV.HEVC-NOSiViD.ordertest.mkv"
       }
