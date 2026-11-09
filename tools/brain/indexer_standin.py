@@ -1,0 +1,202 @@
+"""Indexer stand-in (#59): records newznab answers once per title list and replays them byte-identical to every side.
+
+URL shape for a side: http://<host>:1340/<indexer-slug>/api?...  (any dummy API key). Search answers have their NZB
+links rewritten to http://<host>:1340/<slug>/nzb/<token>, so a side never contacts the real indexer.
+
+  record: python3 -I tools/brain/indexer_standin.py --mode record --config <indexers.json> --store <dir> --list <name>
+  replay: python3 -I tools/brain/indexer_standin.py --mode replay --config <indexers.json> --store <dir> --list <name>
+
+Config (outside the repo, holds the real keys): {"indexers": {"<slug>": {"url": "https://indexer.example", "apikey": "..."}}}
+Store layout: <store>/<list>/<slug>/<sha256>.body + .meta.json. Switch list while running: GET /_standin/list?name=X.
+Status: GET /_standin/status. A "limit reached" answer while recording writes <store>/LIMIT_REACHED.json, logs a
+LIMIT_REACHED line, shows in /_standin/status, is NOT stored, and makes the process exit with status 3 when stopped.
+No real indexer is contacted in replay mode.
+"""
+import argparse, signal, base64, hashlib, http.server, json, os, re, sys, threading, time, urllib.error, urllib.request
+from urllib.parse import urlparse, parse_qsl, quote
+
+KEY_PARAM = 'apikey'
+SAFE = re.compile(r'^[A-Za-z0-9._-]+$')
+LIMIT_EXIT = 3
+HOST_MARK = b'@@STANDIN@@'  # stored in place of the stand-in's own address in rewritten links
+
+
+def is_limit(status, body):
+    """True when an indexer answer says its request/grab limit is reached (HTTP 429, or a newznab <error> about it)."""
+    if status == 429:
+        return True
+    if len(body) > 4096:
+        return False
+    m = re.search(rb'<error\b[^>]*>', body)
+    if not m:
+        return False
+    tag = m.group(0).lower()
+    code = re.search(rb'code="(\d+)"', tag)
+    return bool(code and code.group(1) in (b'429', b'500')) or b'limit' in tag
+
+
+class State:
+    def __init__(self, cfg, store, mode, listname):
+        self.cfg, self.store, self.mode, self.listname = cfg, store, mode, listname
+        self.limit_reached = None
+        self.log_lines = []
+        self.lock = threading.Lock()
+
+    def log(self, line):
+        with self.lock:
+            self.log_lines.append(line)
+        print(line, file=sys.stderr, flush=True)
+
+    def path(self, slug, key):
+        d = os.path.join(self.store, self.listname, slug)
+        return d, os.path.join(d, key)
+
+
+def rd(path, mode='r'):
+    with open(path, mode) as f:
+        return f.read()
+
+
+def wr(path, data):
+    with open(path, 'wb' if isinstance(data, bytes) else 'w') as f:
+        f.write(data)
+
+
+def cache_key(kind, items):
+    return hashlib.sha256((kind + '\n' + '\n'.join(f'{k}={v}' for k, v in items)).encode()).hexdigest()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    @property
+    def st(self):
+        return self.server.state
+
+    def reply(self, status, ctype, body):
+        self.send_response(status)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        u = urlparse(self.path)
+        parts = u.path.strip('/').split('/')
+        q = parse_qsl(u.query, keep_blank_values=True)
+        st = self.st
+        if parts[0] == '_standin':
+            if parts[1:] == ['status']:
+                return self.reply(200, 'application/json', json.dumps(
+                    {'mode': st.mode, 'list': st.listname, 'limit_reached': st.limit_reached}).encode())
+            if parts[1:] == ['list']:
+                name = dict(q).get('name', '')
+                if not SAFE.match(name):
+                    return self.reply(400, 'text/plain', b'bad list name')
+                st.listname = name
+                st.log(f'LIST {name}')
+                return self.reply(200, 'text/plain', b'ok')
+            return self.reply(404, 'text/plain', b'unknown')
+        slug = parts[0]
+        if not SAFE.match(slug) or (st.mode == 'record' and slug not in st.cfg['indexers']):
+            return self.reply(404, 'text/plain', b'unknown indexer')
+        host = self.headers.get('Host') or f'127.0.0.1:{self.server.server_port}'
+        base = f'http://{host}/{slug}'
+        if len(parts) == 3 and parts[1] == 'nzb':
+            token = parts[2]
+            key = cache_key('nzb', [('token', token)])
+            real_url = lambda ix: base64.urlsafe_b64decode(token + '=' * (-len(token) % 4)).decode().replace('{KEY}', ix['apikey'])
+            return self.serve(slug, key, f'nzb {token[:12]}', real_url, base, rewrite=False)
+        if len(parts) == 2 and parts[1] == 'api':
+            items = sorted((k, v) for k, v in q if k != KEY_PARAM)
+            key = cache_key('api', items)
+            shown = '&'.join(f'{k}={v}' for k, v in items)
+
+            def real_url(ix):
+                return ix['url'].rstrip('/') + '/api?' + '&'.join(
+                    f'{quote(k)}={quote(v)}' for k, v in items + [(KEY_PARAM, ix['apikey'])])
+            return self.serve(slug, key, 'api ' + shown, real_url, base, rewrite=dict(items).get('t') != 'get')
+        return self.reply(404, 'text/plain', b'unknown path')
+
+    def serve(self, slug, key, shown, real_url, base, rewrite):
+        st = self.st
+        d, p = st.path(slug, key)
+        if os.path.exists(p + '.body'):
+            body = rd(p + '.body', 'rb')
+            meta = json.loads(rd(p + '.meta.json'))
+            st.log(f'HIT {slug} {shown}')
+            return self.reply(meta['status'], meta['content_type'], body.replace(HOST_MARK, base.encode()))
+        if st.mode == 'replay':
+            st.log(f'MISS {slug} {shown}')
+            return self.reply(404, 'text/plain', b'not recorded')
+        ix = st.cfg['indexers'][slug]
+        status, ctype, body = fetch_real(real_url(ix))
+        if is_limit(status, body):
+            info = {'indexer': slug, 'time': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'status': status,
+                    'answer': body[:300].decode('utf-8', 'replace').replace(ix['apikey'], '***'), 'request': shown}
+            st.limit_reached = info
+            os.makedirs(st.store, exist_ok=True)
+            wr(os.path.join(st.store, 'LIMIT_REACHED.json'), json.dumps(info))
+            st.log(f'LIMIT_REACHED indexer={slug} at={info["time"]} status={status}')
+            return self.reply(status, ctype, body.replace(ix['apikey'].encode(), b'***'))
+        if rewrite:
+            body = rewrite_links(body, ix, slug)
+        os.makedirs(d, exist_ok=True)
+        wr(p + '.body', body)
+        wr(p + '.meta.json', json.dumps({'status': status, 'content_type': ctype, 'request': shown}))
+        st.log(f'RECORD {slug} {shown} -> {status} {len(body)} bytes')
+        self.reply(status, ctype, body.replace(HOST_MARK, base.encode()))
+
+
+def rewrite_links(body, ix, slug):
+    """Point every link on the real indexer's host to the stand-in; the key becomes {KEY} inside the token."""
+    o = urlparse(ix['url'])
+    pat = re.compile(re.escape(f'{o.scheme}://{o.netloc}').encode() + rb'[^\s"\'<>]*')
+
+    def sub(m):
+        real = m.group(0).decode().replace('&amp;', '&').replace(ix['apikey'], '{KEY}').replace(quote(ix['apikey']), '{KEY}')
+        token = base64.urlsafe_b64encode(real.encode()).decode().rstrip('=')
+        return HOST_MARK + b'/nzb/' + token.encode()  # HOST_MARK becomes http://<host>:<port>/<slug> when served
+    return pat.sub(sub, body)
+
+
+def fetch_real(url):
+    req = urllib.request.Request(url, headers={'User-Agent': 'kaijuflow-indexer-standin'})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.status, r.headers.get('Content-Type', 'application/octet-stream'), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get('Content-Type', 'text/plain'), e.read()
+
+
+def make_server(cfg, store, mode, listname, port=1340, bind='0.0.0.0'):
+    if mode not in ('record', 'replay') or not SAFE.match(listname):
+        raise ValueError('mode must be record or replay; list name letters, digits, . _ -')
+    srv = http.server.ThreadingHTTPServer((bind, port), Handler)
+    srv.state = State(cfg, store, mode, listname)
+    return srv
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    ap.add_argument('--mode', required=True, choices=['record', 'replay'])
+    ap.add_argument('--config', default='/home/ryan/kaijuflow-test/indexers.json')
+    ap.add_argument('--store', required=True)
+    ap.add_argument('--list', required=True, dest='listname')
+    ap.add_argument('--port', type=int, default=1340)
+    ap.add_argument('--bind', default='0.0.0.0')
+    a = ap.parse_args()
+    cfg = json.loads(rd(a.config)) if a.mode == 'record' else {'indexers': {}}
+    srv = make_server(cfg, a.store, a.mode, a.listname, a.port, a.bind)
+    print(f'stand-in {a.mode} list={a.listname} on {a.bind}:{a.port}', file=sys.stderr, flush=True)
+    signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=srv.shutdown).start())
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    sys.exit(LIMIT_EXIT if srv.state.limit_reached else 0)
+
+
+if __name__ == '__main__':
+    main()
