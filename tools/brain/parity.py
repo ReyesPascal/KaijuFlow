@@ -1,13 +1,14 @@
 """Parity check on Brain: the same titles through UU 1337 (NzbDAV) and the KaijuFlow test container on 1338.
 
 Usage: python3 -I tools/brain/parity.py <user-id> <out.json>
+PARITY_TITLES="Interstellar,Game of Thrones" limits a rerun to the titles whose label contains one of the names.
 For each title and side: Source count, first Source played, whether both sides served the same bytes
 (start, 50%, 90%), and the speed of each side (#46): time to the Stream being ready (response headers,
 i.e. KaijuFlow's prepare incl. the Backend), time to the first byte, the 64 KiB start read, the 50% and
 90% seek reads, and on the test container the Unscramble time from KaijuFlow's log. Medians per side
 are printed as a Markdown table and written next to the JSON (<out>.md).
 """
-import hashlib, json, re, statistics, subprocess, sys, time, urllib.request, urllib.error
+import hashlib, json, os, re, statistics, subprocess, sys, time, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
 U = sys.argv[1] if len(sys.argv) > 1 else ''  # the user id in the manifest URL
@@ -133,7 +134,9 @@ def speed_table(results):
 
 def main():
     results = []
-    for kind, vid, label in TITLES:
+    only = [t.strip() for t in os.environ.get('PARITY_TITLES', '').split(',') if t.strip()]
+    titles = [t for t in TITLES if not only or any(o.lower() in t[2].lower() for o in only)]
+    for kind, vid, label in titles:
         with ThreadPoolExecutor(2) as ex:
             futs = {n: ex.submit(side, n, b, kind, vid) for n, b in SIDES.items()}
             row = {'title': label, 'id': vid, **{n: f.result() for n, f in futs.items()}}
