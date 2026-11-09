@@ -27,14 +27,27 @@ cd "$A4_RUN_DIR/work"
 # Each scenario gets its own memory cap so a runaway test fails alone instead of
 # letting the kernel OOM-kill whatever else runs on the machine (retro of #16).
 SCENARIO_MEMORY_MAX=4G
-capped() {
-  if command -v systemd-run >/dev/null 2>&1 && systemd-run --scope -q -p MemoryMax=64M true >/dev/null 2>&1; then
-    local peak=()
-    [[ -x /usr/bin/time ]] && peak=(/usr/bin/time -f "INTEGRATION MEMORY $name peak_rss_kb=%M")
-    systemd-run --scope -q -p MemoryMax="$SCENARIO_MEMORY_MAX" -p MemorySwapMax=0 -- "${peak[@]}" "$@"
+memory_cap=0
+if command -v systemd-run >/dev/null 2>&1 && systemd-run --scope -q -p MemoryMax=64M true >/dev/null 2>&1; then
+  memory_cap=1
+else
+  echo "INTEGRATION MEMORY WARNING: systemd-run scopes unavailable, scenarios run without a memory cap"
+fi
+peak_report=0
+if [[ -x /usr/bin/time ]]; then
+  peak_report=1
+else
+  echo "INTEGRATION MEMORY WARNING: /usr/bin/time missing, peak memory not reported"
+fi
+# with_memory_cap <scenario name> <command...>
+with_memory_cap() {
+  local name="$1"; shift
+  local report=()
+  if [[ "$peak_report" -eq 1 ]]; then report=(/usr/bin/time -f "INTEGRATION MEMORY $name peak_rss_kb=%M"); fi
+  if [[ "$memory_cap" -eq 1 ]]; then
+    systemd-run --scope -q -p MemoryMax="$SCENARIO_MEMORY_MAX" -p MemorySwapMax=0 -- "${report[@]}" "$@"
   else
-    echo "INTEGRATION MEMORY $name WARNING: systemd-run unavailable, running without a memory cap"
-    "$@"
+    "${report[@]}" "$@"
   fi
 }
 overall=0
@@ -42,7 +55,7 @@ for scenario in "$A4_RUN_DIR"/work/*.mjs; do
   name="$(basename "$scenario" .mjs)"
   rm -rf "$A4_RUN_DIR/work/config"; mkdir -p "$A4_RUN_DIR/work/config"; chown nobody:nogroup "$A4_RUN_DIR/work/config"
   rc=0
-  capped runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
+  with_memory_cap "$name" runuser -u nobody -- env -i PATH="$PATH" HOME="$A4_RUN_DIR/home" TMPDIR="$A4_RUN_DIR/tmp" \
     NODE_ENV=test A4_APP_ROOT="$A4_RUN_DIR/work" INTEGRATION_RESULTS="$A4_RUN_DIR/results-$name.json" \
     timeout 120 node "$scenario" || rc=$?
   if [[ "$rc" -eq 137 || "$rc" -eq 143 ]]; then

@@ -92,7 +92,7 @@ const downloadKey = (apiKey: string) => createHash('sha256').update(apiKey).dige
 const configError = (what: string) => new Error(`AltMount ${what} is not set - check AltMount settings`);
 
 /** AltMount 500 answers that say AltMount had a problem, not that the Source failed. */
-const BACKEND_SIDE_500 = /failed to check queue status|queue item not found|failed to list output media files|failed to fetch completed item|progress broadcaster closed unexpectedly|failed to open uploaded file|failed to read uploaded file/i;
+const BACKEND_SIDE_500 = /failed to check queue status|queue item not found|failed to list output media files|failed to fetch completed item|progress broadcaster closed unexpectedly|failed to open uploaded file|failed to read uploaded file|failed to process nzb/i;
 
 /** Ready means streamable or completed, or a reused completed entry. */
 const isReady = (e: StreamsEntry) => e._cached === true || e._queue_status === 'streamable' || e._queue_status === 'completed';

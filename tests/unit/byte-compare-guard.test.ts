@@ -14,17 +14,33 @@ const TESTS = path.resolve('tests');
 // tests/a4 is frozen audit evidence (docs/kaijuflow/audit/A4-*.md) and only
 // compares a few bytes; it is not rewritten.
 const FROZEN = [path.resolve('tests/a4')];
-const BYTES_HINT = /\b(body|bytes|media|buf|buffer)\b|Buffer\.|arrayBuffer\(|subarray\(/i;
-const DEEP_EQUAL = /\bdeep(?:Strict)?Equal\s*\(([^\n]*)/g;
+const BYTES_HINT = /\b(body|bytes|media|delivered|buf|buffer)\b|Buffer\.|arrayBuffer\(|subarray\(/i;
+const DEEP_EQUAL = /\bdeep(?:Strict)?Equal\s*\(/g;
+const STRING_LITERAL = /'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`/g;
 
-/** Lines in `text` that deep-compare something that looks like bytes. */
-export function byteDeepEquals(text: string): number[] {
+/** The argument text of the call whose `(` is at `open`, up to its matching `)`. */
+function callArgs(text: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')' && --depth === 0) return text.slice(open + 1, i);
+  }
+  return text.slice(open + 1);
+}
+
+/**
+ * Lines in `text` where a deepEqual call looks like it compares bytes. Any
+ * argument counts, across line breaks; string literals are ignored, so an
+ * expected value such as 'bytes=2-5' is not mistaken for bytes.
+ */
+function byteDeepEquals(text: string): number[] {
   const hits: number[] = [];
-  text.split('\n').forEach((line, i) => {
-    // Only the first argument (the delivered value) decides; expected values such
-    // as range strings ('bytes=2-5') are not bytes.
-    for (const m of line.matchAll(DEEP_EQUAL)) if (BYTES_HINT.test(m[1].split(',')[0])) hits.push(i + 1);
-  });
+  for (const m of text.matchAll(DEEP_EQUAL)) {
+    const open = m.index! + m[0].length - 1;
+    if (BYTES_HINT.test(callArgs(text, open).replace(STRING_LITERAL, "''"))) {
+      hits.push(text.slice(0, m.index).split('\n').length);
+    }
+  }
   return hits;
 }
 
@@ -42,6 +58,9 @@ test('detector flags byte deep-equals and leaves other deep-equals alone', () =>
   assert.deepEqual(byteDeepEquals("assert.deepEqual(violations, [], 'msg')"), []);
   assert.deepEqual(byteDeepEquals('assert.deepEqual(backend.submitFields.at(-1), { season: "1" })'), []);
   assert.deepEqual(byteDeepEquals("assert.deepEqual(upstreamRanges.slice(0,4),['bytes=2-5'])"), []);
+  // the two sites this guard was written for: bytes named `delivered`, compared with `media`
+  assert.deepEqual(byteDeepEquals('assert.deepEqual(delivered,media);'), [1]);
+  assert.deepEqual(byteDeepEquals("x\nassert.deepEqual(\n  delivered,\n  media,\n  'msg')"), [2]);
 });
 
 test('tests compare bytes with assertBytes, never deepEqual', () => {
