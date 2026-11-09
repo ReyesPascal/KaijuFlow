@@ -374,7 +374,7 @@ def smoke(cfg, port=1340):
     try:
         for side in ('kaijuflow', 'uu', 'altmount-addon'):
             before = sum(1 for line in open(log) if line.startswith('MISS '))
-            st, h, body, t = common.get(f"{side_base(cfg, side)}/stream/movie/tt0133093.json", timeout=120, limit=0)
+            st, h, body, t = common.get(f"{side_base(cfg, side)}/stream/movie/{os.environ.get('SMOKE_IMDB', 'tt0133093')}.json", timeout=120, limit=0)
             time.sleep(1)
             lines = [line.strip() for line in open(log) if line.startswith('MISS ')]
             results[side] = {'http': st, 'standin_requests': len(lines) - before, 'sample': lines[before:before + 1]}
@@ -404,7 +404,7 @@ def main(argv):
     pool = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
     listdir = os.path.join(a.store, a.listname)
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
-               user_id=a.user_id or users[0].get('id', ''), download_key=hashlib.sha256(key.encode()).hexdigest(),
+               user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
                one_page=a.one_page, titles=pool, tries=a.tries, settle=a.settle,
                indexers=sorted(os.listdir(listdir)) if os.path.isdir(listdir) else [])
     started = time.time()
