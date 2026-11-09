@@ -209,7 +209,9 @@ const failureScenarios = [
       const missing = set.parts[2].firstId;
       for (const [id, bytes] of set.articles) if (id !== missing) news.articles.set(id, bytes);
       const nzb = backend.addScrambled('cantfinish', title, media, set);
-      const backendRejects = backend.rarVolumeCheck ? backend.rarVolumeCheck(set.nzb) !== null : false;
+      // A fake with AltMount's RAR volume rules must reject this set, like real v0.4.0 on 1338.
+      const backendRejects = Boolean(backend.rarVolumeCheck);
+      if (backendRejects) assert.ok(backend.rarVolumeCheck(set.nzb), 'fake AltMount should reject the number-named set with a gap');
       const r = await play(streamUrl(kaijuflow, nzb, title));
       assert.deepEqual(backend.uploadedNzbs('cantfinish'), [set.nzb], 'the original NZB should be uploaded unchanged');
       if (backendRejects) {
