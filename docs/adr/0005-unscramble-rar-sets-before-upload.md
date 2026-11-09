@@ -10,6 +10,6 @@ Some Sources are a Scrambled RAR set: the parts are named only by numbers (`<has
 ## Consequences
 
 - Only sets named purely by numbers are checked; properly named sets (`.partNN.rar`, `.rar` + `.rNN`) are never touched.
-- Only the chosen Source is checked, at play time, using the health-check providers, within at most 15 s of the prepare budget.
+- Only the chosen Source is checked, at play time, using the health-check providers, within at most 15 s of the prepare budget. The 15 s were confirmed after the Brain re-check (#46, 2026-11-09): 94 parts took 3.1 s on 8 connections, about 33 ms per part, so the limit leaves room for sets with more, smaller parts and only bites when a news server is slow.
 - If Unscramble can't finish (no provider, no provider reachable, a missing first article, not RAR5, a duplicate or missing volume number, timeout), KaijuFlow uploads the original NZB and logs why. It does not mark the Source dead itself. Under ADR 0004 the Backend's rejection decides.
 - The health check's own handling of these names is a separate issue (#40).

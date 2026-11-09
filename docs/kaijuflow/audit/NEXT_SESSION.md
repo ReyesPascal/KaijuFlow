@@ -1,4 +1,4 @@
-# Next session: KaijuFlow (as of 2026-11-09, after #46)
+# Next session: KaijuFlow (as of 2026-11-09, after #46 and #51)
 
 Older handoffs are in git history. Replace this section; don't append below it.
 
@@ -15,8 +15,8 @@ Older handoffs are in git history. Replace this section; don't append below it.
 5. **Scrambled RAR sets Unscrambled before upload, for every Backend** (spec #42, [ADR 0005](../../adr/0005-unscramble-rar-sets-before-upload.md)): shared grab step #43 (PR #47), Unscramble module + Parity scenario #44 (PR #48), the upload-unchanged cases, time limit, connection cap and logs #45 (PR #49), Brain re-check #46. Re-check on 1338 (2026-11-09): Interstellar NOSiViD now plays on AltMount with bytes identical to NzbDAV at the start, 50% and 90%; `Unscrambled RAR set: 94 parts (3091 ms)`, about 33 ms per part on 8 connections. 8 of the other 9 titles matched as before; Game of Thrones S02E03 played on both sides but with different first picks after an altHUB `429` on the NZB grab (not a Backend issue). Speed medians per side (NzbDAV / AltMount): ready 0.41 / 0.04 s, seek 50% 0.23 / 0.01 s, seek 90% 0.22 / 0.01 s; 9 of the 10 Sources were already imported on both Backends from the earlier check, so these are warm numbers. The one cold first import on AltMount (Interstellar) took 4.72 s, 3.09 s of it Unscramble. Full table: `/home/ryan/kaijuflow-notes/brain-1338/RESULTS.md`. `parity.py` now records each side's speed and the Unscramble time, and `PARITY_TITLES=…` reruns a subset.
 
 **Open points for the owner** (no code until the owner decides)
-- Unscramble's 15 s limit: measured 3.1 s for 94 parts. Recommendation: keep 15 s (it only matters when a news server is slow, and a set with more, smaller parts needs the room).
-- An indexer `429 Too Many Requests` on the NZB grab marks the Source dead for ever (`expiresAt: 0`), pre-existing UU behaviour; the test config (a copy of UU's) holds 45 such entries, almost all altHUB. A short TTL, or no dead mark on 429, would keep those Sources. Worth an issue if the owner agrees.
+- (Decided 2026-11-09) Unscramble's 15 s limit stays: measured 3.1 s for 94 parts; the limit only matters when a news server is slow, and a set with more, smaller parts needs the room. ADR 0005.
+- (Done 2026-11-09, #51, PR #52) An indexer `429`/5xx/network error on the NZB grab no longer marks the Source dead, and stale marks are dropped on load. ADR 0004.
 - Health check grouping of number-named parts: #40. AltMount bug report: draft in the owner's notes, posting is the owner's call.
 
 **Next, in order** (each step its own PR, with a test)
