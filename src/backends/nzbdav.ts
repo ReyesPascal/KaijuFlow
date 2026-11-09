@@ -58,7 +58,7 @@ export function createNzbdavBackend(config: NZBDavConfig): Backend {
       // The shared step grabs the NZB (grab tracking after validation, so
       // cache hits precached by health checks do not double-count).
       const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
-      const nzoId = await submitNzb(nzb, source.title, config, source.contentType, undefined, logPrefix);
+      const nzoId = await submitNzb(nzb, source.title, config, source.contentType, logPrefix);
       onJob?.(nzoId);
       if (isCancelled?.()) {
         cancel(nzoId, 'health check failed (late cancel)').catch(() => {});

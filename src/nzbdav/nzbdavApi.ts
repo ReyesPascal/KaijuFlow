@@ -11,6 +11,9 @@ import { trackGrab } from '../statsTracker.js';
 import type { NZBDavConfig, HistorySlot } from './types.js';
 import { nzbdavError } from './utils.js';
 
+/** How long the NzbDAV upload may take. */
+const SUBMIT_TIMEOUT_MS = 30_000;
+
 /**
  * Resolve the category folder based on content type
  */
@@ -111,11 +114,8 @@ export async function submitNzb(
   title: string,
   config: NZBDavConfig,
   contentType?: string,
-  budgetMs?: number,
   logPrefix = '',
 ): Promise<string> {
-  const budgetStart = Date.now();
-  const remainingBudget = () => budgetMs ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 30000;
 
   // Submit to NZBDav
   const category = resolveCategory(config, contentType);
@@ -131,7 +131,7 @@ export async function submitNzb(
   console.log(`${logPrefix}  \u{1F4E4} API URL: ${apiUrl.replace(config.apiKey, '***')}`);
 
   const submitController = new AbortController();
-  const submitTimeoutMs = remainingBudget();
+  const submitTimeoutMs = SUBMIT_TIMEOUT_MS;
   const submitTimeout = setTimeout(() => submitController.abort(), submitTimeoutMs);
 
   let nzbdavResponse: Response;
