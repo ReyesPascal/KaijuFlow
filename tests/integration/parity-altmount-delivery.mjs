@@ -6,6 +6,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { createFakeAltmount } from './parity/fake-altmount.mjs';
 import { API_KEY } from './parity/fake-altmount.mjs';
+import { assertBytes } from './parity/bytes.mjs';
 import crypto from 'node:crypto';
 const root = process.env.A4_APP_ROOT, output = process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root + '/../app-import.started'));
@@ -41,11 +42,11 @@ try {
       const url = tileUrl(backend.addMovie(method, title, media), title);
       const full = await get(url);
       assert.equal(full.status, 200, 'should play inline, not redirect');
-      assert.deepEqual(Buffer.from(await full.arrayBuffer()), media);
+      assertBytes(Buffer.from(await full.arrayBuffer()), media);
       assert.ok(!leaks(headerText(full.headers)), 'key must not appear in headers the player receives');
       const seek = await get(url, 'bytes=10-29');
       assert.equal(seek.status, 206, 'seek should return 206');
-      assert.deepEqual(Buffer.from(await seek.arrayBuffer()), media.subarray(10, 30));
+      assertBytes(Buffer.from(await seek.arrayBuffer()), media.subarray(10, 30));
       assert.equal(seek.headers.get('content-range'), `bytes 10-29/${media.length}`);
       assert.ok(!leaks(headerText(seek.headers)), 'key must not appear in seek headers');
       assert.equal(backend.submitsFor(method), 1, 'seek should not resubmit');
@@ -62,10 +63,10 @@ try {
     assert.match(loc, /\/api\/files\/stream\?/, 'should point at AltMount file route');
     const full = await get(loc);
     assert.equal(full.status, 200);
-    assert.deepEqual(Buffer.from(await full.arrayBuffer()), media);
+    assertBytes(Buffer.from(await full.arrayBuffer()), media);
     const seek = await get(loc, 'bytes=10-29');
     assert.equal(seek.status, 206, 'seeking works on the direct link');
-    assert.deepEqual(Buffer.from(await seek.arrayBuffer()), media.subarray(10, 30));
+    assertBytes(Buffer.from(await seek.arrayBuffer()), media.subarray(10, 30));
     // A second tile request (player seek/probe) still redirects, and stays Backend-correct.
     const again = await get(url);
     assert.equal(again.status, 302);

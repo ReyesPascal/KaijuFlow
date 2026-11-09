@@ -6,6 +6,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { createFakeAltmount } from './parity/fake-altmount.mjs';
 import { createFakeNzbdav } from './parity/fake-nzbdav.mjs';
+import { assertBytes } from './parity/bytes.mjs';
 const root = process.env.A4_APP_ROOT, output = process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root + '/../app-import.started'));
 assert.match(root, /kaijuflow-a4-[^/]+\/positive\/work$/);
@@ -40,7 +41,7 @@ try {
 
   // 1. AltMount plays and the ready entry is tagged AltMount.
   let r = await play(altNzb);
-  assert.equal(r.status, 200); assert.deepEqual(r.body, media);
+  assert.equal(r.status, 200); assertBytes(r.body, media);
   assert.equal(alt.submitsFor('sw'), 1);
   assert.ok(findReadyStream(altNzb, title, undefined, 'altmount'), 'ready entry should be found for AltMount');
   assert.equal(findReadyStream(altNzb, title, undefined, 'nzbdav'), null, 'ready entry must not count for NzbDAV');
@@ -55,7 +56,7 @@ try {
   configData.backend = 'nzbdav';
   assert.equal(getCacheEntries().ready.length, 0, 'AltMount entries are hidden while NzbDAV is active');
   r = await play(davNzb);
-  assert.equal(r.status, 200); assert.deepEqual(r.body, media);
+  assert.equal(r.status, 200); assertBytes(r.body, media);
   assert.equal(dav.submitsFor('sw'), 1);
   assert.equal(alt.submitsFor('sw'), 1, 'AltMount untouched while NzbDAV is active');
 

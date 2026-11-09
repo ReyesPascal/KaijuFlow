@@ -152,7 +152,9 @@ export async function submitNzb(
     if ((err as Error).name === 'AbortError') {
       throw nzbdavError(`NZBDav submission timed out after ${Math.round(submitTimeoutMs / 1000)}s`, true);
     }
-    throw nzbdavError(`NZBDav submission failed: ${(err as Error).message}`);
+    // Network error: NzbDAV is unreachable. That is the Backend's problem, not the
+    // Source's, so this is a plain error and the Source is not marked dead (#20).
+    throw new Error(`NZBDav unreachable, submission failed: ${(err as Error).message}`);
   }
   clearTimeout(submitTimeout);
 
