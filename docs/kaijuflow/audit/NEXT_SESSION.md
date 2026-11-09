@@ -12,7 +12,7 @@ Older handoffs are in git history. Replace this section; don't append below it.
 1. Fix findings 6, 7 and 8, one PR each.
 2. Add a "Backend" setting, defaulting to NzbDAV. Move the NzbDAV code behind it with no behavior change; existing NzbDAV settings keep working.
 3. Add AltMount (v0.4.0) as a Backend. KaijuFlow keeps search, health checks, ranking and fallback; AltMount only turns the chosen Source into a Stream (`POST /api/nzb/streams`). See [ALTMOUNT_INTEGRATION.md](../research/ALTMOUNT_INTEGRATION.md).
-4. Run a KaijuFlow test container on Brain on port 1338, using the existing AltMount (port 8085) with its own category `kaijuflow`. Get the owner's OK first. Check Parity on 10 titles: every title that plays through NzbDAV plays through AltMount, seeking works, and a known-broken Source falls back.
+4. Run a KaijuFlow test container on Brain on port 1338, using the existing AltMount (port 8085) with its own category `kaijuflow`. Get the owner's OK first. Check Parity on 10 titles: every title that plays through NzbDAV plays through AltMount, seeking works, and a Source that fails shows the failure video and is not offered again. Ultimate Fallback is not required for new Backends (owner does not use it).
 5. Search side-by-side on the same 10 titles: AltMount's own Stremio addon vs KaijuFlow with AltMount. Count Sources found and first-try plays. This decides whether KaijuFlow keeps its own search.
 6. Add InfiniDysk 1.x (stable) as a Backend; 2.x once it leaves beta.
 7. Benchmarks later ([plan](../performance/BENCHMARK_PLAN.md)).

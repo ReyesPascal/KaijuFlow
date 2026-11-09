@@ -31,5 +31,5 @@ A separate service that takes one Source, prepares it, and serves its video file
 _Avoid_: streamer, engine, provider (providers are Usenet servers)
 
 **Parity**:
-The bar for supporting a new Backend: any Source that plays through NzbDAV also plays through the new Backend, seeking works, and a broken Source falls back to the next one.
+The bar for supporting a new Backend: any Source that plays through NzbDAV also plays through the new Backend, seeking works, and a Source that fails shows the failure video and is not offered again.
 _Avoid_: compatibility, support (unqualified)
