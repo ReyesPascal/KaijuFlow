@@ -184,3 +184,33 @@ export function parseRAR5(data: Buffer): ArchiveInfo {
 
   return info;
 }
+
+const RAR5_SIGNATURE = Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00]);
+
+/**
+ * Read the RAR5 volume number (0-based) from the first bytes of a RAR part:
+ * the main archive header right after the signature. A first volume carries
+ * no number field and counts as 0. Returns null when the bytes are not a
+ * readable RAR5 main header (RAR4, other formats, encrypted headers, cut off).
+ * Used by Unscramble (ADR 0005).
+ */
+export function readRar5VolumeNumber(data: Buffer): number | null {
+  if (data.length < RAR5_SIGNATURE.length || !data.subarray(0, RAR5_SIGNATURE.length).equals(RAR5_SIGNATURE)) return null;
+  let offset = RAR5_SIGNATURE.length + 4; // signature + header CRC32
+  const next = (): number | null => {
+    const v = readVInt(data, offset);
+    if (!v) return null;
+    offset += v.length;
+    return v.value;
+  };
+  if (next() === null) return null;       // header size
+  if (next() !== 1) return null;          // header type: 1 = main archive header
+  const headerFlags = next();
+  if (headerFlags === null) return null;
+  if (headerFlags & 0x01 && next() === null) return null; // extra area size
+  if (headerFlags & 0x02 && next() === null) return null; // data area size
+  const archiveFlags = next();
+  if (archiveFlags === null) return null;
+  if (!(archiveFlags & 0x02)) return 0;   // no volume number field: first volume
+  return next();
+}

@@ -6,6 +6,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { createFakeNzbdav } from './parity/fake-nzbdav.mjs';
 import { runParity } from './parity/scenarios.mjs';
+import { useFakeNews } from './parity/fake-nntp.mjs';
 const root = process.env.A4_APP_ROOT, output = process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root + '/../app-import.started'));
 assert.match(root, /kaijuflow-a4-[^/]+\/positive\/work$/);
@@ -18,13 +19,14 @@ try {
   const backend = await createFakeNzbdav(listen);
   const { config, configData } = await load('config/index');
   backend.configure(configData);
+  const news = await useFakeNews(configData, config);
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream } = await load('nzbdav/streamHandler');
   const { createNzbdavStreamRoutes } = await load('routes/nzbdav');
   const app = express();
   app.use('/stremio/:manifestKey/nzbdav', createNzbdavStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
   const kaijuflow = await listen(app);
-  const results = await runParity({ kaijuflow, backend });
+  const results = await runParity({ kaijuflow, backend, news });
   Object.assign(report, { status: results.every(r => r.status === 'pass') ? 'pass' : 'fail', results });
 } catch (e) { Object.assign(report, { status: 'fail', error: String(e?.stack || e) }); }
 fs.writeFileSync(output, JSON.stringify(report, null, 2));
