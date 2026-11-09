@@ -66,3 +66,18 @@ test('names are zero-padded to the part count', async () => {
   assert.ok(r.nzb.includes('&quot;wide.part001.rar&quot;') && r.nzb.includes('&quot;wide.part103.rar&quot;'));
   assert.equal(r.nzb, expectedNzb(set.nzb, set.parts, base, 3));
 });
+
+test('a non-RAR number-named split next to a Scrambled RAR set is left alone, the RAR set is still renamed', async () => {
+  const rar = scrambledRarSet({ base: 'movie', parts: 4, startAt: 10, tag: 'rar' });
+  const sevenZip = Buffer.concat([Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), Buffer.alloc(64)]);
+  const split = scrambledRarSet({ base: 'extras.7z', parts: 3, startAt: 1, width: 3, tag: '7z', firstArticle: () => sevenZip });
+  const splitFiles = [...split.nzb.matchAll(/<file [\s\S]*?<\/file>/g)].map(m => m[0]).join('\n');
+  const nzb = rar.nzb.replace('</nzb>', `${splitFiles}\n</nzb>`);
+  const news = await startFakeNntp({ articles: new Map([...rar.articles, ...split.articles]) });
+  servers.push(news);
+
+  const r = await unscrambleNzb(nzb, [news.provider()], 15000);
+
+  assert.equal(r.changed, true, `expected a rename, got reason ${r.reason}`);
+  assert.equal(r.nzb, expectedNzb(nzb, rar.parts, 'movie', 2));
+});

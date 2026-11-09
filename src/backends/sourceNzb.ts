@@ -51,6 +51,7 @@ async function unscramble(nzb: string, budgetMs: number, logPrefix: string): Pro
     const hc = config.healthChecks;
     const connections = hc?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
     const providers = hc?.providers ?? [];
+    // Apply the owner's cap even if no health check has run since start (as Ultimate Fallback does).
     if (providers.some(p => p.enabled)) setHealthCheckConnectionCap(connections);
     const limitMs = budgetMs > 0 ? Math.min(UNSCRAMBLE_TIME_LIMIT_MS, budgetMs) : UNSCRAMBLE_TIME_LIMIT_MS;
     const r = await unscrambleNzb(nzb, providers, limitMs, { connections });

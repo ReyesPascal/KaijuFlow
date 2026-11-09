@@ -40,7 +40,7 @@ export interface UnscrambleResult {
   changed: boolean;
   /** Set when unchanged. */
   reason?: UnscrambleReason;
-  /** Number of parts in the Scrambled RAR set(s); 0 when there is none. */
+  /** Parts renamed when `changed`; else parts in number-named groups (0 when there is none). */
   parts: number;
   /** Time taken, in ms. */
   ms: number;
@@ -97,25 +97,37 @@ export async function unscrambleNzb(
   let timer: NodeJS.Timeout | undefined;
   const timedOut = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), Math.max(0, timeLimitMs)); });
   try {
-    const all = sets.flatMap(s => s.parts);
-    const outcome = await Promise.race([reader.readAll(all), timedOut]);
-    if (outcome === 'timeout') return done({ nzb, changed: false, reason: 'timeout', parts });
-    if (typeof outcome === 'string') return done({ nzb, changed: false, reason: outcome, parts });
-
+    // Each number-named group is decided on its own: a non-RAR split next to
+    // a Scrambled RAR set stays as it is, and the RAR set is still renamed.
     const renames = new Map<Part, string>();
+    let firstReason: UnscrambleReason | undefined;
     for (const set of sets) {
-      const volumes = set.parts.map(p => outcome.get(p)!);
-      const unique = new Set(volumes);
-      if (unique.size !== volumes.length) return done({ nzb, changed: false, reason: 'duplicate-volume', parts });
-      if (volumes.some(v => v < 0 || v >= volumes.length)) return done({ nzb, changed: false, reason: 'volume-gap', parts });
-      const width = Math.max(2, String(set.parts.length).length);
-      set.parts.forEach((p, i) => renames.set(p, `${set.base}.part${String(volumes[i] + 1).padStart(width, '0')}.rar`));
+      const outcome = await Promise.race([unscrambleSet(set, reader), timedOut]);
+      if (outcome === 'timeout') return done({ nzb, changed: false, reason: 'timeout', parts });
+      if (typeof outcome === 'string') firstReason ??= outcome;
+      else for (const [part, name] of outcome) renames.set(part, name);
     }
-    return done({ nzb: applyRenames(nzb, renames), changed: true, parts });
+    if (renames.size === 0) return done({ nzb, changed: false, reason: firstReason, parts });
+    return done({ nzb: applyRenames(nzb, renames), changed: true, parts: renames.size });
   } finally {
     clearTimeout(timer);
     reader.stop();
   }
+}
+
+/**
+ * New part names for one set, or why it stays as it is. Renamed only when
+ * every part was read, every part is RAR5, and the volume numbers are unique
+ * and cover 0..N-1.
+ */
+async function unscrambleSet(set: ScrambledSet, reader: FirstArticleReader): Promise<Map<Part, string> | UnscrambleReason> {
+  const read = await reader.readAll(set.parts);
+  if (typeof read === 'string') return read;
+  const volumes = set.parts.map(p => read.get(p)!);
+  if (new Set(volumes).size !== volumes.length) return 'duplicate-volume';
+  if (volumes.some(v => v < 0 || v >= volumes.length)) return 'volume-gap';
+  const width = Math.max(2, String(set.parts.length).length);
+  return new Map(set.parts.map((p, i) => [p, `${set.base}.part${String(volumes[i] + 1).padStart(width, '0')}.rar`]));
 }
 
 /** Number-named files grouped by base name; groups of at least two parts. */
