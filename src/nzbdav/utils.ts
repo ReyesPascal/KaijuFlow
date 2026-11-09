@@ -94,6 +94,19 @@ export function buildNzbdavConfig(): NZBDavConfig {
   };
 }
 
+/** True when NzbDAV is the active Backend (NzbDAV-only screens and features need this). */
+export function isNzbdavBackendActive(): boolean {
+  return globalConfig.backend === 'nzbdav';
+}
+
+/**
+ * Ultimate Fallback is NzbDAV-only: with AltMount active it acts as off even
+ * if the saved setting is enabled. Use instead of reading `ultimateFallback.enabled`.
+ */
+export function isUltimateFallbackActive(): boolean {
+  return globalConfig.ultimateFallback?.enabled === true && isNzbdavBackendActive();
+}
+
 /**
  * Check whether NZBDav library infrastructure is configured for use.
  * Encodes streamingMode + WebDAV URL + WebDAV user — does NOT include any
@@ -102,6 +115,7 @@ export function buildNzbdavConfig(): NZBDavConfig {
  */
 export function isNzbdavLibraryConfigured(): boolean {
   return globalConfig.streamingMode === 'nzbdav'
+    && isNzbdavBackendActive()
     && !!globalConfig.nzbdavWebdavUrl
     && !!globalConfig.nzbdavWebdavUser;
 }

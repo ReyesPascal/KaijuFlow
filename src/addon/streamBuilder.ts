@@ -17,7 +17,7 @@ import { parseQuality, parseCodec, parseSource, parseVisualTag, parseAudioTag, p
 import type { Stream, AutoPlayConfig } from '../types.js';
 import type { HealthCheckResult } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
-import { createFallbackGroup, type FallbackCandidate } from '../nzbdav/index.js';
+import { createFallbackGroup, isNzbdavBackendActive, isUltimateFallbackActive, type FallbackCandidate } from '../nzbdav/index.js';
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
 import { registerDeleteAllTargets } from '../nzbdav/deleteAllTargetsStore.js';
 import { buildStreamDisplay } from './streamDisplay.js';
@@ -93,7 +93,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
   // Create fallback group for NZBDav mode (auto-retry next NZB on failure)
   let fallbackGroupId: string | undefined;
   let fallbackCandidates: FallbackCandidate[] | undefined;
-  if (config.streamingMode === 'nzbdav' && config.ultimateFallback?.enabled && allResults.length > 0) {
+  if (config.streamingMode === 'nzbdav' && isUltimateFallbackActive() && allResults.length > 0) {
     fallbackGroupId = crypto.randomUUID().slice(0, 12);
 
     fallbackCandidates = allResults
@@ -240,7 +240,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
     // libraryVideoPath query param and serves the file directly without the NZB
     // grab cycle. URL is shaped as a single query param so Infuse's iOS handoff
     // (which strips everything after the first '&') doesn't drop the path.
-    if (result.origin === 'library' && result.libraryVideoPath && config.streamingMode === 'nzbdav') {
+    if (result.origin === 'library' && result.libraryVideoPath && config.streamingMode === 'nzbdav' && isNzbdavBackendActive()) {
       const streamManifestKey = requestContext.getStore()?.manifestKey || '';
       const base = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/nzbdav/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}`;
       const tileUrl = `${base}?libraryVideoPath=${encodeURIComponent(result.libraryVideoPath)}`;
@@ -381,7 +381,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
   // obscure results from other Stremio addons.
   if (
     streams.length > 0
-    && config.ultimateFallback?.enabled
+    && isUltimateFallbackActive()
     && config.streamingMode === 'nzbdav'
     && sessionKey
   ) {
@@ -417,7 +417,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
   // the feature in the UI. When UF lobby is at index 0, bypass lands at index
   // 1 (right after UF). When UF lobby is absent, bypass lands at index 0 (top
   // of the list). The tile is NEVER added to fallbackCandidates so UF skips it.
-  const ufPresent = !!(config.ultimateFallback?.enabled && config.streamingMode === 'nzbdav' && sessionKey);
+  const ufPresent = !!(isUltimateFallbackActive() && config.streamingMode === 'nzbdav' && sessionKey);
   const bypassPresent = !!(shortCircuited && sessionKey && streamManifestKey);
   // User-configurable position: 'second' (current default — splice at index 1)
   // or 'last' (deferred push to the very end of the streams array AFTER

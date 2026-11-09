@@ -54,6 +54,7 @@ async function staleCleanupWebdavDelete(targetPath: string): Promise<{ ok: boole
 export async function runStaleLibraryFolderCleanup(): Promise<void> {
   if ((configData.staleLibraryFolderCleanupVersion ?? 0) >= STALE_LIBRARY_FOLDER_CLEANUP_VERSION) return;
 
+  if (configData.backend === 'altmount') return;
   const nzbdavConfig = buildNzbdavConfig();
   if (!nzbdavConfig.webdavUrl && !nzbdavConfig.url) return;
 
