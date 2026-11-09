@@ -19,9 +19,12 @@ Older handoffs are in git history. Replace this section; don't append below it.
 - (Done 2026-11-09, #51, PR #52) An indexer `429`/5xx/network error on the NZB grab no longer marks the Source dead, and stale marks are dropped on load. ADR 0004.
 - Health check grouping of number-named parts: #40. AltMount bug report: draft in the owner's notes, posting is the owner's call.
 
+6. **Search side-by-side done (2026-11-09, `tools/brain/search.py`).** 10 titles through AltMount's own Stremio addon (8085, 1 indexer), KaijuFlow + AltMount (1338, 3 indexers) and UU + NzbDAV (1337). AIOStreams was not run (no instance). Medians (addon / KaijuFlow / UU): list shown 0.55 / 4.77 / 4.12 s; first-try plays 8 / 10 / 10 of 10; broken among the first 3 Streams 5 / 3 / 4 of 30; first byte of the first playing Stream 5.24 / 0.04 / 0.62 s (KaijuFlow and UU warm, the addon's plays were cold imports). The addon is fast because it lists unchecked indexer results and fails at play time (HTTP 503 after its segment check); KaijuFlow spends the 4 s on health checks and every first pick played. Parity run 3 the same day: all 10 titles play on both Backends, 9 byte-identical. Tables and caveats: `/home/ryan/kaijuflow-notes/brain-1338/RESULTS.md`.
+
+**Open point for the owner:** keep KaijuFlow's own search (health-checked, 3 indexers), or pair AltMount's search with KaijuFlow's health checks? The numbers favour keeping KaijuFlow's search; AltMount's addon only wins on list time. Also: the addon test left 44 items in AltMount's import queue (categories Movies/TV, 22 failed); removing them is the owner's call.
+
 **Next, in order** (each step its own PR, with a test)
-1. Search side-by-side on the same 10 titles in Stremio, three setups: AltMount's own addon, KaijuFlow with AltMount as Backend, and AIOStreams as a reference. For each, count Sources shown, broken Streams (listed but won't play) and first-try plays, and time each side (list shown, first byte), with the median per side. This decides whether KaijuFlow keeps its own search or pairs AltMount's search with KaijuFlow's health checks. The 1338 test container is stopped and ready (see tools/brain).
-2. Add InfiniDysk 1.x (stable) as a Backend; 2.x once it leaves beta. It gets the same Unscrambled NZB through the shared step.
+1. Add InfiniDysk 1.x (stable) as a Backend; 2.x once it leaves beta. It gets the same Unscrambled NZB through the shared step.
 3. Benchmarks later ([plan](../performance/BENCHMARK_PLAN.md)).
 
 Out of scope for now: library page and library delete for new Backends; several Backends at once; RAR4 Scrambled RAR sets (uploaded unchanged, logged).
