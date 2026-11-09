@@ -57,6 +57,22 @@ export const scenarios = [
       assert.deepEqual(r.body, media, 'fallback body should be the whole file from byte 0');
     },
   },
+  {
+    // A Source the Backend already prepared is not submitted a second time.
+    id: 'already-prepared',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('again');
+      const title = 'KaijuFlow.Parity.Again.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addMovie('again', title, media);
+      const url = streamUrl(kaijuflow, nzb, title);
+      const first = await play(url);
+      assert.equal(first.status, 200, 'first play should work');
+      const second = await play(url);
+      assert.equal(second.status, 200, 'second play should work');
+      assert.deepEqual(second.body, media, 'second play should deliver the same bytes');
+      assert.equal(backend.submitsFor('again'), 1, 'an already-prepared Source must not be submitted again');
+    },
+  },
 ];
 
 /** Run every scenario against one fake Backend. Returns per-scenario results. */

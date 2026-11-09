@@ -559,6 +559,8 @@ export function autoQueueToNzbdav(
   // Packed into the tile envelope so the stream handler resolves the nzbdav
   // category correctly for auto-queued submits.
   const ty = toContentType(type);
+  // Auto-queued tiles go through the stream route, so the active Backend prepares them.
+  const backendLabel = getActiveBackend().label;
 
   const sendToNzbdav = (result: any, reason: string) => {
     try {
@@ -595,7 +597,7 @@ export function autoQueueToNzbdav(
       const proxyUrl = `${SELF_URL}/${autoManifestKey}/nzbdav/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}?t=${tileT}&auto=true`;
       fetch(proxyUrl).catch(err => console.error('❌ Auto-queue failed:', err));
     } catch (error) {
-      console.error('❌ Auto-queue to NZBDav failed:', error);
+      console.error(`❌ Auto-queue to ${backendLabel} failed:`, error);
     }
   };
 
@@ -623,7 +625,7 @@ export function autoQueueToNzbdav(
       return true;
     });
     if (verified.length > 0) {
-      console.log(`🚀 Auto-queueing all ${verified.length} verified result(s) to NZBDav`);
+      console.log(`🚀 Auto-queueing all ${verified.length} verified result(s) to ${backendLabel}`);
       // Serialize submissions — NZBDav's database chokes on concurrent inserts
       (async () => {
         for (let i = 0; i < verified.length; i++) {

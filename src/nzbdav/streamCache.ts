@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { CacheEntry, StreamData, NZBDavConfig } from './types.js';
+import type { BackendId } from '../backends/types.js';
 import { config as globalConfig } from '../config/index.js';
 import { clearFallbackGroups } from './fallbackManager.js';
 import { clearDeliveryLog, MULTI_EPISODE_BLOCKED_ERROR, VIDEO_NOT_FOUND_ERROR } from './utils.js';
@@ -143,7 +144,22 @@ function enforceStorageLimit(cache: Map<string, any>, sizeFn: () => number, maxM
  * Used to short-circuit repeat requests for the same stream within the TTL window.
  * The first request runs the full prep pipeline; subsequent requests return the cached result.
  */
-interface ReadyEntry { data: StreamData; indexerName?: string; createdAt: number; expiresAt: number }
+interface ReadyEntry { data: StreamData; indexerName?: string; createdAt: number; expiresAt: number; backend?: BackendId }
+
+/** Backend that made a ready entry. Entries saved before Backends existed have no tag: they are NzbDAV's. */
+const entryBackend = (e: ReadyEntry): BackendId => e.backend ?? 'nzbdav';
+/** Ready entries only count while the Backend that made them is the active one. */
+const isActiveBackendEntry = (e: ReadyEntry): boolean => entryBackend(e) === globalConfig.backend;
+
+/**
+ * Remembered ready Stream for a Source, or null. Ignores entries made by another
+ * Backend than `backendId` (a Backend switch must never serve a stale link).
+ */
+export function findReadyStream(nzbUrl: string, title: string, episodePattern: string | undefined, backendId: BackendId): StreamData | null {
+  const entry = readyCache.get(getCacheKey(nzbUrl, title) + (episodePattern ? `:${episodePattern}` : ''));
+  if (!entry || entry.expiresAt <= Date.now() || entryBackend(entry) !== backendId) return null;
+  return entry.data;
+}
 const readyCache = new Map<string, ReadyEntry>();
 
 /** Dead NZBs — persisted to disk, survives restarts */
@@ -290,7 +306,7 @@ function shouldDeadBeUrlWide(nzbUrl: string, isSeasonPack?: boolean): boolean {
 /** Write a resolved stream directly to readyCache (used by Ultimate-Fallback to bypass getOrCreateStream). */
 export function setReadyCacheEntry(cacheKey: string, data: StreamData, indexerName?: string): void {
   const now = Date.now();
-  readyCache.set(cacheKey, { data, indexerName, createdAt: now, expiresAt: now + getReadyTTLMs() });
+  readyCache.set(cacheKey, { data, indexerName, createdAt: now, expiresAt: now + getReadyTTLMs(), backend: globalConfig.backend });
   saveCacheToDisk();
 }
 
@@ -441,6 +457,7 @@ export async function getOrCreateStream(
       indexerName,
       createdAt,
       expiresAt: createdAt + getReadyTTLMs(),
+      backend: globalConfig.backend,
     });
     if (globalConfig.healthyNzbDbMode === 'storage') {
       enforceStorageLimit(readyCache, estimateReadyCacheSize, globalConfig.healthyNzbDbMaxSizeMB ?? 50);
@@ -753,7 +770,7 @@ export function getCacheEntries(): {
   const failed: { key: string; title: string; indexerName?: string; size?: number; error: string; episodePattern?: string; createdAt: number; expiresAt: number }[] = [];
 
   for (const [key, entry] of readyCache.entries()) {
-    if (entry.expiresAt < now) continue;
+    if (entry.expiresAt < now || !isActiveBackendEntry(entry)) continue;
     ready.push({ key, title: extractTitle(key), indexerName: entry.indexerName, videoPath: entry.data.videoPath, videoSize: entry.data.videoSize, createdAt: entry.createdAt, expiresAt: entry.expiresAt });
   }
 
@@ -785,7 +802,7 @@ export function isStreamCached(nzbUrl: string, title: string): boolean {
   const now = Date.now();
   // Check ready cache
   for (const [key, entry] of readyCache.entries()) {
-    if ((key === baseKey || key.startsWith(baseKey + ':')) && entry.expiresAt > now) return true;
+    if ((key === baseKey || key.startsWith(baseKey + ':')) && entry.expiresAt > now && isActiveBackendEntry(entry)) return true;
   }
   // Check pending cache
   for (const [key, entry] of pendingCache.entries()) {
@@ -807,7 +824,7 @@ export function getCacheStats(): {
   const now = Date.now();
   let ready = 0;
   for (const entry of readyCache.values()) {
-    if (entry.expiresAt > now) ready++;
+    if (entry.expiresAt > now && isActiveBackendEntry(entry)) ready++;
   }
   const pending = pendingCache.size;
   let failed = 0;

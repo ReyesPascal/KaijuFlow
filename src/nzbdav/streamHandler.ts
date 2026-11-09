@@ -11,8 +11,8 @@ import { pipeline } from 'stream';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
-import { getActiveBackend, type BackendSource } from '../backends/index.js';
-import { getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
+import { getActiveBackend, isSourceFailure, type BackendSource } from '../backends/index.js';
+import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isNzbdavBackendActive, isUltimateFallbackActive } from './utils.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
@@ -206,6 +206,23 @@ export async function prepareStream(
     } else {
       console.log(`${logPrefix}\u2705 Stream ready (${backend.label} library): ${title}\n`);
       return existing;
+    }
+  }
+
+  // Backends without a library (AltMount) have nothing to look up, so reuse what
+  // this Backend already made for the Source (ready cache) when it is still there.
+  // The probe below still runs. NzbDAV is unchanged: its library lookup above is authoritative.
+  if (!backend.library && backend.id !== 'nzbdav') {
+    const ready = findReadyStream(nzbUrl, title, episodePattern, backend.id);
+    if (ready && !isVideoPathBroken(ready.videoPath) && await backend.stillPrepared(ready.videoPath)) {
+      try {
+        await backend.probe(ready, { logPrefix });
+        console.log(`${logPrefix}\u2705 Stream ready (${backend.label}, reused): ${title}\n`);
+        return ready;
+      } catch (err) {
+        markVideoPathBroken(ready.videoPath);
+        if (!isSourceFailure(err)) throw err;
+      }
     }
   }
 
@@ -694,7 +711,7 @@ export async function handleStream(
   const isFreshRequest = candidateStart === 0;
   if (isFreshRequest && candidates.length > 0 && !isUfTileRequest) {
     {
-      const dedupKey = getCacheKey(candidates[0].nzbUrl, candidates[0].title) + (cachePattern ? `:${cachePattern}` : '');
+      const dedupKey = `${backend.id}|` + getCacheKey(candidates[0].nzbUrl, candidates[0].title) + (cachePattern ? `:${cachePattern}` : '');
       const cached = recentDeliveries.get(dedupKey);
       if (cached
         && Date.now() - cached.timestamp < DEDUP_CACHE_TTL_MS
@@ -1154,12 +1171,12 @@ export async function handleStream(
       // requests for the same click hit dedup, even when fallback-chain walked
       // past the click and resolved a later candidate.
       const dedupCandidate = candidates[0] ?? candidate;
-      const dedupKey = getCacheKey(dedupCandidate.nzbUrl, dedupCandidate.title) + (cachePattern ? `:${cachePattern}` : '');
+      const dedupKey = `${backend.id}|` + getCacheKey(dedupCandidate.nzbUrl, dedupCandidate.title) + (cachePattern ? `:${cachePattern}` : '');
       recentDeliveries.set(dedupKey, { streamData, streamingMethod: mode, timestamp: Date.now() });
       // Also key on the resolved candidate's URL so direct second-clicks of the
       // resolved tile (different click URL) also dedup.
       if (candidate !== dedupCandidate) {
-        const resolvedKey = getCacheKey(candidate.nzbUrl, candidate.title) + (cachePattern ? `:${cachePattern}` : '');
+        const resolvedKey = `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (cachePattern ? `:${cachePattern}` : '');
         recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now() });
       }
 
