@@ -4,7 +4,7 @@ Scripts for live checks on Brain (the owner's server), written for the 1338 Brai
 
 Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, in the shell tool's background mode. Each script prints one line per title as it goes and ends with `done in N s`; a log without that line is an unfinished run. Watch the log while it runs (a monitor that prints each title line and any line with `Error` or `Traceback`) and stop and report on the first error instead of waiting for the end.
 
-`common.py` holds the ten titles, the timed HTTP read and the table helpers shared by `parity.py` and `search.py`; change the title list there only, so both tables stay comparable. `<user-id>` is the id in UU's manifest URL, the key in the test container's `config/users.json`. AltMount's download key (the SHA-256 of its API key) is computed in `src/backends/altmount.ts` (`downloadKey`).
+`common.py` holds the ten titles, the timed HTTP read and the table helpers shared by `parity.py` and `search.py`; change the title list there only, so both tables stay comparable. `TITLES_FILE=<path.json>` (a JSON list of `[kind, id, label]`) swaps in another list for one run, e.g. fresh titles for a cold run. `<user-id>` is the id in UU's manifest URL, the key in the test container's `config/users.json`. AltMount's download key (the SHA-256 of its API key) is computed in `src/backends/altmount.ts` (`downloadKey`).
 
 | Script | What it does | Cost |
 |---|---|---|
