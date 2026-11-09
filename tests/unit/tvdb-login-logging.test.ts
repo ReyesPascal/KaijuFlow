@@ -8,6 +8,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import axios from 'axios';
 import { configData } from '../../src/config/index.ts';
+import { captureLogs } from './capture-logs.ts';
 import { detectRemake, clearTvdbToken } from '../../src/idResolver.ts';
 
 // Text that must never reach the logs.
@@ -38,22 +39,6 @@ const interceptor = axios.interceptors.request.use(cfg => {
 
 const savedSearchConfig = configData.searchConfig;
 configData.searchConfig = { ...savedSearchConfig, includeSeasonPacks: true, tvdbApiKey: 'test-key' };
-
-// --- Capture everything written to the console while the resolver runs ---
-async function captureLogs(fn: () => Promise<unknown>): Promise<string> {
-  const lines: string[] = [];
-  const saved = { log: console.log, warn: console.warn, error: console.error };
-  const record = (...args: unknown[]) => {
-    lines.push(args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
-  };
-  console.log = console.warn = console.error = record;
-  try {
-    await fn();
-  } finally {
-    Object.assign(console, saved);
-  }
-  return lines.join('\n');
-}
 
 let n = 0;
 beforeEach(() => clearTvdbToken());
