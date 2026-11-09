@@ -8,7 +8,7 @@ import tls from 'node:tls';
 import fs from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { connectToUsenet, setVerifyTlsCertificates } from '../../src/health/index.ts';
+import { connectToUsenet, bindVerifyTlsCertificates } from '../../src/health/index.ts';
 import { createHealthCheckRoutes } from '../../src/routes/healthCheck.ts';
 
 const fixture = (name: string) => fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -37,8 +37,11 @@ await new Promise<void>(resolve => nntp.listen(0, '127.0.0.1', resolve));
 const port = (nntp.address() as AddressInfo).port;
 const provider = { host: '127.0.0.1', port, useTLS: true, username: 'u', password: 'p' };
 
+// The setting as the server binds it; each test sets the value it needs.
+let verify = true;
+bindVerifyTlsCertificates(() => verify);
+
 // --- The provider "Test Connection" route, mounted on a throwaway app ---
-let routeVerifies = true;
 const app = express();
 app.use(express.json());
 app.use('/api/health-check', createHealthCheckRoutes({
@@ -47,7 +50,6 @@ app.use('/api/health-check', createHealthCheckRoutes({
   updateProvider: () => { throw new Error('unused'); },
   deleteProvider: () => {},
   reorderProviders: () => {},
-  verifyTlsCertificates: () => routeVerifies,
 }));
 const web = app.listen(0, '127.0.0.1');
 await new Promise(resolve => web.once('listening', resolve));
@@ -62,7 +64,7 @@ async function testConnection(): Promise<{ status: number; body: { success: bool
   return { status: res.status, body: await res.json() };
 }
 
-afterEach(() => setVerifyTlsCertificates(true));
+afterEach(() => { verify = true; });
 after(() => { nntp.close(); web.close(); });
 
 test('health checks reject a self-signed certificate by default, with a clear error', async () => {
@@ -75,14 +77,13 @@ test('health checks reject a self-signed certificate by default, with a clear er
 });
 
 test('health checks connect to a self-signed server when checking is turned off', async () => {
-  setVerifyTlsCertificates(false);
+  verify = false;
   const socket = await connectToUsenet(provider);
   assert.equal(socket.destroyed, false);
   socket.destroy();
 });
 
 test('Test Connection reports the certificate failure when checking is on', async () => {
-  routeVerifies = true;
   const { status, body } = await testConnection();
   assert.equal(status, 500);
   assert.equal(body.success, false);
@@ -91,7 +92,7 @@ test('Test Connection reports the certificate failure when checking is on', asyn
 });
 
 test('Test Connection succeeds against a self-signed server when checking is off', async () => {
-  routeVerifies = false;
+  verify = false;
   const { status, body } = await testConnection();
   assert.equal(status, 200);
   assert.equal(body.success, true);

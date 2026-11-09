@@ -41,6 +41,7 @@ import { createSettingsRoutes } from './routes/settings.js';
 import { createNzbdavRoutes, createNzbdavStreamRoutes } from './routes/nzbdav.js';
 import { createEasynewsProxyRoutes } from './routes/easynewsProxy.js';
 import { createHealthCheckRoutes } from './routes/healthCheck.js';
+import { bindVerifyTlsCertificates } from './health/nntpConnection.js';
 import { createExternalApiRoutes } from './routes/externalApis.js';
 import { createStatsRoutes } from './routes/stats.js';
 import { createLogRoutes } from './routes/logs.js';
@@ -51,6 +52,9 @@ const __dirname = path.dirname(__filename);
 
 const { getRouter } = addonSDK;
 const PORT = process.env.PORT || 1337;
+
+// TLS certificate checks for NNTP follow the current setting (finding 7).
+bindVerifyTlsCertificates(() => config.healthChecks?.verifyTlsCertificates !== false);
 
 const app = express();
 app.set('trust proxy', 1);
@@ -164,7 +168,6 @@ app.use('/api/health-check', createHealthCheckRoutes({
   updateProvider,
   deleteProvider,
   reorderProviders,
-  verifyTlsCertificates: () => config.healthChecks?.verifyTlsCertificates !== false,
 }));
 
 app.use('/api/search-config', createExternalApiRoutes());

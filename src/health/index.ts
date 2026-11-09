@@ -30,9 +30,7 @@ export {
   connectToUsenet,
   NntpConnectionPool,
   setHealthCheckConnectionCap,
-  setVerifyTlsCertificates,
-  nntpTlsOptions,
-  describeTlsError,
+  bindVerifyTlsCertificates,
   DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
 } from './nntpConnection.js';
 

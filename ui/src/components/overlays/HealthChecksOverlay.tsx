@@ -196,7 +196,7 @@ export default function HealthChecksOverlay({
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={healthChecks.verifyTlsCertificates !== false}
+                      checked={healthChecks.verifyTlsCertificates ?? DEFAULT_HEALTH_CHECKS.verifyTlsCertificates}
                       onChange={(e) => setHealthChecks({ ...healthChecks, verifyTlsCertificates: e.target.checked })}
                       className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-pink-500 focus:ring-pink-500 focus:ring-offset-slate-800"
                     />
@@ -487,7 +487,7 @@ export default function HealthChecksOverlay({
                     smartMinHealthy: 1,
                     maxConnections: 12,
                     maxTotalConnections: DEFAULT_HEALTH_CHECKS.maxTotalConnections,
-                    verifyTlsCertificates: true,
+                    verifyTlsCertificates: DEFAULT_HEALTH_CHECKS.verifyTlsCertificates,
                     autoQueueMode: 'all',
                     hideBlocked: true,
                     libraryPreCheck: true,

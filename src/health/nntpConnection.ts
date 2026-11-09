@@ -96,16 +96,24 @@ class ConnectionLimiter {
 
 const limiter = new ConnectionLimiter();
 
-let verifyTlsCertificates = true;
-
-/** Turn TLS certificate checking on or off (the "Verify TLS Certificates" setting, default on). */
-export function setVerifyTlsCertificates(enabled: boolean): void {
-  verifyTlsCertificates = enabled !== false;
+/** Set the total health-check connection cap (the "Max Total Connections" setting, 1-100). */
+export function setHealthCheckConnectionCap(cap: number): void {
+  limiter.setCap(cap);
 }
 
-/** TLS options for an NNTP connection; `verify` turns certificate checking on. */
-export function nntpTlsOptions(host: string, port: number, verify = verifyTlsCertificates): tls.ConnectionOptions {
-  return { host, port, rejectUnauthorized: verify };
+let readVerifyTlsCertificates: () => boolean = () => true;
+
+/**
+ * Bind the "Verify TLS Certificates" setting (default on). The reader is
+ * called on every new connection, so a changed setting applies right away.
+ */
+export function bindVerifyTlsCertificates(read: () => boolean): void {
+  readVerifyTlsCertificates = read;
+}
+
+/** TLS options for an NNTP connection, with certificate checking per the setting. */
+export function tlsConnectOptions(host: string, port: number): tls.ConnectionOptions {
+  return { host, port, rejectUnauthorized: readVerifyTlsCertificates() };
 }
 
 /**
@@ -138,11 +146,6 @@ const CERTIFICATE_ERROR_CODES = new Set([
 function isCertificateError(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException | undefined)?.code;
   return typeof code === 'string' && CERTIFICATE_ERROR_CODES.has(code);
-}
-
-/** Set the total health-check connection cap (the "Max Total Connections" setting, 1-100). */
-export function setHealthCheckConnectionCap(cap: number): void {
-  limiter.setCap(cap);
 }
 
 /**
@@ -198,7 +201,7 @@ function openAuthenticatedSocket(provider: NntpProvider): Promise<NntpSocket> {
     let buffer = '';
 
     const socket = provider.useTLS
-      ? tls.connect(nntpTlsOptions(provider.host, provider.port))
+      ? tls.connect(tlsConnectOptions(provider.host, provider.port))
       : net.connect({ host: provider.host, port: provider.port });
     socket.setNoDelay(true);
 
