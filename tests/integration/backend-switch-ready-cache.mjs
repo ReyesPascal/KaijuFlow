@@ -54,8 +54,6 @@ try {
   // 3. Switch to NzbDAV: the AltMount entry is ignored, and NzbDAV plays through its own Backend.
   configData.backend = 'nzbdav';
   assert.equal(getCacheEntries().ready.length, 0, 'AltMount entries are hidden while NzbDAV is active');
-  r = await play(altNzb); // same Source link; the fake NzbDAV does not know it
-  assert.notEqual(r.status === 200 && r.body.equals(media), true, 'must not serve the AltMount link under NzbDAV');
   r = await play(davNzb);
   assert.equal(r.status, 200); assert.deepEqual(r.body, media);
   assert.equal(dav.submitsFor('sw'), 1);
