@@ -71,6 +71,22 @@ class ParseTest(unittest.TestCase):
         self.assertTrue(ev['time'].startswith('2026-11-10T18:05:00'))
         self.assertIsNone(br.limit_event('size 4290000 bytes, 1429 items\n', ['x']))
 
+    def test_limit_event_uses_the_wordings_the_sides_print(self):
+        for line in ('2026-11-10T18:05:00Z Indexer search failed indexer=althub error="newsnab: search returned HTTP 429 (althub): '
+                     'newznab API error 500: Request limit reached. Retry in 113 minutes"',
+                     '2026-11-10T18:05:00Z LIMIT_REACHED indexer=althub at=2026-11-10T18:05:00Z status=200',
+                     '2026-11-10T18:05:00Z Failed to download NZB from althub: 429 Too Many Requests (indexer unavailable, Source kept)',
+                     '2026-11-10T18:05:00Z    Status: 429'):
+            self.assertIsNotNone(br.limit_event(line + '\n', ['althub']), line)
+        self.assertEqual(br.limit_event('2026-11-10T18:05:00Z altHUB: text\n2026-11-10T18:05:01Z \u274c Search error for altHUB:\n'
+                                        '2026-11-10T18:05:01Z    Status: 429\n', ['altHUB'])['indexer'], 'altHUB')
+
+    def test_limit_event_ignores_benign_lines(self):
+        for line in ('Backup processing limit reached (3/3) - draining pool', 'Download limit: 5 per minute (setting)',
+                     'API limit set to 100 in the config', 'rate limit middleware loaded', 'Grabbed 429 bytes',
+                     'size 1429 items, status=4290', 'Connection limit exceeded for provider'):
+            self.assertIsNone(br.limit_event('2026-11-10T18:05:00Z ' + line + '\n', ['x']), line)
+
 
 class StatsTest(unittest.TestCase):
     def visit(self, **kw):
@@ -121,7 +137,35 @@ class DiffTest(unittest.TestCase):
         self.assertIn('first', br.diff_runs(None, self.base)[0].lower())
 
     def test_nothing_changed(self):
-        self.assertEqual(br.diff_runs(self.base, dict(self.base))[0].startswith('Nothing'), True)
+        out = br.diff_runs(self.base, dict(self.base))
+        self.assertTrue(out[0].startswith('Nothing changed'))
+
+    def test_time_of_day_of_both_runs_is_always_listed(self):
+        cur = dict(self.base, started='2026-11-10T18:30:00Z')  # half an hour later
+        text = '\n'.join(br.diff_runs(self.base, cur))
+        self.assertIn('Time of day', text)
+        self.assertIn('18:00', text)
+        self.assertIn('18:30', text)
+
+    def test_null_runs_between_are_counted_with_times(self):
+        cur = dict(self.base, started='2026-11-11T09:00:00Z')
+        nulls = [{'started': '2026-11-10T20:00:00Z', 'null': {'indexer': 'altHUB'}},
+                 {'started': '2026-11-10T22:30:00Z', 'null': {'indexer': 'DrunkenSlug'}}]
+        text = '\n'.join(br.diff_runs(self.base, cur, nulls))
+        self.assertIn('2 null runs', text)
+        self.assertIn('2026-11-10 20:00', text)
+        self.assertIn('2026-11-10 22:30', text)
+        self.assertNotIn('null run', '\n'.join(br.diff_runs(self.base, cur)))
+
+    def test_null_runs_between_found_in_runs_root(self):
+        root = tempfile.mkdtemp()
+        for name, status, started in (('a', 'ok', '2026-11-10T10:00:00Z'), ('b', 'null', '2026-11-10T11:00:00Z'),
+                                      ('c', 'ok', '2026-11-10T12:00:00Z'), ('d', 'null', '2026-11-10T13:00:00Z')):
+            os.makedirs(os.path.join(root, name))
+            with open(os.path.join(root, name, 'meta.json'), 'w') as f:
+                json.dump({'status': status, 'started': started}, f)
+        found = br.null_runs_between(root, '2026-11-10T10:00:00Z', exclude='d')
+        self.assertEqual([n['started'] for n in found], ['2026-11-10T11:00:00Z'])
 
     def test_every_kind_of_change(self):
         cur = json.loads(json.dumps(self.base))
@@ -137,6 +181,17 @@ class DiffTest(unittest.TestCase):
 
 
 class ScrubTest(unittest.TestCase):
+    def test_only_real_secret_fields_are_masked(self):
+        flat = br.flatten({'bypass_x': 'on', 'maxUsers': 5, 'max_users': 6, 'keepAlive': 1, 'keywords': 'a', 'passes': 2,
+                           'apiKey': 'S1', 'API_KEY': 'S2', 'api-key': 'S3', 'password': 'S4', 'Password': 'S5',
+                           'username': 'S6', 'user': 'S7', 'login': 'S8', 'authToken': 'S9', 'jwtSecret': 'S10',
+                           'usenet': {'pass': 'S11', 'host': 'news.example'}, 'nzbdavApiKey': 'S12'})
+        for k in ('bypass_x', 'maxUsers', 'max_users', 'keepAlive', 'keywords', 'passes', 'usenet.host'):
+            self.assertNotEqual(flat[k], '***', k)
+        for k in ('apiKey', 'API_KEY', 'api-key', 'password', 'Password', 'username', 'user', 'login', 'authToken',
+                  'jwtSecret', 'usenet.pass', 'nzbdavApiKey'):
+            self.assertEqual(flat[k], '***', k)
+
     def test_secrets_removed(self):
         flat = br.flatten({'apiKey': 'S3CRET', 'url': 'http://h/api?apikey=S3CRET&x=1', 'n': 3,
                            'nested': {'password': 'pw', 'maxPages': 3}, 'lst': [{'token': 't'}]})
@@ -206,6 +261,48 @@ class ReportTest(unittest.TestCase):
         h = br.headline(runs_fixture())
         self.assertIn('KaijuFlow', h)
         self.assertIn('2', h)
+
+
+class AttributionTest(unittest.TestCase):
+    def visit(self, vid='tt1', start='2026-11-10T18:00:00Z', played='Rel.A.2160p', **kw):
+        v = dict(side='kaijuflow', id=vid, t_start=start, t_end='2026-11-10T18:00:07Z', tries=[{'title': played}])
+        v.update(kw)
+        return v
+
+    @staticmethod
+    def line(step, t, ms=100, **kw):
+        return dict(step=step, ms=ms, t=t, ok=True, **kw)
+
+    def test_late_health_batch_is_kept_until_the_next_visit_of_that_side(self):
+        steps = [self.line('indexer_page', '2026-11-10T18:00:02Z', ref='tt1', source='N', page=1),
+                 self.line('health_batch', '2026-11-10T18:00:40Z', ref='tt1'),  # 40 s later: no fixed cut
+                 self.line('health_batch', '2026-11-10T18:00:50Z', ref='tt2')]
+        got = br.attribute_steps(self.visit(), steps, end=br.parse_ts('2026-11-10T18:01:00Z'))
+        self.assertEqual([(s['step'], s['ref']) for s in got], [('indexer_page', 'tt1'), ('health_batch', 'tt1')])
+        # after the side's next visit has started, the line belongs to that visit
+        got = br.attribute_steps(self.visit(), steps, end=br.parse_ts('2026-11-10T18:00:30Z'))
+        self.assertEqual([s['step'] for s in got], ['indexer_page'])
+
+    def test_prepare_lines_of_the_previous_title_stay_out(self):
+        steps = [  # previous title's background work: started before this visit, ends inside it
+            self.line('import_wait', '2026-11-10T18:00:05Z', ms=30000, title='Other.Movie.1080p', job='9'),
+            self.line('first_byte', '2026-11-10T18:00:06Z', ms=100, title='Other.Movie.1080p', job='9'),
+            self.line('nzb_fetch', '2026-11-10T18:00:03Z', ms=200, title='Rel.A.2160p'),
+            self.line('import_wait', '2026-11-10T18:00:20Z', ms=15000, title='Rel.A.2160p', job='10'),
+            self.line('first_byte', '2026-11-10T18:00:21Z', ms=100, title='Rel.A.2160p', job='10')]
+        got = br.attribute_steps(self.visit(), steps, end=None)
+        self.assertEqual({s['title'] for s in got}, {'Rel.A.2160p'})
+        self.assertEqual(len(got), 3)
+
+    def test_played_source_decides_when_two_titles_started_inside_the_visit(self):
+        steps = [self.line('nzb_fetch', '2026-11-10T18:00:03Z', title='Rel.B.1080p'),
+                 self.line('nzb_fetch', '2026-11-10T18:00:04Z', title='Rel.A.2160p')]
+        got = br.attribute_steps(self.visit(played='Name\nRel.A.2160p 12 GB'), steps, end=None)
+        self.assertEqual([s['title'] for s in got], ['Rel.A.2160p'])
+
+    def test_nothing_before_the_visit_started(self):
+        steps = [self.line('nzb_fetch', '2026-11-09T18:00:03Z', title='Rel.A.2160p')]
+        self.assertEqual(br.attribute_steps(self.visit(), steps, end=None), [])
 
 
 class RunRecordTest(unittest.TestCase):

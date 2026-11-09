@@ -5,7 +5,7 @@
  * `docker logs`: the tag `[KF-STEP] ` followed by a single-line JSON object.
  * Fields: step, source, ms, ok, t (end time, ISO), then ref / title / extras.
  * Lines never carry URLs or keys: callers pass names and numbers only.
- * Format reference: /home/ryan/kaijuflow-notes/spec58/ticket-61.md.
+ * Format reference: the "Step lines" section of tools/brain/README.md.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 
@@ -51,6 +51,11 @@ export async function timeStep<T>(fields: StepFields, fn: () => Promise<T>, afte
   }
   logStep({ ...fields, ...(after?.(result) ?? {}), ms: Date.now() - t0 });
   return result;
+}
+
+/** Time one page request to an indexer (`source` = indexer name, `page` 1 = first page). Never changes the result. */
+export function timeIndexerPage<T>(source: string, page: number, fn: () => Promise<T>): Promise<T> {
+  return timeStep({ step: 'indexer_page', source, page }, fn);
 }
 
 /** Parse one log line (docker prefixes allowed); null when it is not a step line. */

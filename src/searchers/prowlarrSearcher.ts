@@ -26,7 +26,7 @@ import { isTextSearchMatch, stripDiacritics, tagSeasonPack, runSeriesPackQueries
 import { slog, withSubBuffer } from '../parsers/searchLogger.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
-import { timeStep } from '../utils/stepTiming.js';
+import { timeIndexerPage } from '../utils/stepTiming.js';
 
 // Params for the per-indexer Newznab endpoint — typed to match Prowlarr's API spec
 interface NewznabParams {
@@ -566,7 +566,7 @@ export class ProwlarrSearcher {
       slog(`📤 Prowlarr aggregate: /api/v1/search`);
       slog(`   type=${type} query="${query}" indexerIds=[${indexerIds.join(',')}] categories=[${categories.join(',')}]`);
 
-      const response = await timeStep({ step: 'indexer_page', source: 'Prowlarr', page: 1 }, () => axios.get(searchUrl, {
+      const response = await timeIndexerPage('Prowlarr', 1, () => axios.get(searchUrl, {
         headers: { 'X-Api-Key': this.apiKey, 'User-Agent': userAgent },
         timeout: this.getTimeoutMs(),
       }));
@@ -599,7 +599,7 @@ export class ProwlarrSearcher {
             const pageParams = new URLSearchParams(params);
             pageParams.set('offset', offset.toString());
             const pageUrl = `${this.url}/api/v1/search?${pageParams.toString()}`;
-            const pageResp = await timeStep({ step: 'indexer_page', source: 'Prowlarr', page }, () => axios.get(pageUrl, {
+            const pageResp = await timeIndexerPage('Prowlarr', page, () => axios.get(pageUrl, {
               headers: { 'X-Api-Key': this.apiKey, 'User-Agent': userAgent },
               timeout: this.getTimeoutMs(),
             }));
@@ -664,7 +664,7 @@ export class ProwlarrSearcher {
       slog(`📤 Prowlarr newznab: /api/v1/indexer/${indexerId}/newznab`);
       slog(`   Params: ${JSON.stringify(params)}`);
 
-      const response = await timeStep({ step: 'indexer_page', source: indexerName, page: 1 }, () => axios.get(searchUrl, {
+      const response = await timeIndexerPage(indexerName, 1, () => axios.get(searchUrl, {
         params,
         headers: { 'X-Api-Key': this.apiKey, 'User-Agent': userAgent },
         timeout: this.getTimeoutMs(),
@@ -696,7 +696,7 @@ export class ProwlarrSearcher {
         for (let page = 2; page <= extraPages + 1 && currentOffset < total; page++) {
           slog(`   📄 Fetching page ${page} (offset ${currentOffset})...`);
           try {
-            const pageResp = await timeStep({ step: 'indexer_page', source: indexerName, page }, () => axios.get(searchUrl, {
+            const pageResp = await timeIndexerPage(indexerName, page, () => axios.get(searchUrl, {
               params: { ...params, offset: currentOffset },
               headers: { 'X-Api-Key': this.apiKey, 'User-Agent': userAgent },
               timeout: this.getTimeoutMs(),

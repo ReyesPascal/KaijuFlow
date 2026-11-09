@@ -227,6 +227,40 @@ class RunTest(unittest.TestCase):
         self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
 
 
+class FinalStepsTest(unittest.TestCase):
+    """Step lines are attributed after the pass, so a late health_batch is kept (#62 review)."""
+
+    class LateIO(FakeIO):
+        def logs(self, container, since):
+            return ('2026-11-10T18:00:03.000000000Z [KF-STEP] {"step":"indexer_page","source":"N","ms":100,"ok":true,'
+                    '"t":"2026-11-10T18:00:03.000Z","ref":"tt1","page":1}\n'
+                    '2026-11-10T18:00:45.000000000Z [KF-STEP] {"step":"health_batch","ms":9000,"ok":true,'
+                    '"t":"2026-11-10T18:00:45.000Z","ref":"tt1","count":3,"checked":3}\n'
+                    '2026-11-10T18:01:10.000000000Z [KF-STEP] {"step":"health_batch","ms":500,"ok":true,'
+                    '"t":"2026-11-10T18:01:10.000Z","ref":"tt2","count":1,"checked":1}\n')
+
+    def test_late_health_batch_lands_on_its_own_visit(self):
+        visits = [dict(side='kaijuflow', id='tt1', t_start='2026-11-10T18:00:01.000Z', steps=[], tries=[]),
+                  dict(side='uu', id='tt1', t_start='2026-11-10T18:00:20.000Z', steps=[], tries=[]),
+                  dict(side='kaijuflow', id='tt2', t_start='2026-11-10T18:01:05.000Z', steps=[], tries=[])]
+        brainrun.finalize_steps(self.LateIO(), visits)
+        self.assertEqual([s['step'] for s in visits[0]['steps']], ['indexer_page', 'health_batch'])
+        self.assertEqual(visits[1]['steps'], [])  # a side without KaijuFlow step lines
+        self.assertEqual([(s['step'], s['ref']) for s in visits[2]['steps']], [('health_batch', 'tt2')])
+
+    def test_diff_in_a_run_names_null_runs_between(self):
+        tmp = tempfile.mkdtemp()
+        brainrun.run_all(make_cfg(tmp, name='ok1'), FakeIO())
+        bad = FakeIO(limit_at_visit=1)
+        bad.clock += datetime.timedelta(hours=1)
+        brainrun.run_all(make_cfg(tmp, name='bad'), bad)
+        io = FakeIO()
+        io.clock += datetime.timedelta(hours=3)
+        run = brainrun.run_all(make_cfg(tmp, name='ok2'), io)
+        self.assertIn('1 null run ', ' '.join(run['changes']))
+        self.assertIn('Time of day', ' '.join(run['changes']))
+
+
 class SettingsTest(unittest.TestCase):
     def test_snapshot_has_every_side_and_no_secrets(self):
         t = tempfile.mkdtemp()

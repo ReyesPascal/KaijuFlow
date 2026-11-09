@@ -26,9 +26,9 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
+from common import DEFAULT_TEST_DIR  # noqa: E402
 
 DEFAULT_RUNS_ROOT = '/home/ryan/kaijuflow-notes/brain-runs'
-DEFAULT_TEST_DIR = '/home/ryan/kaijuflow-test'
 PLAN = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 MAIN_SIDES = ['kaijuflow', 'uu', 'altmount-addon']
 ALL_TESTBED = ['nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow']
@@ -251,13 +251,8 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     for c, text in ((kf_c, kf_text), (be_c, be_text)):
         if c:
             logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
-    steps = []
-    for s in br.parse_step_lines(kf_text):
-        try:
-            if lo <= br.parse_ts(s['t']) <= hi:
-                steps.append(s)
-        except (KeyError, ValueError):
-            pass
+    # provisional; finalize_steps() re-attributes once the whole run is read (late lines, next visit of the side)
+    steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', [])}, br.parse_step_lines(kf_text))
     parse = br.altmount_imports if be_kind == 'altmount' else br.nzbdav_imports
     imports = [i for i in parse(be_text) if lo <= br.parse_ts(i['start']) <= hi]
     limit = br.limit_event(kf_text + '\n' + be_text, cfg['indexers'])
@@ -267,6 +262,26 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
             'list_s': http.get('list_s'), 'sources': http.get('sources'), 'start_s': http.get('start_s'),
             'seeks': http.get('seeks', {}), 'note': http.get('note'), 'tries': http.get('tries', []),
             'steps': steps, 'imports': imports, 'limit': limit}
+
+
+def finalize_steps(io, visits):
+    """Attribute every KaijuFlow step line to a visit, from the container's whole log.
+
+    Search-side lines go by `ref` to the visit of that title until the next visit that used the same KaijuFlow container
+    starts (no fixed cut-off, so a late health_batch is kept); prepare-side lines go to the Source that was played.
+    """
+    by_container = {}
+    for v in visits:
+        kf = SIDE_LOGS[v['side']][0]
+        if kf:
+            by_container.setdefault(kf, []).append(v)
+    for container, vs in by_container.items():
+        vs.sort(key=lambda v: br.parse_ts(v['t_start']))
+        first = br.parse_ts(vs[0]['t_start']) - datetime.timedelta(seconds=1)
+        steps = br.parse_step_lines(io.logs(container, br.iso(first)))
+        for i, v in enumerate(vs):
+            end = br.parse_ts(vs[i + 1]['t_start']) - datetime.timedelta(seconds=1) if i + 1 < len(vs) else None
+            v['steps'] = br.attribute_steps(v, steps, end)
 
 
 def _check_cap(io, visit=None):
@@ -324,10 +339,13 @@ def run_all(cfg, io):
             run['status'] = 'null'
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
         finally:
-            io.restore_config()
-            if handle:
-                handle.stop()
-            io.stop_all()
+            try:
+                finalize_steps(io, run['visits'])
+            finally:  # the cleanup runs even when reading the logs fails
+                io.restore_config()
+                if handle:
+                    handle.stop()
+                io.stop_all()
     except Exception as e:  # noqa: BLE001
         run['status'], run['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
         failure = e
@@ -338,7 +356,8 @@ def run_all(cfg, io):
     for c, parts in logbuf.items():
         _write(os.path.join(logs_dir, c + '.log'), '\n'.join(parts) + '\n')
     prev = br.previous_run(root, exclude=os.path.basename(run_dir))
-    run['changes'] = br.diff_runs(prev, run)
+    nulls = br.null_runs_between(root, prev['started'], exclude=os.path.basename(run_dir)) if prev and prev.get('started') else None
+    run['changes'] = br.diff_runs(prev, run, nulls)
     if run['status'] == 'ok':
         report, result, headline = br.render_report(run, run['changes']), 'ok', br.headline(run)
     elif run['status'] == 'null':

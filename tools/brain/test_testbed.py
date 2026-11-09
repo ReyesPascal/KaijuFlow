@@ -7,6 +7,7 @@ and check_empty() (what counts as empty), all against fakes: a temp TEST_DIR, a 
 runner instead of Docker, and canned HTTP replies.
 """
 import os
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -142,6 +143,13 @@ class ComposeCmd(unittest.TestCase):
             self.assertNotIn("container_name: %s\n" % live, text)
         for c in testbed.TEST_CONTAINERS:
             self.assertIn("container_name: %s\n" % c, text)
+
+    def test_nzbdav_test_copy_logs_imports(self):
+        # Live NzbDAV runs with LOG_LEVEL=warning; the report parses NzbDAV's import lines, which warning hides.
+        text = read(testbed.COMPOSE_FILE)
+        block = text[text.index("  nzbdav:"):text.index("  # AltMount side (8086)")]
+        level = re.search(r"LOG_LEVEL:\s*(\S+)", block).group(1).strip("\"'").lower()
+        self.assertIn(level, ("information", "info", "debug"))
 
 
 class Reset(unittest.TestCase):

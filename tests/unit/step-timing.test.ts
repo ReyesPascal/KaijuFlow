@@ -2,7 +2,7 @@
 // Run: npm run test:unit
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { logStep, timeStep, withStepRef, parseStepLine, STEP_NAMES } from '../../src/utils/stepTiming.ts';
+import { logStep, timeStep, timeIndexerPage, withStepRef, parseStepLine, STEP_NAMES } from '../../src/utils/stepTiming.ts';
 import { captureLogs } from './capture-logs.ts';
 
 const stepLines = (logs: string) => logs.split('\n').filter(l => l.includes('[KF-STEP]'));
@@ -57,4 +57,15 @@ test('lines never carry an API key or a URL query', async () => {
 test('parseStepLine ignores other log lines, and the step names are the seven agreed ones', () => {
   assert.equal(parseStepLine('Searching x'), null);
   assert.deepEqual([...STEP_NAMES], ['indexer_page', 'health_batch', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte']);
+});
+
+test('timeIndexerPage writes an indexer_page line with source and page, and passes the result through', async () => {
+  let result = '';
+  const logs = await captureLogs(async () => { result = await timeIndexerPage('NinjaCentral', 2, async () => 'answer'); });
+  assert.equal(result, 'answer');
+  const rec = parseStepLine(stepLines(logs)[0])!;
+  assert.equal(rec.step, 'indexer_page');
+  assert.equal(rec.source, 'NinjaCentral');
+  assert.equal(rec.page, 2);
+  assert.equal(rec.ok, true);
 });
