@@ -92,7 +92,7 @@ export interface Backend {
    */
   prepare(source: BackendSource, opts?: PrepareOptions): Promise<PreparedVideo>;
 
-  /** Probe: confirm the first byte is servable. Throws a Source failure if not. */
+  /** Probe: confirm the first byte is servable. Throws a Source failure for 404/410, 5xx and timeouts; a 400 or a refused/dropped connection is a plain error (ADR 0004). */
   probe(video: PreparedVideo, opts?: ProbeOptions): Promise<void>;
 
   /** Cancel: best effort only. Never proof that the Backend's work stopped. */

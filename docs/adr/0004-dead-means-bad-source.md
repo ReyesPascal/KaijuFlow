@@ -10,3 +10,15 @@ The same rule holds on the indexer side (#51, 2026-11-09): an indexer that does 
 - The NZB grab (`grabNzb`) throws a Source failure only for bad content: an invalid NZB body, an indexer error payload, or a link the indexer says is gone (404 and other 4xx). A 429, 5xx, 401/403, network error or download timeout is a plain error: failure video, Source kept. (A server that answers 500 for a removed NZB is retried on every play; that is the price of never killing a Source for a server fault.)
 - The dead cache drops marks written by earlier builds for an unavailable indexer when it loads (`isIndexerUnavailableMessage`), so the lost Sources come back without a manual clean-up.
 - The Parity scenarios `unreachable-backend-not-dead` and `indexer-unavailable-not-dead` run against every Backend.
+
+## First byte (#86, 2026-11-10)
+
+The first-byte check asks the Backend for the first byte of the video. Same rule for every Backend:
+
+- 404 or 410: the file is gone. A bad Source, marked dead as before.
+- 400, a refused connection or a dropped connection: says nothing about the Source. Failure video, Source stays alive and is in the next list.
+- 5xx or a timeout: today's handling, unchanged (bad Source after the retries). The 2026-11-10 recording gave no evidence either way.
+
+When a first byte fails, KaijuFlow logs one line with the status, the path it asked for and the names of the files the Backend offered. No addresses, no keys.
+
+The case behind it, Oppenheimer: the release name ends in `.mkv`, so AltMount stored it as a folder. The file route answered 400 twice for that folder, KaijuFlow marked a good Source dead, and it plays on NzbDAV. Fixing the folder itself is a separate change in the AltMount adapter (#85). The Parity scenarios `first-byte-400-or-dropped-not-dead` and `first-byte-404-dead` run against every Backend.
