@@ -5,10 +5,10 @@
 import datetime
 import json
 import os
-import tempfile
 import unittest
 
 import brainreport as br
+from test_settings import tempdir
 
 KF_LOG = """2026-11-10T18:00:01.100000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":200,"ok":true,"t":"2026-11-10T18:00:01.000Z","ref":"tt1","page":1}
 2026-11-10T18:00:01.300000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":100,"ok":true,"t":"2026-11-10T18:00:01.200Z","ref":"tt1","page":2}
@@ -158,7 +158,7 @@ class DiffTest(unittest.TestCase):
         self.assertNotIn('null run', '\n'.join(br.diff_runs(self.base, cur)))
 
     def test_null_runs_between_found_in_runs_root(self):
-        root = tempfile.mkdtemp()
+        root = tempdir(self)
         for name, status, started in (('a', 'ok', '2026-11-10T10:00:00Z'), ('b', 'null', '2026-11-10T11:00:00Z'),
                                       ('c', 'ok', '2026-11-10T12:00:00Z'), ('d', 'null', '2026-11-10T13:00:00Z')):
             os.makedirs(os.path.join(root, name))
@@ -495,7 +495,7 @@ class AttributionTest(unittest.TestCase):
 
 class RunRecordTest(unittest.TestCase):
     def setUp(self):
-        self.root = tempfile.mkdtemp()
+        self.root = tempdir(self)
 
     def test_folder_never_overwritten(self):
         now = datetime.datetime(2026, 11, 10, 18, 0, 5, tzinfo=datetime.timezone.utc)

@@ -7,12 +7,11 @@ import contextlib
 import io
 import json
 import os
-import tempfile
 import unittest
 
 import brainrun
 import testbed
-from test_settings import SECRET, make_copies
+from test_settings import SECRET, make_copies, tempdir
 
 COMMIT = 'a' * 40
 
@@ -70,7 +69,7 @@ def run_command(mode, cfg, world):
 
 class PreflightTest(unittest.TestCase):
     def setUp(self):
-        self.td = make_copies()
+        self.td = make_copies(self)
         self.cfg = make_cfg(self.td)
 
     def world(self, **kw):
@@ -123,7 +122,7 @@ class PreflightTest(unittest.TestCase):
         self.assertIn(f'make the key file readable only by you (run: chmod 600 {path})', text)
 
     def test_the_indexer_stand_in_is_explained_once_by_that_name(self):
-        td = make_copies(url=lambda s: 'https://real.example/api?x=1')
+        td = make_copies(self, url=lambda s: 'https://real.example/api?x=1')
         self.cfg = make_cfg(td)
         _code, text = run_command('record', self.cfg, self.world())
         self.assertIn('indexer stand-in (the local program that replays recorded indexer answers', text)
@@ -135,7 +134,7 @@ class PreflightTest(unittest.TestCase):
         self.assert_stops('record', self.world(), 'key file', 'only by you', 'chmod 600')
 
     def test_key_file_with_other_indexers_stops_record(self):
-        td = make_copies(key_slugs=('ninjacentral', 'althub'))
+        td = make_copies(self, key_slugs=('ninjacentral', 'althub'))
         self.cfg = make_cfg(td)
         self.assert_stops('record', self.world(), 'althub', 'drunkenslug')
 
@@ -155,11 +154,11 @@ class PreflightTest(unittest.TestCase):
 
     def test_copies_must_agree_on_enabled_indexers(self):
         # AltMount's addon copy has DrunkenSlug switched off; the key file and the other copies use it
-        self.cfg = make_cfg(make_copies(addon_off=('drunkenslug',)))
+        self.cfg = make_cfg(make_copies(self, addon_off=('drunkenslug',)))
         self.assert_stops('record', self.world(), 'AltMount addon', 'drunkenslug')
 
     def test_indexer_address_must_be_the_standins(self):
-        td = make_copies(url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
+        td = make_copies(self, url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
                          'http://host.docker.internal:1340/%s/api' % s)
         self.cfg = make_cfg(td)
         code, text = run_command('run', self.cfg, self.world())
@@ -170,19 +169,19 @@ class PreflightTest(unittest.TestCase):
         self.assertNotIn(SECRET, text)
 
     def test_an_address_with_a_key_in_it_is_never_printed(self):
-        td = make_copies(url=lambda s: 'https://real.example/api?apikey=' + SECRET)
+        td = make_copies(self, url=lambda s: 'https://real.example/api?apikey=' + SECRET)
         self.cfg = make_cfg(td)
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 1)
         self.assertNotIn(SECRET, text)
 
     def test_caps_over_the_provider_limit_stop(self):
-        td = make_copies(caps=(12, 12, 50, 50, 50))
+        td = make_copies(self, caps=(12, 12, 50, 50, 50))
         self.cfg = make_cfg(td)
         self.assert_stops('record', self.world(), '174', 'limit of 100')
 
     def test_caps_exactly_at_the_limit_pass(self):
-        td = make_copies(caps=(12, 13, 25, 25, 25))
+        td = make_copies(self, caps=(12, 13, 25, 25, 25))
         self.cfg = make_cfg(td)
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 0, text)
@@ -279,7 +278,7 @@ class AddressesTest(unittest.TestCase):
 class FirstInARunTest(unittest.TestCase):
     def test_a_failing_preflight_stops_a_run_before_anything_starts(self):
         from test_brainrun import FakeIO, make_cfg as run_cfg
-        tmp = tempfile.mkdtemp()
+        tmp = tempdir(self)
         fake = FakeIO()
         fake.problems = ['Port 1340 is in use.']
         with self.assertRaises(brainrun.PreflightFailed):

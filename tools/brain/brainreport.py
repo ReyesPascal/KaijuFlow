@@ -51,8 +51,8 @@ COLUMN_HELP = {
     'Backend rejection': 'failures where the Backend (AltMount or NzbDAV) refused or could not import the NZB.',
     'Failure video': 'failures where the side served its "this Source failed" video, with no cause found.',
     'Other': 'any other failure: no Sources, an error, a timeout, a video too short to be a film.',
-    'Not recorded': 'failures during which the indexer stand-in had no recorded answer for a request of that side (a miss). '
-                    'This says nothing about the side or the Source: top up the recording.',
+    'Not recorded': 'failures where a miss can be the cause: the list came back empty after a request the recording does not hold, '
+                    'or the NZB file of the top pick was not recorded. This says nothing about the side or the Source: top up the recording.',
     'Title': 'the film or episode asked for.',
     'Sources': 'how many Sources the side listed.',
     'Result': '"plays" when the top pick delivered video, otherwise the failure kind and a short note.',
@@ -656,7 +656,7 @@ def not_recorded_section(run):
            'A side asked the indexer stand-in for something the recording does not hold. That says nothing about the side or '
            'the Source, so these requests are counted here and not as bad Sources. Requests per side and title, all rounds:', '']
     out += _table(['Side', 'Title', 'Requests not recorded'], rows) + ['']
-    out += ['Top picks left out of the plays-out-of-ten figures (they failed after a miss): '
+    out += ['Top picks left out of the plays-out-of-ten figures (a miss can be why they failed): '
             + ('; '.join(left_out) if left_out else 'none (every top pick still played).'), '',
             f'To fill the gaps, top up the recording (no indexer is asked for something already stored): `{top_up}`', '']
     return out

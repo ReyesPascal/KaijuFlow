@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -19,16 +20,23 @@ NAMES = {'ninjacentral': 'NinjaCentral', 'drunkenslug': 'DrunkenSlug', 'althub':
 SHORT = {'ninjacentral': 'ninja', 'drunkenslug': 'drunkenslug', 'althub': 'althub'}
 
 
+def tempdir(case):
+    """A temporary folder that is removed when the test is over."""
+    d = tempfile.mkdtemp()
+    case.addCleanup(shutil.rmtree, d, True)
+    return d
+
+
 def _put(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
         f.write(text)
 
 
-def make_copies(base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 12, 25, 25, 25),
+def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 12, 25, 25, 25),
                 url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=(), backup_host='backup.example'):
     """A fake kaijuflow-test folder: KaijuFlow, UU, NzbDAV and both AltMounts, plus the key file."""
-    base = base or tempfile.mkdtemp()
+    base = base or tempdir(case)
     td = os.path.join(base, 'kaijuflow-test')
     kf_cap, uu_cap, nz_cap, addon_cap, altkf_cap = caps
     for rel, cap in (('config/config.json', kf_cap), ('uu/config/config.json', uu_cap)):
@@ -70,7 +78,7 @@ def make_copies(base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('a
 
 class ReaderTest(unittest.TestCase):
     def test_caps_sum_per_copy_and_no_secret_anywhere(self):
-        td = make_copies()
+        td = make_copies(self)
         rep = testbed.settings_report(td, limit=100)
         self.assertEqual(rep['caps'], {'kaijuflow': 12, 'uu': 12, 'nzbdav': 25, 'altmount-addon': 25, 'altmount-kf': 25})
         self.assertEqual(rep['total'], 99)
@@ -79,14 +87,14 @@ class ReaderTest(unittest.TestCase):
         self.assertNotIn(SECRET, testbed.render_settings(rep))
 
     def test_every_entry_on_the_main_providers_host_counts_backup_flag_or_not(self):
-        td = make_copies(backup_host='news.example')  # the backup entries use the same Usenet host as the main provider
+        td = make_copies(self, backup_host='news.example')  # the backup entries use the same Usenet host as the main provider
         rep = testbed.settings_report(td, limit=100)
         self.assertEqual(rep['caps']['altmount-addon'], 25 + 99)
         self.assertEqual(rep['caps']['altmount-kf'], 25 + 99)
         self.assertEqual(rep['caps']['nzbdav'], 25 + 15)
 
     def test_an_entry_on_another_host_is_shown_beside_and_not_counted(self):
-        td = make_copies()  # backup entries on backup.example
+        td = make_copies(self)  # backup entries on backup.example
         rep = testbed.settings_report(td, limit=100)
         self.assertEqual(rep['caps']['nzbdav'], 25)
         text = testbed.render_settings(rep)
@@ -94,7 +102,7 @@ class ReaderTest(unittest.TestCase):
         self.assertIn('max 25 (+ other host max 99, own limit)', text)
 
     def test_enabled_indexers_are_slugs_from_each_copys_own_config(self):
-        rep = testbed.settings_report(make_copies())
+        rep = testbed.settings_report(make_copies(self))
         for side in ('kaijuflow', 'uu', 'altmount-addon', 'altmount-kf'):
             self.assertEqual(rep['enabled'][side], ['drunkenslug', 'ninjacentral'], side)
         self.assertEqual(rep['enabled']['nzbdav'], [])
@@ -124,7 +132,7 @@ class CommandTest(unittest.TestCase):
         return code, out.getvalue()
 
     def test_table_and_budget_are_printed_without_secrets(self):
-        code, text = self.run_cmd(make_copies())
+        code, text = self.run_cmd(make_copies(self))
         self.assertEqual(code, 0)
         self.assertNotIn(SECRET, text)
         self.assertIn('| Setting | KaijuFlow', text)
@@ -133,17 +141,17 @@ class CommandTest(unittest.TestCase):
         self.assertIn('KaijuFlow 12', text)
 
     def test_per_indexer_rows_list_only_switched_on_indexers(self):
-        _code, text = self.run_cmd(make_copies())
+        _code, text = self.run_cmd(make_copies(self))
         self.assertIn('NinjaCentral 3', text)
         self.assertNotIn('altHUB', text)
 
     def test_limit_option_changes_the_verdict_sentence(self):
-        _code, text = self.run_cmd(make_copies(), '--limit', '60')
+        _code, text = self.run_cmd(make_copies(self), '--limit', '60')
         self.assertIn('Total: 99 of 60', text)
         self.assertIn('over the provider limit', text)
 
     def test_snapshot_of_the_runner_is_the_readers_output(self):
-        td = make_copies()
+        td = make_copies(self)
         self.assertEqual(brainrun.snapshot_settings(td), testbed.settings_report(td)['settings'])
 
 

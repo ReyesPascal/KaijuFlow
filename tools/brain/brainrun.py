@@ -10,7 +10,8 @@
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke   (stand-in reachability check, see README)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
-indexer time for every answer unless --no-wait) and resets the test copies with
+indexer time for every answer unless --no-wait; the stand-in's lines say which test container asked and when, so the report
+matches them to the right side and visit) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
 row and the report. The first "limit reached" from any indexer aborts the run and records it as null.
@@ -736,8 +737,30 @@ def record_pass(cfg, io, rec, sides):
 
 # --------------------------------------------------------------------------- smoke and CLI
 
+def smoke_side_result(lines, expected_ip):
+    """What one side's search caused at the stand-in: how many requests, from which address(es), and whether that is the
+    address `docker inspect` gave for the side's container."""
+    seen = [p for p in (br.parse_standin_line(x) for x in lines) if p]
+    came_from = sorted({p['ip'] for p in seen})
+    return {'standin_requests': len(seen), 'came_from': came_from, 'expected_from_docker_inspect': expected_ip,
+            'matched': bool(came_from) and came_from == [expected_ip],
+            'sample': [x.strip() for x in lines[:1]]}
+
+
+def smoke_verdict(results):
+    """One plain sentence on whether the sides arrive with their own addresses."""
+    addrs = [tuple(r['came_from']) for r in results.values()]
+    if all(r['matched'] for r in results.values()) and len(set(addrs)) == len(addrs):
+        return 'Every side reached the indexer stand-in from its own address, and each address matched what docker inspect gave.'
+    if not any(addrs):
+        return 'No side reached the indexer stand-in: nothing can be said about addresses.'
+    return ('The sides do not all arrive with their own matching address: the runner must rely on the time window alone '
+            'for the sides that did not match.')
+
+
 def smoke(cfg, port=1340):
-    """One search per side against the stand-in on an EMPTY store (every request a MISS); prints which side reached it."""
+    """One search per side against the stand-in on an EMPTY store (every request a MISS); prints which side reached it,
+    from which address, and whether that matches the address docker inspect gives for the side's test container."""
     store = cfg['store']
     if os.path.isdir(store) and os.listdir(store):
         sys.exit('smoke needs an EMPTY store folder so that every request is a MISS and nothing can be read from Usenet')
@@ -747,15 +770,17 @@ def smoke(cfg, port=1340):
     handle = io.start_standin(log)
     results = {}
     try:
+        addresses = io.addresses()
         for side in ('kaijuflow', 'uu', 'altmount-addon'):
-            before = sum(1 for line in open(log) if line.startswith('MISS '))
+            before = len((_read_text(log) or '').splitlines())
             st, h, body, t = common.get(f"{side_base(cfg, side)}/stream/movie/{os.environ.get('SMOKE_IMDB', 'tt0133093')}.json", timeout=120, limit=0)
             time.sleep(1)
-            lines = [line.strip() for line in open(log) if line.startswith('MISS ')]
-            results[side] = {'http': st, 'standin_requests': len(lines) - before, 'sample': lines[before:before + 1]}
+            new = [x for x in (_read_text(log) or '').splitlines()[before:] if x.startswith('MISS ')]
+            results[side] = dict(http=st, **smoke_side_result(new, addresses.get(br.CLIENT_CONTAINER[side])))
     finally:
         handle.stop()
     print(json.dumps(results, indent=1))
+    print(smoke_verdict(results))
     return results
 
 

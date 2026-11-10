@@ -7,7 +7,6 @@ import http.server
 import json
 import os
 import sqlite3
-import tempfile
 import unittest
 import urllib.request
 
@@ -16,6 +15,7 @@ import brainrun
 import indexer_standin
 import test_indexer_standin as fakes
 import test_preflight
+from test_settings import tempdir
 
 SECRET = 'TOPSECRET-123'
 UTC = datetime.timezone.utc
@@ -142,7 +142,7 @@ def make_cfg(tmp, **kw):
 
 class RunTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
+        self.tmp = tempdir(self)
 
     def test_full_run_layout_and_phases(self):
         io = FakeIO()
@@ -289,7 +289,7 @@ class RunTest(unittest.TestCase):
 
 class WaitSwitchTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
+        self.tmp = tempdir(self)
 
     def test_wait_is_on_by_default_and_the_record_says_so(self):
         io = FakeIO()
@@ -324,7 +324,7 @@ class MissMatchingTest(unittest.TestCase):
     """The stand-in's lines carry no side or title: they are matched to the visit that was running."""
 
     def test_misses_and_indexer_time_land_on_the_visit(self):
-        tmp = tempfile.mkdtemp()
+        tmp = tempdir(self)
         io = FakeIO()
         io.lines_per_visit = {2: ['HIT ninjacentral api t=search wait_ms=200', 'MISS drunkenslug api t=search&offset=100'],
                               5: ['HIT drunkenslug api t=search wait_ms=250']}
@@ -343,7 +343,7 @@ class MissMatchingTest(unittest.TestCase):
 
 
     def test_lines_from_an_unknown_address_are_matched_by_time_and_counted(self):
-        tmp = tempfile.mkdtemp()
+        tmp = tempdir(self)
         io = FakeIO()
         io.ADDRESSES = {}  # docker inspect gave nothing
         io.lines_per_visit = {2: ['MISS drunkenslug api t=search&offset=100'], 3: ['MISS drunkenslug api t=search&offset=200']}
@@ -354,12 +354,29 @@ class MissMatchingTest(unittest.TestCase):
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['standin_unmatched'], 2)
 
     def test_a_failed_top_pick_with_an_unrelated_miss_keeps_its_cause(self):
-        tmp = tempfile.mkdtemp()
+        tmp = tempdir(self)
         io = FakeIO(fail_http_for='uu')
         io.lines_per_visit = {2: ['MISS drunkenslug api t=search&offset=100']}  # the list was not empty (5 Sources)
         run = brainrun.run_all(make_cfg(tmp), io)
         self.assertEqual(br.classify_failure(run['visits'][1]), 'failure_video')
         self.assertEqual(run['visits'][1]['misses'], ['drunkenslug api t=search&offset=100'])
+
+
+class SmokeTest(unittest.TestCase):
+    def test_each_side_reports_which_address_it_came_from_and_whether_inspect_agrees(self):
+        lines = ['MISS ninja api q=x&t=search from=172.20.0.5 t=1', 'MISS ninja api q=y&t=search from=172.20.0.5 t=2']
+        r = brainrun.smoke_side_result(lines, '172.20.0.5')
+        self.assertEqual((r['standin_requests'], r['came_from'], r['matched']), (2, ['172.20.0.5'], True))
+        self.assertFalse(brainrun.smoke_side_result(lines, '172.20.0.9')['matched'])
+        self.assertFalse(brainrun.smoke_side_result(lines, None)['matched'])
+        self.assertFalse(brainrun.smoke_side_result([], '172.20.0.5')['matched'])
+
+    def test_verdict_in_one_plain_sentence(self):
+        def res(*ips):
+            return {f's{i}': brainrun.smoke_side_result([f'MISS n api t=search from={ip} t=1'], ip) for i, ip in enumerate(ips)}
+        self.assertIn('own address', brainrun.smoke_verdict(res('1.1.1.1', '1.1.1.2', '1.1.1.3')))
+        self.assertIn('do not all arrive', brainrun.smoke_verdict(res('1.1.1.1', '1.1.1.1')))  # same address twice
+        self.assertIn('No side reached', brainrun.smoke_verdict({'a': brainrun.smoke_side_result([], 'x')}))
 
 
 class RecordIO(FakeIO):
@@ -433,7 +450,7 @@ class RecordIO(FakeIO):
 
 class RecordTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
+        self.tmp = tempdir(self)
         fakes.FakeIndexer.hits, fakes.FakeIndexer.limit, fakes.FakeIndexer.error_body = 0, False, None
         fakes.FakeIndexer.delay, fakes.FakeIndexer.seen, fakes.FakeIndexer.force_status = 0.0, [], None
         self.fake = fakes.serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), fakes.FakeIndexer))
@@ -588,7 +605,7 @@ class RecordTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'runs')))
 
     def test_a_run_refuses_to_start_without_a_recording(self):
-        td = test_preflight.make_copies()
+        td = test_preflight.make_copies(self)
         cfg = test_preflight.make_cfg(td, runs_root=os.path.join(self.tmp, 'runs2'), titles=[], name='x', tries=1, settle=0,
                                       indexers=[], one_page=False, user_id='U', download_key='K')
         world = test_preflight.FakeWorld(cfg)
@@ -625,7 +642,7 @@ class FinalStepsTest(unittest.TestCase):
         self.assertEqual([(s['step'], s['ref']) for s in visits[2]['steps']], [('health_batch', 'tt2')])
 
     def test_diff_in_a_run_names_null_runs_between(self):
-        tmp = tempfile.mkdtemp()
+        tmp = tempdir(self)
         brainrun.run_all(make_cfg(tmp, name='ok1'), FakeIO())
         bad = FakeIO(limit_at_visit=1)
         bad.clock += datetime.timedelta(hours=1)
@@ -639,7 +656,7 @@ class FinalStepsTest(unittest.TestCase):
 
 class SettingsTest(unittest.TestCase):
     def test_snapshot_has_every_side_and_no_secrets(self):
-        t = tempfile.mkdtemp()
+        t = tempdir(self)
         td = os.path.join(t, 'kaijuflow-test')
         for rel, text in (('config/config.json', json.dumps({'healthChecks': {'sampleCount': 3}, 'altmountApiKey': SECRET,
                                                               'indexers': [{'name': 'N', 'apiKey': SECRET, 'maxPages': 3}]})),
