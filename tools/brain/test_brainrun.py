@@ -6,12 +6,14 @@ import datetime
 import http.server
 import json
 import os
+import socket
 import sqlite3
 import unittest
 import urllib.request
 
 import brainreport as br
 import brainrun
+import common
 import indexer_standin
 import test_indexer_standin as fakes
 import test_preflight
@@ -26,10 +28,33 @@ def read(path):
         return f.read()
 
 
-class FakeIO:
+def refused_get():
+    """What common.get() gives for an address nothing listens on: a test copy that is stopped."""
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        port = s.getsockname()[1]
+    return common.get(f'http://127.0.0.1:{port}/stream/movie/tt1.json', timeout=5, limit=0)
+
+
+class Copies:
+    """Which test copies are up, the way Docker would have it: a reset starts a copy, the one-page switch and the config
+    restore stop KaijuFlow's, stop_all stops every one. A visit to a side whose copy is down fails as a real one does."""
+
+    def __init__(self, up=()):
+        self.up = set(up)
+
+    def is_up(self, side):
+        return brainrun.SIDE_SERVICE[side] in self.up
+
+    def down_answer(self, tries):
+        return brainrun.visit_answer(refused_get(), tries)
+
+
+class FakeIO(Copies):
     """Stands in for Docker, the stand-in and the sides. Records every call in order."""
 
-    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None):
+    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=()):
+        Copies.__init__(self, up)
         self.calls, self.clock, self.visits = [], datetime.datetime(2026, 11, 10, 18, 0, 0, tzinfo=UTC), 0
         self.limit_at_visit, self._marker, self.commit = limit_at_visit, marker, commit
         self.settings = settings or {'kaijuflow': {'healthChecks.sampleCount': 3, 'altmountApiKey': '***'}, 'uu': {}}
@@ -90,17 +115,21 @@ class FakeIO:
 
     def reset(self, sides):
         self.calls.append(('reset', tuple(sides)))
+        self.up |= set(sides)
 
     def stop_all(self):
         self.calls.append(('stop-all',))
+        self.up.clear()
 
     def apply_one_page(self):
         self.patched = True
+        self.up.discard('kaijuflow')  # the real one stops the copy to change its config
         self.calls.append(('patch-one-page',))
         return {'kaijuflow-1page': {'indexers[NinjaCentral].pagination': False}}
 
     def restore_config(self):
         self.patched = False
+        self.up.discard('kaijuflow')
         self.calls.append(('restore-config',))
 
     ADDRESSES = {'kaijuflow-test': '10.0.0.2', 'uu-test': '10.0.0.3', 'altmount-addon-test': '10.0.0.4'}
@@ -113,6 +142,8 @@ class FakeIO:
     def visit_http(self, side, kind, vid, tries):
         self.visits += 1
         self.calls.append(('visit', side, vid))
+        if not self.is_up(side):
+            return self.down_answer(tries)
         t = int(self.clock.timestamp() * 1000) + 300  # a moment after the visit began
         self.standin_log += [f'{x} from={self.SIDE_IP[side]} t={t}' for x in self.lines_per_visit.get(self.visits, [])]
         ok = side != self.fail_http_for
@@ -379,6 +410,46 @@ class SmokeTest(unittest.TestCase):
         self.assertIn('No side reached', brainrun.smoke_verdict({'a': brainrun.smoke_side_result([], 'x')}))
 
 
+class SmokeWorldTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+    def smoke(self, one_page):
+        io = FakeIO(up=brainrun.ALL_TESTBED)  # the owner started the test copies
+        io.lines_per_visit = {n: ['MISS ninjacentral api t=search'] for n in range(1, 5)}
+        res = brainrun.smoke(make_cfg(self.tmp, one_page=one_page, store=os.path.join(self.tmp, 'empty')), io)
+        return io, res
+
+    def test_the_smoke_check_visits_every_planned_side_the_one_page_side_included(self):
+        io, res = self.smoke(one_page=True)
+        self.assertEqual(list(res), ['kaijuflow', 'uu', 'altmount-addon', 'kaijuflow-1page'])
+        self.assertTrue(all(r['http'] == 200 and r['standin_requests'] == 1 for r in res.values()), res)
+        self.assertIn('own address', brainrun.smoke_verdict(res))  # the one-page side may share KaijuFlow's address
+        self.assertFalse(io.patched)
+        kinds = [c[0] for c in io.calls]
+        self.assertEqual(kinds[-2:], ['restore-config', 'standin-stop'])
+
+    def test_without_the_one_page_side_the_smoke_check_tries_the_three_main_sides(self):
+        io, res = self.smoke(one_page=False)
+        self.assertEqual(list(res), ['kaijuflow', 'uu', 'altmount-addon'])
+        self.assertNotIn('patch-one-page', [c[0] for c in io.calls])
+
+    def test_a_visit_to_a_stopped_test_copy_fails_as_the_real_one_does(self):
+        io = FakeIO(up=['uu', 'nzbdav'])
+        down = io.visit_http('kaijuflow', 'movie', 'tt1', 1)
+        self.assertEqual(down, brainrun.visit_answer(refused_get(), 1) | {'list_s': down['list_s']})
+        self.assertEqual((down['list_status'], down['sources'], down['first_try_plays']), (None, 0, False))
+        self.assertIn('refused', down['note'])
+        self.assertEqual(io.visit_http('uu', 'movie', 'tt1', 1)['list_status'], 200)
+
+    def test_the_one_page_switch_brings_kaijuflow_up_again(self):
+        io = FakeIO(up=brainrun.ALL_TESTBED)
+        brainrun.switch_to_one_page(io)
+        self.assertTrue(io.patched)
+        self.assertTrue(io.is_up('kaijuflow-1page'))
+        self.assertEqual(io.visit_http('kaijuflow-1page', 'movie', 'tt1', 1)['list_status'], 200)
+
+
 class RecordIO(FakeIO):
     """FakeIO whose stand-in is the real one in record mode on loopback, in front of a fake indexer; the 'sides' ask it
     for different requests, the way the three sides do. Everything else (containers, resets) is the fake's."""
@@ -387,6 +458,7 @@ class RecordIO(FakeIO):
         super().__init__()
         self.cfg, self.fake_url, self.limit_from_visit, self.drop = cfg, fake_url, limit_from_visit, drop or []
         self.port, self.server, self.recording_dir = None, None, cfg['store']
+        self.up = set()
 
     def preflight(self, mode):
         self.calls.append(('preflight', mode))
@@ -435,10 +507,13 @@ class RecordIO(FakeIO):
     def visit_http(self, side, kind, vid, tries):
         self.visits += 1
         self.calls.append(('visit', side, vid))
+        if not self.is_up(side):
+            return self.down_answer(tries)
         if self.limit_from_visit and self.visits >= self.limit_from_visit:
             fakes.FakeIndexer.limit = True
         base = f'http://127.0.0.1:{self.port}/fake/api'
         asks = {'kaijuflow': [f'?t=search&q={vid}&offset=0', f'?t=search&q={vid}&offset=3'],
+                'kaijuflow-1page': [f'?t=search&q={vid}&offset=0&limit=100'],
                 'uu': [f'?t=search&q={vid}&cat=uu'], 'altmount-addon': [f'?t=search&q={vid}&o=json']}[side]
         for a in asks:
             try:
@@ -480,6 +555,22 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(self.stored(), before)
         self.assertEqual((rec2['new_answers'], rec2['stored_answers']), (0, 8))
         self.assertEqual(rec2['visits'], 6)  # 3 sides x 2 titles, once
+
+    def test_a_record_with_the_one_page_side_stores_that_sides_answers(self):
+        self.cfg['one_page'] = True
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        self.assertEqual(rec['listed'], {'kaijuflow': 2, 'uu': 2, 'altmount-addon': 2, 'kaijuflow-1page': 2})
+        self.assertEqual(len(self.stored()), 10)  # the 8 of the main sides + one page per title from the one-page side
+        self.assertNotIn('listed no Sources', brainrun.record_summary(rec))
+        self.assertFalse(os.path.exists(os.path.join(self.cfg['test_dir'], 'config', 'config.json.pre-brainrun')))
+        kinds = [c[0] for c in io.calls]
+        self.assertLess(kinds.index('patch-one-page'), kinds.index('restore-config'))
+
+    def test_the_record_summary_names_a_side_that_listed_nothing(self):
+        rec = {'new_answers': 4, 'stored_answers': 0, 'errors': 0, 'titles': ['A', 'B'],
+               'listed': {'kaijuflow': 2, 'kaijuflow-1page': 0}}
+        self.assertIn('KaijuFlow, one page per indexer listed no Sources for 2 of 2 titles.', brainrun.record_summary(rec))
 
     def test_test_copies_are_reset_before_and_after_and_stopped(self):
         io, _ = self.record()
