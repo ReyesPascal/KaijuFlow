@@ -2,6 +2,10 @@
 
 ## Agent skills
 
+### Where things stand
+
+Read first when resuming: handoff note `docs/kaijuflow/audit/NEXT_SESSION.md`. Before any timed run: runbook `tools/brain/RUNBOOK.md` (lands with #91).
+
 ### Issue tracker
 
 Issues are tracked in this repo's GitHub Issues (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
