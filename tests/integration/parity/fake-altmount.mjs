@@ -3,6 +3,7 @@
 // Same contract as fake NzbDAV: { name, requests[], addMovie(tag,title,media)->nzbUrl, submitsFor(tag), configure(configData) }.
 import crypto from 'node:crypto';
 import { serveBytes } from './serve-bytes.mjs';
+import { fault } from './first-byte-fault.mjs';
 import { nzbTag, rarVolumeCheck } from './fake-rar-rules.mjs';
 
 export const API_KEY = 'synthetic-altmount-key';
@@ -90,7 +91,9 @@ export async function createFakeAltmount(listen) {
 
     if ((req.method === 'GET' || req.method === 'HEAD') && path === '/api/files/stream') {
       if (u.searchParams.get('download_key') !== DOWNLOAD_KEY) { res.writeHead(401); res.end(); return; }
-      const file = [...sources.values()].filter(s => s.completed).flatMap(s => s.files).find(f => f.path === u.searchParams.get('path'));
+      const owner = [...sources.values()].filter(s => s.completed).find(s => s.files.some(f => f.path === u.searchParams.get('path')));
+      const file = owner?.files.find(f => f.path === u.searchParams.get('path'));
+      if (file && owner.fault) { fault(owner.fault, res, req); return; }
       if (file) { serveBytes(req, res, file.media); return; }
     }
     res.writeHead(404); res.end();
@@ -151,6 +154,17 @@ export async function createFakeAltmount(listen) {
       sources.get(tag).queueStatus = queueStatus;
       return nzb;
     },
+    /**
+     * Register a movie Source whose file the Backend cannot serve at the first byte:
+     * mode 'bad-request' (400), 'drop' (connection dropped) or 'not-found' (404).
+     * setFirstByteFault(tag, null) makes the file readable again.
+     */
+    addFirstByteFault(tag, title, media, mode) {
+      const nzb = this.addMovie(tag, title, media);
+      sources.get(tag).fault = mode;
+      return nzb;
+    },
+    setFirstByteFault(tag, mode) { sources.get(tag).fault = mode; },
     /** Make the Backend unreachable (true) or reachable again (false). */
     setDown(v) { down = v; },
     /** Make the indexer answer this HTTP status for every NZB link (0 = serve the NZB again). */

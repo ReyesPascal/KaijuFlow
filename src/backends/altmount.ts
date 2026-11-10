@@ -12,6 +12,7 @@
 import { config as globalConfig } from '../config/index.js';
 import { createHash } from 'node:crypto';
 import { ALTMOUNT_CAPABILITIES } from './capabilities.js';
+import { kindOfStatus, kindOfFetchError, firstByteKeptError, logFirstByteFailure, type FirstByteKind } from './firstByte.js';
 import { grabSourceNzb } from './sourceNzb.js';
 import { timeStep } from '../utils/stepTiming.js';
 import { PrepareCancelledError, isSourceFailure, sourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
@@ -129,6 +130,16 @@ export function readyMediaOf(raw: string, base: string): { queueId: string; vide
   return null;
 }
 
+/** Paths of every file AltMount offered in its reply, for the first-byte log line. */
+export function offeredPathsOf(raw: string, base: string): string[] {
+  try {
+    const reply = JSON.parse(raw) as StreamsReply;
+    return (reply.streams ?? []).map(s => (s.url ? virtualPathOf(s.url, base) : null)).filter((p): p is string => !!p);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Season and episode numbers behind a Source's episode selection. The stream
  * route builds `episodePattern` from them (buildEpisodePattern, optionally
@@ -158,29 +169,40 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
   };
 
   // GET the first byte; the retries are part of the step.
+  // 404/410: bad Source. 400 or a refused/dropped connection: Source kept (ADR 0004).
   const probeFirstByte = async (video: PreparedVideo, logPrefix: string): Promise<void> => {
     const { url, headers } = mediaRequest(video.videoPath);
+    const offered = () => video.offered ?? [];
     let attempt = 0;
+    let kind: FirstByteKind = 'other';
+    let what = '';
     while (attempt < PROBE_MAX_ATTEMPTS) {
       try {
         const resp = await fetch(url, { headers: { ...headers, Range: 'bytes=0-0' }, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
         await resp.body?.cancel().catch(() => {});
-        if (resp.status === 404 || resp.status === 410) {
-          throw sourceFailure(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
-        }
         if (resp.status === 206 || resp.status === 200) {
           const total = /^bytes 0-0\/(\d+)$/.exec(resp.headers.get('content-range') ?? '')?.[1];
           if (total && !video.videoSize) video.videoSize = parseInt(total, 10);
           return;
         }
-        console.warn(`${logPrefix}  \u26A0\uFE0F AltMount probe returned ${resp.status}`);
+        kind = kindOfStatus(resp.status);
+        what = `status ${resp.status}`;
+        if (kind === 'gone') {
+          await logFirstByteFailure(logPrefix, what, video.videoPath, offered);
+          throw sourceFailure(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
+        }
+        console.warn(`${logPrefix}  ⚠️ AltMount probe returned ${resp.status}`);
       } catch (err) {
         if (isSourceFailure(err)) throw err;
-        console.warn(`${logPrefix}  \u26A0\uFE0F AltMount probe attempt ${attempt + 1}/${PROBE_MAX_ATTEMPTS} failed: ${(err as Error).message}`);
+        kind = kindOfFetchError(err);
+        what = kind === 'keep-source' ? 'connection refused or dropped' : 'timed out';
+        console.warn(`${logPrefix}  ⚠️ AltMount probe attempt ${attempt + 1}/${PROBE_MAX_ATTEMPTS} failed: ${(err as Error).message}`);
       }
       attempt++;
       if (attempt < PROBE_MAX_ATTEMPTS) await new Promise(r => setTimeout(r, PROBE_RETRY_DELAY_MS));
     }
+    await logFirstByteFailure(logPrefix, what, video.videoPath, offered);
+    if (kind === 'keep-source') throw firstByteKeptError(video.videoPath, what);
     throw sourceFailure(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
   };
 
@@ -262,11 +284,11 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
         }
         const ready = readyMediaOf(raw, baseUrl());
         if (!ready) throw sourceFailure('AltMount returned no ready file for this Source', false, true);
-        return ready;
+        return { ...ready, offered: offeredPathsOf(raw, baseUrl()) };
       }, ready => ({ job: ready.queueId }));
       onJob?.(media.queueId);
       console.log(`${logPrefix}  \u2705 AltMount prepared the Source (${media.cached ? 'reused' : media.status || 'ready'})`);
-      return { nzoId: media.queueId, videoPath: media.videoPath, videoSize: 0 };
+      return { nzoId: media.queueId, videoPath: media.videoPath, videoSize: 0, offered: media.offered };
     },
 
     // GET the first byte (HEAD isn't proof the file is readable). A cached

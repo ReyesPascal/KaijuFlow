@@ -8,6 +8,8 @@
 import { config as globalConfig } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
 import { submitNzb, waitForJobCompletion, cancelJob } from '../nzbdav/nzbdavApi.js';
+import { getWebdavClient } from '../nzbdav/webdavClient.js';
+import { kindOfStatus, kindOfFetchError, firstByteKeptError, logFirstByteFailure, type FirstByteKind } from './firstByte.js';
 import { checkNzbLibrary, checkLibraryVideoPath, waitForVideoFile, videoPathExists } from '../nzbdav/videoDiscovery.js';
 import { searchLibrary } from '../nzbdav/librarySearch.js';
 import { encodeWebdavPath, nzbdavError } from '../nzbdav/utils.js';
@@ -37,23 +39,36 @@ export function createNzbdavBackend(config: NZBDavConfig): Backend {
   const cancel = (jobId: string, reason?: string) => cancelJob(jobId, config, reason);
 
   // GET the first byte (the retries are part of the step).
+  // 404/410: bad Source. 400 or a refused/dropped connection: Source kept (ADR 0004).
   const probeFirstByte = async (video: PreparedVideo, logPrefix: string): Promise<void> => {
     const { url, headers } = mediaRequest(video.videoPath);
     const probeHeaders = { ...headers, 'Range': 'bytes=0-0' };
+    const offered = async () => {
+      const dir = video.videoPath.replace(/\/[^/]*$/, '') || '/';
+      const items = await getWebdavClient(config).getDirectoryContents(dir) as { basename: string }[];
+      return items.map(i => i.basename);
+    };
     let attempt = 0;
+    let kind: FirstByteKind = 'other';
+    let what = '';
     while (attempt < PROBE_MAX_RETRIES) {
       try {
         const resp = await fetch(url, { headers: probeHeaders, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
         await resp.body?.cancel().catch(() => {});
-        if (resp.status === 404 || resp.status === 410) {
+        if (resp.status === 206 || resp.status === 200) return;
+        kind = kindOfStatus(resp.status);
+        what = `status ${resp.status}`;
+        if (kind === 'gone') {
+          await logFirstByteFailure(logPrefix, what, video.videoPath, offered);
           throw nzbdavError(`Video file not servable (${resp.status}): ${video.videoPath}`, false, true);
         }
-        if (resp.status === 206 || resp.status === 200) return;
         attempt++;
         console.warn(`${logPrefix}  ⚠️ Probe returned ${resp.status} — retrying (${attempt}/${PROBE_MAX_RETRIES})...`);
       } catch (err) {
         if (isSourceFailure(err)) throw err;
         attempt++;
+        kind = kindOfFetchError(err);
+        what = kind === 'keep-source' ? 'connection refused or dropped' : 'timed out';
         if (attempt >= PROBE_MAX_RETRIES) {
           console.warn(`${logPrefix}  ⚠️ Probe failed after ${attempt} attempts: ${(err as Error).message}`);
           break;
@@ -64,6 +79,8 @@ export function createNzbdavBackend(config: NZBDavConfig): Backend {
         await new Promise(r => setTimeout(r, Math.min(PROBE_RETRY_BASE_MS * Math.pow(2, attempt - 1), 10_000)));
       }
     }
+    await logFirstByteFailure(logPrefix, what, video.videoPath, offered);
+    if (kind === 'keep-source') throw firstByteKeptError(video.videoPath, what);
     throw nzbdavError(`Video file not servable (probe failed after ${attempt} attempts): ${video.videoPath}`, false, true);
   };
 

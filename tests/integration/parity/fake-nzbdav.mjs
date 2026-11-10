@@ -1,6 +1,7 @@
 // Fake NzbDAV Backend for the Parity suite: SAB-style API + WebDAV over loopback HTTP.
 // Synthetic NZBs and synthetic media bytes only. Records every request it gets.
 import { serveBytes } from './serve-bytes.mjs';
+import { fault } from './first-byte-fault.mjs';
 import { nzbTag } from './fake-rar-rules.mjs';
 
 const ADVERTISED_SIZE = 128 * 1024 * 1024; // meets KaijuFlow's 100 MiB video threshold
@@ -59,7 +60,9 @@ export async function createFakeNzbdav(listen) {
       return;
     }
     if (req.method === 'GET' || req.method === 'HEAD') {
-      const file = [...sources.values()].filter(s => s.submits > 0).flatMap(s => s.files).find(f => f.path === path);
+      const owner = [...sources.values()].filter(s => s.submits > 0).find(s => s.files.some(f => f.path === path));
+      const file = owner?.files.find(f => f.path === path);
+      if (file && owner.fault) { fault(owner.fault, res, req); return; }
       if (file) { serveBytes(req, res, file.media); return; }
     }
     res.writeHead(404); res.end();
@@ -98,6 +101,17 @@ export async function createFakeNzbdav(listen) {
       sources.get(tag).rejected = true;
       return nzb;
     },
+    /**
+     * Register a movie Source whose file the Backend cannot serve at the first byte:
+     * mode 'bad-request' (400), 'drop' (connection dropped) or 'not-found' (404).
+     * setFirstByteFault(tag, null) makes the file readable again.
+     */
+    addFirstByteFault(tag, title, media, mode) {
+      const nzb = this.addMovie(tag, title, media);
+      sources.get(tag).fault = mode;
+      return nzb;
+    },
+    setFirstByteFault(tag, mode) { sources.get(tag).fault = mode; },
     /** Make the Backend unreachable (true) or reachable again (false). */
     setDown(v) { down = v; },
     /** Make the indexer answer this HTTP status for every NZB link (0 = serve the NZB again). */

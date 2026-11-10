@@ -25,6 +25,8 @@ export interface StreamData {
   nzoId: string;
   videoPath: string;
   videoSize: number;
+  /** Files the Backend said it holds for this Source (names or paths), for the first-byte log line. */
+  offered?: string[];
 }
 
 export type CacheStatus = 'pending' | 'ready' | 'failed';

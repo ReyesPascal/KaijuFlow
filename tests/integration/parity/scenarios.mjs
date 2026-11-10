@@ -194,6 +194,42 @@ const failureScenarios = [
     },
   },
   {
+    // First byte fails with 400 or a dropped connection (#86, ADR 0004): failure
+    // video, but the Source is NOT dead; once the Backend can serve the file the
+    // same Source plays. Needs a Backend that can fail the first byte.
+    id: 'first-byte-400-or-dropped-not-dead',
+    needs: 'addFirstByteFault',
+    async run({ kaijuflow, backend }) {
+      for (const mode of ['bad-request', 'drop']) {
+        const tag = `fb-${mode}`;
+        const media = mediaFor(tag);
+        const title = `KaijuFlow.Parity.FirstByte.${mode}.2026.1080p.WEB-DL.H264`;
+        const nzb = backend.addFirstByteFault(tag, title, media, mode);
+        assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
+        backend.setFirstByteFault(tag, null);
+        const r = await play(streamUrl(kaijuflow, nzb, title));
+        assert.equal(r.status, 200, `the Source should still be alive after a first byte failure (${mode})`);
+        assertBytes(r.body, media, `Source should play once the file can be read (${mode})`);
+      }
+    },
+  },
+  {
+    // First byte answers 404 (#86): a bad Source, marked dead as before. The repeat
+    // is answered without asking the Backend again, even once the file is readable.
+    id: 'first-byte-404-dead',
+    needs: 'addFirstByteFault',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('fb-404');
+      const title = 'KaijuFlow.Parity.FirstByte.NotFound.2026.1080p.WEB-DL.H264';
+      const nzb = backend.addFirstByteFault('fb-404', title, media, 'not-found');
+      assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
+      assert.equal(backend.submitsFor('fb-404'), 1);
+      backend.setFirstByteFault('fb-404', null);
+      assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), media);
+      assert.equal(backend.submitsFor('fb-404'), 1, 'a 404 at the first byte should mark the Source dead');
+    },
+  },
+  {
     // Indexer unavailable (#51, ADR 0004): the NZB grab gets a 429, so the player
     // gets the failure video, but the Source is NOT dead and nothing reached the
     // Backend; once the indexer answers again the same Source plays.
