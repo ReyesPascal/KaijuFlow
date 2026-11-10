@@ -5,6 +5,7 @@
 import datetime
 import json
 import os
+import re
 import unittest
 
 import brainreport as br
@@ -492,6 +493,99 @@ class AttributionTest(unittest.TestCase):
     def test_nothing_before_the_visit_started(self):
         steps = [self.line('nzb_fetch', '2026-11-09T18:00:03Z', title='Rel.A.2160p')]
         self.assertEqual(br.attribute_steps(self.visit(), steps, end=None), [])
+
+
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-10')
+
+
+def fixture(name):
+    with open(os.path.join(FIXTURES, name), encoding='utf-8') as f:
+        return f.read()
+
+
+class FixtureTest(unittest.TestCase):
+    """Scrubbed samples of the real 2026-11-10 baseline run (NinjaCentral only)."""
+    OPP = 'Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv'
+
+    def opp_visit(self):
+        return dict(side='kaijuflow', id='tt15398776', t_start='2026-11-10T07:39:07.701Z', ok=False, note='failure video',
+                    tries=[{'title': '4K WEB-DL Oppenheimer (2023) hevc 36.94 GB FLUX NinjaCentral'}])
+
+    def test_fixtures_hold_no_keys(self):
+        names = sorted(os.listdir(FIXTURES))
+        self.assertGreaterEqual(len(names), 5)
+        for name in names:
+            text = fixture(name)
+            self.assertIsNone(re.search(r'(?i)api_?key', text), name)
+            self.assertIsNone(re.search(r'(?i)(?:key|token|password|secret)=(?!\*\*\*)\S', text), name)
+            self.assertIsNone(re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', text), name)
+
+    def test_the_scrub_check_would_catch_a_key(self):
+        self.assertTrue(re.search(r'(?i)api_?key', 'GET /api?apikey=abc123'))
+
+    def test_failed_top_pick_shows_its_real_cause(self):
+        text = fixture('kaijuflow-oppenheimer-cold1.log')
+        self.assertEqual(br.failure_cause(text), 'Video file not servable (probe failed after 2 attempts); AltMount probe returned 400')
+        self.assertEqual(br.played_source(text), self.OPP)
+        v = self.opp_visit()
+        v['played_source'] = br.played_source(text)
+        v['cause'] = br.failure_cause(text)
+        v['steps'] = br.attribute_steps(v, br.parse_step_lines(text))
+        self.assertEqual(br.classify_failure(v), 'backend_rejection')
+        self.assertIn('probe returned 400', br.visit_cause(v))
+        # without KaijuFlow's reason, the first-byte step line still gives a cause
+        self.assertEqual(br.visit_cause(dict(v, cause='')), 'first byte failed after 2.1 s')
+        # "failure video" with no cause is the fallback only
+        self.assertEqual(br.classify_failure(dict(v, steps=[], cause='')), 'failure_video')
+
+    def test_only_the_played_sources_steps_count(self):
+        text = fixture('kaijuflow-oppenheimer-cold1.log')
+        v = self.opp_visit()
+        v['played_source'] = br.played_source(text)
+        got = br.attribute_steps(v, br.parse_step_lines(text))
+        self.assertEqual({s['title'] for s in got if 'title' in s}, {self.OPP})
+        self.assertEqual([s['step'] for s in got],
+                         ['health_batch', 'nzb_fetch', 'unscramble', 'import_wait', 'first_byte'])
+        # the other two Sources prepared in the background (DV.HDR...) stay out
+        self.assertEqual(sum(1 for s in br.parse_step_lines(text) if s.get('title') and s['title'] != self.OPP), 3)
+
+    def test_without_a_known_played_source_no_prepare_lines_are_guessed(self):
+        text = fixture('kaijuflow-oppenheimer-cold1.log')
+        got = br.attribute_steps(self.opp_visit(), br.parse_step_lines(text))  # display name matches no release name
+        self.assertEqual([s['step'] for s in got], ['health_batch'])
+
+    def test_a_warm_start_shows_no_import_and_no_unscramble(self):
+        warm = fixture('kaijuflow-matrix-warm1.log')
+        self.assertEqual(br.played_source(warm), 'The Matrix 1999 2160p MA WEB-DL TrueHD Atmos 7 1 DV HDR H 265-FLUX')
+        v = dict(side='kaijuflow', id='tt0133093', t_start='2026-11-10T07:45:41.014Z', ok=True,
+                 tries=[{'title': 'x'}], played_source=br.played_source(warm), imports=[])
+        steps = br.parse_step_lines(warm)
+        # the cold visit's lines are older than this visit; a background line of another Source started inside it
+        steps.append(dict(step='import_wait', ms=900, t='2026-11-10T07:45:45.000Z', ok=True, title='The.Matrix.Other.2160p', job='99'))
+        steps.append(dict(step='unscramble', ms=900, t='2026-11-10T07:45:46.000Z', ok=True, title='The.Matrix.Other.2160p'))
+        v['steps'] = br.attribute_steps(v, steps)
+        self.assertEqual([s['step'] for s in v['steps']], ['health_batch'])
+        m = br.visit_metrics(v)
+        self.assertIsNone(m['import_s'])
+        self.assertIsNone(m['unscramble_s'])
+
+    def test_altmount_logs_give_import_times(self):
+        kf = br.altmount_imports(fixture('altmount-kf-oppenheimer-cold1.log'))
+        self.assertEqual([(i['name'], i['queue_id'], i['ok']) for i in kf],
+                         [(self.OPP, '6', True), ('Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-FLUX', '7', None)])
+        self.assertEqual(kf[0]['seconds'], 0.666)
+        addon = br.altmount_imports(fixture('altmount-addon-inception-cold1.log'))
+        self.assertEqual(len(addon), 1)
+        self.assertTrue(addon[0]['ok'])
+        self.assertEqual(addon[0]['seconds'], 3.0)
+
+    def test_standin_lines_parse(self):
+        rows = [br.parse_standin_line(x) for x in fixture('standin-oppenheimer.log').splitlines()]
+        rows = [r for r in rows if r]
+        self.assertEqual(len(rows), 6)
+        self.assertEqual({r['kind'] for r in rows}, {'HIT'})
+        self.assertEqual(rows[0]['wait_ms'], 499)
+        self.assertEqual(rows[0]['ip'], '192.168.80.6')
 
 
 class RunRecordTest(unittest.TestCase):
