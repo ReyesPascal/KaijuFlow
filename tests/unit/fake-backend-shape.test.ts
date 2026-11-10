@@ -57,6 +57,33 @@ test('fake AltMount streams reply has the real v0.4.0 layout', async () => {
   assert.deepEqual(shapeOf(await res.json()), shapeOf(fixture('altmount-v0.4.0-streams.json')));
 });
 
+// Captured from a real AltMount for a release name ending in .mkv (ticket #84). The fake AltMount
+// does not copy the folder behaviour yet (ticket #85), so these hold the captured fixtures' own shape.
+const capture = (name: string) => JSON.parse(readFileSync(new URL(`../fixtures/backends/${name}`, import.meta.url), 'utf8'));
+
+test('captured AltMount reply for an .mkv-named release: same layout as the existing streams reply, but offers the folder', () => {
+  const reply = fixture('altmount-v0.4.0-streams-mkv-name.json');
+  assert.deepEqual(shapeOf(reply), shapeOf(fixture('altmount-v0.4.0-streams.json')));
+  const offered = new URL(reply.streams[0].url).searchParams.get('path') as string;
+  assert.ok(offered.endsWith('.mkv'), 'release name ends in .mkv');
+  const folder = capture('altmount-v0.4.0-mkv-name-stream-folder.json');
+  const listing = capture('altmount-v0.4.0-mkv-name-webdav-listing.json').reply;
+  const file = capture('altmount-v0.4.0-mkv-name-stream-file.json');
+  // The offered path is the folder: streaming it is a 400, and the listing shows it as a folder.
+  assert.equal(folder.request.query.path, offered);
+  assert.equal(folder.reply.status, 400);
+  assert.match(folder.reply.body, /cannot stream directory/i);
+  assert.equal(listing.status, 207);
+  const entry = (href: string) => listing.entries.find((e: { href: string }) => e.href === href);
+  assert.equal(entry(`/webdav${offered}/`)?.is_folder, true);
+  // The file's own path is the folder path plus the file name, and that one streams.
+  const inner = listing.entries.find((e: { is_folder: boolean }) => !e.is_folder);
+  assert.equal(file.request.query.path, `${offered}/${inner.name}`);
+  assert.equal(file.reply.status, 206);
+  assert.match(file.reply.headers['Content-Range'], new RegExp(`/${inner.size}$`));
+  for (const f of [reply, folder, file]) assert.doesNotMatch(JSON.stringify(f), /download_key=[0-9a-f]{64}|"download_key":"[0-9a-f]{64}/);
+});
+
 test('fake NzbDAV queue and history replies use only real NzbDAV fields', async () => {
   const fake = await createFakeNzbdav(listen);
   // One Completed and one Failed job, so both history slot kinds are compared.

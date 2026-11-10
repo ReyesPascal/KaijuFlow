@@ -1,0 +1,27 @@
+{
+  "_source": "Real AltMount v0.4.0 (test copy kaijuflow-test, port 8087), captured 2026-11-10 from the Oppenheimer FLUX NZB whose release name ends in .mkv (NZB from the 2026-11-10 recording, uploaded the way KaijuFlow does: POST /api/nzb/streams, category kaijuflow). Host and download_key replaced. Note: the copy already held this item from an earlier run, so the streams reply is the reused one (_cached true, completed); a first import was not captured. WebDAV PROPFIND Depth 1 on the folder the streams reply offered (login not stored).",
+  "request": {
+    "method": "PROPFIND",
+    "path": "/webdav/complete/kaijuflow/Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv/",
+    "headers": {
+      "Depth": "1"
+    }
+  },
+  "reply": {
+    "status": 207,
+    "entries": [
+      {
+        "href": "/webdav/complete/kaijuflow/Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv/",
+        "is_folder": true,
+        "name": "Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv"
+      },
+      {
+        "href": "/webdav/complete/kaijuflow/Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv/Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv",
+        "is_folder": false,
+        "name": "Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv",
+        "size": 38443164538,
+        "content_type": "video/x-matroska"
+      }
+    ]
+  }
+}
