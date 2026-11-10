@@ -459,6 +459,7 @@ class RecordIO(FakeIO):
         self.cfg, self.fake_url, self.limit_from_visit, self.drop = cfg, fake_url, limit_from_visit, drop or []
         self.port, self.server, self.recording_dir = None, None, cfg['store']
         self.up = set()
+        self.seen = set()  # (side, title) already visited: the next visit is a warm one
 
     def preflight(self, mode):
         self.calls.append(('preflight', mode))
@@ -515,6 +516,10 @@ class RecordIO(FakeIO):
         asks = {'kaijuflow': [f'?t=search&q={vid}&offset=0', f'?t=search&q={vid}&offset=3'],
                 'kaijuflow-1page': [f'?t=search&q={vid}&offset=0&limit=100'],
                 'uu': [f'?t=search&q={vid}&cat=uu'], 'altmount-addon': [f'?t=search&q={vid}&o=json']}[side]
+        if (side, vid) in self.seen:  # what only a warm visit asks: a health-check replacement, the addon's second search
+            asks = asks + {'kaijuflow': [f'?t=search&q={vid}-replacement'],
+                           'altmount-addon': [f'?t=search&q={vid}&o=json&again=1']}.get(side, [])
+        self.seen.add((side, vid))
         for a in asks:
             try:
                 urllib.request.urlopen(f'{base}{a}&apikey=dummy', timeout=10).read()
@@ -546,22 +551,23 @@ class RecordTest(unittest.TestCase):
     def test_every_sides_requests_are_stored_and_a_second_record_asks_the_indexer_for_nothing(self):
         io, rec = self.record()
         self.assertEqual(rec['status'], 'recorded')
-        self.assertEqual(len(self.stored()), 8)  # 2 titles x (2 KaijuFlow pages + 1 UU + 1 addon JSON), all different
-        self.assertEqual(fakes.FakeIndexer.hits, 8)
-        self.assertEqual(rec['new_answers'], 8)
+        # 2 titles x (2 KaijuFlow pages + 1 UU + 1 addon JSON) cold, + 2 titles x (1 replacement + 1 addon search) warm
+        self.assertEqual(len(self.stored()), 12)
+        self.assertEqual(fakes.FakeIndexer.hits, 12)
+        self.assertEqual(rec['new_answers'], 12)
         before = self.stored()
         io2, rec2 = self.record()
-        self.assertEqual(fakes.FakeIndexer.hits, 8)  # zero requests to the fake indexer: a top-up of nothing
+        self.assertEqual(fakes.FakeIndexer.hits, 12)  # zero requests to the fake indexer: a top-up of nothing
         self.assertEqual(self.stored(), before)
-        self.assertEqual((rec2['new_answers'], rec2['stored_answers']), (0, 8))
-        self.assertEqual(rec2['visits'], 6)  # 3 sides x 2 titles, once
+        self.assertEqual((rec2['new_answers'], rec2['stored_answers']), (0, 20))  # both rounds served from the store (8 cold + 12 warm)
+        self.assertEqual(rec2['visits'], 12)  # 3 sides x 2 titles x 2 rounds
 
     def test_a_record_with_the_one_page_side_stores_that_sides_answers(self):
         self.cfg['one_page'] = True
         io, rec = self.record()
         self.assertEqual(rec['status'], 'recorded')
         self.assertEqual(rec['listed'], {'kaijuflow': 2, 'uu': 2, 'altmount-addon': 2, 'kaijuflow-1page': 2})
-        self.assertEqual(len(self.stored()), 10)  # the 8 of the main sides + one page per title from the one-page side
+        self.assertEqual(len(self.stored()), 14)  # the 12 of the main sides + one page per title from the one-page side
         self.assertNotIn('listed no Sources', brainrun.record_summary(rec))
         self.assertFalse(os.path.exists(os.path.join(self.cfg['test_dir'], 'config', 'config.json.pre-brainrun')))
         kinds = [c[0] for c in io.calls]
@@ -584,7 +590,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(kinds[-1], 'stop-all')
         self.assertEqual(set(io.calls[resets[0]][1]), {'nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow'})
         self.assertIn(('standin-start', 'record', True), io.calls)
-        self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 6)  # once per side and title, no rounds
+        self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 12)  # per side and title: a cold and a warm visit
 
     def test_nothing_reaches_a_report_and_a_good_record_has_no_index_row(self):
         io, rec = self.record()
@@ -605,7 +611,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(io.visits, 3)  # stopped at once
         kept = self.stored()
         self.assertGreater(len(kept), 0)
-        self.assertLess(len(kept), 8)
+        self.assertLess(len(kept), 12)
         idx = read(os.path.join(self.tmp, 'runs', 'INDEX.md'))
         self.assertIn('NULL', idx)
         self.assertIn('fake', idx)
@@ -613,6 +619,49 @@ class RecordTest(unittest.TestCase):
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
         self.assertEqual(json.load(open(os.path.join(rec['dir'], 'meta.json')))['status'], 'null')
+
+    # ---- two rounds per record pass (#79)
+    def test_a_record_makes_a_cold_and_a_warm_round_on_every_asked_side(self):
+        self.cfg['one_page'] = True
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        self.assertEqual(rec['rounds'], ['cold', 'warm'])
+        visits = [(c[1], c[2]) for c in io.calls if c[0] == 'visit']
+        main, one_page = visits[:12], visits[12:]
+        pairs = {(side, vid) for side in brainrun.MAIN_SIDES for vid in ('tt1', 'tt2:1:1')}
+        self.assertEqual(set(main[:6]), pairs)  # the cold round: every main side, every title, once
+        self.assertEqual(set(main[6:]), pairs)  # then the warm round, the same again
+        self.assertEqual(one_page, [('kaijuflow-1page', 'tt1'), ('kaijuflow-1page', 'tt2:1:1')] * 2)
+        kinds = [c[0] for c in io.calls]
+        visit_at = [i for i, k in enumerate(kinds) if k == 'visit']
+        self.assertNotIn('reset', kinds[visit_at[0]:visit_at[11]])  # no reset between the main sides' rounds
+        self.assertEqual(rec['listed'], {'kaijuflow': 2, 'uu': 2, 'altmount-addon': 2, 'kaijuflow-1page': 2})
+        recorded = [x for x in read(os.path.join(rec['dir'], 'logs', 'standin.log')).splitlines() if x.startswith('RECORD ')]
+        self.assertEqual(len([x for x in recorded if 'tt1-replacement' in x or 'again=1' in x]), 3)  # warm-only asks, stored
+        self.assertEqual(len(self.stored()), 14)
+
+    def test_a_top_up_makes_both_rounds_and_asks_only_for_what_is_not_stored(self):
+        self.record(limit_from_visit=7)  # stops in the warm round
+        kept, hits = self.stored(), fakes.FakeIndexer.hits
+        fakes.FakeIndexer.limit = False
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        self.assertEqual(rec['visits'], 12)  # the top-up makes the cold and the warm round again
+        self.assertEqual(len(self.stored()), 12)
+        self.assertEqual(fakes.FakeIndexer.hits - hits, 12 - len(kept))  # only the missing answers are asked
+        self.assertEqual(rec['new_answers'], 12 - len(kept))
+
+    def test_limit_reached_in_the_warm_round_stops_the_pass_and_the_recording_is_null(self):
+        io, rec = self.record(limit_from_visit=7)
+        self.assertEqual(rec['status'], 'null')
+        self.assertEqual(rec['null']['indexer'], 'fake')
+        self.assertEqual(io.visits, 7)  # the first warm visit (a new ask: a replacement); nothing after it
+        self.assertGreaterEqual(len(self.stored()), 8)  # the cold round's answers stay
+        self.assertLess(len(self.stored()), 12)
+        self.assertEqual(self.state()['state'], 'stopped')
+        self.assertIn('NULL', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+        kinds = [c[0] for c in io.calls]
+        self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
 
     def marker_files(self):
         return sorted(f for f in os.listdir(self.cfg['store']) if f.startswith('LIMIT_REACHED'))
@@ -628,9 +677,9 @@ class RecordTest(unittest.TestCase):
         files = self.marker_files()
         self.assertEqual(len(files), 1)  # kept, renamed with its time; no live marker left
         self.assertRegex(files[0], r'^LIMIT_REACHED\.\d{8}T\d{6}Z\.json$')
-        self.assertEqual(len(self.stored()), 8)
+        self.assertEqual(len(self.stored()), 12)
         self.assertTrue(set(kept) <= set(self.stored()))
-        self.assertEqual(fakes.FakeIndexer.hits - hits, 8 - len(kept))  # only what was missing is asked
+        self.assertEqual(fakes.FakeIndexer.hits - hits, 12 - len(kept))  # only what was missing is asked
 
     def test_if_the_limit_still_holds_the_first_answer_writes_a_new_marker_and_aborts(self):
         self.record(limit_from_visit=3)
@@ -672,7 +721,7 @@ class RecordTest(unittest.TestCase):
         self.assertIn('run record again', sentence)
         fakes.FakeIndexer.force_status = None
         io2, rec2 = self.record()
-        self.assertEqual((rec2['errors'], len(self.stored())), (0, 8))
+        self.assertEqual((rec2['errors'], len(self.stored())), (0, 12))
         self.assertEqual(self.state()['errors'], 0)
         self.assertNotIn('were errors', brainrun.record_summary(rec2))
 

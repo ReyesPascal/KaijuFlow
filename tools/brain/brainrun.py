@@ -16,7 +16,7 @@ testbed.py before each cold round, plays the top pick of every title on every si
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
 row and the report. The first "limit reached" from any indexer aborts the run and records it as null.
 The record command resets the test copies, starts the stand-in in RECORD mode (this spends real indexer requests), sends
-every side through every title once, and resets again; running it again only asks for what is not stored yet. Its timings never
+every side through every title in a cold round and then a warm round, and resets again; running it again only asks for what is not stored yet. Its timings never
 reach a report. Only test containers are touched. Secrets never reach the run folder (settings are scrubbed, logs are scrubbed).
 """
 import argparse
@@ -42,6 +42,7 @@ from common import DEFAULT_TEST_DIR  # noqa: E402
 
 DEFAULT_RUNS_ROOT = '/home/ryan/kaijuflow-notes/brain-runs'
 PLAN = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
+RECORD_ROUNDS = ('cold', 'warm')  # a record pass: a cold round, then a warm round on the same state (#79)
 MAIN_SIDES = ['kaijuflow', 'uu', 'altmount-addon']
 ALL_TESTBED = ['nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow']
 ONE_PAGE_TESTBED = ['kaijuflow', 'altmount-kf']  # the test copies the one-page side uses
@@ -657,7 +658,8 @@ def run_all(cfg, io):
 # --------------------------------------------------------------------------- the record command (spec #72, ticket #75)
 
 def record_all(cfg, io):
-    """Preflight, reset, stand-in in record mode, every side through every title once, reset again.
+    """Preflight, reset, stand-in in record mode, every side through every title in a cold round and then a warm round
+    (no reset between, so the warm round's own requests, such as health-check replacements, are stored too), reset again.
 
     Running it again is a top-up: record mode serves what is stored instead of asking the indexer. The first "limit reached"
     stops the pass and the recording is NULL (what was stored stays). Nothing from the pass is a measurement: it gets a folder
@@ -677,7 +679,7 @@ def record_all(cfg, io):
     rec = {'name': cfg['name'], 'mode': 'record', 'status': 'recorded', 'started': br.iso(started), 'dir': run_dir, 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': planned_sides(cfg),
            'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
-           'listed': {side: 0 for side in planned_sides(cfg)}}
+           'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS)}
     handle, failure = None, None
     try:
         rec['commit'] = io.image_label()
@@ -753,19 +755,27 @@ def record_summary(rec):
 
 
 def record_pass(cfg, io, rec, sides):
-    """Every side lists every title and plays its top pick once, sides one after another, order rotating per title."""
+    """A cold round, then a warm round with no reset between: in each, every side lists every title and plays its top pick,
+    sides one after another, order rotating per title. `listed` counts the titles a side listed Sources for in any round."""
     _check_cap(io)
-    for i, title in enumerate(cfg['titles']):
-        k = i % len(sides)
-        for side in sides[k:] + sides[:k]:
-            kind, vid, label = title
-            http = io.visit_http(side, kind, vid, cfg['tries'])
-            rec['visits'] += 1
-            if http.get('sources'):
-                rec['listed'][side] += 1
-            print(f"{side} {label}: {http.get('sources')} Sources, top pick {'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
-            _check_cap(io)
-            io.sleep(cfg['settle'])
+    listed = {side: set() for side in sides}
+    try:
+        for phase in RECORD_ROUNDS:
+            for i, title in enumerate(cfg['titles']):
+                k = i % len(sides)
+                for side in sides[k:] + sides[:k]:
+                    kind, vid, label = title
+                    http = io.visit_http(side, kind, vid, cfg['tries'])
+                    rec['visits'] += 1
+                    if http.get('sources'):
+                        listed[side].add(vid)
+                    print(f"{side} {phase} {label}: {http.get('sources')} Sources, top pick "
+                          f"{'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
+                    _check_cap(io)
+                    io.sleep(cfg['settle'])
+    finally:
+        for side, got in listed.items():
+            rec['listed'][side] = len(got)
 
 
 # --------------------------------------------------------------------------- smoke and CLI
