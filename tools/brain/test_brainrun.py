@@ -472,8 +472,9 @@ class RecordIO(FakeIO):
     """FakeIO whose stand-in is the real one in record mode on loopback, in front of a fake indexer; the 'sides' ask it
     for different requests, the way the three sides do. Everything else (containers, resets) is the fake's."""
 
-    def __init__(self, cfg, fake_url, limit_from_visit=None, drop=None):
+    def __init__(self, cfg, fake_url, limit_from_visit=None, drop=None, proof_asks_more=False):
         super().__init__()
+        self.proof_asks_more, self.mode = proof_asks_more, None
         self.cfg, self.fake_url, self.limit_from_visit, self.drop = cfg, fake_url, limit_from_visit, drop or []
         self.port, self.server, self.recording_dir = None, None, cfg['store']
         self.up = set()
@@ -502,8 +503,10 @@ class RecordIO(FakeIO):
 
     def start_standin(self, logpath, mode='replay', wait=True):
         self.calls.append(('standin-start', mode, wait))
+        self.mode = mode
+        self.seen = set()  # a new pass starts cold again
         conf = self.conf()
-        self.server = fakes.serve(indexer_standin.make_server(conf, self.cfg['store'], mode, self.cfg['listname'], port=0, bind='127.0.0.1'))
+        self.server = fakes.serve(indexer_standin.make_server(conf, self.cfg['store'], mode, self.cfg['listname'], port=0, bind='127.0.0.1', wait=wait))
         self.port = self.server.server_port
         io = self
 
@@ -537,6 +540,8 @@ class RecordIO(FakeIO):
         if (side, vid) in self.seen:  # what only a warm visit asks: a health-check replacement, the addon's second search
             asks = asks + {'kaijuflow': [f'?t=search&q={vid}-replacement'],
                            'altmount-addon': [f'?t=search&q={vid}&o=json&again=1']}.get(side, [])
+        if self.mode == 'replay' and self.proof_asks_more and side == 'altmount-addon' and (side, vid) in self.seen:
+            asks = asks + [f'?t=search&q={vid}&o=json&never-recorded=1']  # a warm-only ask nobody stored
         self.seen.add((side, vid))
         for a in asks:
             try:
@@ -602,13 +607,13 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(kinds[0], 'preflight')
         self.assertEqual(io.calls[0], ('preflight', 'record'))
         resets = [i for i, k in enumerate(kinds) if k == 'reset']
-        self.assertEqual(len(resets), 2)
+        self.assertEqual(len(resets), 3)  # before the pass, before the proof, after everything
         self.assertLess(resets[0], kinds.index('standin-start'))
-        self.assertGreater(resets[1], kinds.index('standin-stop'))
+        self.assertGreater(resets[2], max(i for i, k in enumerate(kinds) if k == 'standin-stop'))
         self.assertEqual(kinds[-1], 'stop-all')
         self.assertEqual(set(io.calls[resets[0]][1]), {'nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow'})
         self.assertIn(('standin-start', 'record', True), io.calls)
-        self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 12)  # per side and title: a cold and a warm visit
+        self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 24)  # per side and title: a cold and a warm visit, then the same in the proof
 
     def test_nothing_reaches_a_report_and_a_good_record_has_no_index_row(self):
         io, rec = self.record()
@@ -644,7 +649,7 @@ class RecordTest(unittest.TestCase):
         io, rec = self.record()
         self.assertEqual(rec['status'], 'recorded')
         self.assertEqual(rec['rounds'], ['cold', 'warm'])
-        visits = [(c[1], c[2]) for c in io.calls if c[0] == 'visit']
+        visits = [(c[1], c[2]) for c in io.calls if c[0] == 'visit'][:16]  # the record pass; the proof repeats it after
         main, one_page = visits[:12], visits[12:]
         pairs = {(side, vid) for side in brainrun.MAIN_SIDES for vid in ('tt1', 'tt2:1:1')}
         self.assertEqual(set(main[:6]), pairs)  # the cold round: every main side, every title, once
@@ -742,6 +747,51 @@ class RecordTest(unittest.TestCase):
         self.assertEqual((rec2['errors'], len(self.stored())), (0, 12))
         self.assertEqual(self.state()['errors'], 0)
         self.assertNotIn('were errors', brainrun.record_summary(rec2))
+
+    # ---- the proof (#80)
+    def test_the_proof_marks_a_recording_complete_when_every_answer_is_there(self):
+        io, rec = self.record()
+        self.assertEqual(rec['misses'], [])
+        self.assertEqual(self.state()['state'], 'complete')
+        self.assertEqual(self.state()['misses'], [])
+        self.assertNotIn('INCOMPLETE', brainrun.record_summary(rec))
+        proof = read(os.path.join(rec['dir'], 'logs', 'standin-proof.log'))
+        self.assertIn('HIT fake', proof)
+        self.assertNotIn('MISS', proof)
+
+    def test_the_proof_marks_a_recording_incomplete_when_a_warm_only_answer_is_missing(self):
+        io, rec = self.record(proof_asks_more=True)
+        self.assertEqual(rec['status'], 'recorded')
+        self.assertEqual({m['side'] for m in rec['misses']}, {'altmount-addon'})
+        self.assertEqual(len(rec['misses']), 2)  # one per title
+        self.assertTrue(all('never-recorded=1' in m['request'] and m['request'].startswith('fake ') for m in rec['misses']))
+        st = self.state()
+        self.assertEqual(st['state'], 'incomplete')
+        self.assertEqual(st['misses'], rec['misses'])
+        self.assertIn('missed 2 requests', st['why'])
+        self.assertIn('INCOMPLETE', brainrun.record_summary(rec))
+        self.assertIn('MISS fake', read(os.path.join(rec['dir'], 'logs', 'standin-proof.log')))
+
+    def test_the_proof_contacts_no_indexer_and_resets_the_copies_first(self):
+        io, rec = self.record(proof_asks_more=True)
+        self.assertEqual(fakes.FakeIndexer.hits, 12)  # the record pass's 12; the proof (with misses) added none
+        starts = [c for c in io.calls if c[0] == 'standin-start']
+        self.assertEqual(starts, [('standin-start', 'record', True), ('standin-start', 'replay', False)])
+        kinds = [c[0] for c in io.calls]
+        proof_start = kinds.index('standin-start', kinds.index('standin-start') + 1)
+        self.assertEqual(kinds[proof_start - 1], 'reset')  # test copies reset right before the proof
+        self.assertEqual(len([c for c in io.calls[:proof_start] if c[0] == 'visit']), 12)
+
+    def test_a_record_with_a_limit_runs_no_proof(self):
+        io, rec = self.record(limit_from_visit=3)
+        self.assertEqual([c for c in io.calls if c[0] == 'standin-start'], [('standin-start', 'record', True)])
+        self.assertEqual(self.state()['state'], 'stopped')
+
+    def test_a_proof_covers_the_one_page_side_too(self):
+        self.cfg['one_page'] = True
+        io, rec = self.record(proof_asks_more=True)
+        self.assertEqual({m['side'] for m in rec['misses']}, {'altmount-addon'})
+        self.assertEqual(len([c for c in io.calls if c[0] == 'visit' and c[1] == 'kaijuflow-1page']), 8)  # 2 titles x 2 rounds, record and proof
 
     def test_a_changed_dropped_parameter_setting_stops_the_record_with_one_sentence(self):
         self.record(drop=['o'])
