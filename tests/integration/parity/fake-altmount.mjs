@@ -6,6 +6,9 @@ import { serveBytes } from './serve-bytes.mjs';
 import { fault } from './first-byte-fault.mjs';
 import { nzbTag, rarVolumeCheck } from './fake-rar-rules.mjs';
 
+// A release name ending in one of these is filed by real AltMount v0.4.0 as a folder holding the file.
+const VIDEO_EXTS = ['.mkv', '.mp4', '.avi', '.m4v', '.ts', '.m2ts', '.wmv', '.webm', '.mov', '.mpg', '.mpeg'];
+
 export const API_KEY = 'synthetic-altmount-key';
 const DOWNLOAD_KEY = crypto.createHash('sha256').update(API_KEY).digest('hex');
 
@@ -48,6 +51,7 @@ export async function createFakeAltmount(listen) {
       const fileMatch = /name="file"; filename="[^"]*"\r\nContent-Type: [^\r]*\r\n\r\n([\s\S]*?)\r\n--/.exec(body);
       const nzbUrl = field('nzb_url');
       if (!fileMatch && !nzbUrl) return json(400, { error: 'No file provided' });
+      const uploadName = /name="file"; filename="([^"]*)"/.exec(body)?.[1]?.replace(/\.nzb$/i, '');
       let tag;
       if (fileMatch) { tag = nzbTag(fileMatch[1]); submitKinds.push('file'); uploads.set(tag, [...(uploads.get(tag) ?? []), fileMatch[1]]); }
       else {
@@ -69,6 +73,14 @@ export async function createFakeAltmount(listen) {
         return json(400, { error: 'Episode not found in NZB' });
       }
       src.submits++;
+      // Real AltMount v0.4.0 (captured in #84): an upload named like a video file is filed as a FOLDER with that name
+      // holding the file of the same name. The reply offers the folder, which answers 400 "Cannot stream directory".
+      let offered = file.path;
+      if (src.files.length === 1 && uploadName && VIDEO_EXTS.some(e => uploadName.toLowerCase().endsWith(e))) {
+        offered = `/complete/kaijuflow/${uploadName}`;
+        file.folder = offered;
+        file.path = `${offered}/${uploadName}`;
+      }
       // AltMount v0.4.0 RAR volume rules: a failed queue item, answered like any other.
       if (fileMatch && rarVolumeCheck(fileMatch[1], volumeOf)) return json(500, { error: 'NZB processing failed' });
       // Scripted answer (status + body) for a Source, to exercise AltMount's other error answers.
@@ -82,7 +94,7 @@ export async function createFakeAltmount(listen) {
       // Pinned v0.4.0 StremioStreamsResponse: the queue fields sit next to `streams`.
       return json(200, {
         streams: [{
-          url: `${base}/api/files/stream?path=${encodeURIComponent(file.path)}&download_key=${DOWNLOAD_KEY}`,
+          url: `${base}/api/files/stream?path=${encodeURIComponent(offered)}&download_key=${DOWNLOAD_KEY}`,
           title: src.title, name: 'AltMount',
         }],
         _queue_item_id: src.queueId, _queue_status: src.queueStatus ?? (cached ? 'completed' : 'streamable'), _cached: cached,
@@ -91,8 +103,11 @@ export async function createFakeAltmount(listen) {
 
     if ((req.method === 'GET' || req.method === 'HEAD') && path === '/api/files/stream') {
       if (u.searchParams.get('download_key') !== DOWNLOAD_KEY) { res.writeHead(401); res.end(); return; }
-      const owner = [...sources.values()].filter(s => s.completed).find(s => s.files.some(f => f.path === u.searchParams.get('path')));
-      const file = owner?.files.find(f => f.path === u.searchParams.get('path'));
+      const asked = u.searchParams.get('path');
+      const done = [...sources.values()].filter(s => s.completed);
+      if (done.some(s => s.files.some(f => f.folder && f.folder === asked))) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Cannot stream directory.'); return; }
+      const owner = done.find(s => s.files.some(f => f.path === asked));
+      const file = owner?.files.find(f => f.path === asked);
       if (file && owner.fault) { fault(owner.fault, res, req); return; }
       if (file) { serveBytes(req, res, file.media); return; }
     }

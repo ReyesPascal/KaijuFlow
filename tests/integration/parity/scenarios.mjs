@@ -38,6 +38,19 @@ export const scenarios = [
     },
   },
   {
+    // Real AltMount offers only a folder for a release name ending in a video extension (#84); the Source must still play.
+    id: 'video-extension-name-plays',
+    async run({ kaijuflow, backend }) {
+      const media = mediaFor('mkvname');
+      const title = 'KaijuFlow.Parity.MkvName.2026.2160p.WEB-DL.H265-GRP.mkv';
+      const nzb = backend.addMovie('mkvname', title, media);
+      const r = await play(streamUrl(kaijuflow, nzb, title));
+      assert.equal(r.status, 200, 'a Source whose release name ends in .mkv should play');
+      assertBytes(r.body, media, 'delivered bytes should match the Backend media');
+      assert.equal(backend.submitsFor('mkvname'), 1, 'NZB should be submitted once');
+    },
+  },
+  {
     id: 'byte-range-206',
     async run({ kaijuflow, backend }) {
       const media = mediaFor('range');

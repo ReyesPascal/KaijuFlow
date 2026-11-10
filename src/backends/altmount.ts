@@ -15,6 +15,7 @@ import { ALTMOUNT_CAPABILITIES } from './capabilities.js';
 import { kindOfStatus, kindOfFetchError, firstByteKeptError, logFirstByteFailure, type FirstByteKind } from './firstByte.js';
 import { grabSourceNzb } from './sourceNzb.js';
 import { timeStep } from '../utils/stepTiming.js';
+import { VIDEO_EXTENSIONS } from '../health/fileClassifier.js';
 import { PrepareCancelledError, isSourceFailure, sourceFailure, type Backend, type BackendStatus, type MediaRequest, type PreparedVideo } from './types.js';
 
 const TEST_CONNECTION_TIMEOUT_MS = 15_000;
@@ -154,6 +155,20 @@ export function seasonEpisodeOf(episodePattern?: string): { season: number; epis
   return s && e ? { season: parseInt(s, 10), episode: parseInt(e, 10) } : null;
 }
 
+/**
+ * Name AltMount gets for the upload (its file name, without ".nzb"). AltMount
+ * files a release under a folder named like the upload, and when that name ends
+ * in a video extension its reply offers only the folder (answers 400 "Cannot
+ * stream directory"; captured in #84). So a release name ending in .mkv, .mp4
+ * and the like goes up without that extension. The NZB itself is unchanged.
+ */
+export function altmountUploadName(releaseName: string): string {
+  const lower = releaseName.toLowerCase();
+  const ext = VIDEO_EXTENSIONS.find(e => lower.endsWith(e));
+  const stem = ext ? releaseName.slice(0, -ext.length) : releaseName;
+  return stem || releaseName;
+}
+
 export function createAltmountBackend(settings: AltmountSettings): Backend {
   const baseUrl = () => {
     if (!settings.url) throw configError('URL');
@@ -237,7 +252,7 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       const settingSec = Math.max(1, settings.prepareTimeoutSec ?? 300);
       const waitSec = remainingMs > 0 ? Math.min(settingSec, Math.max(1, Math.ceil(remainingMs / 1000))) : settingSec;
       const form = new FormData();
-      form.append('file', new Blob([nzb], { type: 'application/x-nzb' }), `${source.title}.nzb`);
+      form.append('file', new Blob([nzb], { type: 'application/x-nzb' }), `${altmountUploadName(source.title)}.nzb`);
       form.append('category', settings.category || 'kaijuflow');
       form.append('timeout', String(waitSec));
       const se = seasonEpisodeOf(source.episodePattern);
