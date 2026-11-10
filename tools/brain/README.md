@@ -100,6 +100,22 @@ Indexers are compared by the slug in the indexer stand-in's address, because eac
 - the misses: every one is counted per side and title in the "Not recorded" table. A failed top pick is the failure cause "Not recorded", and left out of the plays-out-of-ten figure, only when the miss can be the cause: the list came back empty and that side had a search miss for that visit, or that side had an NZB miss while the top pick played (after the list arrived, until the visit ended). Otherwise the pick keeps its real cause (indexer limit, Backend rejection, failure video, other) and stays in the figure.
 - the indexer time: the time that side spent waiting on replayed indexer answers while the list was loading, that is the union of the intervals `[t - wait_ms, t]` of its search answers between the visit's start and the list's arrival (parallel indexers and parallel pages are not added up; NZB files and play-time requests are left out). "Side's own work" is the list time minus that. With the wait off, both read as before (0 and the list time).
 
+## Indexer allowance (spec #77, ticket #87)
+
+**Limits file.** `limits.json` sits next to the key file (default `/home/ryan/kaijuflow-test/limits.json`, outside the repo; you fill it in once). Example: `tools/brain/limits.example.json`.
+
+```json
+{"indexers": {"ninjacentral": {"search_per_day": 2000, "download_per_day": 450, "reset": "rolling-24h"}}}
+```
+
+- `search_per_day`: the daily limit of search (API) requests. `download_per_day`: the daily limit of NZB downloads. Whole numbers.
+- `reset`: `"rolling-24h"` (the last 24 hours count; NinjaCentral's reply carries no usage fields and the reset is not confirmed, so this is the safe reading) or a clock time such as `"04:00"`, read in UTC unless the entry also has `"timezone": "Europe/Berlin"`.
+- The name is matched to the stand-in's indexer name and the copies' names ignoring case, spaces and dashes.
+
+**`python3 -I tools/brain/brainrun.py usage [--key-file PATH] [--test-dir DIR] [--runs-root DIR]`** prints, per indexer, `Used`, `Limit` and `Left` for searches and for downloads since the indexer's last reset. Used adds up two things: the stand-in's real requests in the record folders (`RECORD` and `ERROR` lines of each `logs/standin.log`; `api` is a search, `nzb` is a download; replayed `HIT` lines cost nothing) and the counts the live copy keeps (`queryHistory` and `grabHistory` in its `config/stats.json`, read-only). The test copies are not counted: they only talk to the stand-in, so their counters never measure real indexer hits. A copy keeps only its latest hundred entries of each, and the command counts this machine only; it says so. Without a limits file it prints one sentence asking you to fill it in. It never contacts an indexer. Code: `allowance.py`; tests: `test_allowance.py`.
+
+**`preflight --for record`** prints the same table, then the request count of the newest complete recording (a record folder whose `meta.json` says `recorded`) of the same list, and warns when that count is more than what is left. It only warns; it never blocks.
+
 ## Step lines (`[KF-STEP]`)
 
 KaijuFlow writes one line per timed step to stdout (`src/utils/stepTiming.ts`): `[KF-STEP] ` followed by a one-line JSON object. `docker logs -t` prefixes are fine: parse from the first `[KF-STEP] ` (`json.loads(line.split("[KF-STEP] ", 1)[1])`). Lines carry names, titles and numbers only, never URLs or keys.
