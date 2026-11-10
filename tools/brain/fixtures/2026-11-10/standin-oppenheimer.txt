@@ -1,0 +1,7 @@
+stand-in replay list=nc-only-2026-11-10 on 0.0.0.0:1340
+HIT ninjacentral api cat=2000&extended=1&q=Oppenheimer 2023&t=search wait_ms=499 from=192.168.80.6 t=1794296348406
+HIT ninjacentral api cat=2000&extended=1&offset=89&q=Oppenheimer 2023&t=search wait_ms=438 from=192.168.80.6 t=1794296348907
+HIT ninjacentral api cat=2000&extended=1&offset=176&q=Oppenheimer 2023&t=search wait_ms=437 from=192.168.80.6 t=1794296349369
+HIT ninjacentral api cat=2000&extended=1&offset=265&q=Oppenheimer 2023&t=search wait_ms=402 from=192.168.80.6 t=1794296349795
+HIT ninjacentral nzb aHR0cHM6Ly9u wait_ms=1089 from=192.168.80.6 t=1794296352330
+HIT ninjacentral nzb aHR0cHM6Ly9u wait_ms=1094 from=192.168.80.6 t=1794296352335

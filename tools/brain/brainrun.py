@@ -527,7 +527,9 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
         if c:
             logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
     # provisional; finalize_steps() re-attributes once the whole run is read (late lines, next visit of the side)
-    steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', [])}, br.parse_step_lines(kf_text))
+    played = br.played_source(kf_text)
+    steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', []), 'played_source': played},
+                               br.parse_step_lines(kf_text))
     if be_kind == 'altmount':
         imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
     else:  # NzbDAV: its own job time from its history answer, read after the round's visit
@@ -538,7 +540,8 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
             't_start': br.iso(t0), 't_end': br.iso(t1), 'list_status': http.get('list_status'),
             'list_s': http.get('list_s'), 'sources': http.get('sources'), 'start_s': http.get('start_s'),
             'seeks': http.get('seeks', {}), 'note': http.get('note'), 'tries': http.get('tries', []),
-            'steps': steps, 'imports': imports, 'limit': limit}
+            'steps': steps, 'imports': imports, 'limit': limit, 'played_source': played,
+            'cause': '' if ok else br.failure_cause(kf_text)}
 
 
 def finalize_steps(io, visits):

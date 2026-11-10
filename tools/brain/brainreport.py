@@ -49,7 +49,8 @@ COLUMN_HELP = {
                       'only because a request was not recorded is left out of both numbers (see Not recorded).',
     'Indexer limit': 'failures caused by an indexer saying its limit was reached (such a run is stopped, so this '
                      'should stay 0 in a finished run).',
-    'Backend rejection': 'failures where the Backend (AltMount or NzbDAV) refused or could not import the NZB.',
+    'Backend rejection': 'failures where the Backend (AltMount or NzbDAV) refused or could not import the NZB, or took the import '
+                         'but did not deliver the first byte of the file (the cause is shown in the Result column of the title tables).',
     'Failure video': 'failures where the side served its "this Source failed" video, with no cause found.',
     'Other': 'any other failure: no Sources, an error, a timeout, a video too short to be a film.',
     'Not recorded': 'failures where a miss can be the cause: the list came back empty after a request the recording does not hold, '
@@ -329,13 +330,55 @@ def _norm(text):
     return re.sub(r'[^a-z0-9]+', '', str(text).lower())
 
 
+def played_source(text):
+    """The release name of the Source KaijuFlow played in one visit, from its own log: the name on the first
+    'Starting new stream preparation' (a cold play) or 'Streaming' (a play that reused what the Backend held) line
+    after the '/stream hit' line. None when the log shows neither."""
+    seen = False
+    for _, msg in _lines(text):
+        if '/stream hit' in msg:
+            seen = True
+        elif seen:
+            m = re.search(r'Starting new stream preparation: (.+?)\s*$', msg) or re.search(r'Streaming (.+?): \d+ requests', msg)
+            if m:
+                return m.group(1)
+    return None
+
+
+def failure_cause(text):
+    """Why KaijuFlow's top pick failed, in KaijuFlow's own words for the visit: the reason on its 'Stream failed' line (without
+    the file path) and the Backend's answer at the first byte ('AltMount probe returned 400'). '' when it logged neither."""
+    reason = status = ''
+    for _, msg in _lines(text):
+        if not status:
+            m = re.search(r'(\w+) probe returned (\d+)', msg)
+            if m:
+                status = m.group(0)
+        if not reason:
+            m = re.search(r'Stream failed \[\d+/\d+\] .+?: (.+)$', msg)
+            if m:
+                reason = re.sub(r':\s*/\S.*$', '', m.group(1)).strip()
+    return scrub_text('; '.join(x for x in (reason, status) if x))
+
+
+def visit_cause(v):
+    """The cause shown for a failed visit: KaijuFlow's own words, else its first-byte step line, else ''."""
+    if v.get('cause'):
+        return v['cause']
+    for s in v.get('steps', []):
+        if s.get('step') == 'first_byte' and s.get('ok') is False:
+            return f"first byte failed after {s.get('ms', 0) / 1000:.1f} s"
+    return ''
+
+
 def attribute_steps(visit, steps, end=None):
     """The step lines that belong to one visit of one side.
 
     Search-side lines (indexer_page, health_batch) carry `ref`: kept when ref is the visit's id, from the visit's start until
     `end` (the start of that side's next visit; None = no end), however late they are written. Prepare-side lines carry the
-    release `title` of the Source: only the Source that was played is kept, found by (1) its name in the played stream's text
-    and otherwise (2) work that began after this visit began, so a previous title's background work cannot land here.
+    release `title` of the Source: kept only for the Source that was played, found by its name in the visit's `played_source`
+    (from KaijuFlow's log) or in the played stream's text. No Source found means no prepare-side lines: a play that reused what
+    the Backend held shows no import and no Unscramble, and another Source's background work never lands here.
     """
     lo = parse_ts(visit['t_start']) - datetime.timedelta(seconds=1)
 
@@ -347,20 +390,14 @@ def attribute_steps(visit, steps, end=None):
         return t >= lo and (end is None or t < end)
 
     out = [s for s in steps if s.get('step') in SEARCH_STEPS and s.get('ref') == visit.get('id') and inside(s)]
-    prep = [s for s in steps if s.get('step') not in SEARCH_STEPS and inside(s) and s.get('title')]
-    groups = {}
-    for s in prep:
-        begun = parse_ts(s['t']) - datetime.timedelta(milliseconds=s.get('ms', 0))
-        g = groups.setdefault(s['title'], {'begun': begun, 'lines': []})
-        g['begun'] = min(g['begun'], begun)
-        g['lines'].append(s)
     played = ' '.join(str(t.get('title', '')) for t in visit.get('tries', [])[:1])
-    pick = [t for t in groups if len(_norm(t)) >= 8 and _norm(t) in _norm(played)]
-    if not pick:
-        fresh = [t for t, g in groups.items() if g['begun'] >= lo]
-        pick = sorted(fresh, key=lambda t: groups[t]['begun'])[:1]
-    for t in pick:
-        out += groups[t]['lines']
+    src = _norm(visit.get('played_source') or '')
+    for s in steps:
+        if s.get('step') in SEARCH_STEPS or not s.get('title') or not inside(s):
+            continue
+        n = _norm(s['title'])
+        if (src and n == src) or (len(n) >= 8 and n in _norm(played)):
+            out.append(s)
     return sorted(out, key=lambda s: s['t'])
 
 
@@ -375,6 +412,8 @@ def classify_failure(v):
         any(s.get('step') == 'import_wait' and s.get('ok') is False for s in v.get('steps', []))
     if rejected:
         return 'backend_rejection'
+    if any(s.get('step') == 'first_byte' and s.get('ok') is False for s in v.get('steps', [])):
+        return 'backend_rejection'  # the Backend took the import but could not serve the file
     if v.get('note') == 'failure video':
         return 'failure_video'
     return 'other'
@@ -626,7 +665,7 @@ def render_report(run, changes):
                         continue
                     m = visit_metrics(v)
                     cause = classify_failure(v)
-                    res = 'plays' if v.get('ok') else f"{dict(CAUSES)[cause].lower()}: {v.get('note') or ''}".strip(': ')
+                    res = 'plays' if v.get('ok') else f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
                     rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd), v.get('sources', '-'), _cell(m['search_s']),
                                  _cell(m['start_s']), res])
     lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']

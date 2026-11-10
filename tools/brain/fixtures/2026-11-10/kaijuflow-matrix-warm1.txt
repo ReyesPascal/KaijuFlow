@@ -1,0 +1,4 @@
+--- kaijuflow warm 1 The Matrix 2026-11-10T07:45:41.014Z
+2026-11-10T07:45:43.043786324Z [KF-STEP] {"step":"health_batch","ms":3,"ok":true,"t":"2026-11-10T07:45:43.043Z","ref":"tt0133093","count":2,"checked":2,"indexers":["NinjaCentral"]}
+2026-11-10T07:45:43.557454907Z 🎟️ /stream hit: kind=user_pick filename=The Matrix (1999) q=[auto,t] ua=node
+2026-11-10T07:45:43.557745661Z   📊 Streaming The Matrix 1999 2160p MA WEB-DL TrueHD Atmos 7 1 DV HDR H 265-FLUX: 4 requests, 0 disconnects in last 30s

@@ -1,0 +1,34 @@
+--- kaijuflow cold 1 Oppenheimer 2026-11-10T07:39:07.701Z
+2026-11-10T07:39:17.624394564Z [KF-STEP] {"step":"health_batch","ms":6388,"ok":true,"t":"2026-11-10T07:39:17.624Z","ref":"tt15398776","count":3,"checked":3,"indexers":["NinjaCentral"]}
+2026-11-10T07:39:18.001903068Z 🎟️ /stream hit: kind=user_pick filename=Oppenheimer (2023) q=[auto,t] ua=node
+2026-11-10T07:39:18.002609766Z 🎯 User-pick attempt: userPickFallback=fallback-chain, sk=none, fbg=none
+2026-11-10T07:39:18.002717771Z 🆕 Starting new stream preparation: Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv
+2026-11-10T07:39:18.002827839Z 🎬 Preparing stream (AltMount): Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv [movie] ⏱️ no limit
+2026-11-10T07:39:18.003003871Z   💾 Using cached NZB from health check (5245392 bytes)
+2026-11-10T07:39:18.004791780Z [KF-STEP] {"step":"nzb_fetch","source":"NinjaCentral","ms":2,"ok":true,"t":"2026-11-10T07:39:18.004Z","title":"Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv"}
+2026-11-10T07:39:18.006442268Z [KF-STEP] {"step":"unscramble","source":"NinjaCentral","ms":2,"ok":true,"t":"2026-11-10T07:39:18.006Z","title":"Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv","result":"not-scrambled","parts":0}
+2026-11-10T07:39:18.011683146Z   📤 Sending Source to AltMount (waits up to 300s)
+2026-11-10T07:39:18.015072877Z 🎯 User-pick attempt: userPickFallback=fallback-chain, sk=***:movie:tt15398776::, fbg=none
+2026-11-10T07:39:18.022732180Z 🎯 User-pick attempt: userPickFallback=fallback-chain, sk=none, fbg=none
+2026-11-10T07:39:18.022814592Z 🆕 Starting new stream preparation: Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-
+2026-11-10T07:39:18.022822809Z 🎬 Preparing stream (AltMount): Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265- [movie] ⏱️ no limit
+2026-11-10T07:39:18.022938357Z   💾 Using cached NZB from health check (5463417 bytes)
+2026-11-10T07:39:18.025764993Z [KF-STEP] {"step":"nzb_fetch","source":"NinjaCentral","ms":3,"ok":true,"t":"2026-11-10T07:39:18.025Z","title":"Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-"}
+2026-11-10T07:39:18.247441513Z 🚀 Auto-queueing (verified 3/3): Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-FLUX
+2026-11-10T07:39:18.249610941Z 🎯 User-pick attempt: userPickFallback=fallback-chain, sk=none, fbg=none
+2026-11-10T07:39:18.249907145Z 🆕 Starting new stream preparation: Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-FLUX
+2026-11-10T07:39:18.249934988Z 🎬 Preparing stream (AltMount): Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-FLUX [movie] ⏱️ no limit
+2026-11-10T07:39:18.250079568Z   💾 Using cached NZB from health check (5573606 bytes)
+2026-11-10T07:39:18.252412691Z [KF-STEP] {"step":"nzb_fetch","source":"NinjaCentral","ms":3,"ok":true,"t":"2026-11-10T07:39:18.252Z","title":"Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-FLUX"}
+2026-11-10T07:39:19.018087314Z [KF-STEP] {"step":"import_wait","source":"NinjaCentral","ms":1006,"ok":true,"t":"2026-11-10T07:39:19.017Z","title":"Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv","includes_upload":true,"job":"6"}
+2026-11-10T07:39:19.018102454Z   ✅ AltMount prepared the Source (streamable)
+2026-11-10T07:39:20.083137919Z [KF-STEP] {"step":"unscramble","source":"NinjaCentral","ms":1830,"ok":true,"t":"2026-11-10T07:39:20.082Z","title":"Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-FLUX","result":"not-rar5","parts":247}
+2026-11-10T07:39:20.083155017Z   🧩 Unscramble skipped (not-rar5, 247 parts, 1830 ms): uploading the original NZB
+2026-11-10T07:39:20.087807740Z   📤 Sending Source to AltMount (waits up to 300s)
+2026-11-10T07:39:21.103984440Z [KF-STEP] {"step":"first_byte","source":"NinjaCentral","ms":2085,"ok":false,"t":"2026-11-10T07:39:21.103Z","title":"Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv","job":"6"}
+2026-11-10T07:39:19.020949509Z   ⚠️ AltMount probe returned 400
+2026-11-10T07:39:21.103839554Z   ⚠️ AltMount probe returned 400
+2026-11-10T07:39:21.104833005Z ❌ Stream failed [1/1] Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv: Video file not servable (probe failed after 2 attempts): /complete/kaijuflow/Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv
+2026-11-10T07:39:21.104850121Z ❌ All 1 candidate(s) exhausted, serving failure video
+2026-11-10T07:39:21.106474242Z ❌ Stream failed [1/1] Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv: Video file not servable (probe failed after 2 attempts): /complete/kaijuflow/Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv
+2026-11-10T07:39:21.106537752Z ❌ All 1 candidate(s) exhausted, serving failure video
