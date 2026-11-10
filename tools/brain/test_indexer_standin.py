@@ -24,6 +24,7 @@ class FakeIndexer(http.server.BaseHTTPRequestHandler):
     error_body = None  # when set, every request is answered with this body
     delay = 0.0  # seconds the fake indexer takes to answer
     seen = []  # query parameter names of every request received
+    force_status = None  # when set, every request is answered with this HTTP status and a plain body
 
     def log_message(self, *a):
         pass
@@ -34,6 +35,8 @@ class FakeIndexer(http.server.BaseHTTPRequestHandler):
         u = urlparse(self.path)
         cls.seen.append(sorted(parse_qs(u.query)))
         time.sleep(cls.delay)
+        if cls.force_status:
+            return self.send(cls.force_status, 'text/plain', b'trouble')
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if cls.error_body is not None:
             return self.send(200, 'application/json', cls.error_body)
@@ -88,7 +91,7 @@ class StandinTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         FakeIndexer.hits, FakeIndexer.limit, FakeIndexer.json_escaped, FakeIndexer.error_body = 0, False, True, None
-        FakeIndexer.delay, FakeIndexer.seen = 0.0, []
+        FakeIndexer.delay, FakeIndexer.seen, FakeIndexer.force_status = 0.0, [], None
         self.fake = serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), FakeIndexer))
         self.cfg = {'indexers': {'fake': {'url': f'http://127.0.0.1:{self.fake.server_port}', 'apikey': REAL_KEY}}}
         self.store = os.path.join(self.tmp, 'store')
@@ -97,6 +100,7 @@ class StandinTest(unittest.TestCase):
         s = serve(indexer_standin.make_server(cfg or self.cfg, self.store, mode, listname, port=port, bind='127.0.0.1', **kw))
         self.addCleanup(s.server_close)
         self.addCleanup(s.shutdown)
+        self.last = s
         return s, f'http://127.0.0.1:{s.server_port}'
 
     def crawl(self, base):
@@ -295,14 +299,15 @@ class StandinTest(unittest.TestCase):
         s, base = self.standin('replay', port=port)
         fetch(f'{base}/fake/api?t=search&q=inception&offset=0&apikey=dummy')
         line = [x for x in s.state.log_lines if x.startswith('HIT ')][0]
-        self.assertEqual(line, 'HIT fake api offset=0&q=inception&t=search wait_ms=%s' % line.rsplit('wait_ms=', 1)[1])
-        self.assertGreaterEqual(int(line.rsplit('wait_ms=', 1)[1]), 190)
+        m = re.match(r'^HIT fake api offset=0&q=inception&t=search wait_ms=(\d+) from=\S+ t=\d+$', line)
+        self.assertTrue(m, line)
+        self.assertGreaterEqual(int(m.group(1)), 190)
 
     def test_wait_off_logs_zero_wait(self):
         port, _ = self.record_one_search(0.2)
         s, base = self.standin('replay', port=port, wait=False)
         fetch(f'{base}/fake/api?t=search&q=inception&offset=0&apikey=dummy')
-        self.assertTrue(s.state.log_lines[-1].endswith(' wait_ms=0'))
+        self.assertIn(' wait_ms=0 from=', s.state.log_lines[-1])
 
     def test_recording_without_a_recorded_time_replays_without_waiting(self):
         port, recorded = self.record_one_search(0.0)
@@ -319,7 +324,7 @@ class StandinTest(unittest.TestCase):
         self.assertLess(took, 0.5)
         for a, b in zip(recorded, replayed):
             self.assertBytes(a, b)
-        self.assertTrue(s.state.log_lines[-1].endswith(' wait_ms=0'))
+        self.assertIn(' wait_ms=0 from=', s.state.log_lines[-1])
 
     def drop_cfg(self):
         ix = dict(self.cfg['indexers']['fake'], drop_params=['o'])
@@ -359,6 +364,103 @@ class StandinTest(unittest.TestCase):
         saved = open(os.path.join(self.store, 'list-a', 'fake', 'indexer.json')).read()
         self.assertEqual(json.loads(saved), {'drop_params': ['o']})
         self.assertNotIn(REAL_KEY, saved)
+
+    # ---- who asked and when (review fix 1)
+    def test_every_request_line_carries_the_client_address_and_the_time_it_was_answered(self):
+        s, base = self.standin('record')
+        before = int(time.time() * 1000)
+        fetch(f'{base}/fake/api?t=search&q=a&apikey=d')   # RECORD
+        fetch(f'{base}/fake/api?t=search&q=a&apikey=d')   # HIT
+        FakeIndexer.force_status = 503
+        fetch(f'{base}/fake/api?t=search&q=b&apikey=d')   # ERROR
+        after = int(time.time() * 1000)
+        _, pbase = self.standin('replay', port=0, cfg={'indexers': {}})
+        p = self.last
+        fetch(f'{pbase}/fake/api?t=search&q=never&apikey=d')  # MISS
+        lines = s.state.log_lines + p.state.log_lines
+        kinds = {}
+        for line in lines:
+            m = re.match(r'^(HIT|MISS|RECORD|ERROR) .* from=(\S+) t=(\d+)$', line)
+            if m:
+                kinds[m.group(1)] = (m.group(2), int(m.group(3)))
+        self.assertEqual(set(kinds), {'HIT', 'MISS', 'RECORD', 'ERROR'}, lines)
+        for ip, t in kinds.values():
+            self.assertEqual(ip, '127.0.0.1')
+            self.assertTrue(before - 1000 <= t <= after + 1000)
+
+    # ---- what is stored (review fix 5)
+    def stored_bodies(self):
+        out = []
+        for root, _, files in os.walk(self.store):
+            out += [f for f in files if f.endswith('.body')]
+        return out
+
+    def test_server_errors_are_passed_on_not_stored_and_asked_again_later(self):
+        s, base = self.standin('record')
+        FakeIndexer.force_status = 503
+        st, _ = fetch(f'{base}/fake/api?t=search&q=a&apikey=d')
+        self.assertEqual(st, 503)
+        self.assertEqual(self.stored_bodies(), [])
+        self.assertTrue(any(re.match(r'^ERROR fake api .* -> 503 from=\S+ t=\d+$', x) for x in s.state.log_lines), s.state.log_lines)
+        self.assertEqual(s.state.errors, 1)
+        FakeIndexer.force_status = None
+        hits = FakeIndexer.hits
+        self.assertEqual(fetch(f'{base}/fake/api?t=search&q=a&apikey=d')[0], 200)
+        self.assertEqual(FakeIndexer.hits, hits + 1)  # the top-up asked again
+        self.assertEqual(len(self.stored_bodies()), 1)
+
+    def test_other_4xx_and_newznab_errors_are_not_stored_but_gone_is_kept(self):
+        s, base = self.standin('record')
+        FakeIndexer.force_status = 403
+        fetch(f'{base}/fake/api?t=search&q=a&apikey=d')
+        FakeIndexer.force_status = None
+        FakeIndexer.error_body = b'{"error":{"@attributes":{"code":"100","description":"Incorrect user credentials"}}}'
+        fetch(f'{base}/fake/api?t=search&q=b&apikey=d')
+        FakeIndexer.error_body = None
+        self.assertEqual(self.stored_bodies(), [])
+        self.assertEqual(s.state.errors, 2)
+        for code in (404, 410):
+            FakeIndexer.force_status = code
+            self.assertEqual(fetch(f'{base}/fake/api?t=search&q=gone{code}&apikey=d')[0], code)
+        self.assertEqual(len(self.stored_bodies()), 2)  # an NZB that is gone stays gone
+
+    def test_a_network_error_is_an_error_answer_not_a_crash(self):
+        s, base = self.standin('record')
+        self.fake.shutdown()
+        self.fake.server_close()
+        st, _ = fetch(f'{base}/fake/api?t=search&q=a&apikey=d')
+        self.assertGreaterEqual(st, 500)
+        self.assertEqual(self.stored_bodies(), [])
+        self.assertTrue(any(x.startswith('ERROR fake ') for x in s.state.log_lines))
+
+    # ---- two identical requests together (review fix 6)
+    def test_two_identical_requests_together_reach_the_indexer_once(self):
+        FakeIndexer.delay = 0.4
+        s, base = self.standin('record')
+        out = []
+        ts = [threading.Thread(target=lambda: out.append(fetch(f'{base}/fake/api?t=search&q=same&apikey=d'))) for _ in range(2)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        self.assertEqual(FakeIndexer.hits, 1)
+        self.assertEqual([o[0] for o in out], [200, 200])
+        self.assertBytes(out[0][1], out[1][1])
+
+    # ---- the dropped-parameter setting is fixed once answers exist (review fix 7)
+    def test_a_different_dropped_parameter_setting_stops_with_one_sentence(self):
+        s, base = self.standin('record', cfg=self.drop_cfg())
+        fetch(f'{base}/fake/api?t=search&q=x&o=json&apikey=dummy')
+        for cfg in (self.cfg, {'indexers': {'fake': dict(self.cfg['indexers']['fake'], drop_params=['o', 'x'])}}):
+            problems = indexer_standin.setting_conflicts(cfg, self.store, 'list-a')
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn('new list name', problems[0])
+            with self.assertRaises(ValueError):
+                indexer_standin.make_server(cfg, self.store, 'record', 'list-a', port=0, bind='127.0.0.1')
+        self.assertEqual(indexer_standin.setting_conflicts(self.drop_cfg(), self.store, 'list-a'), [])
+        self.assertEqual(indexer_standin.setting_conflicts(self.cfg, self.store, 'list-new'), [])
+        saved = json.load(open(os.path.join(self.store, 'list-a', 'fake', 'indexer.json')))
+        self.assertEqual(saved, {'drop_params': ['o']})  # nothing deleted, nothing asked again
 
 
 if __name__ == '__main__':

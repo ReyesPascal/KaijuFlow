@@ -10,7 +10,8 @@
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke   (stand-in reachability check, see README)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
-indexer time for every answer unless --no-wait) and resets the test copies with
+indexer time for every answer unless --no-wait; the stand-in's lines say which test container asked and when, so the report
+matches them to the right side and visit) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
 row and the report. The first "limit reached" from any indexer aborts the run and records it as null.
@@ -35,6 +36,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
+import indexer_standin  # noqa: E402
 import testbed  # noqa: E402
 from common import DEFAULT_TEST_DIR  # noqa: E402
 
@@ -50,6 +52,7 @@ SIDE_LOGS = {
     'altmount-addon': (None, 'altmount-addon-test', 'altmount'),
 }
 GRACE_S = 5
+RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"stopped", "why", "when", "errors"}
 
 
 class CapReached(Exception):
@@ -129,7 +132,21 @@ class RealIO:
 
     def rebuild_image(self, commit):
         repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        subprocess.run(['docker', 'build', '--label', f'{IMAGE_LABEL}={commit}', '-t', IMAGE, repo], check=True, timeout=1800)
+        build_image(commit, repo)
+
+    def addresses(self):
+        return read_addresses()
+
+    def shelve_marker(self):
+        return shelve_marker(self.cfg['store'])
+
+    def setting_conflicts(self):
+        """Sentences for a key file whose dropped-parameter setting differs from the one the list was recorded with."""
+        key = self.cfg.get('key_file') or os.path.join(self.cfg['test_dir'], 'indexers.json')
+        return indexer_standin.setting_conflicts(_read_json(key) or {}, self.cfg['store'], self.cfg['listname'])
+
+    def recording_state(self):
+        return _read_json(os.path.join(self.cfg['store'], self.cfg['listname'], RECORDING_FILE))
 
     def port_free(self, port):
         with socket.socket() as s:
@@ -253,6 +270,59 @@ class RealIO:
         return r.stdout + r.stderr
 
 
+def build_image(commit, repo, popen=subprocess.Popen, run=subprocess.run):
+    """Builds kaijuflow:test from the commit itself (an archive of HEAD piped into `docker build -`), so a file that is untracked
+    or ignored can never get into an image whose label names that commit."""
+    archive = popen(['git', '-C', repo, 'archive', 'HEAD'], stdout=subprocess.PIPE)
+    try:
+        run(['docker', 'build', '--label', f'{IMAGE_LABEL}={commit}', '-t', IMAGE, '-'], stdin=archive.stdout, check=True, timeout=1800)
+    finally:
+        archive.stdout.close()
+        archive.wait()
+
+
+def read_addresses(run=subprocess.run):
+    """{test container: its address on the test network}, read with `docker inspect` (read-only); a container that is not up
+    or has no address is left out."""
+    out = {}
+    for container in sorted(set(br.CLIENT_CONTAINER.values())):
+        if container not in testbed.TEST_CONTAINERS:
+            raise ValueError('not a test container: ' + container)
+        fmt = '{{with index .NetworkSettings.Networks "%s"}}{{.IPAddress}}{{end}}' % testbed.NETWORK
+        r = run(['docker', 'inspect', '-f', fmt, container], capture_output=True, text=True, timeout=60)
+        ip = r.stdout.strip() if r.returncode == 0 else ''
+        if ip:
+            out[container] = ip
+    return out
+
+
+def note_addresses(io, run):
+    """Adds the containers' current addresses to the run (they can change when a container is started again)."""
+    for container, ip in io.addresses().items():
+        known = run['addresses'].setdefault(container, [])
+        if ip not in known:
+            known.append(ip)
+
+
+def shelve_marker(store):
+    """Moves a limit marker left by an earlier command aside (kept, renamed with its time); returns the new name or None."""
+    path = os.path.join(store, 'LIMIT_REACHED.json')
+    if not os.path.exists(path):
+        return None
+    marker = _read_json(path) or {}
+    try:
+        when = br.parse_ts(marker['time'])
+    except (TypeError, KeyError, ValueError):
+        when = datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc)
+    new = os.path.join(store, f'LIMIT_REACHED.{when:%Y%m%dT%H%M%SZ}.json')
+    n = 1
+    while os.path.exists(new):
+        new = os.path.join(store, f'LIMIT_REACHED.{when:%Y%m%dT%H%M%SZ}-{n}.json')
+        n += 1
+    os.rename(path, new)
+    return new
+
+
 def side_base(cfg, side):
     u = cfg['user_id']
     return {'kaijuflow': f'http://localhost:1338/{u}', 'kaijuflow-1page': f'http://localhost:1338/{u}',
@@ -314,13 +384,13 @@ def preflight(mode, cfg, io):
             io.rebuild_image(commit)
             label = io.image_label()
         if not label:
-            problems.append(f'The test image {IMAGE} is missing or has no commit label: build it again with --rebuild-image.')
+            problems.append(f'The test image {IMAGE} is missing or does not say which commit it was built from: build it again with --rebuild-image.')
         elif label != commit:
             problems.append(f'The test image was built from commit {label[:7]} but the repository is at {commit[:7]}: '
                             'build it again with --rebuild-image.')
 
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
-    titles = testbed.SIDE_SHORT
+    titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
     indexer_sides = [s for s in testbed.SETTINGS_SIDES if s != 'nzbdav']
     unreadable = [s for s in indexer_sides if rep['indexers'].get(s) is None]
     for s in unreadable:
@@ -334,7 +404,7 @@ def preflight(mode, cfg, io):
         if state == 'missing':
             problems.append(f'The key file {path} is missing: create it with one entry per indexer before recording.')
         elif state == 'open':
-            problems.append(f'The key file {path} can be read by others: make it readable only by you (chmod 600).')
+            problems.append(f'The key file {path} can be read by others: make the key file readable only by you (run: chmod 600 {path}).')
         elif state == 'unreadable':
             problems.append(f'The key file {path} has no "indexers" list of names: fix the file.')
         else:
@@ -342,12 +412,14 @@ def preflight(mode, cfg, io):
             if differ:
                 problems.append(f'The key file names {_list(key)}, but ' + '; '.join(differ) + ': make them the same.')
 
-    # 3. every indexer address in every test copy is the stand-in's
+    # 3. every indexer address in every test copy is the indexer stand-in's (explained once, in the first sentence)
+    what = ' (the local program that replays recorded indexer answers)'
     for s in readable:
         for r in rep['indexers'][s]:
             if testbed.standin_slug(r['url'], port) is None:
-                problems.append(f'{r["name"]} in {titles[s]} points at {r["url"]}, not the stand-in '
-                                f'(http://{testbed.STANDIN_HOST}:{port}/<indexer>): change the address so no test can reach a real indexer.')
+                problems.append(f'{r["name"]} in {titles[s]} points at {r["url"]}, not the indexer stand-in{what}: '
+                                f'change the address to http://{testbed.STANDIN_HOST}:{port}/<indexer> so no test can reach a real indexer.')
+                what = ''
 
     # 4. the connection caps fit the provider limit
     for s in testbed.SETTINGS_SIDES:
@@ -360,14 +432,21 @@ def preflight(mode, cfg, io):
 
     # 5. the stand-in's port is free
     if not io.port_free(port):
-        problems.append(f"The stand-in's port {port} is already in use: stop whatever listens there (an earlier stand-in?) and try again.")
+        problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (an earlier indexer stand-in?) and try again.")
 
     # 6. (run only) the recording exists and holds an answer for every enabled indexer
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})
+        state = io.recording_state()
+        top_up = cfg.get('topup_command') or 'the record command with the same title list'
         if not have:
             problems.append(f"There is no recording for the title list '{cfg.get('listname')}' in {cfg.get('store')}: run the record command first.")
+        elif not state:
+            problems.append(f"The recording for '{cfg.get('listname')}' does not say whether it is complete: top it up with the record command: {top_up}")
+        elif state.get('state') != 'complete':
+            problems.append(f"The recording for '{cfg.get('listname')}' stopped early ({state.get('why') or 'no reason noted'}, "
+                            f"{state.get('when') or 'at an unknown time'}): top it up with the record command: {top_up}")
         else:
             gaps = [slug for slug in need if not have.get(slug)]
             if gaps:
@@ -433,8 +512,18 @@ def finalize_steps(io, visits):
             v['steps'] = br.attribute_steps(v, steps, end)
 
 
-def _check_cap(io, visit=None):
+def _marker_is_old(m, since):
+    """True when a marker was written before `since` (the start of this command): replay never contacts an indexer, so it cannot be new."""
+    try:
+        return br.parse_ts(m['time']) < since.replace(microsecond=0)
+    except (TypeError, KeyError, ValueError):
+        return False
+
+
+def _check_cap(io, visit=None, since=None):
     m = io.marker()
+    if m and since is not None and _marker_is_old(m, since):
+        m = None
     if m:
         raise CapReached(m.get('indexer', 'unknown'), m.get('time', '?'), 'indexer stand-in LIMIT_REACHED.json')
     if visit and visit.get('limit'):
@@ -447,15 +536,14 @@ def do_pass(cfg, io, run, logbuf, sides, reset_sides):
     for phase, rnd in PLAN:
         if phase == 'cold':
             io.reset(reset_sides)
+            note_addresses(io, run)  # a container gets its address when it starts
         for i, title in enumerate(cfg['titles']):
             k = i % len(sides)
             for side in sides[k:] + sides[:k]:
-                mark = io.standin_line_count()
                 v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
-                v['log_from'] = mark
                 run['visits'].append(v)
                 print(f"{side} {phase} {rnd} {title[2]}: {'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
-                _check_cap(io, v)
+                _check_cap(io, v, since=run['started_at'])
                 io.sleep(cfg['settle'])
 
 
@@ -476,21 +564,23 @@ def run_all(cfg, io):
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
            'sides': MAIN_SIDES + (['kaijuflow-1page'] if cfg['one_page'] else []), 'standin_misses': 0,
-           'settings': {}, 'commit': None, 'dirty': None, 'topup_command': cfg.get('topup_command')}
+           'settings': {}, 'commit': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
+           'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
+           'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
+                     'one-page side': 'yes' if cfg['one_page'] else 'no'}}
     wait = cfg.get('wait', True)
     logbuf, handle, failure = {}, None, None
     try:
         run['settings'] = io.snapshot()
-        run['settings']['stand-in'] = {'replay wait': 'on' if wait else 'off'}  # shows in "What changed since the last run"
         run['dirty'] = io.git_info()[1]
         run['commit'] = io.image_label()  # the commit the test image was built from, not the repository's
         _write(os.path.join(run_dir, 'settings.json'), json.dumps(run['settings'], indent=1, sort_keys=True))
         try:
-            _check_cap(io)
+            _check_cap(io, since=started)
             handle = io.start_standin(os.path.join(logs_dir, 'standin.log'), mode='replay', wait=wait)
             do_pass(cfg, io, run, logbuf, list(MAIN_SIDES), ALL_TESTBED)
             if cfg['one_page']:
-                run['settings'].update(io.apply_one_page())
+                io.apply_one_page()
                 do_pass(cfg, io, run, logbuf, ['kaijuflow-1page'], ['kaijuflow', 'altmount-kf'])
         except CapReached as e:
             run['status'] = 'null'
@@ -499,7 +589,7 @@ def run_all(cfg, io):
             try:
                 finalize_steps(io, run['visits'])
                 if handle:
-                    br.assign_standin(run['visits'], io.standin_lines())  # misses and indexer time per visit
+                    run['standin_unmatched'] = br.assign_standin(run['visits'], io.standin_lines(), run['addresses'])
             finally:  # the cleanup runs even when reading the logs fails
                 io.restore_config()
                 if handle:
@@ -527,7 +617,8 @@ def run_all(cfg, io):
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'dirty', 'titles', 'indexers',
-                                    'sides', 'settings', 'null', 'error', 'standin_misses', 'changes')}
+                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'error',
+                                    'standin_misses', 'changes')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
         'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': run['changes'],
@@ -546,13 +637,11 @@ def record_all(cfg, io):
     stops the pass and the recording is NULL (what was stored stays). Nothing from the pass is a measurement: it gets a folder
     with the stand-in's log and a meta.json, and an INDEX.md row only when it is NULL or failed.
     """
-    problems = io.preflight('record')
-    m = io.marker()
-    if m and not problems:
-        problems = [f"The recording was stopped by {m.get('indexer', 'an indexer')}'s limit at {m.get('time', 'an unknown time')}: "
-                    f"delete {os.path.join(cfg['store'], 'LIMIT_REACHED.json')} once that indexer has reset, then record again to top up."]
+    problems = io.preflight('record') + io.setting_conflicts()
     if problems:
         raise PreflightFailed(problems)
+    if io.marker():  # left by an earlier command: kept under another name; if the limit still holds, the first answer writes a new one
+        io.shelve_marker()
     started = io.now()
     root = cfg['runs_root']
     run_dir = br.create_run_dir(root, cfg['name'] + '-record', started)
@@ -561,7 +650,7 @@ def record_all(cfg, io):
     logpath = os.path.join(logs_dir, 'standin.log')
     rec = {'name': cfg['name'], 'mode': 'record', 'status': 'recorded', 'started': br.iso(started), 'dir': run_dir, 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': MAIN_SIDES + (['kaijuflow-1page'] if cfg['one_page'] else []),
-           'commit': None, 'new_answers': 0, 'stored_answers': 0, 'visits': 0}
+           'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0}
     handle, failure = None, None
     try:
         rec['commit'] = io.image_label()
@@ -590,6 +679,8 @@ def record_all(cfg, io):
     text = _read_text(logpath) or ''
     rec['new_answers'] = sum(1 for line in text.splitlines() if line.startswith('RECORD '))
     rec['stored_answers'] = sum(1 for line in text.splitlines() if line.startswith('HIT '))
+    rec['errors'] = sum(1 for line in text.splitlines() if line.startswith('ERROR '))
+    write_recording_state(cfg, rec)
     _write(os.path.join(run_dir, 'meta.json'), json.dumps({k: rec.get(k) for k in rec if k != 'dir'}, indent=1, sort_keys=True))
     if rec['status'] == 'null':
         br.append_index_row(os.path.join(root, 'INDEX.md'), {
@@ -604,6 +695,30 @@ def record_all(cfg, io):
     if failure:
         raise failure
     return rec
+
+
+def write_recording_state(cfg, rec):
+    """Writes the recording's state next to the list's answers: complete, or stopped early (why and when), and how many
+    answers of this pass were errors (not stored). The preflight of a run reads it."""
+    d = os.path.join(cfg['store'], cfg['listname'])
+    os.makedirs(d, exist_ok=True)
+    if rec['status'] == 'recorded':
+        state, why = 'complete', None
+    elif rec['status'] == 'null':
+        state, why = 'stopped', f"{rec['null']['indexer']} said its limit was reached"
+    else:
+        state, why = 'stopped', rec.get('error') or 'the record pass failed'
+    _write(os.path.join(d, RECORDING_FILE), json.dumps({'state': state, 'why': why, 'when': rec['finished'], 'errors': rec['errors']}, indent=1))
+
+
+def record_summary(rec):
+    """The sentence(s) the record command ends with."""
+    text = f"Recorded {rec['new_answers']} new answers; {rec['stored_answers']} were already stored."
+    n = rec.get('errors') or 0
+    if n:
+        text += (f" {n} answer{' was an error' if n == 1 else 's were errors'} and {'was' if n == 1 else 'were'} not stored: "
+                 "run record again to top them up.")
+    return text
 
 
 def record_pass(cfg, io, rec, sides):
@@ -622,8 +737,30 @@ def record_pass(cfg, io, rec, sides):
 
 # --------------------------------------------------------------------------- smoke and CLI
 
+def smoke_side_result(lines, expected_ip):
+    """What one side's search caused at the stand-in: how many requests, from which address(es), and whether that is the
+    address `docker inspect` gave for the side's container."""
+    seen = [p for p in (br.parse_standin_line(x) for x in lines) if p]
+    came_from = sorted({p['ip'] for p in seen})
+    return {'standin_requests': len(seen), 'came_from': came_from, 'expected_from_docker_inspect': expected_ip,
+            'matched': bool(came_from) and came_from == [expected_ip],
+            'sample': [x.strip() for x in lines[:1]]}
+
+
+def smoke_verdict(results):
+    """One plain sentence on whether the sides arrive with their own addresses."""
+    addrs = [tuple(r['came_from']) for r in results.values()]
+    if all(r['matched'] for r in results.values()) and len(set(addrs)) == len(addrs):
+        return 'Every side reached the indexer stand-in from its own address, and each address matched what docker inspect gave.'
+    if not any(addrs):
+        return 'No side reached the indexer stand-in: nothing can be said about addresses.'
+    return ('The sides do not all arrive with their own matching address: the runner must rely on the time window alone '
+            'for the sides that did not match.')
+
+
 def smoke(cfg, port=1340):
-    """One search per side against the stand-in on an EMPTY store (every request a MISS); prints which side reached it."""
+    """One search per side against the stand-in on an EMPTY store (every request a MISS); prints which side reached it,
+    from which address, and whether that matches the address docker inspect gives for the side's test container."""
     store = cfg['store']
     if os.path.isdir(store) and os.listdir(store):
         sys.exit('smoke needs an EMPTY store folder so that every request is a MISS and nothing can be read from Usenet')
@@ -633,15 +770,17 @@ def smoke(cfg, port=1340):
     handle = io.start_standin(log)
     results = {}
     try:
+        addresses = io.addresses()
         for side in ('kaijuflow', 'uu', 'altmount-addon'):
-            before = sum(1 for line in open(log) if line.startswith('MISS '))
+            before = len((_read_text(log) or '').splitlines())
             st, h, body, t = common.get(f"{side_base(cfg, side)}/stream/movie/{os.environ.get('SMOKE_IMDB', 'tt0133093')}.json", timeout=120, limit=0)
             time.sleep(1)
-            lines = [line.strip() for line in open(log) if line.startswith('MISS ')]
-            results[side] = {'http': st, 'standin_requests': len(lines) - before, 'sample': lines[before:before + 1]}
+            new = [x for x in (_read_text(log) or '').splitlines()[before:] if x.startswith('MISS ')]
+            results[side] = dict(http=st, **smoke_side_result(new, addresses.get(br.CLIENT_CONTAINER[side])))
     finally:
         handle.stop()
     print(json.dumps(results, indent=1))
+    print(smoke_verdict(results))
     return results
 
 
@@ -692,7 +831,7 @@ def main(argv):
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
                one_page=a.one_page, titles=pool, tries=a.tries, settle=a.settle,
-               indexers=sorted(os.listdir(listdir)) if a.store and os.path.isdir(listdir) else [],
+               indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
     started = time.time()
@@ -709,9 +848,9 @@ def main(argv):
             return 1
         if rec['status'] == 'null':
             print(f"The recording stopped: {rec['null']['indexer']} said its limit was reached. What was stored is kept; "
-                  f"after the reset delete LIMIT_REACHED.json in the store and run the same command again to top up. Folder: {rec['dir']}")
+                  f"once the indexer has reset, run the same command again to top up. Folder: {rec['dir']}")
             return 2
-        print(f"Recorded {rec['new_answers']} new answers; {rec['stored_answers']} were already stored. Folder: {rec['dir']}")
+        print(f"{record_summary(rec)} Folder: {rec['dir']}")
     else:
         try:
             run = run_all(cfg, RealIO(cfg))

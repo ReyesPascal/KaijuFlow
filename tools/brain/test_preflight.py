@@ -7,11 +7,11 @@ import contextlib
 import io
 import json
 import os
-import tempfile
 import unittest
 
 import brainrun
-from test_settings import SECRET, make_copies
+import testbed
+from test_settings import SECRET, make_copies, tempdir
 
 COMMIT = 'a' * 40
 
@@ -45,7 +45,11 @@ def make_cfg(td, **kw):
     return cfg
 
 
-def record(cfg, counts=None):
+def record(cfg, counts=None, state='complete', why=None):
+    os.makedirs(os.path.join(cfg['store'], cfg['listname']), exist_ok=True)
+    if state:
+        with open(os.path.join(cfg['store'], cfg['listname'], brainrun.RECORDING_FILE), 'w') as f:
+            json.dump({'state': state, 'why': why, 'when': '2026-11-10T09:00:00Z', 'errors': 0}, f)
     for slug, n in (counts or {'ninjacentral': 2, 'drunkenslug': 1}).items():
         d = os.path.join(cfg['store'], cfg['listname'], slug)
         os.makedirs(d, exist_ok=True)
@@ -65,7 +69,7 @@ def run_command(mode, cfg, world):
 
 class PreflightTest(unittest.TestCase):
     def setUp(self):
-        self.td = make_copies()
+        self.td = make_copies(self)
         self.cfg = make_cfg(self.td)
 
     def world(self, **kw):
@@ -90,7 +94,7 @@ class PreflightTest(unittest.TestCase):
         self.assert_stops('record', self.world(label='b' * 40), 'built from commit bbbbbbb', 'aaaaaaa', '--rebuild-image')
 
     def test_image_without_label_stops(self):
-        self.assert_stops('record', self.world(label=None), 'no commit label', '--rebuild-image')
+        self.assert_stops('record', self.world(label=None), 'does not say which commit', '--rebuild-image')
 
     def test_dirty_tree_stops(self):
         self.assert_stops('record', self.world(dirty=True), 'uncommitted changes')
@@ -111,12 +115,26 @@ class PreflightTest(unittest.TestCase):
         os.remove(os.path.join(self.td, 'indexers.json'))
         self.assert_stops('record', self.world(), 'key file', 'missing')
 
+    def test_key_file_sentence_says_how_to_fix_it_in_plain_words(self):
+        os.chmod(os.path.join(self.td, 'indexers.json'), 0o644)
+        _code, text = run_command('record', self.cfg, self.world())
+        path = os.path.join(self.td, 'indexers.json')
+        self.assertIn(f'make the key file readable only by you (run: chmod 600 {path})', text)
+
+    def test_the_indexer_stand_in_is_explained_once_by_that_name(self):
+        td = make_copies(self, url=lambda s: 'https://real.example/api?x=1')
+        self.cfg = make_cfg(td)
+        _code, text = run_command('record', self.cfg, self.world())
+        self.assertIn('indexer stand-in (the local program that replays recorded indexer answers', text)
+        self.assertEqual(text.count('local program that replays'), 1)
+        self.assertNotIn('the stand-in', text.replace('the indexer stand-in', ''))
+
     def test_key_file_readable_by_others_stops_record(self):
         os.chmod(os.path.join(self.td, 'indexers.json'), 0o644)
         self.assert_stops('record', self.world(), 'key file', 'only by you', 'chmod 600')
 
     def test_key_file_with_other_indexers_stops_record(self):
-        td = make_copies(key_slugs=('ninjacentral', 'althub'))
+        td = make_copies(self, key_slugs=('ninjacentral', 'althub'))
         self.cfg = make_cfg(td)
         self.assert_stops('record', self.world(), 'althub', 'drunkenslug')
 
@@ -136,34 +154,34 @@ class PreflightTest(unittest.TestCase):
 
     def test_copies_must_agree_on_enabled_indexers(self):
         # AltMount's addon copy has DrunkenSlug switched off; the key file and the other copies use it
-        self.cfg = make_cfg(make_copies(addon_off=('drunkenslug',)))
+        self.cfg = make_cfg(make_copies(self, addon_off=('drunkenslug',)))
         self.assert_stops('record', self.world(), 'AltMount addon', 'drunkenslug')
 
     def test_indexer_address_must_be_the_standins(self):
-        td = make_copies(url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
+        td = make_copies(self, url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
                          'http://host.docker.internal:1340/%s/api' % s)
         self.cfg = make_cfg(td)
         code, text = run_command('run', self.cfg, self.world())
         self.assertEqual(code, 1)
         self.assertIn('NinjaCentral', text)
-        self.assertIn('not the stand-in', text)
+        self.assertIn('not the indexer stand-in', text)
         self.assertNotIn('real-indexer.example/api?', text)
         self.assertNotIn(SECRET, text)
 
     def test_an_address_with_a_key_in_it_is_never_printed(self):
-        td = make_copies(url=lambda s: 'https://real.example/api?apikey=' + SECRET)
+        td = make_copies(self, url=lambda s: 'https://real.example/api?apikey=' + SECRET)
         self.cfg = make_cfg(td)
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 1)
         self.assertNotIn(SECRET, text)
 
     def test_caps_over_the_provider_limit_stop(self):
-        td = make_copies(caps=(12, 12, 50, 50, 50))
+        td = make_copies(self, caps=(12, 12, 50, 50, 50))
         self.cfg = make_cfg(td)
         self.assert_stops('record', self.world(), '174', 'limit of 100')
 
     def test_caps_exactly_at_the_limit_pass(self):
-        td = make_copies(caps=(12, 13, 25, 25, 25))
+        td = make_copies(self, caps=(12, 13, 25, 25, 25))
         self.cfg = make_cfg(td)
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 0, text)
@@ -184,6 +202,21 @@ class PreflightTest(unittest.TestCase):
         record(self.cfg, {'ninjacentral': 3})
         self.assert_stops('run', self.world(), 'drunkenslug')
 
+    def test_a_recording_that_stopped_early_says_so_and_gives_the_record_command(self):
+        record(self.cfg, state='stopped', why='drunkenslug said its limit was reached')
+        self.cfg['topup_command'] = 'python3 -I tools/brain/brainrun.py record --name n --store S --list l'
+        self.assert_stops('run', self.world(), 'stopped early', 'drunkenslug said its limit was reached', '2026-11-10',
+                          'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
+
+    def test_a_recording_without_a_state_does_not_pass_a_run(self):
+        record(self.cfg, state=None)
+        self.assert_stops('run', self.world(), 'record command')
+
+    def test_the_state_is_not_checked_for_a_record(self):
+        record(self.cfg, state='stopped', why='x')
+        code, text = run_command('record', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
     def test_problems_come_back_as_a_list_for_the_record_command(self):
         record(self.cfg)
         self.assertEqual(brainrun.preflight('run', self.cfg, self.world()), [])
@@ -194,10 +227,58 @@ class PreflightTest(unittest.TestCase):
             brainrun.preflight('smoke', self.cfg, self.world())
 
 
+class BuildImageTest(unittest.TestCase):
+    def test_the_image_is_built_from_an_archive_of_the_commit_not_from_the_working_folder(self):
+        calls = []
+
+        class Out:
+            def close(self):
+                calls.append(('closed',))
+
+        class Archive:
+            stdout = Out()
+
+            def wait(self):
+                calls.append(('waited',))
+
+        def popen(argv, **kw):
+            calls.append(('popen', argv, kw))
+            return Archive()
+
+        def run(argv, **kw):
+            calls.append(('run', argv, kw))
+
+        brainrun.build_image(COMMIT, '/repo', popen=popen, run=run)
+        (_, archive_argv, _), (_, build_argv, build_kw) = calls[0], calls[1]
+        self.assertEqual(archive_argv, ['git', '-C', '/repo', 'archive', 'HEAD'])
+        self.assertEqual(build_argv, ['docker', 'build', '--label', f'kaijuflow.commit={COMMIT}', '-t', 'kaijuflow:test', '-'])
+        self.assertIs(build_kw['stdin'], Archive.stdout)  # the archive is the build context
+        self.assertNotIn('/repo', build_argv)  # no folder is handed to docker, so nothing untracked can get in
+
+
+class AddressesTest(unittest.TestCase):
+    def test_addresses_are_read_with_docker_inspect_for_test_containers_only(self):
+        asked = []
+
+        class R:
+            def __init__(self, out, code=0):
+                self.stdout, self.returncode = out, code
+
+        def run(argv, **kw):
+            asked.append(argv)
+            return R({'kaijuflow-test': '172.20.0.5\n', 'uu-test': '172.20.0.6\n'}.get(argv[-1], ''), 0 if argv[-1] != 'altmount-addon-test' else 1)
+
+        got = brainrun.read_addresses(run=run)
+        self.assertEqual(got, {'kaijuflow-test': '172.20.0.5', 'uu-test': '172.20.0.6'})  # one container not up: left out
+        self.assertTrue(all(a[:2] == ['docker', 'inspect'] for a in asked))
+        self.assertTrue(all(a[-1] in testbed.TEST_CONTAINERS for a in asked))
+        self.assertTrue(all('kaijuflow-test-net' in a[3] for a in asked))
+
+
 class FirstInARunTest(unittest.TestCase):
     def test_a_failing_preflight_stops_a_run_before_anything_starts(self):
         from test_brainrun import FakeIO, make_cfg as run_cfg
-        tmp = tempfile.mkdtemp()
+        tmp = tempdir(self)
         fake = FakeIO()
         fake.problems = ['Port 1340 is in use.']
         with self.assertRaises(brainrun.PreflightFailed):
