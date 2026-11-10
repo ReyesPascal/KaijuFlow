@@ -9,7 +9,6 @@ import json
 import os
 import re
 import statistics
-from urllib.parse import unquote_plus
 
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
@@ -30,8 +29,10 @@ COLUMN_HELP = {
               'Ultimate this includes their health checks; AltMount\'s own addon has none.',
     'NZB fetch': 'seconds to download the chosen Source\'s NZB file from the indexer stand-in. Only KaijuFlow reports '
                  'it; the other sides do not show it from outside, so it reads "-".',
-    'Import': 'seconds the Backend needed to take the NZB in and make the video ready (KaijuFlow: its own timing; '
-              'the others: from the Backend\'s own log, start to finish). "-" means the log did not show it.',
+    'Import': 'seconds the Backend needed to take the NZB in and make the video ready. KaijuFlow: its own timing, to the '
+              'millisecond. Usenet Ultimate: NzbDAV\'s own job time, whole seconds only (NzbDAV reports no fractions). '
+              'AltMount: read from its log, start to finish, to the millisecond. "-" means the source showed no figure '
+              '(for NzbDAV: no new job, for example when the item was already imported).',
     'First byte': 'seconds from pressing play on the top pick until the first piece of video arrived. This is the '
                   'whole start and includes the NZB fetch and the import.',
     'Indexer wait': 'KaijuFlow only: seconds spent waiting for indexers during the search (the slowest indexer, its '
@@ -131,28 +132,25 @@ def altmount_imports(text):
     return order
 
 
-def nzbdav_imports(text):
-    """Import start/end of NzbDAV: the addfile request is the start; a later 'completed/finished/imported' line naming
-    the release is the end. If NzbDAV logs no end, seconds stays None (shown as '-')."""
+def nzbdav_job_imports(before, after):
+    """Import figures of NzbDAV from its own history answer (mode=history, the answer's `history.slots`).
+    `before` and `after` are the answers read before and after one visit; a job is the visit's when it is new in `after`.
+    The figure is NzbDAV's own `download_time`: whole seconds the job took (NzbDAV does not report fractions)."""
+    def slots(answer):
+        h = (answer or {}).get('history') or {}
+        return [x for x in (h.get('slots') or []) if isinstance(x, dict)]
+    if before is None or after is None:  # an answer that could not be read: no figure, never a guess
+        return []
+    seen = {x.get('nzo_id') for x in slots(before)}
     recs = []
-    lines = list(_lines(text))
-    for i, (ts, msg) in enumerate(lines):
-        m = re.search(r'POST /api\?[^ ]*mode=addfile[^ ]*', msg)
-        if not m:
+    for x in slots(after):
+        if x.get('nzo_id') in seen:
             continue
-        nm = re.search(r'nzbname=([^&\s]+)', m.group(0))
-        st = re.search(r'\s(\d{3})\s', msg[m.end():])
-        name = unquote_plus(nm.group(1)) if nm else ''
-        rec = {'name': name, 'start': iso(ts), 'end': None, 'seconds': None, 'ok': None}
-        if st and int(st.group(1)) >= 400:
-            rec['ok'] = False
-        else:
-            for ts2, msg2 in lines[i + 1:]:
-                if name and name in msg2 and re.search(r'(?i)complet|finish|imported|success', msg2) \
-                        and 'mode=addfile' not in msg2:
-                    rec.update(end=iso(ts2), seconds=round((ts2 - ts).total_seconds(), 3), ok=True)
-                    break
-        recs.append(rec)
+        t = x.get('download_time')
+        ok = str(x.get('status') or '').lower()
+        recs.append({'name': str(x.get('nzb_name') or x.get('name') or ''),
+                     'seconds': float(t) if isinstance(t, (int, float)) and not isinstance(t, bool) else None,
+                     'ok': True if ok == 'completed' else False if ok == 'failed' else None})
     return recs
 
 

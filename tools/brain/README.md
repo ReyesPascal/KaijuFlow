@@ -26,7 +26,7 @@ Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, i
 |---|---|---|---|
 | `kaijuflow` | `kaijuflow-test` | 1338 | KaijuFlow, Backend = `altmount-kf` |
 | `uu` | `uu-test` | 1339 | Usenet Ultimate v1.4.1, Backend = `nzbdav` (alias `nzbdav` on the test network) |
-| `nzbdav` | `nzbdav-test` | 3001 | NzbDAV for the UU copy (`LOG_LEVEL: information`; live runs `warning`, which hides the import lines the report reads) |
+| `nzbdav` | `nzbdav-test` | 3001 | NzbDAV for the UU copy (`LOG_LEVEL: information`) |
 | `altmount-addon` | `altmount-addon-test` | 8086 | AltMount for the addon side |
 | `altmount-kf` | `altmount-kf-test` | 8087 | AltMount for KaijuFlow |
 
@@ -56,7 +56,7 @@ Run it in the background with a hard `timeout`, like the other tools; it prints 
 
 `brainrun.py smoke --store <EMPTY folder> --list smoke` is the reachability check: stand-in in replay mode on an empty store (every request is a MISS, so nothing can be read from Usenet), one search per side, and it prints for each side how many stand-in requests it caused, which address they came from, the address `docker inspect` gives for the side's test container, and whether the two match (then one plain sentence says whether every side arrived with its own address). That is the check that the runner can tell the sides apart by address. It tries the same sides as the planned run: add `--one-page` when the run will use the fourth side; it is switched on with the same step as in a run (its address may equal KaijuFlow's, since it is the same container) and switched off at the end, which leaves KaijuFlow's copy stopped. Start the test copies with `testbed.py up` first and stop them with `testbed.py stop` afterwards.
 
-NzbDAV's import-line format (the `addfile` request and the "completed/finished/imported" line the report looks for) is confirmed only by the first real run (#63); until then the Import column of Usenet Ultimate may read "-".
+Usenet Ultimate's Import column is NzbDAV's own job time (#82): after each Usenet Ultimate visit the runner reads the test NzbDAV's history answer (port 3001, read-only) and takes `download_time` of the job that is new since before the visit. It is whole seconds (NzbDAV reports no fractions), against AltMount's log figure to the millisecond; the report's column definition says so. A visit that adds no job (item already imported) reads "-". The Usenet Ultimate test copy's own log is kept as `logs/uu-test.log` (scrubbed).
 
 Code: `brainreport.py` (log parsing, medians, failure split, diff, report, run folder and INDEX.md; pure logic), `brainrun.py` (orchestration), tests `test_brainreport.py` and `test_brainrun.py` (fakes and fixture logs, run in CI).
 

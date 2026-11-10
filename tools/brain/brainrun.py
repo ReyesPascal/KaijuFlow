@@ -28,6 +28,7 @@ import os
 import shlex
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -55,6 +56,9 @@ SIDE_LOGS = {
     'uu': (None, 'nzbdav-test', 'nzbdav'),
     'altmount-addon': (None, 'altmount-addon-test', 'altmount'),
 }
+# side -> the side's own test copy whose log is kept in the run folder (its Backend's log is kept anyway)
+SIDE_COPY_LOG = {'uu': 'uu-test'}
+NZBDAV_PORT = 3001
 GRACE_S = 5
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"stopped", "why", "when", "errors"}
 
@@ -287,6 +291,18 @@ class RealIO:
         base = side_base(self.cfg, side)
         return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries)
 
+    def nzbdav_history(self):
+        """The test NzbDAV's history answer (port 3001, parsed), or None when it cannot be read. Read-only."""
+        try:
+            db = testbed._ro(os.path.join(self.cfg['test_dir'], testbed.SIDES['nzbdav']['conf'], 'db.sqlite'))
+            row = db.execute("select ConfigValue from ConfigItems where ConfigName = 'api.key'").fetchone()
+            db.close()
+            url = f'http://127.0.0.1:{NZBDAV_PORT}/api?mode=history&output=json&start=0&limit=50&apikey={row[0]}'
+            status, _h, body, _t = common.get(url, timeout=30, limit=0)
+            return json.loads(body) if status == 200 else None
+        except (OSError, ValueError, TypeError, sqlite3.Error):
+            return None
+
     def logs(self, container, since):
         if container not in self.testbed.TEST_CONTAINERS:
             raise ValueError('not a test container: ' + container)
@@ -493,6 +509,7 @@ def preflight_command(mode, cfg, io):
 def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     kind, vid, label = title
     kf_c, be_c, be_kind = SIDE_LOGS[side]
+    hist_before = io.nzbdav_history() if be_kind == 'nzbdav' else None
     t0 = io.now()
     http = io.visit_http(side, kind, vid, cfg['tries'])
     t1 = io.now()
@@ -500,13 +517,17 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
     kf_text = io.logs(kf_c, since) if kf_c else ''
     be_text = io.logs(be_c, since)
-    for c, text in ((kf_c, kf_text), (be_c, be_text)):
+    copy_c = SIDE_COPY_LOG.get(side)
+    copy_text = io.logs(copy_c, since) if copy_c else ''
+    for c, text in ((kf_c, kf_text), (be_c, be_text), (copy_c, copy_text)):
         if c:
             logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
     # provisional; finalize_steps() re-attributes once the whole run is read (late lines, next visit of the side)
     steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', [])}, br.parse_step_lines(kf_text))
-    parse = br.altmount_imports if be_kind == 'altmount' else br.nzbdav_imports
-    imports = [i for i in parse(be_text) if lo <= br.parse_ts(i['start']) <= hi]
+    if be_kind == 'altmount':
+        imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
+    else:  # NzbDAV: its own job time from its history answer, read after the round's visit
+        imports = br.nzbdav_job_imports(hist_before, io.nzbdav_history())
     limit = br.limit_event(kf_text + '\n' + be_text, cfg['indexers'])
     ok = bool(http.get('first_try_plays'))
     return {'side': side, 'phase': phase, 'round': rnd, 'title': label, 'id': vid, 'kind': kind, 'ok': ok,

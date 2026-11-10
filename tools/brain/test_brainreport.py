@@ -30,10 +30,6 @@ AM_LOG = """2026-11-10T18:00:03.000000000Z time=2026-11-10T12:00:03.000-06:00 le
 2026-11-10T18:00:06.400000000Z time=x level=ERROR msg="Item failed" component=importer-service queue_id=8 file=/tmp/.altmount-queue/Bad.nzb
 """
 
-NZBDAV_LOG = """2026-11-10T18:00:10.000000000Z POST /api?mode=addfile&cat=Movies&nzbname=Rel.A&apikey=SECRETKEY 200 - - 55.0 ms
-2026-11-10T18:00:13.500000000Z [INF] Job completed: Rel.A
-2026-11-10T18:00:20.000000000Z POST /api?mode=addfile&cat=Movies&nzbname=Rel%20B&apikey=SECRETKEY 500 - - 55.0 ms
-"""
 
 
 def dt(s):
@@ -52,16 +48,21 @@ class ParseTest(unittest.TestCase):
         self.assertAlmostEqual(imps[0]['seconds'], 2.5)
         self.assertEqual(imps[0]['name'], 'Rel A')
 
-    def test_nzbdav_imports_start_end_and_rejection(self):
-        imps = br.nzbdav_imports(NZBDAV_LOG)
-        self.assertAlmostEqual(imps[0]['seconds'], 3.5)
-        self.assertTrue(imps[0]['ok'])
-        self.assertFalse(imps[1]['ok'])
-        self.assertNotIn('SECRETKEY', json.dumps(imps))
+    def test_nzbdav_job_time_from_history_fixture(self):
+        fx = json.load(open(os.path.join(os.path.dirname(__file__), '..', '..', 'tests', 'fixtures', 'backends',
+                                         'nzbdav-history.json')))['reply']
+        slot = fx['history']['slots'][0]
+        before = {'history': {'slots': []}}
+        after = {'history': {'slots': [dict(slot, nzo_id='n1', nzb_name='Rel.A', status='Completed', download_time=7),
+                                       dict(slot, nzo_id='n2', nzb_name='Bad', status='Failed', download_time=0)]}}
+        imps = br.nzbdav_job_imports(before, after)
+        self.assertEqual([(i['name'], i['seconds'], i['ok']) for i in imps], [('Rel.A', 7.0, True), ('Bad', 0.0, False)])
+        old = {'history': {'slots': [dict(slot, nzo_id='n1')]}}
+        self.assertEqual([i['name'] for i in br.nzbdav_job_imports(old, after)], ['Bad'])
 
-    def test_nzbdav_without_end_line_has_no_seconds(self):
-        imps = br.nzbdav_imports(NZBDAV_LOG.split('\n')[0])
-        self.assertIsNone(imps[0]['seconds'])
+    def test_nzbdav_history_unreadable_gives_no_figure(self):
+        self.assertEqual(br.nzbdav_job_imports(None, {'history': {'slots': [{'nzo_id': 'a'}]}}), [])
+        self.assertEqual(br.nzbdav_job_imports({'history': {'slots': []}}, None), [])
 
     def test_limit_event_names_indexer(self):
         text = ('2026-11-10T18:00:01Z all fine\n'
