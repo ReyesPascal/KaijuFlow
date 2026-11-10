@@ -63,9 +63,16 @@ class FakeIO:
     def marker(self):
         return self._marker
 
+    def shelve_marker(self):
+        self.calls.append(('shelve-marker',))
+        self._marker = None
+
+    def setting_conflicts(self):
+        return list(getattr(self, 'conflicts', []))
+
     def start_standin(self, logpath, mode='replay', wait=True):
         self.calls.append(('standin-start', mode, wait))
-        self.standin_log = ['HIT ninjacentral api t=search wait_ms=0', 'MISS drunkenslug api t=search']
+        self.standin_log =['HIT ninjacentral api t=search wait_ms=0', 'MISS drunkenslug api t=search']
         with open(logpath, 'w') as f:
             f.write('\n'.join(self.standin_log) + '\n')
         io = self
@@ -96,10 +103,18 @@ class FakeIO:
         self.patched = False
         self.calls.append(('restore-config',))
 
+    ADDRESSES = {'kaijuflow-test': '10.0.0.2', 'uu-test': '10.0.0.3', 'altmount-addon-test': '10.0.0.4'}
+    SIDE_IP = {'kaijuflow': '10.0.0.2', 'kaijuflow-1page': '10.0.0.2', 'uu': '10.0.0.3', 'altmount-addon': '10.0.0.4'}
+
+    def addresses(self):
+        self.calls.append(('addresses',))
+        return dict(self.ADDRESSES)
+
     def visit_http(self, side, kind, vid, tries):
         self.visits += 1
         self.calls.append(('visit', side, vid))
-        self.standin_log += self.lines_per_visit.get(self.visits, [])
+        t = int(self.clock.timestamp() * 1000) + 300  # a moment after the visit began
+        self.standin_log += [f'{x} from={self.SIDE_IP[side]} t={t}' for x in self.lines_per_visit.get(self.visits, [])]
         ok = side != self.fail_http_for
         return dict(list_status=200, list_s=2.0, sources=5, first_try_plays=ok, start_s=1.5 if ok else None,
                     note=None if ok else 'failure video', seeks={'50': 0.2, '90': 0.3}, tries=[{'plays': ok}])
@@ -221,13 +236,29 @@ class RunTest(unittest.TestCase):
         self.assertEqual(prev['status'], 'ok')
 
     def test_standin_marker_aborts_run(self):
-        marker = {'indexer': 'altHUB', 'time': '2026-11-10T09:00:00Z'}
+        marker = {'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}  # newer than the run's start (18:00): written during it
         io = FakeIO(marker=marker)
         run = brainrun.run_all(make_cfg(self.tmp), io)
         self.assertEqual(run['status'], 'null')
         self.assertEqual(run['null']['indexer'], 'altHUB')
         self.assertEqual(io.visits, 0)
         self.assertIn('altHUB', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+
+    def test_a_marker_older_than_the_run_does_not_block_it(self):
+        io = FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T09:00:00Z'})  # left by an earlier command; replay never asks an indexer
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        self.assertEqual(run['status'], 'ok')
+        self.assertEqual(io.visits, 4 * 2 * 3)
+
+    def test_addresses_are_read_after_each_reset_and_kept_in_the_meta(self):
+        io = FakeIO()
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        kinds = [c[0] for c in io.calls]
+        for i, k in enumerate(kinds):
+            if k == 'reset':
+                self.assertEqual(kinds[i + 1], 'addresses')  # containers get their address when they start
+        meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
+        self.assertEqual(meta['addresses'], {'kaijuflow-test': ['10.0.0.2'], 'uu-test': ['10.0.0.3'], 'altmount-addon-test': ['10.0.0.4']})
 
     def test_one_page_side_runs_after_main_pass_and_config_restored(self):
         io = FakeIO()
@@ -239,7 +270,7 @@ class RunTest(unittest.TestCase):
         self.assertLess(kinds.index('patch-one-page'), kinds.index('restore-config'))
         later = [c for c in io.calls[kinds.index('patch-one-page'):] if c[0] == 'visit']
         self.assertEqual({c[1] for c in later}, {'kaijuflow-1page'})
-        self.assertIn('kaijuflow-1page', run['settings'])
+        self.assertEqual(run['facts']['one-page side'], 'yes')
 
     def test_failure_is_split_in_report(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO(fail_http_for='uu'))
@@ -264,8 +295,17 @@ class WaitSwitchTest(unittest.TestCase):
         io = FakeIO()
         run = brainrun.run_all(make_cfg(self.tmp), io)
         self.assertIn(('standin-start', 'replay', True), io.calls)
-        self.assertEqual(run['settings']['stand-in'], {'replay wait': 'on'})
-        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'settings.json')))['stand-in'], {'replay wait': 'on'})
+        facts = {'stand-in replay wait': 'on', 'one-page side': 'no'}
+        self.assertEqual(run['facts'], facts)
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['facts'], facts)
+        # run-level facts are not part of the settings snapshot (which equals the settings reader's output)
+        self.assertNotIn('stand-in', run['settings'])
+        self.assertNotIn('stand-in', json.loads(read(os.path.join(run['dir'], 'settings.json'))))
+
+    def test_the_one_page_side_is_a_fact_not_a_setting(self):
+        run = brainrun.run_all(make_cfg(self.tmp, one_page=True), FakeIO())
+        self.assertEqual(run['facts']['one-page side'], 'yes')
+        self.assertNotIn('kaijuflow-1page', run['settings'])
 
     def test_no_wait_switch_reaches_the_stand_in_and_shows_in_what_changed(self):
         brainrun.run_all(make_cfg(self.tmp, name='with'), FakeIO())
@@ -286,12 +326,13 @@ class MissMatchingTest(unittest.TestCase):
     def test_misses_and_indexer_time_land_on_the_visit(self):
         tmp = tempfile.mkdtemp()
         io = FakeIO()
-        io.lines_per_visit = {2: ['HIT ninjacentral api t=search wait_ms=400', 'MISS drunkenslug api t=search&offset=100'],
+        io.lines_per_visit = {2: ['HIT ninjacentral api t=search wait_ms=200', 'MISS drunkenslug api t=search&offset=100'],
                               5: ['HIT drunkenslug api t=search wait_ms=250']}
         run = brainrun.run_all(make_cfg(tmp, topup_command='python3 -I tools/brain/brainrun.py record --name t --store S --list l'), io)
         by_n = run['visits']
         self.assertEqual(by_n[1]['misses'], ['drunkenslug api t=search&offset=100'])  # the 2nd visit
-        self.assertEqual(by_n[1]['indexer_s'], 0.4)
+        self.assertEqual(by_n[1]['indexer_s'], 0.2)
+        self.assertEqual(run['standin_unmatched'], 0)
         self.assertEqual(by_n[4]['indexer_s'], 0.25)
         self.assertEqual(by_n[0]['misses'], [])
         rep = read(os.path.join(run['dir'], 'report.md'))
@@ -301,13 +342,33 @@ class MissMatchingTest(unittest.TestCase):
         self.assertEqual(raw['misses'], ['drunkenslug api t=search&offset=100'])
 
 
+    def test_lines_from_an_unknown_address_are_matched_by_time_and_counted(self):
+        tmp = tempfile.mkdtemp()
+        io = FakeIO()
+        io.ADDRESSES = {}  # docker inspect gave nothing
+        io.lines_per_visit = {2: ['MISS drunkenslug api t=search&offset=100'], 3: ['MISS drunkenslug api t=search&offset=200']}
+        run = brainrun.run_all(make_cfg(tmp), io)
+        self.assertEqual(run['standin_unmatched'], 2)
+        self.assertEqual(run['visits'][1]['misses'], ['drunkenslug api t=search&offset=100'])
+        self.assertIn('matched by time', read(os.path.join(run['dir'], 'report.md')))
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['standin_unmatched'], 2)
+
+    def test_a_failed_top_pick_with_an_unrelated_miss_keeps_its_cause(self):
+        tmp = tempfile.mkdtemp()
+        io = FakeIO(fail_http_for='uu')
+        io.lines_per_visit = {2: ['MISS drunkenslug api t=search&offset=100']}  # the list was not empty (5 Sources)
+        run = brainrun.run_all(make_cfg(tmp), io)
+        self.assertEqual(br.classify_failure(run['visits'][1]), 'failure_video')
+        self.assertEqual(run['visits'][1]['misses'], ['drunkenslug api t=search&offset=100'])
+
+
 class RecordIO(FakeIO):
     """FakeIO whose stand-in is the real one in record mode on loopback, in front of a fake indexer; the 'sides' ask it
     for different requests, the way the three sides do. Everything else (containers, resets) is the fake's."""
 
-    def __init__(self, cfg, fake_url, limit_from_visit=None):
+    def __init__(self, cfg, fake_url, limit_from_visit=None, drop=None):
         super().__init__()
-        self.cfg, self.fake_url, self.limit_from_visit = cfg, fake_url, limit_from_visit
+        self.cfg, self.fake_url, self.limit_from_visit, self.drop = cfg, fake_url, limit_from_visit, drop or []
         self.port, self.server, self.recording_dir = None, None, cfg['store']
 
     def preflight(self, mode):
@@ -316,13 +377,24 @@ class RecordIO(FakeIO):
 
     def marker(self):
         try:
-            return json.load(open(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json')))
+            with open(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json')) as f:
+                return json.load(f)
         except OSError:
             return None
 
+    def shelve_marker(self):
+        self.calls.append(('shelve-marker',))
+        return brainrun.shelve_marker(self.cfg['store'])
+
+    def conf(self):
+        return {'indexers': {'fake': {'url': self.fake_url, 'apikey': fakes.REAL_KEY, 'drop_params': self.drop}}}
+
+    def setting_conflicts(self):
+        return indexer_standin.setting_conflicts(self.conf(), self.cfg['store'], self.cfg['listname'])
+
     def start_standin(self, logpath, mode='replay', wait=True):
         self.calls.append(('standin-start', mode, wait))
-        conf = {'indexers': {'fake': {'url': self.fake_url, 'apikey': fakes.REAL_KEY}}}
+        conf = self.conf()
         self.server = fakes.serve(indexer_standin.make_server(conf, self.cfg['store'], mode, self.cfg['listname'], port=0, bind='127.0.0.1'))
         self.port = self.server.server_port
         io = self
@@ -363,7 +435,7 @@ class RecordTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         fakes.FakeIndexer.hits, fakes.FakeIndexer.limit, fakes.FakeIndexer.error_body = 0, False, None
-        fakes.FakeIndexer.delay, fakes.FakeIndexer.seen = 0.0, []
+        fakes.FakeIndexer.delay, fakes.FakeIndexer.seen, fakes.FakeIndexer.force_status = 0.0, [], None
         self.fake = fakes.serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), fakes.FakeIndexer))
         self.addCleanup(self.fake.server_close)
         self.addCleanup(self.fake.shutdown)
@@ -434,21 +506,77 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
         self.assertEqual(json.load(open(os.path.join(rec['dir'], 'meta.json')))['status'], 'null')
 
-    def test_after_a_null_the_top_up_waits_for_the_marker_then_continues_from_what_is_stored(self):
+    def marker_files(self):
+        return sorted(f for f in os.listdir(self.cfg['store']) if f.startswith('LIMIT_REACHED'))
+
+    def test_a_marker_from_an_earlier_command_is_moved_aside_and_the_top_up_goes_on(self):
         self.record(limit_from_visit=3)
         kept, hits = self.stored(), fakes.FakeIndexer.hits
-        with self.assertRaises(brainrun.PreflightFailed) as cm:  # the marker is still there
-            self.record()
-        self.assertEqual(len(cm.exception.problems), 1)
-        self.assertIn('LIMIT_REACHED.json', cm.exception.problems[0])
-        self.assertEqual(fakes.FakeIndexer.hits, hits)
-        os.remove(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
+        self.assertEqual(self.marker_files(), ['LIMIT_REACHED.json'])
         fakes.FakeIndexer.limit = False
-        io, rec = self.record()
+        io, rec = self.record()  # the marker is still there, the indexer has reset
         self.assertEqual(rec['status'], 'recorded')
+        self.assertIn(('shelve-marker',), io.calls)
+        files = self.marker_files()
+        self.assertEqual(len(files), 1)  # kept, renamed with its time; no live marker left
+        self.assertRegex(files[0], r'^LIMIT_REACHED\.\d{8}T\d{6}Z\.json$')
         self.assertEqual(len(self.stored()), 8)
         self.assertTrue(set(kept) <= set(self.stored()))
         self.assertEqual(fakes.FakeIndexer.hits - hits, 8 - len(kept))  # only what was missing is asked
+
+    def test_if_the_limit_still_holds_the_first_answer_writes_a_new_marker_and_aborts(self):
+        self.record(limit_from_visit=3)
+        hits = fakes.FakeIndexer.hits
+        io, rec = self.record()  # limit is still on in the fake indexer
+        self.assertEqual(rec['status'], 'null')
+        self.assertEqual(fakes.FakeIndexer.hits, hits + 1)
+        self.assertIn('LIMIT_REACHED.json', self.marker_files())
+        self.assertEqual(len(self.marker_files()), 2)  # the new one and the old one, kept
+
+    # ---- the recording's state, error answers (review fixes 5, 9)
+    def state(self):
+        with open(os.path.join(self.cfg['store'], self.cfg['listname'], 'RECORDING.json')) as f:
+            return json.load(f)
+
+    def test_a_finished_record_writes_state_complete(self):
+        io, rec = self.record()
+        st = self.state()
+        self.assertEqual((st['state'], st['errors']), ('complete', 0))
+        self.assertIn('when', st)
+
+    def test_a_stopped_record_writes_state_stopped_with_why_and_when(self):
+        self.record(limit_from_visit=3)
+        st = self.state()
+        self.assertEqual(st['state'], 'stopped')
+        self.assertIn('fake', st['why'])
+        self.assertIn('limit', st['why'])
+        self.assertTrue(st['when'])
+
+    def test_error_answers_are_counted_not_stored_and_a_second_record_tops_them_up(self):
+        fakes.FakeIndexer.force_status = 503
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        self.assertGreater(rec['errors'], 0)
+        self.assertEqual(self.state()['errors'], rec['errors'])
+        self.assertEqual(self.stored(), [])
+        sentence = brainrun.record_summary(rec)
+        self.assertIn(f"{rec['errors']} answers were errors", sentence)
+        self.assertIn('run record again', sentence)
+        fakes.FakeIndexer.force_status = None
+        io2, rec2 = self.record()
+        self.assertEqual((rec2['errors'], len(self.stored())), (0, 8))
+        self.assertEqual(self.state()['errors'], 0)
+        self.assertNotIn('were errors', brainrun.record_summary(rec2))
+
+    def test_a_changed_dropped_parameter_setting_stops_the_record_with_one_sentence(self):
+        self.record(drop=['o'])
+        hits = fakes.FakeIndexer.hits
+        with self.assertRaises(brainrun.PreflightFailed) as cm:
+            self.record(drop=[])
+        self.assertEqual(len(cm.exception.problems), 1)
+        self.assertIn('new list name', cm.exception.problems[0])
+        self.assertEqual(fakes.FakeIndexer.hits, hits)
+        self.record(drop=['o'])  # the same setting goes on
 
     def test_a_failed_preflight_stops_before_anything_happens(self):
         io = RecordIO(self.cfg, self.url)

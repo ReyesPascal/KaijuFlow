@@ -26,7 +26,7 @@ def _put(path, text):
 
 
 def make_copies(base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 12, 25, 25, 25),
-                url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=()):
+                url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=(), backup_host='backup.example'):
     """A fake kaijuflow-test folder: KaijuFlow, UU, NzbDAV and both AltMounts, plus the key file."""
     base = base or tempfile.mkdtemp()
     td = os.path.join(base, 'kaijuflow-test')
@@ -49,7 +49,7 @@ def make_copies(base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('a
                       '              enabled: %s' % ('true' if s in enabled and not (side == 'altmount-addon' and s in addon_off) else 'false')]
         lines += ['providers:', '    - id: provider_1', '      host: news.example', '      username: ' + SECRET, '      password: ' + SECRET,
                   '      max_connections: %d' % cap, '      enabled: true', '      is_backup_provider: false',
-                  '    - id: provider_2', '      max_connections: 99', '      enabled: true', '      is_backup_provider: true']
+                  '    - id: provider_2', '      host: ' + backup_host, '      max_connections: 99', '      enabled: true', '      is_backup_provider: true']
         _put(os.path.join(td, side, 'config/config.yaml'), '\n'.join(lines) + '\n')
     p = os.path.join(td, 'nzbdav/config/db.sqlite')
     os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -58,8 +58,8 @@ def make_copies(base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('a
     db.execute("insert into ConfigItems values ('api.key', ?)", (SECRET,))
     db.execute("insert into ConfigItems values ('usenet.max-download-connections', '25')")
     db.execute("insert into ConfigItems values ('usenet.providers', ?)", (json.dumps({'Providers': [
-        {'Type': 1, 'Host': 'h', 'User': SECRET, 'Pass': SECRET, 'MaxConnections': nz_cap},
-        {'Type': 3, 'Host': 'b', 'User': SECRET, 'Pass': SECRET, 'MaxConnections': 15}]}),))
+        {'Type': 1, 'Host': 'news.example', 'User': SECRET, 'Pass': SECRET, 'MaxConnections': nz_cap},
+        {'Type': 3, 'Host': backup_host, 'User': SECRET, 'Pass': SECRET, 'MaxConnections': 15}]}),))
     db.commit()
     db.close()
     kp = os.path.join(td, 'indexers.json')
@@ -77,6 +77,21 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(rep['limit'], 100)
         self.assertNotIn(SECRET, json.dumps(rep))
         self.assertNotIn(SECRET, testbed.render_settings(rep))
+
+    def test_every_entry_on_the_main_providers_host_counts_backup_flag_or_not(self):
+        td = make_copies(backup_host='news.example')  # the backup entries use the same Usenet host as the main provider
+        rep = testbed.settings_report(td, limit=100)
+        self.assertEqual(rep['caps']['altmount-addon'], 25 + 99)
+        self.assertEqual(rep['caps']['altmount-kf'], 25 + 99)
+        self.assertEqual(rep['caps']['nzbdav'], 25 + 15)
+
+    def test_an_entry_on_another_host_is_shown_beside_and_not_counted(self):
+        td = make_copies()  # backup entries on backup.example
+        rep = testbed.settings_report(td, limit=100)
+        self.assertEqual(rep['caps']['nzbdav'], 25)
+        text = testbed.render_settings(rep)
+        self.assertIn('max 25 (+ other host max 15, own limit)', text)
+        self.assertIn('max 25 (+ other host max 99, own limit)', text)
 
     def test_enabled_indexers_are_slugs_from_each_copys_own_config(self):
         rep = testbed.settings_report(make_copies())

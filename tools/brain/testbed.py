@@ -27,6 +27,7 @@ import brainreport as br  # noqa: E402
 from common import DEFAULT_TEST_DIR  # noqa: E402
 
 PROJECT = "kaijuflow-test"
+NETWORK = "kaijuflow-test-net"
 COMPOSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "compose.test.yaml")
 TEST_CONTAINERS = ["kaijuflow-test", "uu-test", "nzbdav-test", "altmount-addon-test", "altmount-kf-test"]
 
@@ -249,12 +250,17 @@ def check_empty(test_dir, sides=None, http=default_http):
 STANDIN_PORT = 1340
 PROVIDER_LIMIT = 100  # NewsHosting plan, owner 2026-11-09
 STANDIN_HOST = "host.docker.internal"
-SETTINGS_SIDES = ["kaijuflow", "uu", "nzbdav", "altmount-addon", "altmount-kf"]
-SIDE_TITLES = {"kaijuflow": "KaijuFlow (1338)", "uu": "Usenet Ultimate (1339)", "nzbdav": "NzbDAV (3001)",
-               "altmount-addon": "AltMount addon (8086)", "altmount-kf": "AltMount KaijuFlow (8087)"}
-SIDE_SHORT = {"kaijuflow": "KaijuFlow", "uu": "Usenet Ultimate", "nzbdav": "NzbDAV",
-              "altmount-addon": "AltMount addon", "altmount-kf": "AltMount KaijuFlow"}
-JSON_CONFIGS = {"kaijuflow": "config/config.json", "uu": "uu/config/config.json"}
+# One table of the sides in the settings table, in column order: title (column head), short name, and the JSON config
+# (relative to the test folder) of the sides that have one.
+SETTINGS = {
+    "kaijuflow": dict(title="KaijuFlow (1338)", short="KaijuFlow", json="config/config.json"),
+    "uu": dict(title="Usenet Ultimate (1339)", short="Usenet Ultimate", json="uu/config/config.json"),
+    "nzbdav": dict(title="NzbDAV (3001)", short="NzbDAV"),
+    "altmount-addon": dict(title="AltMount addon (8086)", short="AltMount addon"),
+    "altmount-kf": dict(title="AltMount KaijuFlow (8087)", short="AltMount KaijuFlow"),
+}
+SETTINGS_SIDES = list(SETTINGS)
+JSON_CONFIGS = {side: v["json"] for side, v in SETTINGS.items() if "json" in v}
 
 
 def _read_json(path):
@@ -355,14 +361,9 @@ def read_indexers(test_dir):
             out[side] = None
             continue
         flat = br.flatten_yaml(text)
-        nums = sorted({int(m.group(1)) for k in flat for m in [re.match(r"stremio\.indexers\.newsnab\[(\d+)\]\.", k)] if m})
-        rows = []
-        for n in nums:
-            p = "stremio.indexers.newsnab[%d]." % n
-            rows.append({"name": str(flat.get(p + "name", "?")), "url": _bare(flat.get(p + "url", "")),
-                         "enabled": str(flat.get(p + "enabled", "")).lower() == "true"})
+        rows = [r for _n, r in _altmount_indexers(flat)]
         for k in ("stremio.indexers.prowlarr.enabled", "stremio.prowlarr.enabled"):
-            if str(flat.get(k, "")).lower() == "true":
+            if _true(flat.get(k, "")):
                 rows.append({"name": "Prowlarr", "url": "(Prowlarr)", "enabled": True})
         out[side] = rows
     out["nzbdav"] = []
@@ -381,25 +382,60 @@ def _int(v):
         return None
 
 
+def _true(v):
+    """A true/false setting as read from a YAML or JSON flat map."""
+    return str(v).lower() == "true"
+
+
+def _altmount_indexers(flat):
+    """[(index, {"name", "url", "enabled"})] of AltMount's newznab indexers, from its flattened config."""
+    nums = sorted({int(m.group(1)) for k in flat for m in [re.match(r"stremio\.indexers\.newsnab\[(\d+)\]\.", k)] if m})
+    out = []
+    for n in nums:
+        p = "stremio.indexers.newsnab[%d]." % n
+        out.append((n, {"name": str(flat.get(p + "name", "?")), "url": _bare(flat.get(p + "url", "")), "enabled": _true(flat.get(p + "enabled", ""))}))
+    return out
+
+
+def provider_rows(flat, kind):
+    """The Usenet provider entries of a Backend as [{"host", "max", "main"}]: NzbDAV (types 1 and 2 are main providers, type 3
+    a backup login) or AltMount (enabled providers; main = not flagged as a backup provider)."""
+    rows = []
+    for i in range(20):
+        if kind == "nzbdav":
+            p = "usenet.providers.Providers[%d]." % i
+            t = _int(flat.get(p + "Type"))
+            if t is None:
+                continue
+            rows.append({"host": flat.get(p + "Host"), "max": _int(flat.get(p + "MaxConnections")), "main": t in (1, 2)})
+        else:
+            p = "providers[%d]." % i
+            if _true(flat.get(p + "enabled")):
+                rows.append({"host": flat.get(p + "host"), "max": _int(flat.get(p + "max_connections")),
+                             "main": not _true(flat.get(p + "is_backup_provider"))})
+    return rows
+
+
+def counted_rows(rows):
+    """(entries on the main provider's host, entries on another host). Backup flag or not, an entry on the same Usenet host
+    as a main provider draws on the same connection limit; an entry on another host (a backup login) has its own."""
+    hosts = {r["host"] for r in rows if r["main"]}
+    return [r for r in rows if r["host"] in hosts], [r for r in rows if r["host"] not in hosts]
+
+
 def connection_caps(settings):
     """NewsHosting connections each test copy may open: {side: int or None when it cannot be read}.
 
     KaijuFlow and Usenet Ultimate: their health-check cap. NzbDAV: its main providers (types 1 and 2; a backup login,
-    type 3, has its own limit). AltMount: its enabled providers that are not backup providers.
+    type 3, has its own limit unless it is on the same host). AltMount: its enabled providers. In both, every entry on the
+    main provider's Usenet host counts, backup flag or not; an entry on another host is shown beside and not counted.
     """
     caps = {}
     for side in ("kaijuflow", "uu"):
         caps[side] = _int(settings.get(side, {}).get("healthChecks.maxConnections"))
-    nz = settings.get("nzbdav", {})
-    vals = [_int(nz.get("usenet.providers.Providers[%d].MaxConnections" % i)) for i in range(20)
-            if _int(nz.get("usenet.providers.Providers[%d].Type" % i)) in (1, 2)]
-    caps["nzbdav"] = sum(vals) if vals and None not in vals else None
-    for side in ("altmount-addon", "altmount-kf"):
-        flat = settings.get(side, {})
-        vals = [_int(flat.get("providers[%d].max_connections" % i)) for i in range(20)
-                if str(flat.get("providers[%d].enabled" % i)).lower() == "true"
-                and str(flat.get("providers[%d].is_backup_provider" % i)).lower() != "true"]
-        caps[side] = sum(vals) if vals and None not in vals else None
+    for side, kind in (("nzbdav", "nzbdav"), ("altmount-addon", "altmount"), ("altmount-kf", "altmount")):
+        mine, _other = counted_rows(provider_rows(settings.get(side, {}), kind))
+        caps[side] = sum(r["max"] for r in mine) if mine and None not in [r["max"] for r in mine] else None
     return caps
 
 
@@ -450,12 +486,8 @@ def _rows(rep):
     def conns(s):
         if rep["caps"].get(s) is None:
             return "-"
-        extra = ""
-        if s == "nzbdav":
-            backup = [g(s).get("usenet.providers.Providers[%d].MaxConnections" % i) for i in range(20)
-                      if _int(g(s).get("usenet.providers.Providers[%d].Type" % i)) == 3]
-            extra = "".join(" (+ backup login max %s, own limit)" % b for b in backup)
-        return "max %s%s" % (rep["caps"][s], extra)
+        _mine, other = counted_rows(provider_rows(g(s), "nzbdav" if s == "nzbdav" else "altmount"))
+        return "max %s%s" % (rep["caps"][s], "".join(" (+ other host max %s, own limit)" % r["max"] for r in other))
 
     yield "Usenet connections (NewsHosting)", {s: conns(s) for s in SETTINGS_SIDES}
     yield "Health check: samples per NZB / NZBs inspected", per(both, lambda f: _cell(f, "healthChecks.sampleCount", "healthChecks.nzbsToInspect"))
@@ -483,12 +515,12 @@ def _rows(rep):
 
 def render_settings(rep):
     """The settings table and the connection budget, as Markdown with no secret in it."""
-    lines = ["| Setting | " + " | ".join(SIDE_TITLES[s] for s in SETTINGS_SIDES) + " |",
+    lines = ["| Setting | " + " | ".join(SETTINGS[s]["title"] for s in SETTINGS_SIDES) + " |",
              "|---|" + "---|" * len(SETTINGS_SIDES)]
     for label, cells in _rows(rep):
         lines.append("| %s | " % label + " | ".join(str(cells.get(s, "-")) for s in SETTINGS_SIDES) + " |")
     caps = rep["caps"]
-    per = ", ".join("%s %s" % (SIDE_SHORT[s], caps[s] if caps.get(s) is not None else "unreadable") for s in SETTINGS_SIDES)
+    per = ", ".join("%s %s" % (SETTINGS[s]["short"], caps[s] if caps.get(s) is not None else "unreadable") for s in SETTINGS_SIDES)
     verdict = "fits the provider limit" if rep["total"] <= rep["limit"] else "over the provider limit"
     lines += ["", "Connection budget (configured caps, not actual use)", "",
               "Per copy: %s." % per,
