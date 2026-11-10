@@ -57,8 +57,7 @@ test('fake AltMount streams reply has the real v0.4.0 layout', async () => {
   assert.deepEqual(shapeOf(await res.json()), shapeOf(fixture('altmount-v0.4.0-streams.json')));
 });
 
-// Captured from a real AltMount for a release name ending in .mkv (ticket #84). The fake AltMount
-// does not copy the folder behaviour yet (ticket #85), so these hold the captured fixtures' own shape.
+// Captured from a real AltMount for a release name ending in .mkv (ticket #84).
 const capture = (name: string) => JSON.parse(readFileSync(new URL(`../fixtures/backends/${name}`, import.meta.url), 'utf8'));
 
 test('captured AltMount reply for an .mkv-named release: same layout as the existing streams reply, but offers the folder', () => {
@@ -82,6 +81,34 @@ test('captured AltMount reply for an .mkv-named release: same layout as the exis
   assert.equal(file.reply.status, 206);
   assert.match(file.reply.headers['Content-Range'], new RegExp(`/${inner.size}$`));
   for (const f of [reply, folder, file]) assert.doesNotMatch(JSON.stringify(f), /download_key=[0-9a-f]{64}|"download_key":"[0-9a-f]{64}/);
+});
+
+// The fake holds to the #84 captures: an upload named like a video file is filed as a folder; the reply offers
+// the folder (layout of the captured reply), the folder answers 400, the file inside streams.
+test('fake AltMount files an .mkv-named upload as a folder, like the captured real reply', async () => {
+  const fake = await createFakeAltmount(listen);
+  const title = 'Shape.Mkv.2026.2160p.WEB-DL-GRP.mkv';
+  const nzbUrl: string = fake.addMovie('shapemkv', title, Buffer.from('synthetic-media'));
+  const base = new URL(nzbUrl).origin;
+  const form = new FormData();
+  form.append('file', new Blob([await (await fetch(nzbUrl)).text()], { type: 'application/x-nzb' }), `${title}.nzb`);
+  form.append('category', 'kaijuflow');
+  const res = await fetch(`${base}/api/nzb/streams`, { method: 'POST', headers: { 'X-Api-Key': API_KEY }, body: form });
+  assert.equal(res.status, 200);
+  const reply = (await res.json()) as { streams: { url: string }[] };
+  assert.deepEqual(shapeOf(reply), shapeOf(fixture('altmount-v0.4.0-streams-mkv-name.json')));
+  const offeredUrl = new URL(reply.streams[0].url);
+  const offered = offeredUrl.searchParams.get('path') as string;
+  assert.equal(offered, `/complete/kaijuflow/${title}`);
+  const folder = capture('altmount-v0.4.0-mkv-name-stream-folder.json').reply;
+  const file = capture('altmount-v0.4.0-mkv-name-stream-file.json').reply;
+  const get = (path: string) => fetch(`${base}/api/files/stream?path=${encodeURIComponent(path)}&download_key=${offeredUrl.searchParams.get('download_key')}`, { headers: { Range: 'bytes=0-0' } });
+  const asFolder = await get(offered);
+  assert.equal(asFolder.status, folder.status);
+  assert.match(await asFolder.text(), /cannot stream directory/i);
+  const asFile = await get(`${offered}/${title}`);
+  assert.equal(asFile.status, file.status);
+  await asFile.arrayBuffer();
 });
 
 test('fake NzbDAV queue and history replies use only real NzbDAV fields', async () => {
