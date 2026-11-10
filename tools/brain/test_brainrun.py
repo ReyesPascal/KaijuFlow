@@ -64,6 +64,11 @@ class FakeIO(Copies):
         self.standin_log = []
         self.lines_per_visit = {}  # visit number -> lines the stand-in writes during that visit
         self.max_working = 0
+        self.history = []  # the test NzbDAV's history slots; a Usenet Ultimate visit adds one job
+
+    def nzbdav_history(self):
+        self.calls.append(('history',))
+        return {'history': {'slots': list(self.history), 'noofslots': len(self.history)}, 'status': True, 'error': None}
 
     def now(self):
         self.clock += datetime.timedelta(seconds=1)
@@ -147,6 +152,8 @@ class FakeIO(Copies):
         t = int(self.clock.timestamp() * 1000) + 300  # a moment after the visit began
         self.standin_log += [f'{x} from={self.SIDE_IP[side]} t={t}' for x in self.lines_per_visit.get(self.visits, [])]
         ok = side != self.fail_http_for
+        if side == 'uu':
+            self.history.insert(0, {'nzo_id': f'n{self.visits}', 'nzb_name': 'R', 'status': 'Completed', 'download_time': 4})
         return dict(list_status=200, list_s=2.0, sources=5, first_try_plays=ok, start_s=1.5 if ok else None,
                     note=None if ok else 'failure video', seeks={'50': 0.2, '90': 0.3}, tries=[{'plays': ok}])
 
@@ -157,6 +164,8 @@ class FakeIO(Copies):
             ts = self.clock.strftime('%Y-%m-%dT%H:%M:%S.000Z')
             text = (f'{t} [KF-STEP] {{"step":"nzb_fetch","source":"S","ms":100,"ok":true,"t":"{ts}","title":"R"}}\n'
                     f'{t} apikey=' + SECRET + ' fetching\n')
+        if container == 'uu-test':
+            text = f'{t} uu line apikey=' + SECRET + '\n'
         if self.limit_at_visit and self.visits == self.limit_at_visit and container != 'kaijuflow-test':
             text += f'{t} DrunkenSlug: API limit reached. Retry in 30 minutes\n'
         return text
@@ -203,6 +212,15 @@ class RunTest(unittest.TestCase):
         self.assertTrue(read(os.path.join(d, 'report.md')).split('\n')[0].startswith('Across 2 titles'))
         self.assertIn('MISS', read(os.path.join(d, 'logs', 'standin.log')))
         self.assertEqual(run['standin_misses'], 1)
+
+    def test_uu_import_is_nzbdav_job_time_and_uu_log_is_kept_scrubbed(self):
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
+        uu = [v for v in run['visits'] if v['side'] == 'uu']
+        self.assertTrue(all([i['seconds'] for i in v['imports']] == [4.0] for v in uu))
+        self.assertTrue(all(v['imports'] == [] for v in run['visits'] if v['side'] != 'uu'))
+        log = read(os.path.join(run['dir'], 'logs', 'uu-test.log'))
+        self.assertIn('uu line', log)
+        self.assertNotIn(SECRET, log)
 
     def test_run_record_commit_comes_from_the_image_label_after_a_preflight(self):
         io = FakeIO(commit='c-from-label')
