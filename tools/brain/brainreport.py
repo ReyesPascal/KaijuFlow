@@ -19,7 +19,7 @@ SIDE_NAMES = {
 }
 RUN_ORDER = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 CAUSES = [('indexer_limit', 'Indexer limit'), ('backend_rejection', 'Backend rejection'),
-          ('failure_video', 'Failure video'), ('other', 'Other')]
+          ('failure_video', 'Failure video'), ('other', 'Other'), ('not_recorded', 'Not recorded')]
 SEARCH_STEPS = ('indexer_page', 'health_batch')
 
 COLUMN_HELP = {
@@ -40,17 +40,24 @@ COLUMN_HELP = {
                      'if they overlap, the real wait was shorter). KaijuFlow only.',
     'Unscramble': 'KaijuFlow only: seconds spent putting scrambled RAR parts in order before the import.',
     'Backend probe': 'KaijuFlow only: seconds KaijuFlow waited for the Backend to deliver the first byte after the import.',
-    'Top pick plays': 'titles where the first Source in the list played, out of all titles in the round.',
+    'Indexers': 'seconds of the search time that were the indexers\' answering time (for a replayed answer, the time the real '
+                'indexer took when it was recorded; indexers are asked at the same time, so the slowest one counts). '
+                '"-" means no stand-in log line was matched to the visit; 0 means the replay wait was off.',
+    "Side's own work": 'Search minus Indexers: what the side itself added to the list time (health checks, merging, its own requests).',
+    'Top pick plays': 'titles where the first Source in the list played, out of the titles in the round. A top pick that failed '
+                      'only because a request was not recorded is left out of both numbers (see Not recorded).',
     'Indexer limit': 'failures caused by an indexer saying its limit was reached (such a run is stopped, so this '
                      'should stay 0 in a finished run).',
     'Backend rejection': 'failures where the Backend (AltMount or NzbDAV) refused or could not import the NZB.',
     'Failure video': 'failures where the side served its "this Source failed" video, with no cause found.',
     'Other': 'any other failure: no Sources, an error, a timeout, a video too short to be a film.',
+    'Not recorded': 'failures where a miss can be the cause: the list came back empty after a request the recording does not hold, '
+                    'or the NZB file of the top pick was not recorded. This says nothing about the side or the Source: top up the recording.',
     'Title': 'the film or episode asked for.',
     'Sources': 'how many Sources the side listed.',
     'Result': '"plays" when the top pick delivered video, otherwise the failure kind and a short note.',
 }
-SHARED_COLS = ['Side', 'Run', 'Search', 'NZB fetch', 'Import', 'First byte']
+SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetch', 'Import', 'First byte']
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
 FAIL_COLS = ['Side', 'Run', 'Top pick plays'] + [c for _, c in CAUSES]
 TITLE_COLS = ['Title', 'Side', 'Run', 'Sources', 'Search', 'First byte', 'Result']
@@ -185,6 +192,100 @@ def limit_event(text, indexers):
     return None
 
 
+# The stand-in's request lines (indexer_standin.py) end with `from=<client address> t=<epoch ms the answer was sent>`:
+#   HIT <slug> <request> wait_ms=<n> from=.. t=..   MISS <slug> <request> from=.. t=..
+#   RECORD <slug> <request> -> <status> <n> bytes from=.. t=..   ERROR <slug> <request> -> <status> from=.. t=..
+# The runner maps each address to the test container that sent it and each container to its visits (assign_standin).
+LINE_RE = re.compile(r'^(HIT|MISS|RECORD|ERROR) (\S+) (.*?)(?:\swait_ms=(\d+))? from=(\S+) t=(\d+)$')
+# The test container that sends a side's indexer requests (the one-page side uses KaijuFlow's container too).
+CLIENT_CONTAINER = {'kaijuflow': 'kaijuflow-test', 'kaijuflow-1page': 'kaijuflow-test', 'uu': 'uu-test',
+                    'altmount-addon': 'altmount-addon-test'}
+LIST_SLACK_MS = 100  # the list time is rounded; a search answer sent just before the list arrived still counts
+
+
+def parse_standin_line(line):
+    """{'kind', 'slug', 'request', 'wait_ms', 'ip', 't'} of one request line, or None (other lines, or no address/time)."""
+    m = LINE_RE.match(line.strip())
+    if not m:
+        return None
+    return {'kind': m.group(1), 'slug': m.group(2), 'request': m.group(3), 'wait_ms': int(m.group(4) or 0),
+            'ip': m.group(5), 't': int(m.group(6))}
+
+
+def _is_search_request(req):
+    return req.startswith('api ') and 't=get' not in req[4:].split('&')
+
+
+def _is_nzb_request(req):
+    return req.startswith('nzb ') or (req.startswith('api ') and 't=get' in req[4:].split('&'))
+
+
+def _union_s(intervals):
+    total, end = 0, None
+    for a, b in sorted(intervals):
+        if end is None or a > end:
+            total, end = total + (b - a), b
+        elif b > end:
+            total, end = total + (b - end), b
+    return total / 1000
+
+
+def _ms(iso_time):
+    return parse_ts(iso_time).timestamp() * 1000
+
+
+def assign_standin(visits, lines, addresses=None):
+    """Give every visit (that has a `t_start`) its misses, indexer time and whether a miss can be why its top pick failed.
+
+    addresses: {test container: [client addresses]}. A line belongs to the side whose container sent it, and within the
+    side to the visit that was current for that side when the line was sent (its start until that side's next start).
+    A line from an unknown address goes to the visit in progress at that time (any side); the number of those is returned.
+    Sets on each visit: misses ['<slug> <request>', ...] (every miss), indexer_s (the time the side waited on replayed search
+    answers while the list loaded, parallel waits counted once) and not_recorded (True when the list came back empty after a
+    search miss, or an NZB miss came while the top pick played).
+    """
+    ip_container = {ip: c for c, ips in (addresses or {}).items() for ip in (ips if isinstance(ips, list) else [ips])}
+    marked = sorted((v for v in visits if v.get('t_start')), key=lambda v: _ms(v['t_start']))
+    per_container, got = {}, {id(v): [] for v in marked}
+    for v in marked:
+        per_container.setdefault(CLIENT_CONTAINER.get(v['side']), []).append(v)
+
+    def current(candidates, t):
+        found = None
+        for v in candidates:  # sorted by start
+            if _ms(v['t_start']) <= t:
+                found = v
+        return found
+
+    unmatched = 0
+    for raw in lines:
+        p = parse_standin_line(raw)
+        if not p:
+            continue
+        container = ip_container.get(p['ip'])
+        if container and container in per_container:
+            v = current(per_container[container], p['t'])
+        else:
+            v = current(marked, p['t'])
+            unmatched += 1 if v else 0
+        if v:
+            got[id(v)].append(p)
+    for v in marked:
+        mine = got[id(v)]
+        start = _ms(v['t_start'])
+        list_end = start + v['list_s'] * 1000 if v.get('list_s') is not None else _ms(v['t_end']) if v.get('t_end') else start
+        miss = [p for p in mine if p['kind'] == 'MISS']
+        waits = [(max(p['t'] - p['wait_ms'], start), p['t']) for p in mine
+                 if p['kind'] == 'HIT' and p['wait_ms'] and _is_search_request(p['request']) and p['t'] <= list_end + LIST_SLACK_MS]
+        play_end = _ms(v['t_end']) if v.get('t_end') else float('inf')
+        search_miss = any(_is_search_request(p['request']) for p in miss)
+        play_miss = any(_is_nzb_request(p['request']) and list_end <= p['t'] <= play_end for p in miss)
+        v['misses'] = [f"{p['slug']} {p['request']}" for p in miss]
+        v['indexer_s'] = round(_union_s(waits), 3)
+        v['not_recorded'] = bool(not v.get('ok') and ((not v.get('sources') and search_miss) or play_miss))
+    return unmatched
+
+
 # --------------------------------------------------------------------------- metrics
 
 def median(xs):
@@ -213,6 +314,9 @@ def visit_metrics(v):
         import_s = secs[-1] if secs else None
     return {
         'search_s': v.get('list_s'),
+        'indexer_s': v.get('indexer_s'),
+        'own_s': round(max(v['list_s'] - v['indexer_s'], 0), 3)
+        if v.get('list_s') is not None and v.get('indexer_s') is not None else None,
         'nzb_fetch_s': _sum_ms(steps, 'nzb_fetch'),
         'import_s': import_s,
         'start_s': v.get('start_s'),
@@ -267,6 +371,8 @@ def classify_failure(v):
         return None
     if v.get('limit'):
         return 'indexer_limit'
+    if v.get('not_recorded'):  # a miss that can be the cause (see assign_standin): not a verdict on the side or the Source
+        return 'not_recorded'
     rejected = any(i.get('ok') is False for i in v.get('imports', [])) or \
         any(s.get('step') == 'import_wait' and s.get('ok') is False for s in v.get('steps', []))
     if rejected:
@@ -347,6 +453,19 @@ def _stamp(d):
     return f'{d:%Y-%m-%d %H:%M} UTC'
 
 
+def _settings_and_facts(meta):
+    """(settings of the test copies, run-level facts) of a run meta. Runs recorded in the older shape kept the replay wait
+    under settings['stand-in'] and the one-page side under settings['kaijuflow-1page']; they are read as facts."""
+    settings = {k: v for k, v in (meta.get('settings') or {}).items() if k not in ('stand-in', 'kaijuflow-1page')}
+    facts = dict(meta.get('facts') or {})
+    old = meta.get('settings') or {}
+    if 'facts' not in meta:
+        if (old.get('stand-in') or {}).get('replay wait'):
+            facts['stand-in replay wait'] = old['stand-in']['replay wait']
+        facts['one-page side'] = 'yes' if 'kaijuflow-1page' in old or 'kaijuflow-1page' in (meta.get('sides') or []) else 'no'
+    return settings, facts
+
+
 def diff_runs(prev, cur, nulls=None):
     """Plain list of every difference between two run metas (settings, code, titles, indexers, time of day).
 
@@ -355,13 +474,15 @@ def diff_runs(prev, cur, nulls=None):
     if prev is None:
         return ['No earlier run to compare with: this is the first one.']
     out = []
-    ps, cs = prev.get('settings', {}), cur.get('settings', {})
+    ps, pf = _settings_and_facts(prev)
+    cs, cf = _settings_and_facts(cur)
     lines = []
     for side in sorted(set(ps) | set(cs)):
         a, b = ps.get(side, {}), cs.get(side, {})
         for k in sorted(set(a) | set(b)):
             if a.get(k) != b.get(k):
                 lines.append(f"{side} {k}: {a.get(k, '(not set)')} -> {b.get(k, '(not set)')}")
+    lines += [f"{k}: {pf.get(k, '(not set)')} -> {cf.get(k, '(not set)')}" for k in sorted(set(pf) | set(cf)) if pf.get(k) != cf.get(k)]
     out += lines[:60] + ([f'... and {len(lines) - 60} more setting differences'] if len(lines) > 60 else [])
     if (prev.get('commit'), prev.get('dirty')) != (cur.get('commit'), cur.get('dirty')):
         dirty = ' (uncommitted changes)' if cur.get('dirty') else ''
@@ -423,13 +544,18 @@ def _sides(run):
     return [s for s in SIDE_NAMES if s in run['sides']]
 
 
+def _counted(vs):
+    """The visits that count towards a plays-out-of figure: not the ones that failed only because of a miss."""
+    return [v for v in vs if classify_failure(v) != 'not_recorded']
+
+
 def answer_sentence(run):
     g = _groups(run)
     parts = {}
     for phase in ('cold', 'warm'):
         starts = []
         for s in _sides(run):
-            vs = [v for r in (1, 2) for v in g.get((s, phase, r), [])]
+            vs = _counted([v for r in (1, 2) for v in g.get((s, phase, r), [])])
             starts.append((s, median([v.get('start_s') for v in vs if v.get('ok')]), sum(1 for v in vs if v.get('ok')), len(vs)))
         parts[phase] = starts
     def fmt(phase):
@@ -445,7 +571,7 @@ def headline(run):
     for s in _sides(run):
         c = median([v.get('start_s') for r in (1, 2) for v in g.get((s, 'cold', r), []) if v.get('ok')])
         w = median([v.get('start_s') for r in (1, 2) for v in g.get((s, 'warm', r), []) if v.get('ok')])
-        vs = [v for v in run['visits'] if v['side'] == s]
+        vs = _counted([v for v in run['visits'] if v['side'] == s])
         bits.append(f"{SIDE_NAMES[s]} cold {_cell(c)} s / warm {_cell(w)} s, plays {sum(1 for v in vs if v.get('ok'))}/{len(vs)}")
     return '; '.join(bits)
 
@@ -470,6 +596,9 @@ def render_report(run, changes):
     if run.get('standin_misses'):
         lines += [f"Warning: the indexer stand-in had {run['standin_misses']} requests it had not recorded (a side asked "
                   "for something the recording does not hold), so the sides did not all see the same Sources.", '']
+    if run.get('standin_unmatched'):
+        lines += [f"{run['standin_unmatched']} indexer stand-in requests came from an address that is not a test container, "
+                  "so they were matched by time to the visit in progress (a late request of an earlier side may sit on the wrong visit).", '']
     shared, extra, fail = [], [], []
     for s in _sides(run):
         for phase, rnd in RUN_ORDER:
@@ -478,11 +607,14 @@ def render_report(run, changes):
                 continue
             ms = [visit_metrics(v) for v in vs]
             lab = _run_label(phase, rnd)
-            md = lambda k: _cell(median([m[k] for m, v in zip(ms, vs) if v.get('ok') or k == 'search_s']))  # noqa: E731
-            shared.append([SIDE_NAMES[s], lab, md('search_s'), md('nzb_fetch_s'), md('import_s'), md('start_s')])
+            md = lambda k: _cell(median([m[k] for m, v in zip(ms, vs)  # noqa: E731
+                                         if v.get('ok') or k in ('search_s', 'indexer_s', 'own_s')]))
+            shared.append([SIDE_NAMES[s], lab, md('search_s'), md('indexer_s'), md('own_s'), md('nzb_fetch_s'), md('import_s'),
+                           md('start_s')])
             extra.append([SIDE_NAMES[s], lab, md('indexer_wait_s'), md('health_s'), md('unscramble_s'), md('probe_s')])
             causes = [classify_failure(v) for v in vs]
-            fail.append([SIDE_NAMES[s], lab, f"{sum(1 for v in vs if v.get('ok'))} of {len(vs)}"]
+            counted = _counted(vs)
+            fail.append([SIDE_NAMES[s], lab, f"{sum(1 for v in counted if v.get('ok'))} of {len(counted)}"]
                         + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
     lines += ['## Steps every side shares', ''] + _table(SHARED_COLS, shared) + [''] + _defs(SHARED_COLS) + ['']
     lines += ['## Extras (steps only some sides have)', ''] + _table(EXTRA_COLS, extra) + [''] + _defs(EXTRA_COLS[2:]) + ['']
@@ -500,7 +632,34 @@ def render_report(run, changes):
                     rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd), v.get('sources', '-'), _cell(m['search_s']),
                                  _cell(m['start_s']), res])
     lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
+    lines += not_recorded_section(run)
     return '\n'.join(lines)
+
+
+def not_recorded_section(run):
+    """Misses per side and title, the top picks left out of the plays figure and the top-up command; empty without misses."""
+    rows, left_out = [], []
+    for t in run.get('titles', []):
+        for s in _sides(run):
+            n = sum(len(v.get('misses') or []) for v in run['visits'] if v['side'] == s and v['title'] == t)
+            if n:
+                rows.append([SIDE_NAMES[s], t, n])
+    for s in _sides(run):
+        for phase, rnd in RUN_ORDER:
+            for v in _groups(run).get((s, phase, rnd), []):
+                if classify_failure(v) == 'not_recorded':
+                    left_out.append(f"{SIDE_NAMES[s]}, {v['title']}, {_run_label(phase, rnd)}")
+    if not rows:
+        return []
+    top_up = run.get('topup_command') or 'the record command with the same title list'
+    out = ['## Not recorded', '',
+           'A side asked the indexer stand-in for something the recording does not hold. That says nothing about the side or '
+           'the Source, so these requests are counted here and not as bad Sources. Requests per side and title, all rounds:', '']
+    out += _table(['Side', 'Title', 'Requests not recorded'], rows) + ['']
+    out += ['Top picks left out of the plays-out-of-ten figures (a miss can be why they failed): '
+            + ('; '.join(left_out) if left_out else 'none (every top pick still played).'), '',
+            f'To fill the gaps, top up the recording (no indexer is asked for something already stored): `{top_up}`', '']
+    return out
 
 
 def render_null_report(run):
