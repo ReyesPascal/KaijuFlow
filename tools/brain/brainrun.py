@@ -35,6 +35,7 @@ import time
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import allowance  # noqa: E402
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
 import indexer_standin  # noqa: E402
@@ -500,6 +501,8 @@ def preflight_command(mode, cfg, io):
     problems = preflight(mode, cfg, io)
     for p in problems:
         print(p)
+    if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
+        print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
         print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps and port all check out.')
     return 1 if problems else 0
@@ -868,7 +871,7 @@ def smoke(cfg, io=None):
 
 def build_parser():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight', 'check'])
+    ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight', 'check', 'usage'])
     ap.add_argument('--run', dest='run_dir', help='check only: the run folder to check; exits non-zero when it cannot serve as a baseline')
     ap.add_argument('--no-wait', action='store_true', help='run only: replay indexer answers at once instead of waiting the recorded indexer time')
     ap.add_argument('--for', dest='mode', choices=['run', 'record'], default='run', help='preflight only: check the setup for a run or for a record pass')
@@ -907,7 +910,7 @@ def main(argv):
         if not a.run_dir:
             ap.error('--run is needed')
         return runcheck.check_command(a.run_dir)
-    if a.cmd != 'preflight' or a.mode == 'run':
+    if a.cmd not in ('preflight', 'usage') or (a.cmd == 'preflight' and a.mode == 'run'):
         if not a.store or not a.listname:
             ap.error('--store and --list are needed')
     td = a.test_dir
@@ -922,6 +925,9 @@ def main(argv):
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
     started = time.time()
+    if a.cmd == 'usage':
+        print('\n'.join(allowance.usage_lines(cfg)))
+        return 0
     if a.cmd == 'preflight':
         return preflight_command(a.mode, cfg, RealIO(cfg))
     if a.cmd == 'smoke':
