@@ -1,0 +1,15 @@
+{
+  "_source": "Real AltMount v0.4.0 (test copy kaijuflow-test, port 8087), captured 2026-11-10 from the Oppenheimer FLUX NZB whose release name ends in .mkv (NZB from the 2026-11-10 recording, uploaded the way KaijuFlow does: POST /api/nzb/streams, category kaijuflow). Host and download_key replaced. Note: the copy already held this item from an earlier run, so the streams reply is the reused one (_cached true, completed); a first import was not captured. Layout fixture for tests/unit/fake-backend-shape.test.ts.",
+  "reply": {
+    "streams": [
+      {
+        "url": "http://altmount:8080/api/files/stream?path=%2Fcomplete%2Fkaijuflow%2FOppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv&download_key=REDACTED",
+        "title": "Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv",
+        "name": "Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.H.265-FLUX.mkv"
+      }
+    ],
+    "_queue_item_id": 6,
+    "_queue_status": "completed",
+    "_cached": true
+  }
+}
