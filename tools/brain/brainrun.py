@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I lea
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
 import indexer_standin  # noqa: E402
+import runcheck  # noqa: E402
 import testbed  # noqa: E402
 from common import DEFAULT_TEST_DIR  # noqa: E402
 
@@ -867,7 +868,8 @@ def smoke(cfg, io=None):
 
 def build_parser():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight'])
+    ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight', 'check'])
+    ap.add_argument('--run', dest='run_dir', help='check only: the run folder to check; exits non-zero when it cannot serve as a baseline')
     ap.add_argument('--no-wait', action='store_true', help='run only: replay indexer answers at once instead of waiting the recorded indexer time')
     ap.add_argument('--for', dest='mode', choices=['run', 'record'], default='run', help='preflight only: check the setup for a run or for a record pass')
     ap.add_argument('--name', default='run')
@@ -901,6 +903,10 @@ def topup_command(a):
 def main(argv):
     ap = build_parser()
     a = ap.parse_args(argv)
+    if a.cmd == 'check':
+        if not a.run_dir:
+            ap.error('--run is needed')
+        return runcheck.check_command(a.run_dir)
     if a.cmd != 'preflight' or a.mode == 'run':
         if not a.store or not a.listname:
             ap.error('--store and --list are needed')
@@ -940,6 +946,7 @@ def main(argv):
                 print(p)
             return 1
         print(f"{run['status']}: {run['dir']}")
+        runcheck.check_command(run['dir'], store=True)  # the same lines `check` prints, kept in the run folder as CHECK.txt
     common.finish(started)
     return 0
 

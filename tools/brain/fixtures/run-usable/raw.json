@@ -1,0 +1,293 @@
+{
+ "status": "ok",
+ "visits": [
+  {
+   "side": "kaijuflow",
+   "phase": "cold",
+   "round": 1,
+   "title": "Alpha",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [
+    {
+     "step": "import_wait",
+     "ms": 600,
+     "ok": true,
+     "includes_upload": true
+    },
+    {
+     "step": "first_byte",
+     "ms": 300,
+     "ok": true
+    }
+   ],
+   "imports": [],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  },
+  {
+   "side": "kaijuflow",
+   "phase": "cold",
+   "round": 1,
+   "title": "Beta",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [
+    {
+     "step": "import_wait",
+     "ms": 600,
+     "ok": true,
+     "includes_upload": true
+    },
+    {
+     "step": "first_byte",
+     "ms": 300,
+     "ok": true
+    }
+   ],
+   "imports": [],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  },
+  {
+   "side": "kaijuflow",
+   "phase": "warm",
+   "round": 1,
+   "title": "Alpha",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [
+    {
+     "step": "first_byte",
+     "ms": 1000,
+     "ok": true
+    }
+   ],
+   "imports": [],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  },
+  {
+   "side": "kaijuflow",
+   "phase": "warm",
+   "round": 1,
+   "title": "Beta",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [
+    {
+     "step": "first_byte",
+     "ms": 1000,
+     "ok": true
+    }
+   ],
+   "imports": [],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  },
+  {
+   "side": "altmount-addon",
+   "phase": "cold",
+   "round": 1,
+   "title": "Alpha",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [],
+   "imports": [
+    {
+     "name": "x",
+     "seconds": 2.0,
+     "ok": true
+    }
+   ],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  },
+  {
+   "side": "altmount-addon",
+   "phase": "cold",
+   "round": 1,
+   "title": "Beta",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [],
+   "imports": [
+    {
+     "name": "x",
+     "seconds": 2.0,
+     "ok": true
+    }
+   ],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  },
+  {
+   "side": "altmount-addon",
+   "phase": "warm",
+   "round": 1,
+   "title": "Alpha",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [],
+   "imports": [],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  },
+  {
+   "side": "altmount-addon",
+   "phase": "warm",
+   "round": 1,
+   "title": "Beta",
+   "id": "tt1",
+   "kind": "movie",
+   "ok": true,
+   "t_start": "2026-01-01T00:00:00.000Z",
+   "t_end": "2026-01-01T00:00:10.000Z",
+   "list_status": 200,
+   "list_s": 1.0,
+   "sources": 5,
+   "start_s": 1.0,
+   "seeks": {},
+   "note": null,
+   "tries": [
+    {
+     "plays": true,
+     "status": 206,
+     "note": null
+    }
+   ],
+   "steps": [],
+   "imports": [],
+   "limit": null,
+   "misses": [],
+   "indexer_s": 0.5,
+   "not_recorded": false
+  }
+ ]
+}

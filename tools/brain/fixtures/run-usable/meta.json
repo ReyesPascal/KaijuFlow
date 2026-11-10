@@ -1,0 +1,23 @@
+{
+ "name": "fixture",
+ "status": "ok",
+ "started": "2026-01-01T00:00:00.000Z",
+ "finished": "2026-01-01T00:05:00.000Z",
+ "sides": [
+  "kaijuflow",
+  "altmount-addon"
+ ],
+ "indexers": [
+  "ninjacentral"
+ ],
+ "titles": [
+  "Alpha",
+  "Beta"
+ ],
+ "null": null,
+ "error": null,
+ "standin_misses": 0,
+ "standin_unmatched": 0,
+ "facts": {},
+ "changes": []
+}
