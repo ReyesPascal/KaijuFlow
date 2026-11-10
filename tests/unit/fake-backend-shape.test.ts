@@ -68,7 +68,7 @@ test('fake NzbDAV queue and history replies use only real NzbDAV fields', async 
     await fetch(`${base}/api?mode=addfile&cat=Movies&output=json`, { method: 'POST', body: form });
   }
   for (const mode of ['queue', 'history']) {
-    const reply = await (await fetch(`${base}/api?mode=${mode}&output=json`)).json();
+    const reply = (await (await fetch(`${base}/api?mode=${mode}&output=json`)).json()) as Record<string, any>;
     const real = shapeOf(fixture(`nzbdav-${mode}.json`));
     const slots = (reply[mode]?.slots ?? []) as unknown[];
     for (const slot of slots.length ? slots : [undefined]) {

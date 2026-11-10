@@ -147,7 +147,11 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
     state,
     /** Served articles; scenarios add their sets here. */
     articles,
-    /** A KaijuFlow health-check provider pointing at this server. */
+    /**
+     * A KaijuFlow health-check provider pointing at this server.
+     * @param {string} [name]
+     * @returns {import('../../../src/types.js').UsenetProvider}
+     */
     provider(name = 'Fake News') {
       return { id: `fake-${port}`, name, host: '127.0.0.1', port, useTLS: false, username: 'kf', password: 'kf', enabled: true, type: 'pool' };
     },
