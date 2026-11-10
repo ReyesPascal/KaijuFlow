@@ -3,14 +3,19 @@
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
 """
 import datetime
+import http.server
 import json
 import os
 import sqlite3
 import tempfile
 import unittest
+import urllib.request
 
 import brainreport as br
 import brainrun
+import indexer_standin
+import test_indexer_standin as fakes
+import test_preflight
 
 SECRET = 'TOPSECRET-123'
 UTC = datetime.timezone.utc
@@ -31,6 +36,8 @@ class FakeIO:
         self.fail_http_for = fail_http_for
         self.patched = False
         self.working = 0
+        self.standin_log = []
+        self.lines_per_visit = {}  # visit number -> lines the stand-in writes during that visit
         self.max_working = 0
 
     def now(self):
@@ -56,16 +63,23 @@ class FakeIO:
     def marker(self):
         return self._marker
 
-    def start_standin(self, logpath):
-        self.calls.append(('standin-start',))
+    def start_standin(self, logpath, mode='replay', wait=True):
+        self.calls.append(('standin-start', mode, wait))
+        self.standin_log = ['HIT ninjacentral api t=search wait_ms=0', 'MISS drunkenslug api t=search']
         with open(logpath, 'w') as f:
-            f.write('HIT ninjacentral api t=search\nMISS drunkenslug api t=search\n')
+            f.write('\n'.join(self.standin_log) + '\n')
         io = self
 
         class H:
             def stop(self):
                 io.calls.append(('standin-stop',))
         return H()
+
+    def standin_line_count(self):
+        return len(self.standin_log)
+
+    def standin_lines(self):
+        return list(self.standin_log)
 
     def reset(self, sides):
         self.calls.append(('reset', tuple(sides)))
@@ -85,6 +99,7 @@ class FakeIO:
     def visit_http(self, side, kind, vid, tries):
         self.visits += 1
         self.calls.append(('visit', side, vid))
+        self.standin_log += self.lines_per_visit.get(self.visits, [])
         ok = side != self.fail_http_for
         return dict(list_status=200, list_s=2.0, sources=5, first_try_plays=ok, start_s=1.5 if ok else None,
                     note=None if ok else 'failure video', seeks={'50': 0.2, '90': 0.3}, tries=[{'plays': ok}])
@@ -239,6 +254,225 @@ class RunTest(unittest.TestCase):
         self.assertEqual([c[0] for c in io.calls][-2:], ['standin-stop', 'stop-all'])
         self.assertIn('failed', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
         self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
+
+
+class WaitSwitchTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_wait_is_on_by_default_and_the_record_says_so(self):
+        io = FakeIO()
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        self.assertIn(('standin-start', 'replay', True), io.calls)
+        self.assertEqual(run['settings']['stand-in'], {'replay wait': 'on'})
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'settings.json')))['stand-in'], {'replay wait': 'on'})
+
+    def test_no_wait_switch_reaches_the_stand_in_and_shows_in_what_changed(self):
+        brainrun.run_all(make_cfg(self.tmp, name='with'), FakeIO())
+        io = FakeIO()
+        io.clock += datetime.timedelta(minutes=5)
+        run = brainrun.run_all(make_cfg(self.tmp, name='without', wait=False), io)
+        self.assertIn(('standin-start', 'replay', False), io.calls)
+        self.assertIn('stand-in replay wait: on -> off', ' '.join(run['changes']))
+
+    def test_cli_switch(self):
+        self.assertTrue(brainrun.build_parser().parse_args(['run', '--no-wait']).no_wait)
+        self.assertFalse(brainrun.build_parser().parse_args(['run']).no_wait)
+
+
+class MissMatchingTest(unittest.TestCase):
+    """The stand-in's lines carry no side or title: they are matched to the visit that was running."""
+
+    def test_misses_and_indexer_time_land_on_the_visit(self):
+        tmp = tempfile.mkdtemp()
+        io = FakeIO()
+        io.lines_per_visit = {2: ['HIT ninjacentral api t=search wait_ms=400', 'MISS drunkenslug api t=search&offset=100'],
+                              5: ['HIT drunkenslug api t=search wait_ms=250']}
+        run = brainrun.run_all(make_cfg(tmp, topup_command='python3 -I tools/brain/brainrun.py record --name t --store S --list l'), io)
+        by_n = run['visits']
+        self.assertEqual(by_n[1]['misses'], ['drunkenslug api t=search&offset=100'])  # the 2nd visit
+        self.assertEqual(by_n[1]['indexer_s'], 0.4)
+        self.assertEqual(by_n[4]['indexer_s'], 0.25)
+        self.assertEqual(by_n[0]['misses'], [])
+        rep = read(os.path.join(run['dir'], 'report.md'))
+        self.assertIn('## Not recorded', rep)
+        self.assertIn('brainrun.py record --name t --store S --list l', rep)
+        raw = json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits'][1]
+        self.assertEqual(raw['misses'], ['drunkenslug api t=search&offset=100'])
+
+
+class RecordIO(FakeIO):
+    """FakeIO whose stand-in is the real one in record mode on loopback, in front of a fake indexer; the 'sides' ask it
+    for different requests, the way the three sides do. Everything else (containers, resets) is the fake's."""
+
+    def __init__(self, cfg, fake_url, limit_from_visit=None):
+        super().__init__()
+        self.cfg, self.fake_url, self.limit_from_visit = cfg, fake_url, limit_from_visit
+        self.port, self.server, self.recording_dir = None, None, cfg['store']
+
+    def preflight(self, mode):
+        self.calls.append(('preflight', mode))
+        return list(getattr(self, 'problems', []))
+
+    def marker(self):
+        try:
+            return json.load(open(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json')))
+        except OSError:
+            return None
+
+    def start_standin(self, logpath, mode='replay', wait=True):
+        self.calls.append(('standin-start', mode, wait))
+        conf = {'indexers': {'fake': {'url': self.fake_url, 'apikey': fakes.REAL_KEY}}}
+        self.server = fakes.serve(indexer_standin.make_server(conf, self.cfg['store'], mode, self.cfg['listname'], port=0, bind='127.0.0.1'))
+        self.port = self.server.server_port
+        io = self
+
+        class H:
+            def stop(self):
+                io.calls.append(('standin-stop',))
+                io.standin_log = list(io.server.state.log_lines)
+                io.server.shutdown()
+                io.server.server_close()
+                with open(logpath, 'w') as f:
+                    f.write('\n'.join(io.standin_log) + '\n')
+        return H()
+
+    def standin_line_count(self):
+        return len(self.server.state.log_lines)
+
+    def standin_lines(self):
+        return list(self.server.state.log_lines)
+
+    def visit_http(self, side, kind, vid, tries):
+        self.visits += 1
+        self.calls.append(('visit', side, vid))
+        if self.limit_from_visit and self.visits >= self.limit_from_visit:
+            fakes.FakeIndexer.limit = True
+        base = f'http://127.0.0.1:{self.port}/fake/api'
+        asks = {'kaijuflow': [f'?t=search&q={vid}&offset=0', f'?t=search&q={vid}&offset=3'],
+                'uu': [f'?t=search&q={vid}&cat=uu'], 'altmount-addon': [f'?t=search&q={vid}&o=json']}[side]
+        for a in asks:
+            try:
+                urllib.request.urlopen(f'{base}{a}&apikey=dummy', timeout=10).read()
+            except OSError:
+                pass
+        return dict(sources=3, first_try_plays=True)
+
+
+class RecordTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        fakes.FakeIndexer.hits, fakes.FakeIndexer.limit, fakes.FakeIndexer.error_body = 0, False, None
+        fakes.FakeIndexer.delay, fakes.FakeIndexer.seen = 0.0, []
+        self.fake = fakes.serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), fakes.FakeIndexer))
+        self.addCleanup(self.fake.server_close)
+        self.addCleanup(self.fake.shutdown)
+        self.url = f'http://127.0.0.1:{self.fake.server_port}'
+        self.cfg = make_cfg(self.tmp)
+        os.makedirs(self.cfg['store'])
+
+    def stored(self):
+        d = os.path.join(self.cfg['store'], self.cfg['listname'], 'fake')
+        return sorted(f for f in os.listdir(d) if f.endswith('.body')) if os.path.isdir(d) else []
+
+    def record(self, **kw):
+        io = RecordIO(self.cfg, self.url, **kw)
+        return io, brainrun.record_all(self.cfg, io)
+
+    def test_every_sides_requests_are_stored_and_a_second_record_asks_the_indexer_for_nothing(self):
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        self.assertEqual(len(self.stored()), 8)  # 2 titles x (2 KaijuFlow pages + 1 UU + 1 addon JSON), all different
+        self.assertEqual(fakes.FakeIndexer.hits, 8)
+        self.assertEqual(rec['new_answers'], 8)
+        before = self.stored()
+        io2, rec2 = self.record()
+        self.assertEqual(fakes.FakeIndexer.hits, 8)  # zero requests to the fake indexer: a top-up of nothing
+        self.assertEqual(self.stored(), before)
+        self.assertEqual((rec2['new_answers'], rec2['stored_answers']), (0, 8))
+        self.assertEqual(rec2['visits'], 6)  # 3 sides x 2 titles, once
+
+    def test_test_copies_are_reset_before_and_after_and_stopped(self):
+        io, _ = self.record()
+        kinds = [c[0] for c in io.calls]
+        self.assertEqual(kinds[0], 'preflight')
+        self.assertEqual(io.calls[0], ('preflight', 'record'))
+        resets = [i for i, k in enumerate(kinds) if k == 'reset']
+        self.assertEqual(len(resets), 2)
+        self.assertLess(resets[0], kinds.index('standin-start'))
+        self.assertGreater(resets[1], kinds.index('standin-stop'))
+        self.assertEqual(kinds[-1], 'stop-all')
+        self.assertEqual(set(io.calls[resets[0]][1]), {'nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow'})
+        self.assertIn(('standin-start', 'record', True), io.calls)
+        self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 6)  # once per side and title, no rounds
+
+    def test_nothing_reaches_a_report_and_a_good_record_has_no_index_row(self):
+        io, rec = self.record()
+        root = os.path.join(self.tmp, 'runs')
+        self.assertFalse(os.path.exists(os.path.join(root, 'INDEX.md')))
+        d = rec['dir']
+        self.assertTrue(os.path.basename(d).endswith('-trial-record'))
+        self.assertTrue(os.path.exists(os.path.join(d, 'logs', 'standin.log')))
+        self.assertFalse(os.path.exists(os.path.join(d, 'report.md')))
+        self.assertIsNone(br.previous_run(root))  # a record is never the previous run of a diff
+        self.assertIn('RECORD fake', read(os.path.join(d, 'logs', 'standin.log')))
+        self.assertEqual(json.load(open(os.path.join(d, 'meta.json')))['status'], 'recorded')
+
+    def test_limit_answer_aborts_records_null_and_keeps_what_was_stored(self):
+        io, rec = self.record(limit_from_visit=3)
+        self.assertEqual(rec['status'], 'null')
+        self.assertEqual(rec['null']['indexer'], 'fake')
+        self.assertEqual(io.visits, 3)  # stopped at once
+        kept = self.stored()
+        self.assertGreater(len(kept), 0)
+        self.assertLess(len(kept), 8)
+        idx = read(os.path.join(self.tmp, 'runs', 'INDEX.md'))
+        self.assertIn('NULL', idx)
+        self.assertIn('fake', idx)
+        self.assertIn('record', idx)
+        kinds = [c[0] for c in io.calls]
+        self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+        self.assertEqual(json.load(open(os.path.join(rec['dir'], 'meta.json')))['status'], 'null')
+
+    def test_after_a_null_the_top_up_waits_for_the_marker_then_continues_from_what_is_stored(self):
+        self.record(limit_from_visit=3)
+        kept, hits = self.stored(), fakes.FakeIndexer.hits
+        with self.assertRaises(brainrun.PreflightFailed) as cm:  # the marker is still there
+            self.record()
+        self.assertEqual(len(cm.exception.problems), 1)
+        self.assertIn('LIMIT_REACHED.json', cm.exception.problems[0])
+        self.assertEqual(fakes.FakeIndexer.hits, hits)
+        os.remove(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
+        fakes.FakeIndexer.limit = False
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        self.assertEqual(len(self.stored()), 8)
+        self.assertTrue(set(kept) <= set(self.stored()))
+        self.assertEqual(fakes.FakeIndexer.hits - hits, 8 - len(kept))  # only what was missing is asked
+
+    def test_a_failed_preflight_stops_before_anything_happens(self):
+        io = RecordIO(self.cfg, self.url)
+        io.problems = ['The test image is old: build it again with --rebuild-image.']
+        with self.assertRaises(brainrun.PreflightFailed) as cm:
+            brainrun.record_all(self.cfg, io)
+        self.assertEqual(cm.exception.problems, io.problems)
+        self.assertEqual([c[0] for c in io.calls], ['preflight'])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'runs')))
+
+    def test_a_run_refuses_to_start_without_a_recording(self):
+        td = test_preflight.make_copies()
+        cfg = test_preflight.make_cfg(td, runs_root=os.path.join(self.tmp, 'runs2'), titles=[], name='x', tries=1, settle=0,
+                                      indexers=[], one_page=False, user_id='U', download_key='K')
+        world = test_preflight.FakeWorld(cfg)
+        with self.assertRaises(brainrun.PreflightFailed) as cm:
+            brainrun.run_all(cfg, world)
+        self.assertIn('no recording', ' '.join(cm.exception.problems))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'runs2')))
+
+    def test_record_command_line(self):
+        a = brainrun.build_parser().parse_args(['record', '--name', 'n', '--store', 'S', '--list', 'L', '--key-file', 'K'])
+        self.assertEqual(a.cmd, 'record')
+        self.assertEqual(brainrun.topup_command(a), 'python3 -I tools/brain/brainrun.py record --name n --store S --list L --key-file K')
 
 
 class FinalStepsTest(unittest.TestCase):

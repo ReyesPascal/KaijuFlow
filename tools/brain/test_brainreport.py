@@ -263,6 +263,103 @@ class ReportTest(unittest.TestCase):
         self.assertIn('2', h)
 
 
+STANDIN_LOG = [
+    'HIT ninjacentral api t=search&q=matrix wait_ms=400',
+    'HIT ninjacentral api t=search&q=matrix&offset=100 wait_ms=300',
+    'HIT drunkenslug api t=search&q=matrix wait_ms=500',
+    'HIT ninjacentral api t=get&id=7 wait_ms=900',
+    'MISS drunkenslug api t=search&q=matrix&offset=100',
+    'MISS ninjacentral nzb abcdef123456',
+    'HIT ninjacentral api t=search&q=matrix wait_ms=0',
+    'HIT drunkenslug api t=search&q=matrix',
+]
+
+
+class StandinLinesTest(unittest.TestCase):
+    def test_parse_lines(self):
+        p = br.parse_standin_lines(STANDIN_LOG)
+        self.assertEqual(p['misses'], ['drunkenslug api t=search&q=matrix&offset=100', 'ninjacentral nzb abcdef123456'])
+        # indexers are asked at the same time: the slowest indexer's search waits added up; NZB files are not search time
+        self.assertEqual(p['indexer_s'], 0.7)
+
+    def test_no_lines_means_zero_wait(self):
+        p = br.parse_standin_lines([])
+        self.assertEqual((p['misses'], p['indexer_s']), ([], 0))
+
+    def test_lines_go_to_the_visit_that_was_running(self):
+        vs = [dict(log_from=0), dict(log_from=3), dict(log_from=5)]
+        br.assign_standin(vs, STANDIN_LOG)
+        self.assertEqual(vs[0]['indexer_s'], 0.7)
+        self.assertEqual(vs[0]['misses'], [])
+        self.assertEqual(vs[1]['misses'], ['drunkenslug api t=search&q=matrix&offset=100'])
+        self.assertEqual(vs[1]['indexer_s'], 0)  # the NZB file's wait is not search time
+        self.assertEqual(vs[2]['misses'], ['ninjacentral nzb abcdef123456'])
+
+    def test_visit_without_a_mark_is_left_alone(self):
+        vs = [dict(side='old')]
+        br.assign_standin(vs, STANDIN_LOG)
+        self.assertNotIn('misses', vs[0])
+
+
+def with_misses():
+    run = runs_fixture()
+    for v in run['visits']:
+        v['misses'], v['indexer_s'] = [], 1.0
+    uu_cold1 = next(v for v in run['visits'] if v['side'] == 'uu' and v['phase'] == 'cold' and v['round'] == 1)
+    uu_cold1.update(ok=False, note='no Sources', misses=['ninjacentral api t=search&q=matrix', 'drunkenslug api t=search&q=matrix'])
+    kf_warm1 = next(v for v in run['visits'] if v['side'] == 'kaijuflow' and v['phase'] == 'warm' and v['round'] == 1)
+    kf_warm1['misses'] = ['drunkenslug api t=search&q=matrix&offset=100']  # still played
+    run['topup_command'] = 'python3 -I tools/brain/brainrun.py record --name x --store S --list L'
+    run['standin_misses'] = 3
+    return run
+
+
+class MissReportTest(unittest.TestCase):
+    def test_failure_with_a_miss_is_its_own_cause(self):
+        run = with_misses()
+        v = next(v for v in run['visits'] if v['side'] == 'uu' and v['phase'] == 'cold' and v['round'] == 1)
+        self.assertEqual(br.classify_failure(v), 'not_recorded')
+        self.assertEqual(br.classify_failure(dict(v, limit={'indexer': 'x'})), 'indexer_limit')  # the cap rule still wins
+        self.assertIsNone(br.classify_failure(next(x for x in run['visits'] if x['misses'] and x['ok'])))
+        self.assertEqual(br.CAUSES[-1], ('not_recorded', 'Not recorded'))  # a fifth cause next to the four
+
+    def test_plays_figure_leaves_the_miss_out(self):
+        run = with_misses()
+        text = br.render_report(run, ['x'])
+        row = next(line for line in text.splitlines() if line.startswith('| Usenet Ultimate | Cold 1 | ') and ' of ' in line)
+        self.assertIn('| 0 of 0 |', row)  # one title, and it failed only because of a miss
+        self.assertIn('Usenet Ultimate 3 s (1 of 1 top picks played)', br.answer_sentence(run))
+        self.assertIn('plays 3/3', br.headline(run).split('Usenet Ultimate')[1])  # 4 visits, 1 left out
+
+    def test_not_recorded_section(self):
+        text = br.render_report(with_misses(), ['x'])
+        sec = text.split('## Not recorded', 1)[1].split('\n## ', 1)[0]
+        self.assertIn('| Usenet Ultimate | Matrix | 2 |', sec)
+        self.assertIn('| KaijuFlow | Matrix | 1 |', sec)
+        self.assertIn('Usenet Ultimate, Matrix, Cold 1', sec)  # the top pick left out, by name
+        self.assertIn('python3 -I tools/brain/brainrun.py record --name x --store S --list L', sec)
+
+    def test_no_section_without_misses(self):
+        text = br.render_report(runs_fixture(), ['x'])
+        self.assertNotIn('## Not recorded', text)
+        self.assertIn('**Not recorded**', text)  # the cause is still defined
+
+    def test_indexer_time_and_own_work_are_separate_columns(self):
+        text = br.render_report(with_misses(), ['x'])
+        head = next(line for line in text.splitlines() if line.startswith('| Side | Run | Search'))
+        cols = [c.strip() for c in head.strip('|').split('|')]
+        self.assertEqual(cols[:5], ['Side', 'Run', 'Search', 'Indexers', "Side's own work"])
+        row = next(line for line in text.splitlines() if line.startswith('| Usenet Ultimate | Warm 1 |') and '| 5 |' in line)
+        cells = [c.strip() for c in row.strip('|').split('|')]
+        self.assertEqual(cells[2:5], ['5', '1', '4'])  # search 5 s = indexers 1 s + own work 4 s
+
+    def test_old_run_without_log_data_shows_a_dash(self):
+        text = br.render_report(runs_fixture(), ['x'])
+        row = next(line for line in text.splitlines() if line.startswith('| KaijuFlow | Cold 1 |') and '| 5 |' in line)
+        cells = [c.strip() for c in row.strip('|').split('|')]
+        self.assertEqual(cells[2:5], ['5', '-', '-'])
+
+
 class AttributionTest(unittest.TestCase):
     def visit(self, vid='tt1', start='2026-11-10T18:00:00Z', played='Rel.A.2160p', **kw):
         v = dict(side='kaijuflow', id=vid, t_start=start, t_end='2026-11-10T18:00:07Z', tries=[{'title': played}])

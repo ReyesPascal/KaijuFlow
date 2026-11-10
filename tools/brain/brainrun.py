@@ -2,16 +2,21 @@
 
     python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list>
            [--runs-root DIR] [--one-page] [--titles-file titles.json] [--user-id ID] [--tries 1]
-           [--rebuild-image] [--provider-limit 100]
+           [--rebuild-image] [--provider-limit 100] [--no-wait]
+    python3 -I tools/brain/brainrun.py record --name baseline --store <standin-store> --list <title-list> [--key-file PATH]
+           [--runs-root DIR] [--one-page] [--titles-file titles.json] [--tries 1] [--rebuild-image]   (record, or top up)
     python3 -I tools/brain/brainrun.py preflight [--for run|record] --store <standin-store> --list <title-list>
            [--rebuild-image] [--provider-limit 100] [--key-file PATH]   (the setup check alone; a run starts with it)
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke   (stand-in reachability check, see README)
 
-It starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted), resets the test copies with
+A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
+indexer time for every answer unless --no-wait) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
 row and the report. The first "limit reached" from any indexer aborts the run and records it as null.
-Only test containers are touched. Secrets never reach the run folder (settings are scrubbed, logs are scrubbed).
+The record command resets the test copies, starts the stand-in in RECORD mode (this spends real indexer requests), sends
+every side through every title once, and resets again; running it again only asks for what is not stored yet. Its timings never
+reach a report. Only test containers are touched. Secrets never reach the run folder (settings are scrubbed, logs are scrubbed).
 """
 import argparse
 import copy
@@ -19,6 +24,7 @@ import datetime
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -148,13 +154,18 @@ class RealIO:
     def marker(self):
         return _read_json(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
 
-    def start_standin(self, logpath):
+    def start_standin(self, logpath, mode='replay', wait=True):
         script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'indexer_standin.py')
         port = self.cfg.get('standin_port', 1340)
+        self.standin_log = logpath
         log = open(logpath, 'w')
-        proc = subprocess.Popen([sys.executable, '-I', script, '--mode', 'replay', '--store', self.cfg['store'],
-                                 '--list', self.cfg['listname'], '--port', str(port), '--bind', '0.0.0.0'],
-                                stderr=log, stdout=subprocess.DEVNULL)
+        cmd = [sys.executable, '-I', script, '--mode', mode, '--store', self.cfg['store'],
+               '--list', self.cfg['listname'], '--port', str(port), '--bind', '0.0.0.0']
+        if mode == 'record':
+            cmd += ['--config', self.cfg.get('key_file') or os.path.join(self.cfg['test_dir'], 'indexers.json')]
+        elif not wait:
+            cmd.append('--no-wait')
+        proc = subprocess.Popen(cmd, stderr=log, stdout=subprocess.DEVNULL)
         end = time.time() + 20
         while time.time() < end:
             try:
@@ -175,6 +186,13 @@ class RealIO:
                     proc.kill()
                 log.close()
         return Handle()
+
+    def standin_lines(self):
+        """The stand-in's log so far, one entry per line."""
+        return (_read_text(self.standin_log) or '').splitlines()
+
+    def standin_line_count(self):
+        return len(self.standin_lines())
 
     def reset(self, sides):
         self.testbed.reset(self.cfg['test_dir'], sides, log=print)
@@ -432,7 +450,9 @@ def do_pass(cfg, io, run, logbuf, sides, reset_sides):
         for i, title in enumerate(cfg['titles']):
             k = i % len(sides)
             for side in sides[k:] + sides[:k]:
+                mark = io.standin_line_count()
                 v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
+                v['log_from'] = mark
                 run['visits'].append(v)
                 print(f"{side} {phase} {rnd} {title[2]}: {'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
                 _check_cap(io, v)
@@ -456,16 +476,18 @@ def run_all(cfg, io):
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
            'sides': MAIN_SIDES + (['kaijuflow-1page'] if cfg['one_page'] else []), 'standin_misses': 0,
-           'settings': {}, 'commit': None, 'dirty': None}
+           'settings': {}, 'commit': None, 'dirty': None, 'topup_command': cfg.get('topup_command')}
+    wait = cfg.get('wait', True)
     logbuf, handle, failure = {}, None, None
     try:
         run['settings'] = io.snapshot()
+        run['settings']['stand-in'] = {'replay wait': 'on' if wait else 'off'}  # shows in "What changed since the last run"
         run['dirty'] = io.git_info()[1]
         run['commit'] = io.image_label()  # the commit the test image was built from, not the repository's
         _write(os.path.join(run_dir, 'settings.json'), json.dumps(run['settings'], indent=1, sort_keys=True))
         try:
             _check_cap(io)
-            handle = io.start_standin(os.path.join(logs_dir, 'standin.log'))
+            handle = io.start_standin(os.path.join(logs_dir, 'standin.log'), mode='replay', wait=wait)
             do_pass(cfg, io, run, logbuf, list(MAIN_SIDES), ALL_TESTBED)
             if cfg['one_page']:
                 run['settings'].update(io.apply_one_page())
@@ -476,6 +498,8 @@ def run_all(cfg, io):
         finally:
             try:
                 finalize_steps(io, run['visits'])
+                if handle:
+                    br.assign_standin(run['visits'], io.standin_lines())  # misses and indexer time per visit
             finally:  # the cleanup runs even when reading the logs fails
                 io.restore_config()
                 if handle:
@@ -513,6 +537,89 @@ def run_all(cfg, io):
     return run
 
 
+# --------------------------------------------------------------------------- the record command (spec #72, ticket #75)
+
+def record_all(cfg, io):
+    """Preflight, reset, stand-in in record mode, every side through every title once, reset again.
+
+    Running it again is a top-up: record mode serves what is stored instead of asking the indexer. The first "limit reached"
+    stops the pass and the recording is NULL (what was stored stays). Nothing from the pass is a measurement: it gets a folder
+    with the stand-in's log and a meta.json, and an INDEX.md row only when it is NULL or failed.
+    """
+    problems = io.preflight('record')
+    m = io.marker()
+    if m and not problems:
+        problems = [f"The recording was stopped by {m.get('indexer', 'an indexer')}'s limit at {m.get('time', 'an unknown time')}: "
+                    f"delete {os.path.join(cfg['store'], 'LIMIT_REACHED.json')} once that indexer has reset, then record again to top up."]
+    if problems:
+        raise PreflightFailed(problems)
+    started = io.now()
+    root = cfg['runs_root']
+    run_dir = br.create_run_dir(root, cfg['name'] + '-record', started)
+    logs_dir = os.path.join(run_dir, 'logs')
+    os.makedirs(logs_dir)
+    logpath = os.path.join(logs_dir, 'standin.log')
+    rec = {'name': cfg['name'], 'mode': 'record', 'status': 'recorded', 'started': br.iso(started), 'dir': run_dir, 'null': None,
+           'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': MAIN_SIDES + (['kaijuflow-1page'] if cfg['one_page'] else []),
+           'commit': None, 'new_answers': 0, 'stored_answers': 0, 'visits': 0}
+    handle, failure = None, None
+    try:
+        rec['commit'] = io.image_label()
+        io.reset(ALL_TESTBED)
+        handle = io.start_standin(logpath, mode='record')
+        try:
+            record_pass(cfg, io, rec, list(MAIN_SIDES))
+            if cfg['one_page']:
+                io.apply_one_page()
+                record_pass(cfg, io, rec, ['kaijuflow-1page'])
+        except CapReached as e:
+            rec['status'] = 'null'
+            rec['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
+        finally:
+            try:
+                if handle:
+                    handle.stop()
+            finally:  # the cleanup runs even when stopping the stand-in fails
+                io.restore_config()
+                io.reset(ALL_TESTBED)
+                io.stop_all()
+    except Exception as e:  # noqa: BLE001
+        rec['status'], rec['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
+        failure = e
+    rec['finished'] = br.iso(io.now())
+    text = _read_text(logpath) or ''
+    rec['new_answers'] = sum(1 for line in text.splitlines() if line.startswith('RECORD '))
+    rec['stored_answers'] = sum(1 for line in text.splitlines() if line.startswith('HIT '))
+    _write(os.path.join(run_dir, 'meta.json'), json.dumps({k: rec.get(k) for k in rec if k != 'dir'}, indent=1, sort_keys=True))
+    if rec['status'] == 'null':
+        br.append_index_row(os.path.join(root, 'INDEX.md'), {
+            'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'NULL',
+            'changed': ['recording stopped; what was stored is kept, top it up after the reset'],
+            'headline': f"NULL: {rec['null']['indexer']} limit reached at {rec['null']['time']}; no numbers",
+            'folder': os.path.basename(run_dir)})
+    elif rec['status'] == 'failed':
+        br.append_index_row(os.path.join(root, 'INDEX.md'), {
+            'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'failed', 'changed': ['record pass'],
+            'headline': f"failed: {rec['error']}", 'folder': os.path.basename(run_dir)})
+    if failure:
+        raise failure
+    return rec
+
+
+def record_pass(cfg, io, rec, sides):
+    """Every side lists every title and plays its top pick once, sides one after another, order rotating per title."""
+    _check_cap(io)
+    for i, title in enumerate(cfg['titles']):
+        k = i % len(sides)
+        for side in sides[k:] + sides[:k]:
+            kind, vid, label = title
+            http = io.visit_http(side, kind, vid, cfg['tries'])
+            rec['visits'] += 1
+            print(f"{side} {label}: {http.get('sources')} Sources, top pick {'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
+            _check_cap(io)
+            io.sleep(cfg['settle'])
+
+
 # --------------------------------------------------------------------------- smoke and CLI
 
 def smoke(cfg, port=1340):
@@ -538,9 +645,10 @@ def smoke(cfg, port=1340):
     return results
 
 
-def main(argv):
+def build_parser():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('cmd', choices=['run', 'smoke', 'preflight'])
+    ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight'])
+    ap.add_argument('--no-wait', action='store_true', help='run only: replay indexer answers at once instead of waiting the recorded indexer time')
     ap.add_argument('--for', dest='mode', choices=['run', 'record'], default='run', help='preflight only: check the setup for a run or for a record pass')
     ap.add_argument('--name', default='run')
     ap.add_argument('--runs-root', default=DEFAULT_RUNS_ROOT)
@@ -555,6 +663,23 @@ def main(argv):
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
     ap.add_argument('--settle', type=float, default=3)
+    return ap
+
+
+def topup_command(a):
+    """The record command that tops up this recording, as a line the owner can paste."""
+    parts = ['python3', '-I', 'tools/brain/brainrun.py', 'record', '--name', a.name, '--store', a.store or '', '--list', a.listname or '']
+    if a.key_file:
+        parts += ['--key-file', a.key_file]
+    if a.titles_file:
+        parts += ['--titles-file', a.titles_file]
+    if a.one_page:
+        parts.append('--one-page')
+    return ' '.join(shlex.quote(x) for x in parts)
+
+
+def main(argv):
+    ap = build_parser()
     a = ap.parse_args(argv)
     if a.cmd != 'preflight' or a.mode == 'run':
         if not a.store or not a.listname:
@@ -568,12 +693,25 @@ def main(argv):
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
                one_page=a.one_page, titles=pool, tries=a.tries, settle=a.settle,
                indexers=sorted(os.listdir(listdir)) if a.store and os.path.isdir(listdir) else [],
-               rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT)
+               rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
+               wait=not a.no_wait, topup_command=topup_command(a))
     started = time.time()
     if a.cmd == 'preflight':
         return preflight_command(a.mode, cfg, RealIO(cfg))
     if a.cmd == 'smoke':
         smoke(cfg)
+    elif a.cmd == 'record':
+        try:
+            rec = record_all(cfg, RealIO(cfg))
+        except PreflightFailed as e:
+            for p in e.problems:
+                print(p)
+            return 1
+        if rec['status'] == 'null':
+            print(f"The recording stopped: {rec['null']['indexer']} said its limit was reached. What was stored is kept; "
+                  f"after the reset delete LIMIT_REACHED.json in the store and run the same command again to top up. Folder: {rec['dir']}")
+            return 2
+        print(f"Recorded {rec['new_answers']} new answers; {rec['stored_answers']} were already stored. Folder: {rec['dir']}")
     else:
         try:
             run = run_all(cfg, RealIO(cfg))
