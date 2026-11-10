@@ -16,7 +16,8 @@ testbed.py before each cold round, plays the top pick of every title on every si
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
 row and the report. The first "limit reached" from any indexer aborts the run and records it as null.
 The record command resets the test copies, starts the stand-in in RECORD mode (this spends real indexer requests), sends
-every side through every title in a cold round and then a warm round, and resets again; running it again only asks for what is not stored yet. Its timings never
+every side through every title in a cold round and then a warm round, then proves the recording: the stand-in in REPLAY mode with the wait off
+(no indexer contacted), test copies reset, the same two rounds again. No miss = state complete; any miss = incomplete (listed); and resets again; running it again only asks for what is not stored yet. Its timings never
 reach a report. Only test containers are touched. Secrets never reach the run folder (settings are scrubbed, logs are scrubbed).
 """
 import argparse
@@ -25,6 +26,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -62,7 +64,8 @@ SIDE_LOGS = {
 SIDE_COPY_LOG = {'uu': 'uu-test'}
 NZBDAV_PORT = 3001
 GRACE_S = 5
-RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"stopped", "why", "when", "errors"}
+RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
+EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
 
 
 class CapReached(Exception):
@@ -486,6 +489,9 @@ def preflight(mode, cfg, io):
             problems.append(f"There is no recording for the title list '{cfg.get('listname')}' in {cfg.get('store')}: run the record command first.")
         elif not state:
             problems.append(f"The recording for '{cfg.get('listname')}' does not say whether it is complete: top it up with the record command: {top_up}")
+        elif state.get('state') == 'incomplete':
+            problems.append(f"The recording for '{cfg.get('listname')}' is incomplete: {state.get('why') or 'the proof replay missed answers'}. "
+                            f"Top it up with the record command: {top_up}")
         elif state.get('state') != 'complete':
             problems.append(f"The recording for '{cfg.get('listname')}' stopped early ({state.get('why') or 'no reason noted'}, "
                             f"{state.get('when') or 'at an unknown time'}): top it up with the record command: {top_up}")
@@ -707,28 +713,31 @@ def record_all(cfg, io):
     rec = {'name': cfg['name'], 'mode': 'record', 'status': 'recorded', 'started': br.iso(started), 'dir': run_dir, 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': planned_sides(cfg),
            'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
-           'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS)}
+           'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS), 'misses': []}
     handle, failure = None, None
     try:
         rec['commit'] = io.image_label()
         io.reset(ALL_TESTBED)
         handle = io.start_standin(logpath, mode='record')
         try:
-            record_pass(cfg, io, rec, list(MAIN_SIDES))
-            if cfg['one_page']:
-                switch_to_one_page(io)
-                record_pass(cfg, io, rec, ['kaijuflow-1page'])
-        except CapReached as e:
-            rec['status'] = 'null'
-            rec['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
-        finally:
             try:
-                if handle:
+                record_pass(cfg, io, rec, list(MAIN_SIDES))
+                if cfg['one_page']:
+                    switch_to_one_page(io)
+                    record_pass(cfg, io, rec, ['kaijuflow-1page'])
+            except CapReached as e:
+                rec['status'] = 'null'
+                rec['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
+            finally:
+                try:
                     handle.stop()
-            finally:  # the cleanup runs even when stopping the stand-in fails
-                io.restore_config()
-                io.reset(ALL_TESTBED)
-                io.stop_all()
+                finally:
+                    io.restore_config()
+            if rec['status'] == 'recorded':
+                rec['misses'] = prove_recording(cfg, io, os.path.join(logs_dir, 'standin-proof.log'))
+        finally:  # the cleanup runs even when stopping the stand-in fails
+            io.reset(ALL_TESTBED)
+            io.stop_all()
     except Exception as e:  # noqa: BLE001
         rec['status'], rec['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
         failure = e
@@ -759,13 +768,17 @@ def write_recording_state(cfg, rec):
     answers of this pass were errors (not stored). The preflight of a run reads it."""
     d = os.path.join(cfg['store'], cfg['listname'])
     os.makedirs(d, exist_ok=True)
-    if rec['status'] == 'recorded':
+    misses = rec.get('misses') or []
+    if rec['status'] == 'recorded' and misses:
+        first = '; '.join(f"{br.SIDE_NAMES.get(m['side'], m['side'])} asked {m['request']}" for m in misses[:3])
+        state, why = 'incomplete', f"the proof replay missed {len(misses)} request{'' if len(misses) == 1 else 's'} ({first}{'; ...' if len(misses) > 3 else ''})"
+    elif rec['status'] == 'recorded':
         state, why = 'complete', None
     elif rec['status'] == 'null':
         state, why = 'stopped', f"{rec['null']['indexer']} said its limit was reached"
     else:
         state, why = 'stopped', rec.get('error') or 'the record pass failed'
-    _write(os.path.join(d, RECORDING_FILE), json.dumps({'state': state, 'why': why, 'when': rec['finished'], 'errors': rec['errors']}, indent=1))
+    _write(os.path.join(d, RECORDING_FILE), json.dumps({'state': state, 'why': why, 'when': rec['finished'], 'errors': rec['errors'], 'misses': misses}, indent=1))
 
 
 def record_summary(rec):
@@ -779,7 +792,55 @@ def record_summary(rec):
     for side, n in (rec.get('listed') or {}).items():
         if total and n < total:
             text += f" {br.SIDE_NAMES.get(side, side)} listed no Sources for {total - n} of {total} titles."
+    misses = rec.get('misses') or []
+    if misses:
+        text += (f" The proof replay missed {len(misses)} request{'' if len(misses) == 1 else 's'}, so the recording is INCOMPLETE "
+                 "and a run will refuse it: run the same record command again.")
     return text
+
+
+def prove_recording(cfg, io, logpath):
+    """The proof that ends a record pass: test copies reset, the stand-in in REPLAY mode with the wait off (no indexer is
+    contacted), every side through the same cold round and warm round as the record pass. Returns the requests it could not
+    answer, one {'side', 'request'} each (the side that was visiting when the stand-in logged the MISS), without repeats."""
+    io.reset(ALL_TESTBED)
+    handle = io.start_standin(logpath, mode='replay', wait=False)
+    windows = []  # (index of the stand-in's first new log line, side) at the start of every visit
+
+    class Watch:  # notes where each visit starts in the stand-in's log
+        def __init__(self, inner):
+            self.inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+        def visit_http(self, side, kind, vid, tries):
+            windows.append((self.inner.standin_line_count(), side))
+            return self.inner.visit_http(side, kind, vid, tries)
+
+    watched = Watch(io)
+    scratch = {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
+    try:
+        record_pass(cfg, watched, scratch, list(MAIN_SIDES))
+        if cfg['one_page']:
+            switch_to_one_page(io)
+            record_pass(cfg, watched, scratch, ['kaijuflow-1page'])
+        lines = io.standin_lines()
+    finally:
+        try:
+            handle.stop()
+        finally:
+            io.restore_config()
+    misses, seen = [], set()
+    for i, line in enumerate(lines):
+        if not line.startswith('MISS '):
+            continue
+        side = next((w[1] for w in reversed(windows) if w[0] <= i), 'unknown')
+        request = br.scrub_text(re.sub(r'\s+from=\S+(\s+t=\d+)?$', '', line[5:]))
+        if (side, request) not in seen:
+            seen.add((side, request))
+            misses.append({'side': side, 'request': request})
+    return misses
 
 
 def record_pass(cfg, io, rec, sides):
@@ -872,8 +933,16 @@ def smoke(cfg, io=None):
     return results
 
 
+RECORD_EXIT_CODES = """exit codes of the record command:
+  0  complete: every side was recorded and the proof replay (no indexer contacted) answered every request. A run may use it.
+  1  nothing recorded: the setup check failed (the sentences say why) or the pass broke.
+  2  stopped: an indexer said its limit was reached. What was stored is kept; run the same command again after the indexer reset.
+  3  incomplete: the proof replay missed some requests (listed). Not an error: run the same record command again to top up."""
+
+
 def build_parser():
-    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0], formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 epilog=RECORD_EXIT_CODES)
     ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight', 'check', 'usage'])
     ap.add_argument('--run', dest='run_dir', help='check only: the run folder to check; exits non-zero when it cannot serve as a baseline')
     ap.add_argument('--no-wait', action='store_true', help='run only: replay indexer answers at once instead of waiting the recorded indexer time')
@@ -945,8 +1014,12 @@ def main(argv):
         if rec['status'] == 'null':
             print(f"The recording stopped: {rec['null']['indexer']} said its limit was reached. What was stored is kept; "
                   f"once the indexer has reset, run the same command again to top up. Folder: {rec['dir']}")
-            return 2
+            return EXIT_STOPPED
         print(f"{record_summary(rec)} Folder: {rec['dir']}")
+        if rec.get('misses'):
+            for m in rec['misses'][:10]:
+                print(f"  missed: {br.SIDE_NAMES.get(m['side'], m['side'])} asked {m['request']}")
+            return EXIT_INCOMPLETE
     else:
         try:
             run = run_all(cfg, RealIO(cfg))

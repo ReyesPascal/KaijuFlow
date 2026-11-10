@@ -208,6 +208,12 @@ class PreflightTest(unittest.TestCase):
         self.assert_stops('run', self.world(), 'stopped early', 'drunkenslug said its limit was reached', '2026-11-10',
                           'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
 
+    def test_an_incomplete_recording_stops_a_run_and_says_why_with_the_record_command(self):
+        record(self.cfg, state='incomplete', why='the proof replay missed 2 requests (AltMount addon asked fake t=search&q=tt1)')
+        self.cfg['topup_command'] = 'python3 -I tools/brain/brainrun.py record --name n --store S --list l'
+        self.assert_stops('run', self.world(), 'incomplete', 'missed 2 requests', 'AltMount addon asked',
+                          'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
+
     def test_a_recording_without_a_state_does_not_pass_a_run(self):
         record(self.cfg, state=None)
         self.assert_stops('run', self.world(), 'record command')

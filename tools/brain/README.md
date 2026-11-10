@@ -71,7 +71,7 @@ Code: `brainreport.py` (log parsing, medians, failure split, diff, report, run f
 3. every indexer address in every test copy (also switched-off ones, plus Easynews or Prowlarr when on) is `http://host.docker.internal:1340/<slug>` with or without `/api`;
 4. the caps add up to at most the provider limit (default 100);
 5. the stand-in's port 1340 is free;
-6. run only: the recording `<store>/<list>/<slug>/` holds at least one answer for each switched-on indexer, and its state file `<store>/<list>/RECORDING.json` (written by the record command) says `complete`; for a recording that stopped early the preflight says why and when and gives the record command to top it up.
+6. run only: the recording `<store>/<list>/<slug>/` holds at least one answer for each switched-on indexer, and its state file `<store>/<list>/RECORDING.json` (written by the record command) says `complete`; for a recording that stopped early or is `incomplete` (the proof replay missed requests) the preflight says why and gives the record command to top it up.
 
 Indexers are compared by the slug in the indexer stand-in's address, because each copy names them its own way (for example `IndexerOne` in one copy and `indexerone` in another). Every sentence is plain: the key-file fix reads "make the key file readable only by you (run: chmod 600 <path>)", and "the indexer stand-in" is explained once, in the first address sentence. The tools carry no indexer names. The run record's `commit` is the image label, not the repository's HEAD.
 
@@ -89,7 +89,7 @@ Indexers are compared by the slug in the indexer stand-in's address, because eac
 
 **Cap rule for recording.** The first "limit reached" stops the pass at once; the recording is NULL: what was stored stays, the stand-in's `LIMIT_REACHED.json` stays in the store, the record pass gets an INDEX.md row `NULL` and the command exits with 2. A marker left by an earlier command never blocks a later one: a new `record` moves it aside (kept, renamed `LIMIT_REACHED.<its time>.json`) and goes on from what is stored; if the limit still holds, the first answer writes a new marker and the pass stops as before.
 
-**The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`, or `stopped` with `why` and `when`) and `errors`, the number of answers in this pass that were errors and were not stored. The command ends with one sentence, for example "12 answers were errors and were not stored: run record again to top them up." The preflight of a run passes only a `complete` recording.
+**The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`: the proof replay had no miss; `incomplete`: it had, with each missed request and the side that asked in `misses`; or `stopped` with `why` and `when`) and `errors`, the number of answers in this pass that were errors and were not stored. The command ends with one sentence, for example "12 answers were errors and were not stored: run record again to top them up." The preflight of a run passes only a `complete` recording.
 
 **Nothing is measured.** A record pass gets its own folder `<runs-root>/<date>-<name>-record/` with `logs/standin.log` and `meta.json` (status `recorded`, `null` or `failed`, new and already-stored answer counts), but no report, no tables, no INDEX.md row unless it is NULL or failed, and it is never the "previous run" of a diff. Its timings (the first side to ask waits for the real indexer) reach nobody's numbers.
 
@@ -145,3 +145,5 @@ KaijuFlow writes one line per timed step to stdout (`src/utils/stepTiming.ts`): 
 3. Sources that fail during a check are marked dead in `config/dead-nzbs.json`. If a KaijuFlow bug caused the failure, stop the container and remove those entries before checking again.
 
 Results of the 2026-11-09 check, the scrambled RAR finding and the re-check after the Unscramble fix (#46, with speed per side): `/home/ryan/kaijuflow-notes/brain-1338/RESULTS.md` (outside the repo).
+
+**The proof and the record command's exit codes.** The record command ends with a proof: test copies reset, the stand-in in replay mode with the replay wait off (no indexer is contacted), every side through one cold and one warm round. Exit codes: 0 complete, 1 setup problem or failure, 2 stopped (limit reached), 3 incomplete (run the same command again). `brainrun.py --help` lists them.
