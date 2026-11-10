@@ -179,6 +179,25 @@ class DiffTest(unittest.TestCase):
                      'Indexers added: althub', 'Time of day'):
             self.assertIn(part, text)
 
+    # ---- run-level facts live in the meta, not in the settings snapshot (review fix 12)
+    def test_run_facts_are_listed_from_the_meta(self):
+        prev = dict(self.base, facts={'stand-in replay wait': 'on', 'one-page side': 'no'})
+        cur = dict(self.base, facts={'stand-in replay wait': 'off', 'one-page side': 'yes'}, started='2026-11-10T19:00:00Z')
+        text = '\n'.join(br.diff_runs(prev, cur))
+        self.assertIn('stand-in replay wait: on -> off', text)
+        self.assertIn('one-page side: no -> yes', text)
+
+    def test_a_previous_run_in_the_older_shape_gives_no_false_difference(self):
+        old = dict(self.base, settings={'kaijuflow': {'a.sampleCount': 3, 'b': 1}, 'stand-in': {'replay wait': 'on'}})
+        old_one_page = dict(old, sides=['kaijuflow', 'kaijuflow-1page'],
+                            settings=dict(old['settings'], **{'kaijuflow-1page': {'indexers[N].pagination': False}}))
+        new = dict(self.base, facts={'stand-in replay wait': 'on', 'one-page side': 'no'}, started='2026-11-10T19:00:00Z')
+        self.assertTrue(br.diff_runs(old, new)[0].startswith('Nothing changed'), br.diff_runs(old, new))
+        new_one_page = dict(new, sides=['kaijuflow', 'kaijuflow-1page'], facts={'stand-in replay wait': 'on', 'one-page side': 'yes'})
+        out = br.diff_runs(old_one_page, new_one_page)
+        self.assertEqual([x for x in out if 'pagination' in x or 'one-page side' in x], [], out)
+        self.assertIn('one-page side: yes -> no', '\n'.join(br.diff_runs(old_one_page, new)))
+
 
 class ScrubTest(unittest.TestCase):
     def test_only_real_secret_fields_are_masked(self):
@@ -263,42 +282,106 @@ class ReportTest(unittest.TestCase):
         self.assertIn('2', h)
 
 
-STANDIN_LOG = [
-    'HIT ninjacentral api t=search&q=matrix wait_ms=400',
-    'HIT ninjacentral api t=search&q=matrix&offset=100 wait_ms=300',
-    'HIT drunkenslug api t=search&q=matrix wait_ms=500',
-    'HIT ninjacentral api t=get&id=7 wait_ms=900',
-    'MISS drunkenslug api t=search&q=matrix&offset=100',
-    'MISS ninjacentral nzb abcdef123456',
-    'HIT ninjacentral api t=search&q=matrix wait_ms=0',
-    'HIT drunkenslug api t=search&q=matrix',
-]
+T0 = dt('2026-11-10T18:00:00Z').timestamp() * 1000   # epoch ms of the first visit's start
+
+
+def vis(side, start_s, end_s, list_s=2.0, sources=5, ok=True, **kw):
+    """A visit that began start_s seconds after T0 and ended end_s seconds after it."""
+    def iso(sec):
+        return br.iso(datetime.datetime.fromtimestamp((T0 + sec * 1000) / 1000, datetime.timezone.utc))
+    v = dict(side=side, id='tt1', title='Matrix', ok=ok, list_s=list_s, sources=sources, note=None, limit=None,
+             t_start=iso(start_s), t_end=iso(end_s))
+    v.update(kw)
+    return v
+
+
+def line(kind, slug, req, at_s, ip='10.0.0.2', wait=None):
+    """A stand-in log line sent at_s seconds after T0."""
+    w = f' wait_ms={wait}' if wait is not None else ''
+    return f'{kind} {slug} {req}{w} from={ip} t={int(T0 + at_s * 1000)}'
+
+
+ADDR = {'kaijuflow-test': ['10.0.0.2'], 'uu-test': ['10.0.0.3'], 'altmount-addon-test': ['10.0.0.4']}
 
 
 class StandinLinesTest(unittest.TestCase):
-    def test_parse_lines(self):
-        p = br.parse_standin_lines(STANDIN_LOG)
-        self.assertEqual(p['misses'], ['drunkenslug api t=search&q=matrix&offset=100', 'ninjacentral nzb abcdef123456'])
-        # indexers are asked at the same time: the slowest indexer's search waits added up; NZB files are not search time
-        self.assertEqual(p['indexer_s'], 0.7)
+    def test_parse_a_line(self):
+        p = br.parse_standin_line(line('HIT', 'ninja', 'api q=x&t=search', 3, wait=400))
+        self.assertEqual((p['kind'], p['slug'], p['request'], p['wait_ms'], p['ip']), ('HIT', 'ninja', 'api q=x&t=search', 400, '10.0.0.2'))
+        self.assertEqual(p['t'], int(T0 + 3000))
+        self.assertEqual(br.parse_standin_line(line('MISS', 'ninja', 'nzb abc', 1))['kind'], 'MISS')
+        self.assertIsNone(br.parse_standin_line('LIST movies'))
+        self.assertIsNone(br.parse_standin_line('HIT ninja api x wait_ms=3'))  # no time: cannot be placed
 
-    def test_no_lines_means_zero_wait(self):
-        p = br.parse_standin_lines([])
-        self.assertEqual((p['misses'], p['indexer_s']), ([], 0))
+    def test_a_late_request_lands_on_the_side_that_asked_not_on_the_next_visit(self):
+        kf, uu = vis('kaijuflow', 0, 10), vis('uu', 10, 20)
+        lines = [line('MISS', 'ninja', 'api q=x&t=search', 12, ip='10.0.0.2'),   # KaijuFlow's late background request
+                 line('MISS', 'ninja', 'api q=y&t=search', 14, ip='10.0.0.3')]
+        unmatched = br.assign_standin([kf, uu], lines, ADDR)
+        self.assertEqual(kf['misses'], ['ninja api q=x&t=search'])
+        self.assertEqual(uu['misses'], ['ninja api q=y&t=search'])
+        self.assertEqual(unmatched, 0)
 
-    def test_lines_go_to_the_visit_that_was_running(self):
-        vs = [dict(log_from=0), dict(log_from=3), dict(log_from=5)]
-        br.assign_standin(vs, STANDIN_LOG)
-        self.assertEqual(vs[0]['indexer_s'], 0.7)
-        self.assertEqual(vs[0]['misses'], [])
-        self.assertEqual(vs[1]['misses'], ['drunkenslug api t=search&q=matrix&offset=100'])
-        self.assertEqual(vs[1]['indexer_s'], 0)  # the NZB file's wait is not search time
-        self.assertEqual(vs[2]['misses'], ['ninjacentral nzb abcdef123456'])
+    def test_within_a_side_the_visit_current_for_that_side_gets_the_line(self):
+        a, b = vis('kaijuflow', 0, 5), vis('kaijuflow', 30, 35)
+        br.assign_standin([a, b], [line('MISS', 's', 'api t=search', 29), line('MISS', 's', 'api t=search', 31)], ADDR)
+        self.assertEqual((len(a['misses']), len(b['misses'])), (1, 1))
 
-    def test_visit_without_a_mark_is_left_alone(self):
+    def test_unknown_address_falls_back_to_the_visit_in_progress_and_is_counted(self):
+        kf, uu = vis('kaijuflow', 0, 10), vis('uu', 10, 20)
+        lines = [line('MISS', 's', 'api t=search', 5, ip='172.99.0.9'), line('MISS', 's', 'api t=search', 15, ip='172.99.0.9'),
+                 line('MISS', 's', 'api t=search', 16, ip='10.0.0.3')]
+        unmatched = br.assign_standin([kf, uu], lines, ADDR)
+        self.assertEqual((len(kf['misses']), len(uu['misses'])), (1, 2))
+        self.assertEqual(unmatched, 2)
+        self.assertEqual(br.assign_standin([vis('kaijuflow', 0, 10)], lines[:1], None), 1)  # no address map at all
+
+    def test_one_page_side_shares_the_kaijuflow_container(self):
+        a, b = vis('kaijuflow', 0, 10), vis('kaijuflow-1page', 100, 110)
+        br.assign_standin([a, b], [line('MISS', 's', 'api t=search', 105)], ADDR)
+        self.assertEqual((len(a['misses']), len(b['misses'])), (0, 1))
+
+    def test_indexer_time_is_the_union_of_waits_while_the_list_loaded(self):
+        v = vis('kaijuflow', 0, 10, list_s=3.0)
+        lines = [line('HIT', 'ninja', 'api q=x&t=search', 1.4, wait=400),             # 1.0 - 1.4
+                 line('HIT', 'drunken', 'api q=x&t=search', 1.5, wait=400),           # 1.1 - 1.5, in parallel: overlaps
+                 line('HIT', 'ninja', 'api q=x&t=search&offset=3', 2.5, wait=300),    # 2.2 - 2.5, separate
+                 line('HIT', 'ninja', 'nzb abc', 2.8, wait=900),                      # an NZB file is not search time
+                 line('HIT', 'ninja', 'api t=get&id=7', 2.9, wait=900),
+                 line('HIT', 'ninja', 'api q=late&t=search', 6.0, wait=800)]          # play time, after the list arrived
+        br.assign_standin([v], lines, ADDR)
+        self.assertEqual(v['indexer_s'], 0.8)  # 0.5 for the two parallel waits + 0.3
+
+    def test_no_lines_or_wait_off_means_zero(self):
+        v = vis('kaijuflow', 0, 10)
+        br.assign_standin([v], [line('HIT', 'n', 'api t=search', 1, wait=0)], ADDR)
+        self.assertEqual((v['misses'], v['indexer_s']), ([], 0))
+        w = vis('kaijuflow', 0, 10)
+        br.assign_standin([w], [], ADDR)
+        self.assertEqual((w['misses'], w['indexer_s']), ([], 0))
+
+    def test_a_visit_without_a_start_is_left_alone(self):
         vs = [dict(side='old')]
-        br.assign_standin(vs, STANDIN_LOG)
+        br.assign_standin(vs, [line('MISS', 's', 'api t=search', 1)], ADDR)
         self.assertNotIn('misses', vs[0])
+
+    def test_not_recorded_only_when_the_miss_can_be_the_cause(self):
+        a = vis('kaijuflow', 0, 10, ok=False, sources=0)  # (a) empty list and a search miss
+        br.assign_standin([a], [line('MISS', 's', 'api t=search', 1)], ADDR)
+        self.assertEqual(br.classify_failure(a), 'not_recorded')
+        b = vis('kaijuflow', 0, 10, ok=False, sources=5, note='failure video')  # a search miss, but the list was not empty
+        br.assign_standin([b], [line('MISS', 's', 'api t=search', 1)], ADDR)
+        self.assertEqual(br.classify_failure(b), 'failure_video')
+        self.assertEqual(b['misses'], ['s api t=search'])  # still counted as a miss
+        c = vis('kaijuflow', 0, 10, ok=False, sources=5, note='failure video')  # (b) NZB miss while the top pick played
+        br.assign_standin([c], [line('MISS', 's', 'nzb abc', 5)], ADDR)
+        self.assertEqual(br.classify_failure(c), 'not_recorded')
+        d = vis('kaijuflow', 0, 10, ok=False, sources=5, note='failure video')  # NZB miss before the list arrived
+        br.assign_standin([d], [line('MISS', 's', 'nzb abc', 1)], ADDR)
+        self.assertEqual(br.classify_failure(d), 'failure_video')
+        e = vis('kaijuflow', 0, 10, ok=True, sources=0)  # a visit that played is never "not recorded"
+        br.assign_standin([e], [line('MISS', 's', 'api t=search', 1)], ADDR)
+        self.assertIsNone(br.classify_failure(e))
 
 
 def with_misses():
@@ -306,7 +389,7 @@ def with_misses():
     for v in run['visits']:
         v['misses'], v['indexer_s'] = [], 1.0
     uu_cold1 = next(v for v in run['visits'] if v['side'] == 'uu' and v['phase'] == 'cold' and v['round'] == 1)
-    uu_cold1.update(ok=False, note='no Sources', misses=['ninjacentral api t=search&q=matrix', 'drunkenslug api t=search&q=matrix'])
+    uu_cold1.update(ok=False, note='no Sources', sources=0, not_recorded=True, misses=['ninjacentral api t=search&q=matrix', 'drunkenslug api t=search&q=matrix'])
     kf_warm1 = next(v for v in run['visits'] if v['side'] == 'kaijuflow' and v['phase'] == 'warm' and v['round'] == 1)
     kf_warm1['misses'] = ['drunkenslug api t=search&q=matrix&offset=100']  # still played
     run['topup_command'] = 'python3 -I tools/brain/brainrun.py record --name x --store S --list L'
@@ -338,6 +421,14 @@ class MissReportTest(unittest.TestCase):
         self.assertIn('| KaijuFlow | Matrix | 1 |', sec)
         self.assertIn('Usenet Ultimate, Matrix, Cold 1', sec)  # the top pick left out, by name
         self.assertIn('python3 -I tools/brain/brainrun.py record --name x --store S --list L', sec)
+
+    def test_report_says_how_many_lines_were_matched_by_time_only(self):
+        run = with_misses()
+        self.assertNotIn('matched by time', br.render_report(run, ['x']))
+        run['standin_unmatched'] = 4
+        text = br.render_report(run, ['x'])
+        self.assertIn('4 indexer stand-in requests came from an address that is not a test container', text)
+        self.assertIn('matched by time', text)
 
     def test_no_section_without_misses(self):
         text = br.render_report(runs_fixture(), ['x'])
