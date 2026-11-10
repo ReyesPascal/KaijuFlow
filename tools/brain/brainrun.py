@@ -7,7 +7,7 @@
            [--runs-root DIR] [--one-page] [--titles-file titles.json] [--tries 1] [--rebuild-image]   (record, or top up)
     python3 -I tools/brain/brainrun.py preflight [--for run|record] --store <standin-store> --list <title-list>
            [--rebuild-image] [--provider-limit 100] [--key-file PATH]   (the setup check alone; a run starts with it)
-    python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke   (stand-in reachability check, see README)
+    python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke [--one-page]   (stand-in reachability check, see README)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
 indexer time for every answer unless --no-wait; the stand-in's lines say which test container asked and when, so the report
@@ -44,6 +44,9 @@ DEFAULT_RUNS_ROOT = '/home/ryan/kaijuflow-notes/brain-runs'
 PLAN = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 MAIN_SIDES = ['kaijuflow', 'uu', 'altmount-addon']
 ALL_TESTBED = ['nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow']
+ONE_PAGE_TESTBED = ['kaijuflow', 'altmount-kf']  # the test copies the one-page side uses
+# side -> the test copy (testbed service) that answers its list address
+SIDE_SERVICE = {'kaijuflow': 'kaijuflow', 'kaijuflow-1page': 'kaijuflow', 'uu': 'uu', 'altmount-addon': 'altmount-addon'}
 # side -> (KaijuFlow container with [KF-STEP] lines or None, Backend container, how its log is read)
 SIDE_LOGS = {
     'kaijuflow': ('kaijuflow-test', 'altmount-kf-test', 'altmount'),
@@ -82,6 +85,45 @@ def _read_text(path):
 def snapshot_settings(test_dir):
     """Settings of every side with secrets removed: {side: {dotted key: value}}; the settings command's reader (testbed.py)."""
     return testbed.read_settings(test_dir)
+
+
+def planned_sides(cfg):
+    """The sides a run, a record pass or a smoke check uses: the three main sides, then the one-page side when asked for."""
+    return list(MAIN_SIDES) + (['kaijuflow-1page'] if cfg['one_page'] else [])
+
+
+def switch_to_one_page(io):
+    """The one step that turns KaijuFlow's test copy into the fourth side; the run, the record pass and the smoke check share
+    it. The config is patched while the copy is stopped, then KaijuFlow and its AltMount are reset and come up again (cold).
+    io.restore_config() undoes it."""
+    io.apply_one_page()
+    io.reset(ONE_PAGE_TESTBED)
+
+
+def visit_answer(got, tries, play=None, seek=None):
+    """One visit's result from one common.get() of a side's list address (status None: the copy did not answer), then the
+    top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same."""
+    play, seek = play or common.play_stream, seek or common.seek_reads
+    st, h, body, t = got
+    out = {'list_status': st, 'list_s': round(t.get('total', t['ready']), 2), 'note': None}
+    try:
+        streams = json.loads(body or b'{}').get('streams', []) if st == 200 else []
+    except ValueError as e:
+        streams, out['note'] = [], f'bad JSON: {e}'[:120]
+    if st != 200:
+        out['note'] = h.get('error') or f'HTTP {st}'
+    out['sources'] = len(streams)
+    plays = [play(s) for s in streams[:tries]]
+    out['tries'] = plays
+    top = plays[0] if plays else None
+    out['first_try_plays'] = bool(top and top['plays'])
+    out['start_s'] = top['first_byte_s'] if out['first_try_plays'] else None
+    out['seeks'] = seek(streams[0]['url'], top['size']) if out['first_try_plays'] else {}
+    if top and not top['plays']:
+        out['note'] = top.get('note')
+    elif not streams and not out['note']:
+        out['note'] = 'no Sources'
+    return out
 
 
 def one_page_config(cfg):
@@ -242,26 +284,7 @@ class RealIO:
 
     def visit_http(self, side, kind, vid, tries):
         base = side_base(self.cfg, side)
-        st, h, body, t = common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0)
-        out = {'list_status': st, 'list_s': round(t.get('total', t['ready']), 2), 'note': None}
-        try:
-            streams = json.loads(body or b'{}').get('streams', []) if st == 200 else []
-        except ValueError as e:
-            streams, out['note'] = [], f'bad JSON: {e}'[:120]
-        if st != 200:
-            out['note'] = h.get('error') or f'HTTP {st}'
-        out['sources'] = len(streams)
-        plays = [common.play_stream(s) for s in streams[:tries]]
-        out['tries'] = plays
-        top = plays[0] if plays else None
-        out['first_try_plays'] = bool(top and top['plays'])
-        out['start_s'] = top['first_byte_s'] if out['first_try_plays'] else None
-        out['seeks'] = common.seek_reads(streams[0]['url'], top['size']) if out['first_try_plays'] else {}
-        if top and not top['plays']:
-            out['note'] = top.get('note')
-        elif not streams and not out['note']:
-            out['note'] = 'no Sources'
-        return out
+        return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries)
 
     def logs(self, container, since):
         if container not in self.testbed.TEST_CONTAINERS:
@@ -532,10 +555,13 @@ def _check_cap(io, visit=None, since=None):
                          f"{visit['side']} log during {visit['title']}")
 
 
-def do_pass(cfg, io, run, logbuf, sides, reset_sides):
-    for phase, rnd in PLAN:
+def do_pass(cfg, io, run, logbuf, sides, reset_sides, fresh=False):
+    """Every side through every title in each round of PLAN; each cold round starts with a reset of `reset_sides`, except
+    the first when the caller has just reset them (`fresh`)."""
+    for n, (phase, rnd) in enumerate(PLAN):
         if phase == 'cold':
-            io.reset(reset_sides)
+            if not (fresh and n == 0):
+                io.reset(reset_sides)
             note_addresses(io, run)  # a container gets its address when it starts
         for i, title in enumerate(cfg['titles']):
             k = i % len(sides)
@@ -563,7 +589,7 @@ def run_all(cfg, io):
     os.makedirs(logs_dir)
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
-           'sides': MAIN_SIDES + (['kaijuflow-1page'] if cfg['one_page'] else []), 'standin_misses': 0,
+           'sides': planned_sides(cfg), 'standin_misses': 0,
            'settings': {}, 'commit': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
@@ -580,8 +606,8 @@ def run_all(cfg, io):
             handle = io.start_standin(os.path.join(logs_dir, 'standin.log'), mode='replay', wait=wait)
             do_pass(cfg, io, run, logbuf, list(MAIN_SIDES), ALL_TESTBED)
             if cfg['one_page']:
-                io.apply_one_page()
-                do_pass(cfg, io, run, logbuf, ['kaijuflow-1page'], ['kaijuflow', 'altmount-kf'])
+                switch_to_one_page(io)
+                do_pass(cfg, io, run, logbuf, ['kaijuflow-1page'], ONE_PAGE_TESTBED, fresh=True)
         except CapReached as e:
             run['status'] = 'null'
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
@@ -649,8 +675,9 @@ def record_all(cfg, io):
     os.makedirs(logs_dir)
     logpath = os.path.join(logs_dir, 'standin.log')
     rec = {'name': cfg['name'], 'mode': 'record', 'status': 'recorded', 'started': br.iso(started), 'dir': run_dir, 'null': None,
-           'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': MAIN_SIDES + (['kaijuflow-1page'] if cfg['one_page'] else []),
-           'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0}
+           'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': planned_sides(cfg),
+           'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
+           'listed': {side: 0 for side in planned_sides(cfg)}}
     handle, failure = None, None
     try:
         rec['commit'] = io.image_label()
@@ -659,7 +686,7 @@ def record_all(cfg, io):
         try:
             record_pass(cfg, io, rec, list(MAIN_SIDES))
             if cfg['one_page']:
-                io.apply_one_page()
+                switch_to_one_page(io)
                 record_pass(cfg, io, rec, ['kaijuflow-1page'])
         except CapReached as e:
             rec['status'] = 'null'
@@ -718,6 +745,10 @@ def record_summary(rec):
     if n:
         text += (f" {n} answer{' was an error' if n == 1 else 's were errors'} and {'was' if n == 1 else 'were'} not stored: "
                  "run record again to top them up.")
+    total = len(rec.get('titles') or [])
+    for side, n in (rec.get('listed') or {}).items():
+        if total and n < total:
+            text += f" {br.SIDE_NAMES.get(side, side)} listed no Sources for {total - n} of {total} titles."
     return text
 
 
@@ -730,6 +761,8 @@ def record_pass(cfg, io, rec, sides):
             kind, vid, label = title
             http = io.visit_http(side, kind, vid, cfg['tries'])
             rec['visits'] += 1
+            if http.get('sources'):
+                rec['listed'][side] += 1
             print(f"{side} {label}: {http.get('sources')} Sources, top pick {'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
             _check_cap(io)
             io.sleep(cfg['settle'])
@@ -748,9 +781,14 @@ def smoke_side_result(lines, expected_ip):
 
 
 def smoke_verdict(results):
-    """One plain sentence on whether the sides arrive with their own addresses."""
+    """One plain sentence on whether the sides arrive with their own addresses. Sides that share a test container (the
+    one-page side uses KaijuFlow's) may share its address; two containers may not."""
     addrs = [tuple(r['came_from']) for r in results.values()]
-    if all(r['matched'] for r in results.values()) and len(set(addrs)) == len(addrs):
+    owners = {}
+    for side, r in results.items():
+        for ip in r['came_from']:
+            owners.setdefault(ip, set()).add(r.get('container') or side)
+    if all(r['matched'] for r in results.values()) and all(len(c) == 1 for c in owners.values()):
         return 'Every side reached the indexer stand-in from its own address, and each address matched what docker inspect gave.'
     if not any(addrs):
         return 'No side reached the indexer stand-in: nothing can be said about addresses.'
@@ -758,27 +796,39 @@ def smoke_verdict(results):
             'for the sides that did not match.')
 
 
-def smoke(cfg, port=1340):
-    """One search per side against the stand-in on an EMPTY store (every request a MISS); prints which side reached it,
-    from which address, and whether that matches the address docker inspect gives for the side's test container."""
+def smoke(cfg, io=None):
+    """One search per planned side (the run's side list, the one-page side included when asked for) against the stand-in
+    on an EMPTY store (every request a MISS); prints which side reached it, from which address, and whether that matches the
+    address docker inspect gives for the side's test container. The one-page side is switched on with the same step as in
+    a run and switched off again at the end (KaijuFlow's test copy is left stopped then)."""
     store = cfg['store']
     if os.path.isdir(store) and os.listdir(store):
         sys.exit('smoke needs an EMPTY store folder so that every request is a MISS and nothing can be read from Usenet')
     os.makedirs(store, exist_ok=True)
-    io = RealIO(cfg)
+    io = io or RealIO(cfg)
     log = os.path.join(store, '..', os.path.basename(store.rstrip('/')) + '.smoke.log')
     handle = io.start_standin(log)
-    results = {}
+    results, switched = {}, False
     try:
         addresses = io.addresses()
-        for side in ('kaijuflow', 'uu', 'altmount-addon'):
-            before = len((_read_text(log) or '').splitlines())
-            st, h, body, t = common.get(f"{side_base(cfg, side)}/stream/movie/{os.environ.get('SMOKE_IMDB', 'tt0133093')}.json", timeout=120, limit=0)
-            time.sleep(1)
-            new = [x for x in (_read_text(log) or '').splitlines()[before:] if x.startswith('MISS ')]
-            results[side] = dict(http=st, **smoke_side_result(new, addresses.get(br.CLIENT_CONTAINER[side])))
+        for side in planned_sides(cfg):
+            if side == 'kaijuflow-1page':
+                switched = True
+                switch_to_one_page(io)
+                addresses = io.addresses()  # a container started again can get a new address
+            before = len(io.standin_lines())
+            http = io.visit_http(side, 'movie', os.environ.get('SMOKE_IMDB', 'tt0133093'), 0)
+            io.sleep(1)
+            new = [x for x in io.standin_lines()[before:] if x.startswith('MISS ')]
+            container = br.CLIENT_CONTAINER[side]
+            results[side] = dict(http=http.get('list_status'), container=container,
+                                 **smoke_side_result(new, addresses.get(container)))
     finally:
-        handle.stop()
+        try:
+            if switched:
+                io.restore_config()
+        finally:
+            handle.stop()
     print(json.dumps(results, indent=1))
     print(smoke_verdict(results))
     return results
