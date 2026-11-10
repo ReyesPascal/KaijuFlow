@@ -524,7 +524,7 @@ class FixtureTest(unittest.TestCase):
         self.assertTrue(re.search(r'(?i)api_?key', 'GET /api?apikey=abc123'))
 
     def test_failed_top_pick_shows_its_real_cause(self):
-        text = fixture('kaijuflow-oppenheimer-cold1.log')
+        text = fixture('kaijuflow-oppenheimer-cold1.txt')
         self.assertEqual(br.failure_cause(text), 'Video file not servable (probe failed after 2 attempts); AltMount probe returned 400')
         self.assertEqual(br.played_source(text), self.OPP)
         v = self.opp_visit()
@@ -539,7 +539,7 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(br.classify_failure(dict(v, steps=[], cause='')), 'failure_video')
 
     def test_only_the_played_sources_steps_count(self):
-        text = fixture('kaijuflow-oppenheimer-cold1.log')
+        text = fixture('kaijuflow-oppenheimer-cold1.txt')
         v = self.opp_visit()
         v['played_source'] = br.played_source(text)
         got = br.attribute_steps(v, br.parse_step_lines(text))
@@ -550,12 +550,12 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(sum(1 for s in br.parse_step_lines(text) if s.get('title') and s['title'] != self.OPP), 3)
 
     def test_without_a_known_played_source_no_prepare_lines_are_guessed(self):
-        text = fixture('kaijuflow-oppenheimer-cold1.log')
+        text = fixture('kaijuflow-oppenheimer-cold1.txt')
         got = br.attribute_steps(self.opp_visit(), br.parse_step_lines(text))  # display name matches no release name
         self.assertEqual([s['step'] for s in got], ['health_batch'])
 
     def test_a_warm_start_shows_no_import_and_no_unscramble(self):
-        warm = fixture('kaijuflow-matrix-warm1.log')
+        warm = fixture('kaijuflow-matrix-warm1.txt')
         self.assertEqual(br.played_source(warm), 'The Matrix 1999 2160p MA WEB-DL TrueHD Atmos 7 1 DV HDR H 265-FLUX')
         v = dict(side='kaijuflow', id='tt0133093', t_start='2026-11-10T07:45:41.014Z', ok=True,
                  tries=[{'title': 'x'}], played_source=br.played_source(warm), imports=[])
@@ -570,17 +570,17 @@ class FixtureTest(unittest.TestCase):
         self.assertIsNone(m['unscramble_s'])
 
     def test_altmount_logs_give_import_times(self):
-        kf = br.altmount_imports(fixture('altmount-kf-oppenheimer-cold1.log'))
+        kf = br.altmount_imports(fixture('altmount-kf-oppenheimer-cold1.txt'))
         self.assertEqual([(i['name'], i['queue_id'], i['ok']) for i in kf],
                          [(self.OPP, '6', True), ('Oppenheimer.2023.2160p.MA.WEB-DL.DTS-HD.MA.5.1.DV.HDR.H.265-FLUX', '7', None)])
         self.assertEqual(kf[0]['seconds'], 0.666)
-        addon = br.altmount_imports(fixture('altmount-addon-inception-cold1.log'))
+        addon = br.altmount_imports(fixture('altmount-addon-inception-cold1.txt'))
         self.assertEqual(len(addon), 1)
         self.assertTrue(addon[0]['ok'])
         self.assertEqual(addon[0]['seconds'], 3.0)
 
     def test_standin_lines_parse(self):
-        rows = [br.parse_standin_line(x) for x in fixture('standin-oppenheimer.log').splitlines()]
+        rows = [br.parse_standin_line(x) for x in fixture('standin-oppenheimer.txt').splitlines()]
         rows = [r for r in rows if r]
         self.assertEqual(len(rows), 6)
         self.assertEqual({r['kind'] for r in rows}, {'HIT'})
