@@ -53,3 +53,23 @@ _Avoid_: first play (unqualified), fresh start
 **Warm start**:
 A later play of a Source the Backend already holds, so the video starts from what the Backend has.
 _Avoid_: cached play, repeat play
+
+**Side**:
+One setup that is played in a timed run: KaijuFlow, Usenet Ultimate, AltMount's own addon, or KaijuFlow with one page per indexer. Each side has its own test copy.
+_Avoid_: variant, candidate, contestant
+
+**Round**:
+One pass of every title on one side, either cold or warm. A timed run plays four rounds per side: cold, warm, cold, warm.
+_Avoid_: iteration, lap
+
+**Recording**:
+The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing.
+_Avoid_: cache, snapshot
+
+**Stand-in**:
+The small stand-in indexer on port 1340 that every test copy talks to. It records real answers once and replays them afterwards.
+_Avoid_: mock, proxy
+
+**Cap rule**:
+The first "limit reached" from any indexer stops the pass at once, and its result is null: no numbers are reported. The work waits for the indexer's reset.
+_Avoid_: rate-limit handling

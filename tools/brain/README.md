@@ -18,132 +18,13 @@ Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, i
 
 **Which tools touch the live services.** `parity.py` and `search.py` play real Streams through the live services (UU 1337, AltMount 8085) and are superseded by `brainrun.py`, which only uses the test copies. `statcheck.py` and `rarorder.py` read Usenet. `indexer_standin.py` in record mode spends real indexer requests. Everything else here (`testbed.py`, `brainrun.py preflight|run|smoke`) touches the test copies only. DrunkenSlug note: live AltMount reaches DrunkenSlug through `ds-xml-proxy` (port 8099), which removes `o=json` because AltMount 0.4.0 cannot read DrunkenSlug's JSON; the stand-in does the same through `drop_params` in the key file.
 
-## Test copies of every side (spec #58)
+## Index
 
-`compose.test.yaml` starts a test copy of every side in its own compose project `kaijuflow-test` (own container names, own network `kaijuflow-test-net`, own config folders), so no compose command on it can reach a live container:
+Start with **[RUNBOOK.md](RUNBOOK.md)**: the one-page recipe for a timed run (preflight, record, run, check). The reference pages hold the rest:
 
-| Service | Container | Port | Role |
-|---|---|---|---|
-| `kaijuflow` | `kaijuflow-test` | 1338 | KaijuFlow, Backend = `altmount-kf` |
-| `uu` | `uu-test` | 1339 | Usenet Ultimate v1.4.1, Backend = `nzbdav` (alias `nzbdav` on the test network) |
-| `nzbdav` | `nzbdav-test` | 3001 | NzbDAV for the UU copy (`LOG_LEVEL: information`) |
-| `altmount-addon` | `altmount-addon-test` | 8086 | AltMount for the addon side |
-| `altmount-kf` | `altmount-kf-test` | 8087 | AltMount for KaijuFlow |
+- [docs/run-and-record.md](docs/run-and-record.md): how `brainrun.py run`, `record`, `smoke` and the record recipe work, and the record command's exit codes.
+- [docs/rules.md](docs/rules.md): the cap rule, the settings table and preflight, the replay wait, the indexer allowance (`limits.json`, `usage`).
+- [docs/formats.md](docs/formats.md): run folder, recording state, misses, and the `[KF-STEP]` step lines.
+- [docs/testbed.md](docs/testbed.md): the test copies of every side (`compose.test.yaml`, `testbed.py`) and the 1338 test container.
 
-All config folders, with secrets, are in `/home/ryan/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`, `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`). Every side's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59). Settings per side: `/home/ryan/kaijuflow-notes/spec58/SETTINGS.md`.
-
-Recipe (from the repo root; `testbed.py` runs every Docker command through the test project and refuses any other service):
-
-1. Rebuild KaijuFlow's image from the commit under test: `docker build -t kaijuflow:test .`
-2. Start: `python3 -I tools/brain/testbed.py up` (all five) or `... up uu nzbdav` (named services). Wait until `status` shows them healthy.
-3. Cold reset before a cold run: `python3 -I tools/brain/testbed.py reset` (all sides) or `... reset altmount-kf kaijuflow`. It stops each side, restores it from `templates/` (NzbDAV database and blobs, AltMount database, metadata, `.nzbs` and segment cache, UU and KaijuFlow health/dead caches and stats), starts it again and runs the emptiness check. Settings, logins and users are kept. Exit code 0 and the line `EMPTY: ...` mean every checked Backend holds no imported item.
-4. Emptiness check alone: `python3 -I tools/brain/testbed.py check [side ...]` (database tables, the Backend's own API/WebDAV listing, leftover files, cache files). Exit 1 and `NOT EMPTY: ...` lines otherwise.
-5. Stop when done: `python3 -I tools/brain/testbed.py stop`. `status` lists the test containers.
-
-Never run two test Backends at the same time (connection budget, see SETTINGS.md). Tests of the scripts (no Docker, run in CI): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
-
-## The one command: a full run with a report (spec #58, ticket #62)
-
-`brainrun.py run` plays the top pick of every title on every side (KaijuFlow 1338, Usenet Ultimate 1339, AltMount's own addon 8086; with `--one-page` also "KaijuFlow, one page per indexer", which is the KaijuFlow config with pagination off), one side at a time, in four rounds: cold, warm, cold, warm. Each cold round first resets every test copy with `testbed.py` (and checks it is empty); warm rounds follow right after on the same state. It starts the indexer stand-in in **replay** mode itself (so every side sees the same recorded answers and no real indexer is contacted), reads KaijuFlow's `[KF-STEP]` lines and each Backend's import start/end from the test containers' own logs (`docker logs`, never `exec`), and stops the stand-in and all test copies at the end, also after an error. The one-page side comes after the three main sides; one shared step (`switch_to_one_page`, used by run, record and smoke alike) patches KaijuFlow's config while its copy is stopped, then resets KaijuFlow and its AltMount so they come up again cold; the config is restored at the end.
-
-    python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list> [--one-page] [--titles-file titles.json] [--runs-root DIR]
-
-Run it in the background with a hard `timeout`, like the other tools; it prints one line per visit. `--no-wait` starts the stand-in with its replay wait off (see below). `--user-id` defaults to the first manifest id of the first user in the test container's `config/users.json`; the AltMount download key is computed from `templates/altmount.key`. The recording is made earlier by `brainrun.py record` (next section) and spends real indexer requests.
-
-**Run records.** Every run gets its own folder `<runs-root>/<UTC date-time>-<name>/` (default runs root `/home/ryan/kaijuflow-notes/brain-runs`; use a temporary one for any trial) with `settings.json` (every side's settings, secrets replaced by `***`, exactly the settings reader's output), `meta.json` (settings, run-level facts, container addresses, KaijuFlow commit, titles, indexers, status, what changed), `raw.json` (every visit with its timings, step lines and imports), `logs/` (stand-in log and the test containers' logs, scrubbed of keys) and `report.md`. One row per run is appended to `<runs-root>/INDEX.md` (date, name, result, what changed, headline numbers, folder link). Nothing is overwritten: a rerun, even in the same second, gets a new folder, and INDEX.md is only ever appended to. The report opens with one sentence, then "What changed since the last run" (a diff of settings, run-level facts (stand-in replay wait on or off, the one-page side), KaijuFlow commit, titles, indexers and sides against the newest earlier finished run; a run recorded in the older shape, which kept those facts inside its settings, is read as facts too, so it shows no false difference, always ending with the time of day of both runs, and with how many null runs lie between them and when; the same list goes into the INDEX.md row), then the shared-steps table (search time split into "Indexers", the recorded wait, and "Side's own work"), the extras table, failures split into indexer limit / Backend rejection / failure video / other / not recorded, per-title detail and, when there are misses, a "Not recorded" section with the top-up command; every column is defined under its table.
-
-**Cap rule.** The first "limit reached" from any indexer aborts the run at once: the stand-in's `LIMIT_REACHED.json` (found at the start or after any visit), or a limit line in a side's own logs. The log wordings matched are the ones the sides print (`brainreport.LIMIT_RE`): the indexer's "Request limit reached" text as AltMount and KaijuFlow pass it on, `HTTP 429`, Usenet Ultimate's "Status: 429", KaijuFlow's "Failed to download NZB from X: 429" and the stand-in's `LIMIT_REACHED indexer=`; loose phrases such as "api limit" are not matched. The run is recorded as NULL in INDEX.md with the indexer and time, its report holds no numbers, and a null run is never used as the "previous run" for a diff. The stand-in and the test copies are stopped. A replay run ignores a marker older than its own start (replay never contacts an indexer, so an old marker was left by an earlier command and cannot be news); it is not deleted.
-
-`brainrun.py smoke --store <EMPTY folder> --list smoke` is the reachability check: stand-in in replay mode on an empty store (every request is a MISS, so nothing can be read from Usenet), one search per side, and it prints for each side how many stand-in requests it caused, which address they came from, the address `docker inspect` gives for the side's test container, and whether the two match (then one plain sentence says whether every side arrived with its own address). That is the check that the runner can tell the sides apart by address. It tries the same sides as the planned run: add `--one-page` when the run will use the fourth side; it is switched on with the same step as in a run (its address may equal KaijuFlow's, since it is the same container) and switched off at the end, which leaves KaijuFlow's copy stopped. Start the test copies with `testbed.py up` first and stop them with `testbed.py stop` afterwards.
-
-Usenet Ultimate's Import column is NzbDAV's own job time (#82): after each Usenet Ultimate visit the runner reads the test NzbDAV's history answer (port 3001, read-only) and takes `download_time` of the job that is new since before the visit. It is whole seconds (NzbDAV reports no fractions), against AltMount's log figure to the millisecond; the report's column definition says so. A visit that adds no job (item already imported) reads "-". The Usenet Ultimate test copy's own log is kept as `logs/uu-test.log` (scrubbed).
-
-Code: `brainreport.py` (log parsing, medians, failure split, diff, report, run folder and INDEX.md; pure logic), `brainrun.py` (orchestration), tests `test_brainreport.py` and `test_brainrun.py` (fakes and fixture logs, run in CI).
-
-## Settings table and preflight (spec #72, ticket #74)
-
-**Settings command.** `python3 -I tools/brain/testbed.py settings [--limit 100]` prints every test copy's settings as a table and the connection budget (per copy, total, provider limit), read straight from the copies' config files (KaijuFlow and Usenet Ultimate `config.json`, NzbDAV's database, each AltMount's `config.yaml`). Keys, logins and passwords are never printed. It replaces the hand-written table in SETTINGS.md. The run record's `settings.json` comes from the same reader (`testbed.read_settings`), so the table and the "what changed" list agree. The connection budget counts the NewsHosting login only: health-check cap (KaijuFlow, Usenet Ultimate); for NzbDAV and AltMount every provider entry on the same Usenet host as the copy's main provider, backup flag or not. An entry on another host (NzbDAV's backup login) has its own limit: it is shown beside the count (`+ other host max N, own limit`) and not counted.
-
-**Preflight.** `python3 -I tools/brain/brainrun.py preflight [--for run|record] --store <store> --list <list> [--rebuild-image] [--provider-limit 100] [--key-file PATH]` prints one plain sentence per problem and exits 1, or exits 0 with `Setup is right ...`. `--store` and `--list` are only needed for `--for run`. `brainrun.py run` starts with the same check and stops before creating a run folder when it fails. Checks:
-
-1. the `kaijuflow:test` image's `kaijuflow.commit` label equals the repository's commit and the tree is clean (`--rebuild-image` builds the image from the commit itself, an archive of `HEAD` piped into `docker build --label kaijuflow.commit=<commit> -t kaijuflow:test -`, so untracked or ignored files can never get into an image whose label names that commit; it never builds from a dirty tree);
-2. record only: the key file (default `<test dir>/indexers.json`) exists, is readable only by the owner, and names exactly the indexers switched on in every test copy (only the names are read, so per-indexer settings added later are fine);
-3. every indexer address in every test copy (also switched-off ones, plus Easynews or Prowlarr when on) is `http://host.docker.internal:1340/<slug>` with or without `/api`;
-4. the caps add up to at most the provider limit (default 100);
-5. the stand-in's port 1340 is free;
-6. run only: the recording `<store>/<list>/<slug>/` holds at least one answer for each switched-on indexer, and its state file `<store>/<list>/RECORDING.json` (written by the record command) says `complete`; for a recording that stopped early or is `incomplete` (the proof replay missed requests) the preflight says why and gives the record command to top it up.
-
-Indexers are compared by the slug in the indexer stand-in's address, because each copy names them its own way (for example `IndexerOne` in one copy and `indexerone` in another). Every sentence is plain: the key-file fix reads "make the key file readable only by you (run: chmod 600 <path>)", and "the indexer stand-in" is explained once, in the first address sentence. The tools carry no indexer names. The run record's `commit` is the image label, not the repository's HEAD.
-
-**For the record command (#75).** Call `brainrun.preflight('record', cfg, io)` (or `'run'`); it returns a list of sentences, `[]` meaning go, and `brainrun.preflight_command(mode, cfg, io)` prints them and returns the exit code. `cfg` needs `test_dir`, `store`, `listname`; optional `limit`, `standin_port`, `key_file`, `rebuild_image`. `io` is the runner's IO object (`RealIO`) and needs `git_info`, `image_label`, `rebuild_image`, `setup_report`, `key_state`, `port_free`, `recording`; `FakeIO` in the tests shows the shortcut (`io.preflight(mode)`). Tests: `test_settings.py`, `test_preflight.py`.
-
-## Record, top-up and misses (spec #72, ticket #75)
-
-**The recipe, in order** (from the repo root; run the long ones in the background with a hard `timeout`):
-
-1. Preflight: `python3 -I tools/brain/brainrun.py preflight --for record --store <store> --list <list>` (add `--rebuild-image` when it says the image is from another commit). Fix every sentence it prints.
-2. Record: `python3 -I tools/brain/brainrun.py record --name <name> --store <store> --list <list> [--key-file PATH] [--one-page] [--titles-file titles.json]`. It runs the preflight itself, resets the test copies, starts the stand-in in **record** mode on the replay address, sends every side (KaijuFlow, Usenet Ultimate, AltMount's own addon, and with `--one-page` the fourth side) through every title in two rounds (#79): a cold round, then a warm round on the same state with no reset between (list, then play the top pick; sides one after another, order rotating per title). The warm round stores what only a warm visit asks for, such as KaijuFlow's health-check replacements for Sources that went dead in the cold round and the addon's second searches, so a run's warm list times are real numbers. The one-page side gets its own cold and warm round after the switch. Stops the stand-in and resets the test copies again. It ends with one sentence that also names any side that listed no Sources for some titles (a side whose copy did not answer shows up there). This spends real indexer requests and grabs.
-3. Preflight for the run: `... preflight --for run --store <store> --list <list>`, then run: `python3 -I tools/brain/brainrun.py run --name <name> --store <store> --list <list> [--no-wait]` (it starts with the same preflight and refuses to start without a recording).
-
-**Top-up.** Record mode serves a stored answer instead of asking the indexer again, so running `record` a second time (again both rounds) only asks for what is not stored yet (a second record of a complete list makes zero indexer requests). The report's "Not recorded" section prints the exact command.
-
-**Cap rule for recording.** The first "limit reached" stops the pass at once; the recording is NULL: what was stored stays, the stand-in's `LIMIT_REACHED.json` stays in the store, the record pass gets an INDEX.md row `NULL` and the command exits with 2. A marker left by an earlier command never blocks a later one: a new `record` moves it aside (kept, renamed `LIMIT_REACHED.<its time>.json`) and goes on from what is stored; if the limit still holds, the first answer writes a new marker and the pass stops as before.
-
-**The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`: the proof replay had no miss; `incomplete`: it had, with each missed request and the side that asked in `misses`; or `stopped` with `why` and `when`) and `errors`, the number of answers in this pass that were errors and were not stored. The command ends with one sentence, for example "12 answers were errors and were not stored: run record again to top them up." The preflight of a run passes only a `complete` recording.
-
-**Nothing is measured.** A record pass gets its own folder `<runs-root>/<date>-<name>-record/` with `logs/standin.log` and `meta.json` (status `recorded`, `null` or `failed`, new and already-stored answer counts), but no report, no tables, no INDEX.md row unless it is NULL or failed, and it is never the "previous run" of a diff. Its timings (the first side to ask waits for the real indexer) reach nobody's numbers.
-
-**Replay wait.** By default the stand-in waits the recorded indexer time for every replayed answer (#73), so list times look like real life. `run --no-wait` switches that off for a tuning run; the run record notes it as the run-level fact `stand-in replay wait: on|off` (in `meta.json`, not in the settings snapshot), so "What changed since the last run" shows it.
-
-**Misses and indexer time, matched to the side and the visit.** Every stand-in request line says which address asked and when its answer was sent (`from=<ip> t=<epoch ms>`). The runner reads each test container's address on the test network with `docker inspect` (read-only, test containers only) after every reset, because a container gets its address when it starts, and keeps them in the run's `meta.json` (`addresses`). A line belongs to the side whose container sent it, and within that side to the visit that was current for that side when the line was sent (from that side's visit start until its next visit starts: the same rule the step lines use), so a late background request cannot land on another side's visit. A line from an unknown address falls back to the time window of the visit in progress; the report says how many lines were matched that way. From a visit's lines the report takes:
-
-- the misses: every one is counted per side and title in the "Not recorded" table. A failed top pick is the failure cause "Not recorded", and left out of the plays-out-of-ten figure, only when the miss can be the cause: the list came back empty and that side had a search miss for that visit, or that side had an NZB miss while the top pick played (after the list arrived, until the visit ended). Otherwise the pick keeps its real cause (indexer limit, Backend rejection, failure video, other) and stays in the figure.
-- the indexer time: the time that side spent waiting on replayed indexer answers while the list was loading, that is the union of the intervals `[t - wait_ms, t]` of its search answers between the visit's start and the list's arrival (parallel indexers and parallel pages are not added up; NZB files and play-time requests are left out). "Side's own work" is the list time minus that. With the wait off, both read as before (0 and the list time).
-
-## Indexer allowance (spec #77, ticket #87)
-
-**Limits file.** `limits.json` sits next to the key file (default `/home/ryan/kaijuflow-test/limits.json`, outside the repo; you fill it in once). Example: `tools/brain/limits.example.json`.
-
-```json
-{"indexers": {"ninjacentral": {"search_per_day": 2000, "download_per_day": 450, "reset": "rolling-24h"}}}
-```
-
-- `search_per_day`: the daily limit of search (API) requests. `download_per_day`: the daily limit of NZB downloads. Whole numbers.
-- `reset`: `"rolling-24h"` (the last 24 hours count; NinjaCentral's reply carries no usage fields and the reset is not confirmed, so this is the safe reading) or a clock time such as `"04:00"`, read in UTC unless the entry also has `"timezone": "Europe/Berlin"`.
-- The name is matched to the stand-in's indexer name and the copies' names ignoring case, spaces and dashes.
-
-**`python3 -I tools/brain/brainrun.py usage [--key-file PATH] [--test-dir DIR] [--runs-root DIR]`** prints, per indexer, `Used`, `Limit` and `Left` for searches and for downloads since the indexer's last reset. Used adds up two things: the stand-in's real requests in the record folders (`RECORD` and `ERROR` lines of each `logs/standin.log`; `api` is a search, `nzb` is a download; replayed `HIT` lines cost nothing) and the counts the live copy keeps (`queryHistory` and `grabHistory` in its `config/stats.json`, read-only). The test copies are not counted: they only talk to the stand-in, so their counters never measure real indexer hits. A copy keeps only its latest hundred entries of each, and the command counts this machine only; it says so. Without a limits file it prints one sentence asking you to fill it in. It never contacts an indexer. Code: `allowance.py`; tests: `test_allowance.py`.
-
-**`preflight --for record`** prints the same table, then the request count of the newest complete recording (a record folder whose `meta.json` says `recorded`) of the same list, and warns when that count is more than what is left. It only warns; it never blocks.
-
-## Step lines (`[KF-STEP]`)
-
-KaijuFlow writes one line per timed step to stdout (`src/utils/stepTiming.ts`): `[KF-STEP] ` followed by a one-line JSON object. `docker logs -t` prefixes are fine: parse from the first `[KF-STEP] ` (`json.loads(line.split("[KF-STEP] ", 1)[1])`). Lines carry names, titles and numbers only, never URLs or keys.
-
-| Field | Meaning |
-|---|---|
-| `step` | `indexer_page`, `health_batch`, `nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte` |
-| `source` | Source or indexer name (none for `health_batch`) |
-| `ms` | whole milliseconds the step took |
-| `ok` | false when the step threw (the line is still written) |
-| `t` | end time, ISO UTC |
-| `ref` | Stremio id (`tt0133093`, `tt1234567:1:2`), on the search-side steps `indexer_page` and `health_batch` only |
-| `title` | release title of the Source, on the prepare-side steps (`nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte`) |
-| `job` | Backend job id on `upload`, `import_wait`, `first_byte` |
-| extras | `page` (`indexer_page`, 1 = first page); `count`, `checked`, `indexers` (`health_batch`); `result`, `parts` (`unscramble`); `includes_upload` (`import_wait` on AltMount: one request uploads and waits, so there is no `upload` line) |
-
-`brainrun.py` ties lines to a title like this: search-side lines by `ref`, for that side's visit until the next visit that used the same KaijuFlow container starts (a late `health_batch` is kept); prepare-side lines to the Source that was played (its release title appears in the played Stream's text; otherwise the work that began after the visit began), so background work of the previous title cannot land in the next one. This runs once at the end of the run (`finalize_steps`).
-
-## The 1338 test container
-
-`/home/ryan/kaijuflow-test/config` is the container's own copy of UU's config (`backend: altmount`, AltMount `http://192.168.4.40:8087`, category `kaijuflow`). To use it:
-
-(Its compose file is now part of `compose.test.yaml` above, pointing at the KaijuFlow-side test AltMount on 8087 instead of the live AltMount; the old live-AltMount settings are in `config.bak-60-*`.)
-
-1. Rebuild the image from the commit under test: `docker build -t kaijuflow:test .`
-2. Start it: `python3 -I tools/brain/testbed.py up kaijuflow`. Stop it with `... stop kaijuflow` afterwards.
-3. Sources that fail during a check are marked dead in `config/dead-nzbs.json`. If a KaijuFlow bug caused the failure, stop the container and remove those entries before checking again.
-
-Results of the 2026-11-09 check, the scrambled RAR finding and the re-check after the Unscramble fix (#46, with speed per side): `/home/ryan/kaijuflow-notes/brain-1338/RESULTS.md` (outside the repo).
-
-**The proof and the record command's exit codes.** The record command ends with a proof: test copies reset, the stand-in in replay mode with the replay wait off (no indexer is contacted), every side through one cold and one warm round. Exit codes: 0 complete, 1 setup problem or failure, 2 stopped (limit reached), 3 incomplete (run the same command again). `brainrun.py --help` lists them.
+Code: `brainreport.py` (log parsing, medians, report, run folder; pure logic), `brainrun.py` (orchestration), `allowance.py`, `runcheck.py`, `testbed.py`; tests are the `test_*.py` files next to them (run in CI, no Docker): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
