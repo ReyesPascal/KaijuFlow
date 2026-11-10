@@ -61,7 +61,7 @@ async function testConnection(): Promise<{ status: number; body: { success: bool
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(provider),
   });
-  return { status: res.status, body: await res.json() };
+  return { status: res.status, body: (await res.json()) as { success: boolean; message: string } };
 }
 
 afterEach(() => { verify = true; });

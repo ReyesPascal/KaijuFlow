@@ -26,6 +26,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: npm run test:unit
+      - name: Type-check the unit tests (tests/unit/*.ts)
+        run: npm run typecheck:tests
       - name: Brain tools compile and lint (tools/brain/*.py)
         run: |
           python3 -m py_compile tools/brain/*.py
