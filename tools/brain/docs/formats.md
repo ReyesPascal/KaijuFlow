@@ -1,6 +1,6 @@
 # Brain tools: formats
 
-What the files and lines look like: run folder, targets, recording state, misses, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+What the files and lines look like: run folder, targets, recording state, misses, the page's `story.html` and archive, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Run folder
 
@@ -55,6 +55,29 @@ A null or failed run gets no target lines. If `targets.json` cannot be used, one
 
 - the misses: every one is counted per side and title in the "Not recorded" table. A failed top pick is the failure cause "Not recorded", and left out of the plays-out-of-ten figure, only when the miss can be the cause: the list came back empty and that side had a search miss for that visit, or that side had an NZB miss while the top pick played (after the list arrived, until the visit ended). Otherwise the pick keeps its real cause (indexer limit, Backend rejection, failure video, other) and stays in the figure.
 - the indexer time: the time that side spent waiting on replayed indexer answers while the list was loading, that is the union of the intervals `[t - wait_ms, t]` of its search answers between the visit's start and the list's arrival (parallel indexers and parallel pages are not added up; NZB files and play-time requests are left out). "Side's own work" is the list time minus that. With the wait off, both read as before (0 and the list time).
+
+## The page: `story.html` and the page archive
+
+`build_page.py` builds the speed-check page (`index.html` and `tables.json`) from run folders; the runbook's "Publish the page" has the steps. The words of a section come from one of two places, never from a built page.
+
+**`story.html`, a run's written findings.** An optional file in a timed run's folder, written by hand: the run's section as HTML, from its `<h2>` heading down, without the `<section>` frame. The builder puts the run's tables in where the story names them:
+
+| Name in the story | What goes there |
+|---|---|
+| `__SUMMARY_TABLE__` | one row per side: start and list medians, cold and warm, and how often the top pick played |
+| `__ROUND_TABLE__` | one row per side with the four rounds side by side |
+| `__DETAILS__` | the two "All numbers" blocks; their per-title tables go to `tables.json` as `<run name>-start` and `<run name>-list` |
+
+A part the story does not name is not shown. Numbers written into the story's sentences are not checked against the run. A run without `story.html` gets a "Numbers only" section made of the same three parts.
+
+**The page archive, for runs whose folders are gone.** `tools/brain/page-archive/<date>-<name>/` holds one lost run as it was published; nothing rebuilds it. An entry has the files it needs out of:
+
+- `section.html`: the run's section. It goes below the sections of the timed runs, newest entry first (by folder name).
+- `appendix.html`: blocks that go below "What the words mean".
+- `footer.html`: `<div>` lines for the page's footer.
+- `tables.json`: the tables for the `data-table` places in those files.
+
+The build stops with one sentence when two tables share a name (two runs with the same name on one page) or a place has no table. To keep a run whose folder is about to go: copy its section out of a built `index.html` (from its `<!-- <name> <date> start -->` line to the matching `end` line) into a new entry's `section.html`, and its two tables into the entry's `tables.json`.
 
 ## Step lines (`[KF-STEP]`)
 
