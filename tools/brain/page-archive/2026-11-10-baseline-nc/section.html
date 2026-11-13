@@ -1,0 +1,70 @@
+<!-- baseline-nc start -->
+<section>
+  <h2>First baseline, 2026-11-10 (old machine, NinjaCentral only)</h2>
+  <p class="note">Kept for the record. This run was made on the old machine, with three setups and a recording that lacked the warm rounds. Its run record was lost with that machine. The 2026-11-13 run above replaces it as the baseline.</p>
+  <p>The first timed run on the test copies, the starting point that every later change is measured against. Three setups, 10 titles, four rounds: cold, warm, cold, warm. The indexer answers were recorded once and replayed to every setup, so all three searched the same NinjaCentral results. Recording 07:27 to 07:35 UTC, timed run 07:37 to 07:59 UTC. No errors and no indexer limit. The live services were not touched.</p>
+
+  <div class="answer">
+    <h3>Where KaijuFlow stands against the targets</h3>
+    <div class="big">Four of the six targets are met at the start. One is missed by a single title, and that miss is a fixable KaijuFlow problem, not a bad Source. One cannot be judged from this run.</div>
+    <table class="mini">
+      <thead><tr><th scope="col">Target</th><th scope="col">Baseline</th><th scope="col">Result</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Top pick plays on 10 of 10 titles, cold and warm</th><td>Cold 9 of 10 and 9 of 10; warm 10 of 10 and 10 of 10</td><td class="bad">Not met when cold</td></tr>
+        <tr><th scope="row">Cold start no slower than Usenet Ultimate</th><td>KaijuFlow 2.37 s, Usenet Ultimate 2.57 s</td><td class="ok">Met (level)</td></tr>
+        <tr><th scope="row">Warm list no slower than 4.7 s</th><td>2.51 s measured, but too low to trust</td><td class="warn">Cannot tell yet</td></tr>
+        <tr><th scope="row">Top pick plays more often than AltMount's own addon</th><td>KaijuFlow 38 of 40, addon 30 of 38</td><td class="ok">Met</td></tr>
+        <tr><th scope="row">Warm start within 0.05 s of the addon</th><td>KaijuFlow 0.06 s, addon 0.12 s</td><td class="ok">Met (faster)</td></tr>
+        <tr><th scope="row">Cold start within 1 s of the addon</th><td>KaijuFlow 2.37 s, addon 4.19 s</td><td class="ok">Met (faster)</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Start = seconds from pressing play on the top pick until the first bytes of video arrive. List = seconds from asking for a title until the list of Sources arrives. Every time is the median over the titles of the rounds named. Cold = the Backend is empty and has to import the file. Warm = the same titles again right after.</p>
+  </div>
+
+  <div class="answer">
+    <h3>The numbers, round by round</h3>
+    <div class="big">KaijuFlow with AltMount and Usenet Ultimate with NzbDAV start a cold video in about the same time. Once a file has been played, AltMount starts it about three times faster.</div>
+    <div class="scroll"><table class="grid">
+      <thead>
+        <tr><th rowspan="2" scope="col">Setup</th><th colspan="3" scope="colgroup" class="side">Cold 1</th><th colspan="3" scope="colgroup" class="side">Warm 1</th><th colspan="3" scope="colgroup" class="side">Cold 2</th><th colspan="3" scope="colgroup" class="side">Warm 2</th></tr>
+        <tr><th scope="col">Start</th><th scope="col">List</th><th scope="col">Top pick plays</th><th scope="col">Start</th><th scope="col">List</th><th scope="col">Top pick plays</th><th scope="col">Start</th><th scope="col">List</th><th scope="col">Top pick plays</th><th scope="col">Start</th><th scope="col">List</th><th scope="col">Top pick plays</th></tr>
+      </thead>
+      <tbody><tr><th scope="row">KaijuFlow with AltMount</th><td class="num">1.99 s</td><td class="num">9.85 s</td><td class="bad">9 of 10</td><td class="num">0.07 s</td><td class="num">2.54 s</td><td class="ok">10 of 10</td><td class="num">2.75 s</td><td class="num">10.80 s</td><td class="bad">9 of 10</td><td class="num">0.04 s</td><td class="num">2.46 s</td><td class="ok">10 of 10</td></tr><tr><th scope="row">Usenet Ultimate with NzbDAV</th><td class="num">3.23 s</td><td class="num">10.25 s</td><td class="ok">10 of 10</td><td class="num">0.22 s</td><td class="num">2.71 s</td><td class="ok">10 of 10</td><td class="num">2.38 s</td><td class="num">10.48 s</td><td class="ok">10 of 10</td><td class="num">0.18 s</td><td class="num">2.41 s</td><td class="ok">10 of 10</td></tr><tr><th scope="row">AltMount&#x27;s own addon</th><td class="num">4.09 s</td><td class="num">0.58 s</td><td class="bad">8 of 10</td><td class="num">0.12 s</td><td class="num">0.59 s</td><td class="bad">7 of 9</td><td class="num">4.35 s</td><td class="num">0.58 s</td><td class="bad">8 of 10</td><td class="num">0.12 s</td><td class="num">0.59 s</td><td class="bad">7 of 9</td></tr></tbody>
+    </table></div>
+    <p class="note">The two cold rounds of one setup differ by up to 0.9 s, so a gap of under a second between setups means nothing. The addon's warm rounds count 9 titles: Breaking Bad S01E01 is left out because the recording did not hold what the addon asked for the second time.</p>
+  </div>
+
+  <div class="answer">
+    <h3>What the run found</h3>
+    <ul>
+      <li><strong>KaijuFlow's one miss is a good Source that it gave up on.</strong> Oppenheimer's top pick played on Usenet Ultimate with NzbDAV. It was the same Source on both. Its release name ends in ".mkv". AltMount took it in without complaint and stored it as a folder with that name holding the file. The address KaijuFlow then asked for is the folder, not the file. AltMount answered "400" to it twice, and KaijuFlow showed the failure video and marked the Source dead. In the warm rounds the next Source played. This is the only thing between KaijuFlow and 10 of 10 in the cold rounds.</li>
+      <li><strong>Where the cold list time goes.</strong> Of KaijuFlow's 10.1 s, about 1.8 s is waiting for the indexer and about 6.1 s is health checks. Usenet Ultimate's list takes the same time; it does the same work.</li>
+      <li><strong>A warm list costs about 2 seconds before any checking.</strong> With the search already remembered, KaijuFlow still spent about 2 s going through a list of 300 Sources and 0.3 s on a list of 70, before any health check. Read from the log's timestamps; the cause was not looked into.</li>
+      <li><strong>The Unscramble check costs time on half of the cold plays.</strong> On 5 of 10 top picks KaijuFlow spent 0.6 to 1.5 s finding out that the set needs no Unscramble. Interstellar, the one Scrambled RAR set, took 4.8 to 4.9 s to Unscramble. AltMount's import itself took 1.6 s (median).</li>
+      <li><strong>AltMount's own addon fails the same picks every round.</strong> The Matrix and Game of Thrones S02E03 failed in all four rounds (HTTP 503 after AltMount's own check). It keeps no memory of a bad Source, as on 2026-11-09.</li>
+    </ul>
+  </div>
+
+  <div class="answer">
+    <h3>What this baseline cannot be used for yet</h3>
+    <ul>
+      <li><strong>Warm list times are too low.</strong> In a warm round KaijuFlow and Usenet Ultimate leave out the Sources that failed in the cold round and health-check a few replacements. The recording was made in one cold pass, so it does not hold the files for those replacements (40 requests in the warm rounds, none in the cold rounds). Each of those checks ended at once and cost nothing. This touched 6 of 10 titles on KaijuFlow and 5 of 10 on Usenet Ultimate. The clean titles (Inception, The Dark Knight, Pulp Fiction, Breaking Bad S01E01) are right. Play counts and start times are not affected.</li>
+      <li><strong>Usenet Ultimate's import time is blank.</strong> NzbDAV's log does not say when an import starts or ends, so only its start time as seen from outside is known.</li>
+      <li><strong>The fourth setup was not run.</strong> "KaijuFlow, one page per indexer" was planned as a fourth side. The recording tool stopped that copy and never started it again, so it recorded nothing and was left out of the timed run.</li>
+      <li><strong>One indexer only.</strong> With NinjaCentral alone the lists are about half as long as on 2026-11-09, so these numbers do not compare with the ones further down this page. Later runs have to use the same recording to compare with this one.</li>
+    </ul>
+  </div>
+
+  <details>
+    <summary>All numbers: start time per title (s)</summary>
+    <div data-table="baseline-nc-start" class="slot">Loading the table...</div>
+    <p class="note">"fails" = the top pick did not play. Each setup plays its own top pick, so the three setups are not always starting the same file: the addon usually picks a larger one.</p>
+  </details>
+  <details>
+    <summary>All numbers: list time per title (s)</summary>
+    <div data-table="baseline-nc-list" class="slot">Loading the table...</div>
+    <p class="note">KaijuFlow's and Usenet Ultimate's warm list times are too low for Interstellar, Oppenheimer, The Matrix, Dune, Chernobyl S01E02, Game of Thrones S02E03 (see above).</p>
+  </details>
+  <p class="note">Run record: <code>/home/ryan/kaijuflow-notes/brain-runs/2026-11-10T073655Z-baseline-nc/</code> (report, raw data, logs, settings). Tool: <code>tools/brain/brainrun.py</code>, KaijuFlow test image from main a7406e9. Each test Backend capped at 25 Usenet connections.</p>
+</section>
+<!-- baseline-nc end -->
