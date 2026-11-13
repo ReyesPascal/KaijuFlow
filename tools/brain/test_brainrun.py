@@ -617,6 +617,24 @@ class InterruptedRunTest(unittest.TestCase):
             '| Main sides | Warm 1 | 18:00:46 | - | 6 | 24.0 | 0.4 |',
             '| Main sides | Cold 2 | - | 7.0 | 0 | - | - |'])  # the round never began
 
+    def test_a_pause_cut_short_counts_for_as_long_as_it_lasted(self):
+        io = FakeIO()
+        sleep = io.sleep
+
+        def second_pause_cut_short(s):
+            if [c[0] for c in io.calls].count('sleep') == 1:
+                io.calls.append(('sleep', s))
+                io.takes(1)  # Ctrl-C one second into a pause of three
+                raise KeyboardInterrupt
+            sleep(s)
+        io.sleep = second_pause_cut_short
+        run = brainrun.run_all(make_cfg(self.tmp, settle=3), io)
+        timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
+        self.assertEqual((run['status'], timing['rounds'][0]['plays'], timing['rounds'][0]['pause_s']), ('stopped', 2, 4.0))
+        # 2 s stand-in, 20 s reset, two plays of 4 s, pauses of 3 s and 1 s, 5 s to stop the copies
+        self.assertEqual((timing['seconds'], timing['parts']), (39.0, {
+            'measured_s': 7.0, 'pauses_s': 4.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 8.0}))
+
     def test_a_null_run_that_made_no_play_still_has_its_time_in_the_meta(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}))
         timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']

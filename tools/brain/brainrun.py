@@ -698,8 +698,10 @@ def do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row):
                   f"{'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
             _check_cap(io, v, since=run['started_at'])
             paused = io.now()
-            io.sleep(cfg['settle'])
-            round_row['pause_s'] = round(round_row['pause_s'] + (io.now() - paused).total_seconds(), 3)
+            try:
+                io.sleep(cfg['settle'])
+            finally:  # a pause cut short by Ctrl-C counts for as long as it lasted
+                round_row['pause_s'] = round(round_row['pause_s'] + (io.now() - paused).total_seconds(), 3)
 
 
 def _write(path, text):
