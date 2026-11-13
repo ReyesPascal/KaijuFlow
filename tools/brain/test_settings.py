@@ -33,14 +33,28 @@ def _put(path, text):
         f.write(text)
 
 
+def rules(films=3000, episodes=1000):
+    """Sort and filter rules in the shape KaijuFlow and Usenet Ultimate keep them (`movieFilters`, `tvFilters`), cut short:
+    an order, switches, a size cap and one named drop rule."""
+    def one(cap):
+        return {'sortOrder': ['quality', 'size', 'language'], 'enabledSorts': {'quality': True, 'size': True, 'language': False},
+                'enabledPriorities': {'resolution': {}, 'visualTag': {'3D': False}}, 'maxFileSize': cap,
+                'rules': {'rankedRegexPatterns': [{'id': 'r-1', 'name': 'No disc images', 'pattern': r'\bBDMV\b|\bBD(25|50)\b',
+                                                   'flags': 'i', 'mode': 'drop', 'score': 0, 'enabled': True}]}}
+    return {'movieFilters': one(films), 'tvFilters': one(episodes)}
+
+
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 12, 25, 25, 25),
-                url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=(), backup_host='backup.example'):
-    """A fake kaijuflow-test folder: KaijuFlow, UU, NzbDAV and both AltMounts, plus the key file."""
+                url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=(), backup_host='backup.example',
+                kf_rules=None, uu_rules=None):
+    """A fake kaijuflow-test folder: KaijuFlow, UU, NzbDAV and both AltMounts, plus the key file. KaijuFlow and UU hold the
+    sort and filter rules of rules() unless others are given (kf_rules, uu_rules: what goes into the config; {} for none)."""
     base = base or tempdir(case)
     td = os.path.join(base, 'kaijuflow-test')
     kf_cap, uu_cap, nz_cap, addon_cap, altkf_cap = caps
-    for rel, cap in (('config/config.json', kf_cap), ('uu/config/config.json', uu_cap)):
+    for rel, cap, own in (('config/config.json', kf_cap, kf_rules), ('uu/config/config.json', uu_cap, uu_rules)):
         _put(os.path.join(td, rel), json.dumps({
+            **(rules() if own is None else own),
             'indexers': [{'name': NAMES[s], 'url': url(s), 'apiKey': SECRET, 'enabled': s in enabled, 'maxPages': 3, 'timeout': 15}
                          for s in list(enabled) + list(disabled)],
             'healthChecks': {'sampleCount': 3, 'nzbsToInspect': 6, 'maxConnections': cap, 'inspectionMethod': 'smart',
