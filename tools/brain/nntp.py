@@ -1,7 +1,7 @@
 """NNTP access for the Brain tools: the Usenet provider from AltMount's config, read-only commands only."""
-import re, socket, ssl
+import os, re, socket, ssl
 
-ALTMOUNT_CONFIG = '/home/ryan/altmount-stack/config/config.yaml'
+ALTMOUNT_CONFIG = os.path.expanduser('~/altmount-stack/config/config.yaml')
 
 
 def provider(config=ALTMOUNT_CONFIG):

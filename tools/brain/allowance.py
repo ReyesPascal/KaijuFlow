@@ -16,7 +16,7 @@ import re
 
 LIMITS_FILE = 'limits.json'
 ROLLING = 'rolling-24h'
-DEFAULT_LIVE_STATS = '/home/ryan/usenet-stack/usenet-ultimate_config/stats.json'
+DEFAULT_LIVE_STATS = os.path.expanduser('~/usenet-stack/usenet-ultimate_config/stats.json')
 KINDS = ('search', 'download')
 KIND_NAMES = {'search': 'searches', 'download': 'downloads'}
 CAVEAT = ('This counts this machine only, and each copy of Usenet Ultimate keeps only its latest hundred searches '

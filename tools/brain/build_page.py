@@ -2,10 +2,10 @@
 
     python3 -I tools/brain/build_page.py RUN_DIR [RUN_DIR ...] [--out DIR] [--notes DIR] [--no-1109]
 
-RUN_DIR is a run folder from brainrun.py (for example /home/ryan/kaijuflow-notes/brain-runs/<run>/). A timed run
+RUN_DIR is a run folder from brainrun.py (for example ~/kaijuflow-notes/brain-runs/<run>/). A timed run
 folder holds raw.json and meta.json; a recording folder holds only meta.json (its times go into the page text).
 Newest run first. Nothing is published: the script writes two files into the output folder (default
-/home/ryan/kaijuflow-notes/brain-1338/page/):
+~/kaijuflow-notes/brain-1338/page/):
 
   index.html   small: headline answers, summary tables, column definitions. Safe for an agent to read before republishing.
   tables.json  the per-title tables, one HTML string per table id. The page loads it with fetch() and fills the
@@ -22,8 +22,8 @@ import json
 import os
 import statistics
 
-DEFAULT_OUT = '/home/ryan/kaijuflow-notes/brain-1338/page/'
-DEFAULT_NOTES = '/home/ryan/kaijuflow-notes/brain-1338/'
+DEFAULT_OUT = os.path.expanduser('~/kaijuflow-notes/brain-1338/page/')
+DEFAULT_NOTES = os.path.expanduser('~/kaijuflow-notes/brain-1338/')
 SIDES = [('kaijuflow', 'KaijuFlow with AltMount'), ('uu', 'Usenet Ultimate with NzbDAV'), ('altmount-addon', "AltMount's own addon")]
 ROUNDS = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 SIDES_1109 = [('altmount-addon', "AltMount's own addon"), ('kaijuflow-altmount', 'KaijuFlow with AltMount'), ('uu-nzbdav', 'Usenet Ultimate with NzbDAV (today)')]
@@ -188,7 +188,7 @@ WORTH_KNOWING = """<section>
 
 FOOTER = """<footer>
   <div>Tools: <code>tools/brain/search.py</code> and <code>tools/brain/parity.py</code> in the KaijuFlow repo, run with <code>python3 -I</code> under a hard <code>timeout</code>. Evening: cold search 9.1 min, warm search 2.8 min, parity 1.0 min (16:14 to 16:28 UTC). Afternoon: search 7.5 min, parity 2 min.</div>
-  <div>Raw data in <code>/home/ryan/kaijuflow-notes/brain-1338/</code>: <code>cold-search.json</code>, <code>warm-search.json</code>, <code>parity-fresh.json</code> (+ <code>.md</code> tables and logs), afternoon <code>search.json</code> and <code>parity-run3.json</code>. Test image built from main a809872; AltMount v0.4.0 in plain HTTP mode (no mount), three indexers on its addon since the evening.</div>
+  <div>Raw data in <code>~/kaijuflow-notes/brain-1338/</code>: <code>cold-search.json</code>, <code>warm-search.json</code>, <code>parity-fresh.json</code> (+ <code>.md</code> tables and logs), afternoon <code>search.json</code> and <code>parity-run3.json</code>. Test image built from main a809872; AltMount v0.4.0 in plain HTTP mode (no mount), three indexers on its addon since the evening.</div>
 </footer>"""
 
 # (open, summary, note) in page order: evening cold search, evening warm search, evening parity, afternoon search, afternoon parity.
@@ -442,7 +442,7 @@ def baseline_nc_section(run, record):
   </div>
 
 {details}
-  <p class="note">Run record: <code>/home/ryan/kaijuflow-notes/brain-runs/{esc(run_name)}/</code> (report, raw data, logs, settings). Tool: <code>tools/brain/brainrun.py</code>, KaijuFlow test image from main a7406e9. Each test Backend capped at 25 Usenet connections.</p>
+  <p class="note">Run record: <code>~/kaijuflow-notes/brain-runs/{esc(run_name)}/</code> (report, raw data, logs, settings). Tool: <code>tools/brain/brainrun.py</code>, KaijuFlow test image from main a7406e9. Each test Backend capped at 25 Usenet connections.</p>
 </section>
 <!-- {V.id} end -->
 '''
@@ -682,7 +682,7 @@ def write(folders, out=DEFAULT_OUT, notes=DEFAULT_NOTES, with_1109=True):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description='Build the speed-check page (index.html + tables.json) from run folders. Does not publish.')
-    ap.add_argument('runs', nargs='+', help='run folders, e.g. /home/ryan/kaijuflow-notes/brain-runs/<run>/')
+    ap.add_argument('runs', nargs='+', help='run folders, e.g. ~/kaijuflow-notes/brain-runs/<run>/')
     ap.add_argument('--out', default=DEFAULT_OUT, help='output folder (default %(default)s)')
     ap.add_argument('--notes', default=DEFAULT_NOTES, help='folder with the 2026-11-09 result files (default %(default)s)')
     ap.add_argument('--no-1109', action='store_true', help='leave the 2026-11-09 part out')

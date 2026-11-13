@@ -14,7 +14,7 @@ Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, i
 | `statcheck.py <file.nzb>` | NNTP `STAT` for every article; reports missing ones per file (video parts vs par2). | No downloads; about 9 min for 50k articles on 8 connections |
 | `rarorder.py <file.nzb>` | Real RAR volume number of each scrambled, number-named part (first article of each part). | One article per part |
 
-`nntp.py` holds the shared provider login, read from AltMount's `config.yaml` (`/home/ryan/altmount-stack/config/`).
+`nntp.py` holds the shared provider login, read from AltMount's `config.yaml` (`~/altmount-stack/config/`).
 
 **Which tools touch the live services.** `parity.py` and `search.py` play real Streams through the live services (UU 1337, AltMount 8085) and are superseded by `brainrun.py`, which only uses the test copies. `statcheck.py` and `rarorder.py` read Usenet. `indexer_standin.py` in record mode spends real indexer requests. Everything else here (`testbed.py`, `brainrun.py preflight|run|smoke`) touches the test copies only. DrunkenSlug note: live AltMount reaches DrunkenSlug through `ds-xml-proxy` (port 8099), which removes `o=json` because AltMount 0.4.0 cannot read DrunkenSlug's JSON; the stand-in does the same through `drop_params` in the key file.
 

@@ -45,7 +45,7 @@ import runcheck  # noqa: E402
 import testbed  # noqa: E402
 from common import DEFAULT_TEST_DIR  # noqa: E402
 
-DEFAULT_RUNS_ROOT = '/home/ryan/kaijuflow-notes/brain-runs'
+DEFAULT_RUNS_ROOT = os.path.expanduser('~/kaijuflow-notes/brain-runs')
 PLAN = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 RECORD_ROUNDS = ('cold', 'warm')  # a record pass: a cold round, then a warm round on the same state (#79)
 MAIN_SIDES = ['kaijuflow', 'uu', 'altmount-addon']

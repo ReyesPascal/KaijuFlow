@@ -167,8 +167,8 @@ class PageRules(unittest.TestCase):
                 self.assertEqual(t.count('<' + tag), t.count('</' + tag + '>'), (tid, tag))
 
 
-REAL = '/home/ryan/kaijuflow-notes/brain-runs/2026-11-10T073655Z-baseline-nc/'
-REC = '/home/ryan/kaijuflow-notes/brain-runs/2026-11-10T072719Z-baseline-nc-record/'
+REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-10T073655Z-baseline-nc/')
+REC = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-10T072719Z-baseline-nc-record/')
 
 
 @unittest.skipUnless(os.path.exists(REAL + 'raw.json') and os.path.exists(REC + 'meta.json'), 'the real run folders are not on this machine')

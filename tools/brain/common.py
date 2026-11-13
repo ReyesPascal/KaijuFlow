@@ -5,7 +5,7 @@ The scripts run under `python3 -I`, which leaves the script's folder off sys.pat
 """
 import hashlib, json, os, statistics, sys, time, urllib.request, urllib.error
 
-DEFAULT_TEST_DIR = '/home/ryan/kaijuflow-test'  # config folders with secrets; outside the repo (env TEST_DIR overrides in the tools)
+DEFAULT_TEST_DIR = os.path.expanduser('~/kaijuflow-test')  # config folders with secrets; outside the repo (env TEST_DIR overrides in the tools)
 FAILURE_SIZE = 1242455  # UU/KaijuFlow failure video, served when a Source cannot play
 TITLES = [
     ('movie', 'tt1375666', 'Inception'), ('movie', 'tt0816692', 'Interstellar'),
