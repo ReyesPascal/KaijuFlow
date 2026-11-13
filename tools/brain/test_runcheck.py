@@ -91,6 +91,7 @@ class CheckTests(unittest.TestCase):
             code, out = run_check(run)
         self.assertNotEqual(code, 0)
         self.assertIn('the run is null (ninjacentral said its limit was reached', out.splitlines()[0])
+        self.assertEqual(target_lines(out), [])  # a null run's numbers are not used, so no target is judged on them
 
     def test_failed_run_exits_nonzero(self):
         with tempdir() as tmp:
@@ -99,6 +100,7 @@ class CheckTests(unittest.TestCase):
             code, out = run_check(run)
         self.assertNotEqual(code, 0)
         self.assertIn('the run did not finish (RuntimeError: boom)', out)
+        self.assertEqual(target_lines(out), [])
 
     def test_unreadable_folder_exits_nonzero(self):
         with tempdir() as tmp:

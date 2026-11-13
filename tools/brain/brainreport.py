@@ -1,8 +1,8 @@
 """Merge, report and run records for the Brain runs (spec #58, ticket #62). Pure logic: no Docker, no network.
 
 brainrun.py collects one "visit" per run phase, side and title; this module turns visits into
-medians, a failure split, a diff against the previous run, the plain-language report and the
-run folder / INDEX.md bookkeeping.
+medians, a failure split, a diff against the previous run, the targets of targets.json judged on
+the run, the plain-language report and the run folder / INDEX.md bookkeeping.
 """
 import datetime
 import json
@@ -564,8 +564,9 @@ def null_runs_between(root, since, exclude=None):
 
 TARGETS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'targets.json')
 JUDGED = 'kaijuflow'  # the side the targets are set for
-
-
+# What each measure is held against: a fixed limit, another side (against), or either of the two.
+TARGET_MEASURES = {'plays per round': 'limit', 'plays': 'against',
+                   'cold start': 'either', 'warm start': 'either', 'cold list': 'either', 'warm list': 'either'}
 NO_FIGURE = 'no figure'  # the run holds nothing to measure a target with (a side or a round is not in it)
 
 
@@ -621,16 +622,52 @@ def _judge(visits, t):
     return measured, result
 
 
+def _is_number(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def load_targets(path=TARGETS_FILE):
+    """The entries of the targets file. ValueError with a plain reason when the file or one of its entries cannot be used."""
+    name = os.path.basename(path)
+    try:
+        with open(path) as f:
+            targets = json.load(f)['targets']
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise ValueError(f'{name} cannot be read: {type(e).__name__}') from None
+    if not isinstance(targets, list):
+        raise ValueError(f'{name} cannot be read: "targets" is not a list')
+    for i, t in enumerate(targets, 1):
+        if not isinstance(t, dict) or not isinstance(t.get('target'), str):
+            why = 'it has no target text'
+        elif t.get('measure') not in TARGET_MEASURES:
+            why = f"the measure \"{t.get('measure')}\" is not known"
+        elif not _is_number(t.get('margin')) or t['margin'] < 0:
+            why = 'the margin is not a number from 0 up'
+        elif 'against' in t and t['against'] not in SIDE_NAMES:
+            why = f"the side \"{t['against']}\" is not known"
+        elif TARGET_MEASURES[t['measure']] == 'limit' and ('against' in t or not _is_number(t.get('limit'))):
+            why = f"\"{t['measure']}\" takes a fixed limit, not a side"
+        elif TARGET_MEASURES[t['measure']] == 'against' and ('limit' in t or 'against' not in t):
+            why = f"\"{t['measure']}\" takes a side (against), not a fixed limit"
+        elif ('against' in t) == ('limit' in t) or ('limit' in t and not _is_number(t['limit'])):
+            why = f"\"{t['measure']}\" takes a side (against) or a fixed limit, one of the two"
+        else:
+            continue
+        raise ValueError(f'{name}, entry {i}: {why}')
+    return targets
+
+
 def target_results(visits, path=TARGETS_FILE):
     """[(target, measured values, result)] for every entry of the targets file, in its order."""
-    with open(path) as f:
-        targets = json.load(f)['targets']
-    return [(t['target'],) + _judge(visits, t) for t in targets]
+    return [(t['target'],) + _judge(visits, t) for t in load_targets(path)]
 
 
 def target_lines(visits, path=TARGETS_FILE):
-    """One plain line per target, as the check prints them."""
-    return [f'Target: {t}. Measured: {m}. {r}.' for t, m, r in target_results(visits, path)]
+    """One plain line per target, as the check prints them; one sentence when the targets file cannot be used."""
+    try:
+        return [f'Target: {t}. Measured: {m}. {r}.' for t, m, r in target_results(visits, path)]
+    except ValueError as e:
+        return [f'Targets: not judged ({e}).']
 
 
 TARGETS_HELP = (
@@ -643,8 +680,11 @@ TARGETS_HELP = (
 
 def targets_section(visits, path=TARGETS_FILE):
     """The report's table of the targets: one row per target, then how many are met and what the words mean."""
-    rows = target_results(visits, path)
-    met = sum(1 for _, _, result in rows if result.startswith('Met'))
+    try:  # a targets file that cannot be used must not cost a finished run its report
+        rows = target_results(visits, path)
+    except ValueError as e:
+        return ['## Targets', '', f'Not judged ({e}).', '']
+    met =sum(1 for _, _, result in rows if result.startswith('Met'))
     return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], rows) + [
         '', f"{met} of {len(rows)} targets met. {TARGETS_HELP}", '']
 

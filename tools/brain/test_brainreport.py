@@ -332,6 +332,29 @@ class TargetsTest(unittest.TestCase):
                       'Not met (2.10 s slower) |', text)
 
 
+    def test_a_missing_targets_file_gives_one_sentence_and_the_rest_of_the_report(self):
+        path = os.path.join(tempdir(self), 'targets.json')
+        visits = runs_fixture()['visits']
+        self.assertEqual(br.target_lines(visits, path), ['Targets: not judged (targets.json cannot be read: FileNotFoundError).'])
+        self.assertEqual(br.targets_section(visits, path),
+                         ['## Targets', '', 'Not judged (targets.json cannot be read: FileNotFoundError).', ''])
+
+    def test_an_entry_the_tools_cannot_judge_is_named(self):
+        entry = {'target': 'Cold start no slower than Usenet Ultimate', 'measure': 'cold start', 'against': 'uu', 'margin': 0}
+        bad = [({'measure': 'cold sprint'}, 'entry 2: the measure "cold sprint" is not known'),
+               ({'margin': 'small'}, 'entry 2: the margin is not a number from 0 up'),
+               ({'margin': -1}, 'entry 2: the margin is not a number from 0 up'),
+               ({'against': 'nobody'}, 'entry 2: the side "nobody" is not known'),
+               ({'limit': 3}, 'entry 2: "cold start" takes a side (against) or a fixed limit, one of the two'),
+               ({'measure': 'plays per round'}, 'entry 2: "plays per round" takes a fixed limit, not a side'),
+               ({'measure': 'plays', 'limit': 3}, 'entry 2: "plays" takes a side (against), not a fixed limit')]
+        path = os.path.join(tempdir(self), 'targets.json')
+        for change, why in bad:
+            with open(path, 'w') as f:
+                json.dump({'targets': [entry, {**entry, 'against': 'altmount-addon', **change}]}, f)
+            self.assertEqual(br.target_lines(runs_fixture()['visits'], path), [f'Targets: not judged (targets.json, {why}).'])
+
+
 T0 = dt('2026-11-10T18:00:00Z').timestamp() * 1000   # epoch ms of the first visit's start
 
 

@@ -1,6 +1,6 @@
 # Brain tools: rules and settings
 
-The cap rule, the preflight, the settings table, the replay wait and the indexer allowance. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+The cap rule, the preflight, the settings table, the replay wait, the indexer allowance and how the targets are judged. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Cap rule
 
@@ -44,3 +44,13 @@ Indexers are compared by the slug in the indexer stand-in's address, because eac
 **`python3 -I tools/brain/brainrun.py usage [--key-file PATH] [--test-dir DIR] [--runs-root DIR]`** prints, per indexer, `Used`, `Limit` and `Left` for searches and for downloads since the indexer's last reset. Used adds up two things: the stand-in's real requests in the record folders (`RECORD` and `ERROR` lines of each `logs/standin.log`; `api` is a search, `nzb` is a download; replayed `HIT` lines cost nothing) and the counts the live copy keeps (`queryHistory` and `grabHistory` in its `config/stats.json`, read-only). The test copies are not counted: they only talk to the stand-in, so their counters never measure real indexer hits. A copy keeps only its latest hundred entries of each, and the command counts this machine only; it says so. Without a limits file it prints one sentence asking you to fill it in. It never contacts an indexer. Code: `allowance.py`; tests: `test_allowance.py`.
 
 **`preflight --for record`** prints the same table, then the request count of the newest complete recording (a record folder whose `meta.json` says `recorded`) of the same list, and warns when that count is more than what is left. It only warns; it never blocks.
+
+## Targets
+
+The targets are read from `tools/brain/targets.json` ([format](formats.md#targets-targetsjson)) and judged on KaijuFlow, by `check` and in `report.md` alike. The result of a target is one of:
+
+- **Met** or **Not met**. A time is met when KaijuFlow's figure is no higher than the other side's figure (or the fixed limit) plus the margin. `plays` is met when KaijuFlow's share of played top picks is higher than the other side's share minus the margin, so with margin 0 an equal share does not meet "more often". `plays per round` is met when every cold and warm round played at least the limit minus the margin, and no more counted top picks failed in it than the margin.
+- **Inside the noise**, added to Met or Not met for a time target: KaijuFlow's own two rounds of that kind (both cold rounds for a cold target, both warm rounds for a warm one) differ by more than the target is met or missed by. The same run done again could turn such a result around, so do not read it as settled. With a margin, "missed by" is the distance to the other side's figure plus the margin, not to the figure itself.
+- **Not measured**: the run holds no figure for it (the side compared with was not in the run, or no top pick played). The measured values then read "no figure".
+
+The targets do not decide whether a run can serve as a baseline: the exit code of `check` is the same with every target missed.

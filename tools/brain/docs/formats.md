@@ -1,12 +1,46 @@
 # Brain tools: formats
 
-What the files and lines look like: run folder, recording state, misses, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+What the files and lines look like: run folder, targets, recording state, misses, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Run folder
 
-**Run records.** Every run gets its own folder `<runs-root>/<UTC date-time>-<name>/` (default runs root `~/kaijuflow-notes/brain-runs`; use a temporary one for any trial) with `settings.json` (every side's settings, secrets replaced by `***`, exactly the settings reader's output), `meta.json` (settings, run-level facts, container addresses, KaijuFlow commit, titles, indexers, status, what changed), `raw.json` (every visit with its timings, step lines and imports), `logs/` (stand-in log and the test containers' logs, scrubbed of keys) and `report.md`. One row per run is appended to `<runs-root>/INDEX.md` (date, name, result, what changed, headline numbers, folder link). Nothing is overwritten: a rerun, even in the same second, gets a new folder, and INDEX.md is only ever appended to. The report opens with one sentence, then "What changed since the last run" (a diff of settings, run-level facts (stand-in replay wait on or off, the one-page side), KaijuFlow commit, titles, indexers and sides against the newest earlier finished run; a run recorded in the older shape, which kept those facts inside its settings, is read as facts too, so it shows no false difference, always ending with the time of day of both runs, and with how many null runs lie between them and when; the same list goes into the INDEX.md row), then the shared-steps table (search time split into "Indexers", the recorded wait, and "Side's own work"), the extras table, failures split into indexer limit / Backend rejection / failure video / other / not recorded, per-title detail and, when there are misses, a "Not recorded" section with the top-up command; every column is defined under its table.
+**Run records.** Every run gets its own folder `<runs-root>/<UTC date-time>-<name>/` (default runs root `~/kaijuflow-notes/brain-runs`; use a temporary one for any trial) with `settings.json` (every side's settings, secrets replaced by `***`, exactly the settings reader's output), `meta.json` (settings, run-level facts, container addresses, KaijuFlow commit, titles, indexers, status, what changed), `raw.json` (every visit with its timings, step lines and imports), `logs/` (stand-in log and the test containers' logs, scrubbed of keys) and `report.md`. One row per run is appended to `<runs-root>/INDEX.md` (date, name, result, what changed, headline numbers, folder link). Nothing is overwritten: a rerun, even in the same second, gets a new folder, and INDEX.md is only ever appended to. The report opens with one sentence, then the targets table (see [Targets](#targets-targetsjson)), then "What changed since the last run" (a diff of settings, run-level facts (stand-in replay wait on or off, the one-page side), KaijuFlow commit, titles, indexers and sides against the newest earlier finished run; a run recorded in the older shape, which kept those facts inside its settings, is read as facts too, so it shows no false difference, always ending with the time of day of both runs, and with how many null runs lie between them and when; the same list goes into the INDEX.md row), then the shared-steps table (search time split into "Indexers", the recorded wait, and "Side's own work"), the extras table, failures split into indexer limit / Backend rejection / failure video / other / not recorded, per-title detail and, when there are misses, a "Not recorded" section with the top-up command; every column is defined under its table.
 
 Usenet Ultimate's Import column is NzbDAV's own job time (#82): after each Usenet Ultimate visit the runner reads the test NzbDAV's history answer (port 3001, read-only) and takes `download_time` of the job that is new since before the visit. It is whole seconds (NzbDAV reports no fractions), against AltMount's log figure to the millisecond; the report's column definition says so. A visit that adds no job (item already imported) reads "-". The Usenet Ultimate test copy's own log is kept as `logs/uu-test.log` (scrubbed).
+
+## Targets (`targets.json`)
+
+The targets KaijuFlow is measured against are in `tools/brain/targets.json`, one entry per target under `targets`. Change a target there and nowhere else.
+
+```json
+{"target": "Cold start within 1 s of the addon", "measure": "cold start", "against": "altmount-addon", "margin": 1}
+```
+
+| Field | Meaning |
+|---|---|
+| `target` | the target in plain words, as it is printed |
+| `measure` | what is measured on KaijuFlow, see the next table |
+| `against` | the side KaijuFlow is compared with: `uu`, `altmount-addon` or `kaijuflow-1page` |
+| `limit` | a fixed limit instead of a side (seconds, or plays for `plays per round`); an entry has `against` or `limit`, never both |
+| `margin` | how far KaijuFlow may fall short and still meet the target, in the measure's unit; 0 for none |
+
+| `measure` | Figure | Takes |
+|---|---|---|
+| `cold start`, `warm start` | median seconds from pressing play to the first byte, over the top picks that played in both cold (or both warm) rounds together | `against` or `limit` |
+| `cold list`, `warm list` | median seconds until the Stream list arrived, over every title of both rounds together | `against` or `limit` |
+| `plays` | top picks that played out of those counted, all four rounds together (margin: a share between 0 and 1) | `against` |
+| `plays per round` | top picks that played out of those counted, for each round on its own (margin: plays) | `limit` |
+
+"Counted" leaves out a top pick that failed only because a request was not recorded, as everywhere in the report. How a target is judged is in [rules.md](rules.md#targets).
+
+**Where the result shows.** `check --run <folder>` prints one line per target after its other lines, and `report.md` has the same as a table (Target, This run, Result) right under its opening lines, followed by how many targets are met:
+
+```
+Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 3.46 s. Met.
+Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 6.73 s, Usenet Ultimate 5.51 s. Not met (1.22 s slower), inside the noise: KaijuFlow's two cold rounds differ by 1.86 s (8.59 and 6.73 s), more than the 1.22 s the target is missed by.
+```
+
+A null or failed run gets no target lines. If `targets.json` cannot be used, one sentence says why (`Targets: not judged (targets.json, entry 2: the margin is not a number from 0 up).`) and the rest of the check and the report is unchanged.
 
 ## Recording state and misses
 
