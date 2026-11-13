@@ -1,0 +1,51 @@
+<section>
+  <details open>
+    <summary>All numbers: evening cold run, search side by side, per title (3 Streams tried)</summary>
+    <div data-table="evening-cold" class="slot">Loading the table...</div>
+    <p class="note">Fresh titles, first time for every side. Each side was asked for the list, then the first 3 Streams were played (64 KiB at the start). Sides ran one after the other, with the order rotating per title. The addon and KaijuFlow share the same AltMount, so when both picked the same release the second one to play it got a warm start; the top-pick medians above are taken as recorded.</p>
+  </details>
+</section>
+
+<section>
+  <details>
+    <summary>All numbers: evening warm run, same titles again (top pick only)</summary>
+    <div data-table="evening-warm" class="slot">Loading the table...</div>
+    <p class="note">Same 10 titles a few minutes after the cold run; only the top pick was played. "Broken of 1" is the top pick itself.</p>
+  </details>
+</section>
+
+<section>
+  <details>
+    <summary>All numbers: evening Backend parity on the fresh titles, per title</summary>
+    <div data-table="evening-parity" class="slot">Loading the table...</div>
+    <p class="note">NzbDAV = Usenet Ultimate on 1337, AltMount = the KaijuFlow test container on 1338, both warm for the start (the files were imported in the cold run) and cold for the jumps (first read of those spots). "Same video bytes" compares the SHA-256 of the three reads on both sides.</p>
+  </details>
+</section>
+
+<section>
+  <details>
+    <summary>All numbers: afternoon search side by side, per title (3 Streams tried, addon with one indexer)</summary>
+    <div data-table="afternoon-search" class="slot">Loading the table...</div>
+    <p class="note">Titles the Backends had played earlier that day, so KaijuFlow and Usenet Ultimate were warm and the addon (one indexer, NinjaCentral) was cold.</p>
+  </details>
+</section>
+
+<section>
+  <details>
+    <summary>All numbers: afternoon Backend parity, per title (warm)</summary>
+    <div data-table="afternoon-parity" class="slot">Loading the table...</div>
+    <p class="note">Interstellar is the Scrambled RAR set that AltMount used to reject; it was already Unscrambled and imported in the morning, so no Unscramble ran here.</p>
+  </details>
+</section>
+
+<section>
+  <h2>Worth knowing</h2>
+  <ul>
+    <li><strong>altHUB was out for everyone.</strong> Its daily limit was reached before the evening run (HTTP 429 on every search), so all three sides searched NinjaCentral and DrunkenSlug only. That is why the Source counts are lower than in the afternoon. The comparison between sides is still fair.</li>
+    <li><strong>The Unscramble second.</strong> It is the one place where KaijuFlow with AltMount is slower than today's setup, and only on the very first play of a file. If that matters, the not-scrambled check (0.6 to 1.6 s) is the part to look at; the real Unscramble (3 to 4 s) only runs on sets that would otherwise not play at all.</li>
+    <li><strong>What broke on AltMount's addon.</strong> Whiplash and Band of Brothers S01E02 top picks (HTTP 503 after AltMount's own article check), and second or third picks on Severance and The Bear; the same two top picks failed again in the warm run. Blade Runner 2049 showed only 2 Sources because AltMount's relevance filter dropped 191 results for that title (it tripped over the "2049" in the name).</li>
+    <li><strong>What broke on the other two (corrected).</strong> Most of these were not bad Sources. From 16:18 UTC DrunkenSlug refused NZB downloads with "Request limit reached" (its daily grab limit), so every DrunkenSlug pick after that showed the failure video: one The Wire, one Whiplash, two Severance and two Better Call Saul picks. The Sources stay alive (ADR 0004). Only two failures came from AltMount itself: The Wire S01 season pack ("invalid NZB: total size is zero") and a Martian release ("all files failed validation"). The Band of Brothers S01 4K pack showed the failure video on NzbDAV and played on AltMount.</li>
+    <li><strong>Side effects on Brain.</strong> The evening run added 55 imports to AltMount's queue under Movies and TV from the addon (37 of them failed) and 25 under the kaijuflow category (2 failed), on top of the afternoon's 44 + 6. Removing them is the owner's call. The live containers were not changed; the test container was started from the existing image, used, and stopped.</li>
+    <li><strong>Not covered.</strong> Real playback on a TV (these are byte-level reads), and altHUB on any side in the evening.</li>
+  </ul>
+</section>

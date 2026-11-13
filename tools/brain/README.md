@@ -24,7 +24,7 @@ Start with **[RUNBOOK.md](RUNBOOK.md)**: the one-page recipe for a timed run (pr
 
 - [docs/run-and-record.md](docs/run-and-record.md): how `brainrun.py run`, `record`, `smoke` and the record recipe work, and the record command's exit codes.
 - [docs/rules.md](docs/rules.md): the cap rule, the settings table and preflight, the replay wait, the indexer allowance (`limits.json`, `usage`).
-- [docs/formats.md](docs/formats.md): run folder, recording state, misses, and the `[KF-STEP]` step lines.
+- [docs/formats.md](docs/formats.md): run folder, recording state, misses, the page's `story.html` and archive, and the `[KF-STEP]` step lines.
 - [docs/testbed.md](docs/testbed.md): the test copies of every side (`compose.test.yaml`, `testbed.py`) and the 1338 test container.
 
-Code: `brainreport.py` (log parsing, medians, report, run folder; pure logic), `brainrun.py` (orchestration), `allowance.py`, `runcheck.py`, `testbed.py`; tests are the `test_*.py` files next to them (run in CI, no Docker): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
+Code: `brainreport.py` (log parsing, medians, report, run folder; pure logic), `brainrun.py` (orchestration), `allowance.py`, `runcheck.py`, `testbed.py`, `build_page.py` (the speed-check page from run folders and `page-archive/`; RUNBOOK, "Publish the page"); tests are the `test_*.py` files next to them (run in CI, no Docker): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
