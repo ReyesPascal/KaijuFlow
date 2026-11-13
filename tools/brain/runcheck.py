@@ -59,6 +59,8 @@ def check_run(run_dir):
     if status == 'null':
         n = meta.get('null') or {}
         reasons.append(f"the run is null ({n.get('indexer', 'an indexer')} said its limit was reached at {n.get('time', 'an unknown time')})")
+    elif status == 'stopped':
+        reasons.append(f"the run was {br.stopped_text(meta.get('stopped'))}")
     elif status != 'ok':
         reasons.append(f"the run did not finish ({meta.get('error') or 'status ' + str(status)})")
     elif err:

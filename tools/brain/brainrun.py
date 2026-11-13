@@ -601,8 +601,10 @@ def do_pass(cfg, io, run, logbuf, sides, reset_sides, fresh=False):
         for i, title in enumerate(cfg['titles']):
             k = i % len(sides)
             for side in sides[k:] + sides[:k]:
+                run['playing'] = {'side': side, 'phase': phase, 'round': rnd, 'title': title[2]}
                 v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
                 run['visits'].append(v)
+                run['playing'] = None
                 print(f"{side} {phase} {rnd} {title[2]}: {'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
                 _check_cap(io, v, since=run['started_at'])
                 io.sleep(cfg['settle'])
@@ -646,6 +648,11 @@ def run_all(cfg, io):
         except CapReached as e:
             run['status'] = 'null'
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
+        except KeyboardInterrupt:  # Ctrl-C: the pass stops, the plays that finished are kept, the ending is the normal one (#110)
+            run['status'] = 'stopped'
+            run['stopped'] = {'time': br.iso(io.now()), 'plays_done': len(run['visits']),
+                              'plays_planned': len(PLAN) * len(cfg['titles']) * len(run['sides']),
+                              'during': run.get('playing')}
         finally:
             try:
                 finalize_steps(io, run['visits'])
@@ -673,12 +680,14 @@ def run_all(cfg, io):
     elif run['status'] == 'null':
         report, result = br.render_null_report(run), 'NULL'
         headline = f"NULL: {run['null']['indexer']} limit reached at {run['null']['time']}; no numbers"
+    elif run['status'] == 'stopped':
+        report, result, headline = br.render_stopped_report(run, run['changes']), 'stopped', br.stopped_text(run['stopped'])
     else:
         report, result, headline = f"This run failed before it finished: {run['error']}\n", 'failed', f"failed: {run['error']}"
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'dirty', 'titles', 'indexers',
-                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'error',
+                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
                                     'standin_misses', 'changes')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {

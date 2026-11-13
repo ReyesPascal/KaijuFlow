@@ -100,6 +100,16 @@ class CheckTests(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn('the run did not finish (RuntimeError: boom)', out)
 
+    def test_stopped_run_exits_nonzero(self):
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+            edit(run, 'meta.json', lambda m: m.update(status='stopped', stopped={
+                'time': '2026-01-01T00:03:00.000Z', 'plays_done': 5, 'plays_planned': 8, 'during': None}))
+            code, out = run_check(run)
+        self.assertEqual(code, 1)
+        self.assertEqual(out.splitlines()[0], 'Not usable as a baseline: the run was stopped by hand at 2026-01-01T00:03:00.000Z: '
+                                              '5 of 8 plays had finished, and it stopped between two plays.')
+
     def test_unreadable_folder_exits_nonzero(self):
         with tempdir() as tmp:
             code, out = run_check(os.path.join(tmp, 'nothing'))
