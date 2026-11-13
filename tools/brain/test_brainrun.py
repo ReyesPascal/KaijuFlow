@@ -2,19 +2,23 @@
 
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
 """
+import contextlib
 import datetime
 import http.server
+import io as io_module
 import json
 import os
 import socket
 import sqlite3
 import unittest
 import urllib.request
+from unittest import mock
 
 import brainreport as br
 import brainrun
 import common
 import indexer_standin
+import runcheck
 import test_indexer_standin as fakes
 import test_preflight
 from test_settings import tempdir
@@ -78,7 +82,7 @@ class FakeIO(Copies):
         self.calls.append(('sleep', s))
 
     def git_info(self):
-        return 'repo-head-must-not-be-recorded', False
+        return 'repo-head', False
 
     def image_label(self):
         return self.commit
@@ -229,6 +233,11 @@ class RunTest(unittest.TestCase):
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['commit'], 'c-from-label')
         self.assertEqual(io.calls_preflight, ['run'])
 
+    def test_run_record_also_keeps_the_repository_commit_as_head(self):
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(commit='c-from-label'))
+        meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
+        self.assertEqual((meta['commit'], meta['head']), ('c-from-label', 'repo-head'))
+
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
         self.assertEqual({v['side'] for v in run['visits']}, {'kaijuflow', 'uu', 'altmount-addon'})
@@ -334,6 +343,119 @@ class RunTest(unittest.TestCase):
         self.assertEqual([c[0] for c in io.calls][-2:], ['standin-stop', 'stop-all'])
         self.assertIn('failed', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
         self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
+
+
+def interrupt_at(io, n):
+    """Ctrl-C during the n-th visit: the visit raises KeyboardInterrupt, as the real one does inside its HTTP read."""
+    inner = io.visit_http
+
+    def visit(side, kind, vid, tries):
+        if io.visits == n - 1:
+            io.visits += 1
+            raise KeyboardInterrupt
+        return inner(side, kind, vid, tries)
+    io.visit_http = visit
+    return io
+
+
+class InterruptedRunTest(unittest.TestCase):
+    """A run stopped by hand (#110) keeps the plays it finished and ends the normal way."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+    def stopped_run(self, n=5, **kw):
+        io = interrupt_at(FakeIO(), n)
+        try:
+            return io, brainrun.run_all(make_cfg(self.tmp, **kw), io)
+        except KeyboardInterrupt:
+            self.fail('the interrupt escaped run_all')
+
+    def test_an_interrupt_during_a_visit_keeps_every_earlier_visit_and_records_the_run_as_stopped(self):
+        io, run = self.stopped_run(5)  # 3 sides x 2 titles x 4 rounds = 24 plays planned
+        d = run['dir']
+        raw = json.loads(read(os.path.join(d, 'raw.json')))
+        self.assertEqual(raw['status'], 'stopped')
+        self.assertEqual([(v['side'], v['phase'], v['round'], v['title']) for v in raw['visits']],
+                         [('kaijuflow', 'cold', 1, 'Matrix'), ('uu', 'cold', 1, 'Matrix'),
+                          ('altmount-addon', 'cold', 1, 'Matrix'), ('uu', 'cold', 1, 'Show S01E01')])
+        meta = json.loads(read(os.path.join(d, 'meta.json')))
+        self.assertEqual(meta['status'], 'stopped')
+        self.assertEqual(meta['stopped'], {
+            'time': '2026-11-10T18:00:11.000Z', 'plays_done': 4, 'plays_planned': 24,
+            'during': {'side': 'altmount-addon', 'phase': 'cold', 'round': 1, 'title': 'Show S01E01'}})
+        rows = [x for x in read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines() if os.path.basename(d) in x]
+        self.assertEqual(len(rows), 1)
+        self.assertIn('| trial | stopped |', rows[0])
+        self.assertIn('4 of 24 plays', rows[0])
+
+    def test_the_cleanup_still_runs_after_an_interrupt(self):
+        io, run = self.stopped_run(5, one_page=True)
+        self.assertEqual(io.visits, 5)  # stopped at once
+        self.assertEqual([c[0] for c in io.calls][-3:], ['restore-config', 'standin-stop', 'stop-all'])
+        self.assertEqual(io.up, set())
+
+    def test_the_report_opens_by_saying_the_run_was_stopped_and_is_made_from_the_finished_plays(self):
+        io, run = self.stopped_run(5)
+        rep = read(os.path.join(run['dir'], 'report.md'))
+        self.assertEqual(rep.split('\n')[0],
+                         "This run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had finished, and it stopped "
+                         "during the next one (AltMount's own addon, cold 1, Show S01E01). The tables below are made from the "
+                         "finished plays alone, so the run is not a baseline.")
+        self.assertNotIn('each round done twice', rep)
+        self.assertIn('| Usenet Ultimate | Cold 1 | 2 of 2 |', rep)  # the failures table: both of its finished plays played
+        self.assertIn('| KaijuFlow | Cold 1 | 1 of 1 |', rep)  # the round was cut short: one of its two titles
+        self.assertNotIn('| Warm 1 |', rep)  # no row for a round that never began
+
+    def test_an_interrupt_between_two_plays_names_no_play(self):
+        io = FakeIO()
+        sleeps = []
+
+        def sleep(s):
+            sleeps.append(s)
+            if len(sleeps) == 2:
+                raise KeyboardInterrupt
+        io.sleep = sleep
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        self.assertEqual((run['status'], len(run['visits'])), ('stopped', 2))
+        self.assertIsNone(run['stopped']['during'])
+        self.assertIn('2 of 24 plays had finished, and it stopped between two plays.',
+                      read(os.path.join(run['dir'], 'report.md')).split('\n')[0])
+
+    def test_a_stopped_run_is_not_the_previous_run(self):
+        self.stopped_run(5)
+        self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
+
+    def test_check_says_a_stopped_run_is_not_usable_as_a_baseline(self):
+        io, run = self.stopped_run(5)
+        out = io_module.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = runcheck.check_command(run['dir'])
+        self.assertEqual(code, 1)
+        first = out.getvalue().splitlines()[0]  # the fake stand-in's one miss is a second reason, after this one
+        self.assertTrue(first.startswith(
+            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had "
+            "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
+
+    def test_the_run_command_ends_a_stopped_run_with_the_check_and_exit_code_130(self):
+        cfg = make_cfg(self.tmp)
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(FakeIO(), 5)), contextlib.redirect_stdout(out):
+            code = brainrun.main(['run', '--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root', cfg['runs_root'],
+                                  '--test-dir', cfg['test_dir'], '--titles-file', titles])
+        self.assertEqual(code, 130)
+        lines = out.getvalue().splitlines()
+        folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
+        self.assertIn(f'stopped: {folder}', lines)
+        first = lines[lines.index(f'stopped: {folder}') + 1]
+        self.assertEqual(read(os.path.join(folder, 'CHECK.txt')).splitlines()[0], first)
+        self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
+        self.assertTrue(first.startswith(
+            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had "
+            "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
 
 
 class WaitSwitchTest(unittest.TestCase):
@@ -685,6 +807,51 @@ class RecordTest(unittest.TestCase):
         self.assertIn('NULL', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+
+    # ---- a record pass stopped by hand (#110)
+    def stopped_record(self, n):
+        io = interrupt_at(RecordIO(self.cfg, self.url), n)
+        try:
+            return io, brainrun.record_all(self.cfg, io)
+        except KeyboardInterrupt:
+            self.fail('the interrupt escaped record_all')
+
+    def test_an_interrupt_during_the_record_pass_keeps_what_was_stored_and_records_it_as_stopped(self):
+        io, rec = self.stopped_record(3)
+        self.assertEqual(rec['status'], 'stopped')
+        self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:02.000Z', 'visits': 2, 'during': 'the record pass'})
+        self.assertEqual(len(self.stored()), 3)  # KaijuFlow's two pages and Usenet Ultimate's one, for the first title
+        self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
+        row = read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines()[-1]
+        self.assertIn('| trial (record) | stopped |', row)
+        self.assertIn(os.path.basename(rec['dir']), row)
+        st = self.state()
+        self.assertEqual((st['state'], st['why']), ('stopped', 'the record command was stopped by hand during the record pass'))
+        kinds = [c[0] for c in io.calls]
+        self.assertEqual(kinds.count('standin-start'), 1)  # no proof of a pass that did not finish
+        self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+
+    def test_an_interrupt_during_the_proof_records_it_as_stopped_and_a_run_refuses_the_recording(self):
+        io, rec = self.stopped_record(13)  # the pass makes 12 visits; the 13th is the proof's first
+        self.assertEqual((rec['status'], rec['stopped']['during'], rec['stopped']['visits']), ('stopped', 'the proof replay', 12))
+        self.assertEqual(len(self.stored()), 12)
+        self.assertEqual(self.state()['state'], 'stopped')  # not proven, so not complete: the preflight of a run refuses it
+        self.assertEqual([c[0] for c in io.calls][-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+        self.assertEqual(io.up, set())
+
+    def test_the_record_command_ends_a_stopped_record_with_one_sentence_and_exit_code_130(self):
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(self.cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(RecordIO(cfg, self.url), 3)), \
+                contextlib.redirect_stdout(out):
+            code = brainrun.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
+                                  self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles])
+        self.assertEqual(code, 130)
+        last = out.getvalue().splitlines()[-1]
+        self.assertTrue(last.startswith('The recording was stopped by hand during the record pass. What was stored is kept; '
+                                        'run the same command again to top up. Folder: '), last)
 
     def marker_files(self):
         return sorted(f for f in os.listdir(self.cfg['store']) if f.startswith('LIMIT_REACHED'))

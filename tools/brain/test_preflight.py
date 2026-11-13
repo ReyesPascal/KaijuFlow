@@ -1,12 +1,14 @@
 """Tests for the preflight of brainrun.py (spec #72, ticket #74): one test per check, each asserting the exit code and the sentence.
 
 Runs the real reader on fixture test copies in a temporary folder; only the Docker/git/port questions are faked.
+The tests of ticket #113 (which commits ask for a new image) put those git questions to the real git, in a small temporary repository.
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
 """
 import contextlib
 import io
 import json
 import os
+import subprocess
 import unittest
 
 import brainrun
@@ -14,18 +16,27 @@ import testbed
 from test_settings import SECRET, make_copies, tempdir
 
 COMMIT = 'a' * 40
+OLDER = 'b' * 40
 
 
 class FakeWorld(brainrun.RealIO):
-    """RealIO reading the fixture folder, with the questions that need Docker, git or a port answered by hand."""
+    """RealIO reading the fixture folder, with the questions that need Docker, git or a port answered by hand.
 
-    def __init__(self, cfg, label=COMMIT, repo=COMMIT, dirty=False, free=True):
+    `changed` is what its repository knows: {an earlier commit: whether a build input changed between it and `head`}. Asked
+    about any other commit it has no answer, as git has none for a commit the repository does not have.
+    """
+
+    def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None):
         super().__init__(cfg)
-        self.label, self.repo, self.dirty, self.free = label, repo, dirty, free
+        self.label, self.head, self.dirty, self.free, self.changed = label, head, dirty, free, dict(changed or {})
+        self.repo = None  # no real repository behind this world
         self.rebuilt = []
 
     def git_info(self):
-        return self.repo, self.dirty
+        return self.head, self.dirty
+
+    def build_inputs_changed(self, since):
+        return self.changed.get(since)
 
     def image_label(self):
         return self.label
@@ -36,6 +47,50 @@ class FakeWorld(brainrun.RealIO):
 
     def port_free(self, port):
         return self.free
+
+
+class RepoWorld(FakeWorld):
+    """FakeWorld whose git questions go to the real git in a small repository of its own, so only the image is answered by hand."""
+
+    def __init__(self, cfg, repo, label):
+        super().__init__(cfg, label=label)
+        self.repo = repo
+
+    git_info = brainrun.RealIO.git_info
+    build_inputs_changed = brainrun.RealIO.build_inputs_changed
+
+
+def git(repo, *args):
+    return subprocess.check_output(['git', '-C', repo, '-c', 'user.name=test', '-c', 'user.email=test@example.invalid',
+                                    '-c', 'commit.gpgsign=false', *args], text=True, stderr=subprocess.STDOUT).strip()
+
+
+def put(repo, rel, text):
+    path = os.path.join(repo, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write(text)
+
+
+def commit(repo, files):
+    """Commits {path: text} in the repository and returns the new commit."""
+    for rel, text in files.items():
+        put(repo, rel, text)
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'change ' + ', '.join(sorted(files)))
+    return git(repo, 'rev-parse', 'HEAD')
+
+
+def make_repo(case):
+    """A git repository with one commit that holds something of everything: code that goes into the image, and files that do not."""
+    repo = os.path.join(tempdir(case), 'repo')
+    os.makedirs(repo)
+    git(repo, 'init', '-q')
+    first = commit(repo, {'src/server.ts': 'one', 'ui/src/App.tsx': 'one', 'ui/package.json': '{}', 'package.json': '{}',
+                          'package-lock.json': '{}', 'tsconfig.json': '{}', 'tsconfig.test.json': '{}', 'Dockerfile': 'FROM scratch',
+                          '.dockerignore': 'dist/', 'scripts/docker-entrypoint.sh': 'one', 'scripts/docker-build.sh': 'one',
+                          'docs/note.md': 'one', 'README.md': 'one', 'tools/brain/brainrun.py': 'one', 'tests/a.test.ts': 'one'})
+    return repo, first
 
 
 def make_cfg(td, **kw):
@@ -90,8 +145,13 @@ class PreflightTest(unittest.TestCase):
             self.assertEqual(code, 0, text)
             self.assertIn('Setup is right', text)
 
-    def test_image_label_must_equal_the_repository_commit(self):
-        self.assert_stops('record', self.world(label='b' * 40), 'built from commit bbbbbbb', 'aaaaaaa', '--rebuild-image')
+    def test_image_from_an_earlier_commit_stops_when_a_build_input_changed_since(self):
+        self.assert_stops('record', self.world(label=OLDER, changed={OLDER: True}),
+                          'built from commit bbbbbbb', 'has changed since then', 'aaaaaaa', '--rebuild-image')
+
+    def test_image_from_a_commit_the_repository_does_not_have_stops(self):
+        self.assert_stops('record', self.world(label=OLDER), 'built from commit bbbbbbb, which this repository does not have',
+                          'aaaaaaa', '--rebuild-image')
 
     def test_image_without_label_stops(self):
         self.assert_stops('record', self.world(label=None), 'does not say which commit', '--rebuild-image')
@@ -231,6 +291,109 @@ class PreflightTest(unittest.TestCase):
     def test_mode_must_be_record_or_run(self):
         with self.assertRaises(ValueError):
             brainrun.preflight('smoke', self.cfg, self.world())
+
+
+class DocsOnlyCommitTest(unittest.TestCase):
+    """Ticket #113: the image is compared with the code that goes into it, asked of the real git in a small repository."""
+
+    def setUp(self):
+        self.cfg = make_cfg(make_copies(self))
+        record(self.cfg)
+        self.repo, self.built_from = make_repo(self)
+
+    def world(self):
+        return RepoWorld(self.cfg, self.repo, label=self.built_from)
+
+    def test_a_commit_that_touches_only_docs_or_a_markdown_file_needs_no_rebuild(self):
+        commit(self.repo, {'docs/note.md': 'two', 'README.md': 'two'})
+        w = self.world()
+        code, text = run_command('run', self.cfg, w)
+        self.assertEqual(code, 0, text)
+        self.assertIn('Setup is right', text)
+        self.assertEqual(w.rebuilt, [])
+
+    def test_a_commit_that_touches_src_stops_and_asks_for_a_rebuild(self):
+        head = commit(self.repo, {'src/server.ts': 'two'})
+        code, text = run_command('run', self.cfg, self.world())
+        self.assertEqual(code, 1, text)
+        self.assertIn(f'built from commit {self.built_from[:7]}', text)
+        self.assertIn(f'the code that goes into the image has changed since then (the repository is at {head[:7]})', text)
+        self.assertIn('--rebuild-image', text)
+        self.assertEqual(len(text.strip().splitlines()), 1, text)
+
+    def test_the_rebuild_option_leaves_an_image_alone_that_still_holds_the_code(self):
+        commit(self.repo, {'docs/note.md': 'two'})
+        self.cfg['rebuild_image'] = True
+        w = self.world()
+        code, text = run_command('run', self.cfg, w)
+        self.assertEqual((code, w.rebuilt, w.label), (0, [], self.built_from), text)
+
+    def test_the_rebuild_option_builds_from_the_new_commit_after_a_change_to_src(self):
+        head = commit(self.repo, {'src/server.ts': 'two'})
+        self.cfg['rebuild_image'] = True
+        w = self.world()
+        code, text = run_command('run', self.cfg, w)
+        self.assertEqual((code, w.rebuilt, w.label), (0, [head], head), text)
+
+    def test_an_image_from_a_commit_the_repository_does_not_have_stops(self):
+        code, text = run_command('run', self.cfg, RepoWorld(self.cfg, self.repo, label=OLDER))
+        self.assertEqual(code, 1, text)
+        self.assertIn('built from commit bbbbbbb, which this repository does not have', text)
+
+    def test_a_label_that_is_not_a_commit_id_is_never_handed_to_git(self):
+        def run(argv, **kw):
+            self.fail('git was asked about ' + argv[-1])
+
+        for label in ('--output=/tmp/x', 'latest', 'HEAD', '', None):
+            self.assertIsNone(brainrun.build_inputs_changed(self.repo, label, run=run))
+
+
+class BuildInputsTest(unittest.TestCase):
+    def test_what_counts_as_a_change_to_the_code_in_the_image(self):
+        repo, before = make_repo(self)
+        cases = [('src/server.ts', True), ('src/deep/new.ts', True), ('ui/src/App.tsx', True), ('ui/package.json', True),
+                 ('package.json', True), ('package-lock.json', True), ('tsconfig.json', True), ('Dockerfile', True),
+                 ('.dockerignore', True), ('.gitattributes', True), ('scripts/docker-entrypoint.sh', True),
+                 ('docs/note.md', False), ('README.md', False), ('docs/src/note.md', False), ('tools/brain/brainrun.py', False),
+                 ('tests/a.test.ts', False), ('tsconfig.test.json', False), ('scripts/docker-build.sh', False)]
+        for path, expected in cases:
+            after = commit(repo, {path: 'changed'})
+            self.assertIs(brainrun.build_inputs_changed(repo, before), expected, path)
+            before = after
+
+    def test_a_change_that_was_taken_back_leaves_the_image_current(self):
+        repo, before = make_repo(self)
+        commit(repo, {'src/server.ts': 'two'})
+        commit(repo, {'src/server.ts': 'one', 'docs/note.md': 'two'})
+        self.assertIs(brainrun.build_inputs_changed(repo, before), False)
+
+    def test_a_removed_source_file_is_a_change(self):
+        repo, before = make_repo(self)
+        git(repo, 'rm', '-q', 'ui/src/App.tsx')
+        git(repo, 'commit', '-q', '-m', 'remove')
+        self.assertIs(brainrun.build_inputs_changed(repo, before), True)
+
+    def test_the_build_inputs_are_what_the_dockerfile_copies_into_the_image(self):
+        with open(os.path.join(brainrun.REPO, 'Dockerfile')) as f:
+            copies = [line.split()[1:-1] for line in f if line.startswith('COPY ') and '--from=' not in line]
+        copied = {src.rstrip('*').rstrip('/') for sources in copies for src in sources}
+        self.assertIn('src', copied)  # the Dockerfile was read
+        inputs = set(brainrun.BUILD_INPUTS)
+        not_covered = sorted(c for c in copied if not any(c == i or c.startswith(i + '/') for i in inputs))
+        self.assertEqual(not_covered, [], 'the Dockerfile copies these, but BUILD_INPUTS does not name them')
+        not_copied = sorted(i for i in inputs - {'Dockerfile', '.dockerignore', '.gitattributes'}
+                            if not any(c == i or c.startswith(i + '/') for c in copied))
+        self.assertEqual(not_copied, [], 'BUILD_INPUTS names these, but the Dockerfile does not copy them')
+
+    def test_the_image_state_is_decided_from_the_label_the_commit_and_git(self):
+        def never(commit):
+            self.fail('git is not asked when the commits are the same or there is no label')
+
+        self.assertEqual(brainrun.image_state(None, COMMIT, never), 'missing')
+        self.assertEqual(brainrun.image_state(COMMIT, COMMIT, never), 'current')
+        self.assertEqual(brainrun.image_state(OLDER, COMMIT, {OLDER: False}.get), 'current')
+        self.assertEqual(brainrun.image_state(OLDER, COMMIT, {OLDER: True}.get), 'stale')
+        self.assertEqual(brainrun.image_state(OLDER, COMMIT, {}.get), 'unknown')
 
 
 class BuildImageTest(unittest.TestCase):
