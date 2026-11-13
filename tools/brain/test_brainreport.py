@@ -503,9 +503,8 @@ class TargetsTest(unittest.TestCase):
 
     def test_a_missing_targets_file_gives_one_sentence_and_the_rest_of_the_report(self):
         path = os.path.join(tempdir(self), 'targets.json')
-        visits = runs_fixture()['visits']
-        self.assertEqual(br.target_lines(visits, path), ['Targets: not judged (targets.json cannot be read: FileNotFoundError).'])
-        self.assertEqual(br.targets_section(visits, path),
+        self.assertEqual(br.target_lines(runs_fixture(), path), ['Targets: not judged (targets.json cannot be read: FileNotFoundError).'])
+        self.assertEqual(br.targets_section(runs_fixture(), path),
                          ['## Targets', '', 'Not judged (targets.json cannot be read: FileNotFoundError).', ''])
 
     def test_an_entry_the_tools_cannot_judge_is_named(self):
@@ -521,7 +520,7 @@ class TargetsTest(unittest.TestCase):
         for change, why in bad:
             with open(path, 'w') as f:
                 json.dump({'targets': [entry, {**entry, 'against': 'altmount-addon', **change}]}, f)
-            self.assertEqual(br.target_lines(runs_fixture()['visits'], path), [f'Targets: not judged (targets.json, {why}).'])
+            self.assertEqual(br.target_lines(runs_fixture(), path), [f'Targets: not judged (targets.json, {why}).'])
 
 
 T0 = dt('2026-11-10T18:00:00Z').timestamp() * 1000   # epoch ms of the first visit's start

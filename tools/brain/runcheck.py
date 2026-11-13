@@ -4,8 +4,10 @@
 
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
 (a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
-or a run folder that cannot be read). For a finished run it then prints one line per target of
-targets.json (the target, the measured values, met or not met); those do not change the exit code.
+a recording folder, or a run folder that cannot be read). For a finished run it then prints one line per
+target of targets.json (the target, the measured values, met or not met); for any other run one line
+says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
+The targets do not change the exit code.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import json
@@ -57,14 +59,17 @@ def check_run(run_dir):
     visits = (raw or {}).get('visits') or []
     status = meta.get('status')
     reasons, lines = [], []
+    recording = meta.get('mode') == 'record'
+    if recording:
+        reasons.append('the folder holds a recording, not a timed run')
     if status == 'null':
         n = meta.get('null') or {}
         reasons.append(f"the run is null ({n.get('indexer', 'an indexer')} said its limit was reached at {n.get('time', 'an unknown time')})")
     elif status == 'stopped':
-        reasons.append(f"the run was {br.stopped_text(meta.get('stopped'))}")
-    elif status != 'ok':
+        reasons.append(f"the {'recording' if recording else 'run'} was {br.stopped_text(meta.get('stopped'))}")
+    elif status != 'ok' and not recording:  # a recording's own status (recorded, failed) is no run's
         reasons.append(f"the run did not finish ({meta.get('error') or 'status ' + str(status)})")
-    elif err:
+    elif err and not recording:
         reasons.append(err)
     lines.append(f"Run: {meta.get('name')}, status: {status}.")
     sides = meta.get('sides') or []
@@ -121,8 +126,8 @@ def check_run(run_dir):
             lines.append(f"- {_visit_name(v)}: {cause}" + (' (a missed request can be the cause)' if v.get('not_recorded') else ''))
     else:
         lines.append('Failures: none.')
-    if status == 'ok' and not err:  # the targets are judged on a finished run only; they do not decide the baseline verdict
-        lines += br.target_lines(visits)
+    if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
+        lines += br.target_lines({'status': status, 'visits': visits})
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:

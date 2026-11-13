@@ -8,8 +8,10 @@ import http.server
 import io as io_module
 import json
 import os
+import signal
 import socket
 import sqlite3
+import time
 import unittest
 import urllib.request
 from unittest import mock
@@ -560,6 +562,141 @@ def interrupt_at(io, n):
     return io
 
 
+def terminate_at(io, n):
+    """SIGTERM during the n-th visit, sent to this process as `timeout` sends it; the visit waits for it to land."""
+    inner = io.visit_http
+
+    def visit(side, kind, vid, tries):
+        if io.visits == n - 1:
+            io.visits += 1
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(5)  # cut short by the signal
+        return inner(side, kind, vid, tries)
+    io.visit_http = visit
+    return io
+
+
+def ctrl_c_again_in_the_ending(io):
+    """The owner presses Ctrl-C again while the command finishes its record: once as the test copies are stopped (the
+    cleanup), once as the clock is next read after that (the writing of the record). Real signals, so that a command
+    that ignores them is seen to ignore them."""
+    stop_all, now, pressed = io.stop_all, io.now, []
+
+    def press():
+        pressed.append(1)
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.2)  # a Ctrl-C that is not ignored cuts this short
+
+    def stop_all_and_press():
+        press()
+        stop_all()
+
+    def now_and_press():
+        if len(pressed) == 1:
+            press()
+        return now()
+    io.stop_all, io.now = stop_all_and_press, now_and_press
+    return io, pressed
+
+
+class SignalGuard(unittest.TestCase):
+    """A SIGTERM that no handler of brainrun catches fails the test instead of ending the test process; SIGINT gets
+    Python's own handler back after every test."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+        def unhandled(signum, frame):
+            raise RuntimeError('SIGTERM reached the test: brainrun has no handler for it')
+        self.unhandled = unhandled
+        self.addCleanup(signal.signal, signal.SIGTERM, signal.signal(signal.SIGTERM, unhandled))
+        self.addCleanup(signal.signal, signal.SIGINT, signal.default_int_handler)
+
+    def command(self, argv, io_for):
+        """brainrun.main with the world of `io_for(cfg)`: (exit code, printed lines, the run folder or record folder)."""
+        cfg = make_cfg(self.tmp)
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', io_for), contextlib.redirect_stdout(out):
+            code = brainrun.main(argv + ['--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root',
+                                         cfg['runs_root'], '--test-dir', cfg['test_dir'], '--titles-file', titles])
+        folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
+        return code, out.getvalue().splitlines(), folder
+
+
+class SigtermTest(SignalGuard):
+    """`timeout` ends a command with SIGTERM: a run or a record ended that way is stopped, like one stopped with Ctrl-C."""
+
+    def test_a_run_ended_by_sigterm_is_stopped_and_keeps_its_record(self):
+        code, lines, folder = self.command(['run'], lambda cfg: terminate_at(FakeIO(), 5))
+        self.assertEqual(code, 130)
+        meta = json.loads(read(os.path.join(folder, 'meta.json')))
+        self.assertEqual((meta['status'], meta['stopped']['signal'], meta['stopped']['plays_done']), ('stopped', 'SIGTERM', 4))
+        self.assertEqual(len(json.loads(read(os.path.join(folder, 'raw.json')))['visits']), 4)
+        self.assertTrue(read(os.path.join(folder, 'report.md')).startswith('This run was stopped by SIGTERM at '))
+        self.assertIn('| trial | stopped |', read(os.path.join(os.path.dirname(folder), 'INDEX.md')))
+        self.assertTrue(lines[lines.index(f'stopped: {folder}') + 1].startswith(
+            'Not usable as a baseline: the run was stopped by SIGTERM at '), lines)
+        self.assertIs(signal.getsignal(signal.SIGTERM), self.unhandled)  # the command's handler is gone again
+
+    def test_a_record_ended_by_sigterm_is_stopped_and_keeps_what_was_stored(self):
+        fake = fakes.serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), fakes.FakeIndexer))
+        self.addCleanup(fake.server_close)
+        self.addCleanup(fake.shutdown)
+        fakes.FakeIndexer.hits, fakes.FakeIndexer.limit, fakes.FakeIndexer.force_status = 0, False, None
+        url = f'http://127.0.0.1:{fake.server_port}'
+        os.makedirs(make_cfg(self.tmp)['store'])
+        code, lines, folder = self.command(['record'], lambda cfg: terminate_at(RecordIO(cfg, url), 3))
+        self.assertEqual(code, 130)
+        self.assertTrue(lines[-1].startswith('The recording was stopped by SIGTERM at '), lines[-1])
+        meta = json.loads(read(os.path.join(folder, 'meta.json')))
+        self.assertEqual((meta['status'], meta['stopped']['signal']), ('stopped', 'SIGTERM'))
+        with open(os.path.join(make_cfg(self.tmp)['store'], 'l', 'RECORDING.json')) as f:
+            self.assertEqual(json.load(f)['state'], 'stopped')
+        self.assertIs(signal.getsignal(signal.SIGTERM), self.unhandled)
+
+
+class SecondStopTest(SignalGuard):
+    """Ctrl-C again while a stopped command finishes its record: one line says it is finishing, and the record is written."""
+
+    def test_a_second_ctrl_c_while_the_run_finishes_its_record_is_ignored(self):
+        io, pressed = ctrl_c_again_in_the_ending(interrupt_at(FakeIO(), 5))
+        try:
+            run, lines = printed(brainrun.run_all, make_cfg(self.tmp), io)
+        except KeyboardInterrupt:
+            self.fail('the second Ctrl-C escaped run_all')
+        self.assertEqual(len(pressed), 2)
+        self.assertIn('Stopped by Ctrl-C (SIGINT): the run is finishing its record (report.md, raw.json, meta.json and the '
+                      'INDEX.md row); a second Ctrl-C is ignored until it is written.', lines)
+        self.assertEqual([c[0] for c in io.calls][-3:], ['restore-config', 'standin-stop', 'stop-all'])  # the cleanup's order
+        for name in ('report.md', 'raw.json', 'meta.json'):
+            self.assertTrue(os.path.exists(os.path.join(run['dir'], name)), name)
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['status'], 'stopped')
+        self.assertIn(os.path.basename(run['dir']), read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+        self.assertIs(signal.getsignal(signal.SIGINT), signal.default_int_handler)  # Ctrl-C works again afterwards
+
+    def test_a_second_ctrl_c_while_the_record_finishes_is_ignored(self):
+        fake = fakes.serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), fakes.FakeIndexer))
+        self.addCleanup(fake.server_close)
+        self.addCleanup(fake.shutdown)
+        fakes.FakeIndexer.hits, fakes.FakeIndexer.limit, fakes.FakeIndexer.force_status = 0, False, None
+        cfg = make_cfg(self.tmp)
+        os.makedirs(cfg['store'])
+        io, pressed = ctrl_c_again_in_the_ending(interrupt_at(RecordIO(cfg, f'http://127.0.0.1:{fake.server_port}'), 3))
+        try:
+            rec, lines = printed(brainrun.record_all, cfg, io)
+        except KeyboardInterrupt:
+            self.fail('the second Ctrl-C escaped record_all')
+        self.assertEqual(len(pressed), 2)
+        self.assertIn('Stopped by Ctrl-C (SIGINT): the record command is finishing its record (RECORDING.json, meta.json and '
+                      'the INDEX.md row); a second Ctrl-C is ignored until it is written.', lines)
+        self.assertEqual([c[0] for c in io.calls][-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+        self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
+        self.assertIn(os.path.basename(rec['dir']), read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+
+
 class InterruptedRunTest(unittest.TestCase):
     """A run stopped by hand (#110) keeps the plays it finished and ends the normal way."""
 
@@ -585,6 +722,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual(meta['status'], 'stopped')
         self.assertEqual(meta['stopped'], {
             'time': '2026-11-10T18:00:38.000Z', 'plays_done': 4, 'plays_planned': 24,  # 2 s stand-in, 20 s reset, 4 visits of 4 s
+            'signal': 'SIGINT', 'stage': 'the pass of the main sides',
             'during': {'side': 'altmount-addon', 'phase': 'cold', 'round': 1, 'title': 'Show S01E01'}})
         rows = [x for x in read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines() if os.path.basename(d) in x]
         self.assertEqual(len(rows), 1)
@@ -601,7 +739,8 @@ class InterruptedRunTest(unittest.TestCase):
         io, run = self.stopped_run(5)
         rep = read(os.path.join(run['dir'], 'report.md'))
         self.assertEqual(rep.split('\n')[0],
-                         "This run was stopped by hand at 2026-11-10T18:00:38.000Z: 4 of 24 plays had finished, and it stopped "
+                         "This run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the main sides: "
+                         "4 of 24 plays had finished, and it stopped "
                          "during the next one (AltMount's own addon, cold 1, Show S01E01). The tables below are made from the "
                          "finished plays alone, so the run is not a baseline.")
         self.assertNotIn('each round done twice', rep)
@@ -695,6 +834,17 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertIn('2 of 24 plays had finished, and it stopped between two plays.',
                       read(os.path.join(run['dir'], 'report.md')).split('\n')[0])
 
+    def test_a_stopped_run_judges_no_target_in_its_report_or_its_check(self):
+        io, run = self.stopped_run(5)
+        targets = read(os.path.join(run['dir'], 'report.md')).split('## Targets\n\n')[1].split('\n## ')[0]
+        self.assertEqual(targets.strip(), 'Not judged: the run was stopped before its last play, and the targets are '
+                                          'judged on a finished run alone.')
+        out = io_module.StringIO()
+        with contextlib.redirect_stdout(out):
+            runcheck.check_command(run['dir'])
+        self.assertEqual([x for x in out.getvalue().splitlines() if x.startswith('Target')], [
+            'Targets: not judged: the run was stopped before its last play, and the targets are judged on a finished run alone.'])
+
     def test_a_stopped_run_is_not_the_previous_run(self):
         self.stopped_run(5)
         self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
@@ -707,8 +857,9 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual(code, 1)
         first = out.getvalue().splitlines()[0]  # the fake stand-in's one miss is a second reason, after this one
         self.assertTrue(first.startswith(
-            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:38.000Z: 4 of 24 plays had "
-            "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
+            "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "Show S01E01)"), first)
 
     def test_the_run_command_ends_a_stopped_run_with_the_check_and_exit_code_130(self):
         cfg = make_cfg(self.tmp)
@@ -727,8 +878,9 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual(read(os.path.join(folder, 'CHECK.txt')).splitlines()[0], first)
         self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
         self.assertTrue(first.startswith(  # the command's own --settle: a 3 s pause after each of the four plays
-            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:50.000Z: 4 of 24 plays had "
-            "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
+            "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:50.000Z in the pass of the "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "Show S01E01)"), first)
 
 
 class WaitSwitchTest(unittest.TestCase):
@@ -1117,25 +1269,68 @@ class RecordTest(unittest.TestCase):
         io, rec = self.stopped_record(3)
         self.assertEqual(rec['status'], 'stopped')
         # 20 s reset, 2 s stand-in, two visits of 4 s
-        self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:30.000Z', 'visits': 2, 'during': 'the record pass'})
+        self.assertEqual((rec['stopped']['time'], rec['stopped']['plays_done']), ('2026-11-10T18:00:30.000Z', 2))
         self.assertEqual(len(self.stored()), 3)  # KaijuFlow's two pages and Usenet Ultimate's one, for the first title
         self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
         row = read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines()[-1]
         self.assertIn('| trial (record) | stopped |', row)
         self.assertIn(os.path.basename(rec['dir']), row)
         st = self.state()
-        self.assertEqual((st['state'], st['why']), ('stopped', 'the record command was stopped by hand during the record pass'))
+        self.assertEqual((st['state'], st['why']), ('stopped', 'the record command was stopped by Ctrl-C (SIGINT) at '
+                                                    '2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, '
+                                                    "and it stopped during the next one (AltMount's own addon, cold, Matrix)"))
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds.count('standin-start'), 1)  # no proof of a pass that did not finish
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
 
     def test_an_interrupt_during_the_proof_records_it_as_stopped_and_a_run_refuses_the_recording(self):
         io, rec = self.stopped_record(13)  # the pass makes 12 visits; the 13th is the proof's first
-        self.assertEqual((rec['status'], rec['stopped']['during'], rec['stopped']['visits']), ('stopped', 'the proof replay', 12))
+        self.assertEqual((rec['status'], rec['stopped']['stage'], rec['stopped']['plays_done']), ('stopped', 'the proof replay', 0))
         self.assertEqual(len(self.stored()), 12)
         self.assertEqual(self.state()['state'], 'stopped')  # not proven, so not complete: the preflight of a run refuses it
         self.assertEqual([c[0] for c in io.calls][-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
         self.assertEqual(io.up, set())
+
+    def test_an_interrupt_in_the_opening_reset_or_the_stand_ins_start_still_ends_the_normal_way(self):
+        for step in ('reset', 'start_standin'):
+            with self.subTest(step=step):
+                io = RecordIO(self.cfg, self.url)
+                real = getattr(io, step)
+
+                def cut_short(*args, _step=step, _real=real, **kw):  # Ctrl-C in the first call only
+                    setattr(io, _step, _real)
+                    raise KeyboardInterrupt
+                setattr(io, step, cut_short)
+                try:
+                    rec = brainrun.record_all(self.cfg, io)
+                except KeyboardInterrupt:
+                    self.fail('the interrupt escaped record_all')
+                self.assertEqual((rec['status'], rec['stopped']['plays_done'], rec['stopped']['during']), ('stopped', 0, None))
+                self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
+                self.assertTrue(self.state()['why'].endswith('in the record pass: 0 of 12 plays had finished, and it stopped '
+                                                             'before its first play'), self.state()['why'])
+                self.assertIn(os.path.basename(rec['dir']), read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+                self.assertEqual([c[0] for c in io.calls][-2:], ['reset', 'stop-all'])  # the cleanup still runs
+                self.assertEqual(io.up, set())
+
+    def test_check_on_a_stopped_record_folder_says_it_holds_a_recording_and_how_it_stopped(self):
+        io, rec = self.stopped_record(3)
+        out = io_module.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = runcheck.check_command(rec['dir'])
+        self.assertEqual(code, 1)
+        self.assertEqual(out.getvalue().splitlines()[0],
+                         'Not usable as a baseline: the folder holds a recording, not a timed run; the recording was stopped '
+                         'by Ctrl-C (SIGINT) at 2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, and '
+                         "it stopped during the next one (AltMount's own addon, cold, Matrix).")
+
+    def test_a_stopped_record_and_a_stopped_run_say_how_they_stopped_in_one_shape(self):
+        io, rec = self.stopped_record(3)
+        run = brainrun.run_all(make_cfg(self.tmp), interrupt_at(FakeIO(), 5))
+        self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:30.000Z', 'signal': 'SIGINT', 'stage': 'the record pass',
+                                          'plays_done': 2, 'plays_planned': 12,
+                                          'during': {'side': 'altmount-addon', 'phase': 'cold', 'round': None, 'title': 'Matrix'}})
+        self.assertEqual(sorted(run['stopped']), sorted(rec['stopped']))
 
     def test_the_record_command_ends_a_stopped_record_with_one_sentence_and_exit_code_130(self):
         titles = os.path.join(self.tmp, 'titles.json')
@@ -1148,7 +1343,9 @@ class RecordTest(unittest.TestCase):
                                   self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles])
         self.assertEqual(code, 130)
         last = out.getvalue().splitlines()[-1]
-        self.assertTrue(last.startswith('The recording was stopped by hand during the record pass. What was stored is kept; '
+        self.assertTrue(last.startswith('The recording was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:36.000Z in the record '
+                                        'pass: 2 of 12 plays had finished, and it stopped during the next one '
+                                        "(AltMount's own addon, cold, Matrix). What was stored is kept; "
                                         'run the same command again to top up. Folder: '), last)
 
     def marker_files(self):

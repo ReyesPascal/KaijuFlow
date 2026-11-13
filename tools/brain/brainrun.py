@@ -34,6 +34,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -71,13 +72,55 @@ NZBDAV_PORT = 3001
 GRACE_S = 5
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
 EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
-EXIT_INTERRUPTED = 130  # run and record: stopped by hand with Ctrl-C (the shell's own code for it)
+EXIT_INTERRUPTED = 130  # run and record: stopped by Ctrl-C or SIGTERM (130 is the shell's own code for Ctrl-C)
 
 
 class CapReached(Exception):
     def __init__(self, indexer, time_, where):
         super().__init__(f'{indexer} limit reached at {time_} ({where})')
         self.indexer, self.time, self.where = indexer, time_, where
+
+
+class Stop(KeyboardInterrupt):
+    """A stop signal other than Ctrl-C (SIGTERM, which `timeout` sends), raised where the command is, so it takes the same
+    path as Ctrl-C's KeyboardInterrupt and the command ends the normal way, with status `stopped`."""
+
+    def __init__(self, signal_name):
+        super().__init__(signal_name)
+        self.signal_name = signal_name
+
+
+@contextlib.contextmanager
+def sigterm_stops():
+    """While a run or a record goes, SIGTERM stops it the way Ctrl-C does (raises Stop); the earlier handler comes back after."""
+    def stop(signum, frame):
+        raise Stop(signal.Signals(signum).name)
+    earlier = signal.signal(signal.SIGTERM, stop)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, earlier)
+
+
+def stop_note(io, stopped_by, stage, plays_done, plays_planned, playing):
+    """How a run or a record was stopped, in the one shape both keep (meta.json's `stopped`; brainreport.stopped_text says
+    it in words): when, by which signal (from the KeyboardInterrupt or Stop that `stopped_by` is), in which stage, the plays
+    done out of those planned as the play lines count them, and the play that was cut off (None between two plays)."""
+    return {'time': br.iso(io.now()), 'signal': getattr(stopped_by, 'signal_name', 'SIGINT'), 'stage': stage,
+            'plays_done': plays_done, 'plays_planned': plays_planned, 'during': playing}
+
+
+def finish_after_stop(stopped, command, files):
+    """After the first stop: one line says the command is finishing its record, and further Ctrl-C and SIGTERM are ignored
+    until it is written. Returns the function that puts the earlier handlers back (it does nothing off the main thread,
+    where no handler can be set)."""
+    print(f"Stopped by {br.STOP_SIGNALS.get(stopped['signal'], stopped['signal'])}: the {command} is finishing its record "
+          f"({files}); a second Ctrl-C is ignored until it is written.", flush=True)
+    try:
+        earlier = {s: signal.signal(s, signal.SIG_IGN) for s in (signal.SIGINT, signal.SIGTERM)}
+    except ValueError:
+        return lambda: None
+    return lambda: [signal.signal(s, h) for s, h in earlier.items()]
 
 
 # --------------------------------------------------------------------------- settings
@@ -752,7 +795,7 @@ def planned_plays(cfg, rounds):
     return len(rounds) * len(cfg['titles']) * len(planned_sides(cfg))
 
 
-def progress(io, done, planned, proof=False):
+def line_prefix(io, done, planned, proof=False):
     """How every line starts that a run or a record prints while it plays: the UTC time and the plays done out of those
     planned (`05:46:35 [61/160]`), so the last line of the log says how far the command is. The proof of a record counts
     on its own and says `proof`."""
@@ -761,7 +804,7 @@ def progress(io, done, planned, proof=False):
 
 def progress_log(io, done, planned, proof=False):
     """A log function for what happens between two plays (a reset): its lines start the way the play lines do."""
-    return lambda msg: print(f'{progress(io, done, planned, proof)} {msg}', flush=True)
+    return lambda msg: print(f'{line_prefix(io, done, planned, proof)} {msg}', flush=True)
 
 
 @contextlib.contextmanager
@@ -783,18 +826,19 @@ def do_pass(cfg, io, run, logbuf, name, sides, reset_sides, first_reset=None):
     `reset_sides`; `first_reset(io, log)` takes the place of the first one (the switch to one page, which resets too).
     The pass, each of its rounds and each of its resets are timed into run['timing'] (#112)."""
     timing = run['timing']
+    run['stage'] = f'the pass of the {name}'
     with clocked(io, timing['passes'], name=name, sides=list(sides)):
         for n, (phase, rnd) in enumerate(PLAN):
-            which = {'pass': name, 'phase': phase, 'round': rnd}
+            round_key = {'pass': name, 'phase': phase, 'round': rnd}
             if phase == 'cold':
                 log = progress_log(io, len(run['visits']), planned_plays(cfg, PLAN))
-                with clocked(io, timing['resets'], **which):
+                with clocked(io, timing['resets'], **round_key):
                     if first_reset and n == 0:
                         first_reset(io, log)
                     else:
                         io.reset(reset_sides, log)
                 note_addresses(io, run)  # a container gets its address when it starts
-            with clocked(io, timing['rounds'], **which, plays=0, pause_s=0.0) as round_row:
+            with clocked(io, timing['rounds'], **round_key, plays=0, pause_s=0.0) as round_row:
                 do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row)
 
 
@@ -809,7 +853,7 @@ def do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row):
             run['visits'].append(v)
             run['playing'] = None
             round_row['plays'] += 1
-            print(f"{progress(io, len(run['visits']), planned_plays(cfg, PLAN))} {side} {phase} {rnd} {title[2]}: "
+            print(f"{line_prefix(io, len(run['visits']), planned_plays(cfg, PLAN))} {side} {phase} {rnd} {title[2]}: "
                   f"{'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
             _check_cap(io, v, since=run['started_at'])
             paused = io.now()
@@ -842,7 +886,7 @@ def run_all(cfg, io):
                      'one-page side': 'yes' if cfg['one_page'] else 'no'},
            'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []}}
     wait = cfg.get('wait', True)
-    logbuf, handle, failure = {}, None, None
+    logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     try:
         run['settings'] = io.snapshot()
         run['head'], run['dirty'] = io.git_info()  # the repository's commit; it differs from the image's after a docs-only commit
@@ -858,11 +902,10 @@ def run_all(cfg, io):
         except CapReached as e:
             run['status'] = 'null'
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
-        except KeyboardInterrupt:  # Ctrl-C: the pass stops, the plays that finished are kept, the ending is the normal one (#110)
+        except KeyboardInterrupt as e:  # Ctrl-C or SIGTERM: the pass stops, the plays that finished are kept, the ending is the normal one (#110)
             run['status'] = 'stopped'
-            run['stopped'] = {'time': br.iso(io.now()), 'plays_done': len(run['visits']),
-                              'plays_planned': planned_plays(cfg, PLAN),
-                              'during': run.get('playing')}
+            run['stopped'] = stop_note(io, e, run.get('stage'), len(run['visits']), planned_plays(cfg, PLAN), run.get('playing'))
+            restore_signals = finish_after_stop(run['stopped'], 'run', 'report.md, raw.json, meta.json and the INDEX.md row')
         finally:
             try:
                 finalize_steps(io, run['visits'])
@@ -876,6 +919,19 @@ def run_all(cfg, io):
     except Exception as e:  # noqa: BLE001
         run['status'], run['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
         failure = e
+    try:
+        write_run_ending(cfg, io, run, started, logbuf)
+    finally:
+        restore_signals()
+    if failure:
+        raise failure
+    return run
+
+
+def write_run_ending(cfg, io, run, started, logbuf):
+    """The ending of every run, finished or not: its time, the logs, report.md, raw.json, meta.json and the INDEX.md row."""
+    root, run_dir = cfg['runs_root'], run['dir']
+    logs_dir = os.path.join(run_dir, 'logs')
     finished = io.now()
     run['finished'] = br.iso(finished)
     run['timing']['seconds'] = round((finished - started).total_seconds(), 3)
@@ -906,9 +962,6 @@ def run_all(cfg, io):
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
         'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': run['changes'],
         'headline': headline, 'folder': os.path.basename(run_dir)})
-    if failure:
-        raise failure
-    return run
 
 
 # --------------------------------------------------------------------------- the record command (spec #72, ticket #75)
@@ -937,14 +990,16 @@ def record_all(cfg, io):
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': planned_sides(cfg),
            'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
            'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS), 'misses': []}
-    handle, failure, stage = None, None, 'the record pass'
+    handle, failure, restore_signals = None, None, lambda: None
     planned = planned_plays(cfg, RECORD_ROUNDS)
+    stage, counts = 'the record pass', rec  # the proof counts its plays on its own
+    proof = {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
     try:
         rec['commit'] = io.image_label()
-        io.reset(ALL_TESTBED, progress_log(io, 0, planned))
-        handle = io.start_standin(logpath, mode='record')
         try:
-            try:
+            try:  # the opening reset and the stand-in's start are inside, so a stop there ends the normal way too
+                io.reset(ALL_TESTBED, progress_log(io, 0, planned))
+                handle = io.start_standin(logpath, mode='record')
                 record_pass(cfg, io, rec, list(MAIN_SIDES))
                 if cfg['one_page']:
                     switch_to_one_page(io, progress_log(io, rec['visits'], planned))
@@ -954,21 +1009,37 @@ def record_all(cfg, io):
                 rec['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
             finally:
                 try:
-                    handle.stop()
+                    if handle:
+                        handle.stop()
                 finally:
                     io.restore_config()
             if rec['status'] == 'recorded':
-                stage = 'the proof replay'
-                rec['misses'] = prove_recording(cfg, io, os.path.join(logs_dir, 'standin-proof.log'))
-        except KeyboardInterrupt:  # Ctrl-C in the pass or the proof: what was stored is kept, the ending is the normal one (#110)
+                stage, counts = 'the proof replay', proof
+                rec['misses'] = prove_recording(cfg, io, os.path.join(logs_dir, 'standin-proof.log'), proof)
+        except KeyboardInterrupt as e:  # Ctrl-C or SIGTERM in the pass or the proof: what was stored is kept, the ending is the normal one (#110)
             rec['status'] = 'stopped'
-            rec['stopped'] = {'time': br.iso(io.now()), 'visits': rec['visits'], 'during': stage}
+            rec['stopped'] = stop_note(io, e, stage, counts['visits'], planned, counts.get('playing'))
+            restore_signals = finish_after_stop(rec['stopped'], 'record command', 'RECORDING.json, meta.json and the INDEX.md row')
         finally:  # the cleanup runs even when stopping the stand-in fails
             io.reset(ALL_TESTBED, progress_log(io, rec['visits'], planned))
             io.stop_all()
     except Exception as e:  # noqa: BLE001
         rec['status'], rec['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
         failure = e
+    try:
+        write_record_ending(cfg, io, rec, logpath)
+    finally:
+        restore_signals()
+    if failure:
+        raise failure
+    return rec
+
+
+def write_record_ending(cfg, io, rec, logpath):
+    """The ending of every record command, finished or not: the counts from the stand-in's log, RECORDING.json, meta.json
+    and, unless it is complete, the INDEX.md row."""
+    root, run_dir = cfg['runs_root'], rec['dir']
+    rec.pop('playing', None)
     rec['finished'] = br.iso(io.now())
     text = _read_text(logpath) or ''
     rec['new_answers'] = sum(1 for line in text.splitlines() if line.startswith('RECORD '))
@@ -985,17 +1056,13 @@ def record_all(cfg, io):
     elif rec['status'] == 'stopped':
         br.append_index_row(os.path.join(root, 'INDEX.md'), {
             'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'stopped',
-            'changed': ['recording stopped by hand; what was stored is kept, run the same record command again'],
-            'headline': f"stopped by hand at {rec['stopped']['time']} during {rec['stopped']['during']}, "
-                        f"after {rec['stopped']['visits']} visits; no numbers",
+            'changed': ['recording stopped; what was stored is kept, run the same record command again'],
+            'headline': f"{br.stopped_text(rec['stopped'])}; no numbers",
             'folder': os.path.basename(run_dir)})
     elif rec['status'] == 'failed':
         br.append_index_row(os.path.join(root, 'INDEX.md'), {
             'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'failed', 'changed': ['record pass'],
             'headline': f"failed: {rec['error']}", 'folder': os.path.basename(run_dir)})
-    if failure:
-        raise failure
-    return rec
 
 
 def write_recording_state(cfg, rec):
@@ -1012,7 +1079,7 @@ def write_recording_state(cfg, rec):
     elif rec['status'] == 'null':
         state, why = 'stopped', f"{rec['null']['indexer']} said its limit was reached"
     elif rec['status'] == 'stopped':
-        state, why = 'stopped', f"the record command was stopped by hand during {rec['stopped']['during']}"
+        state, why = 'stopped', f"the record command was {br.stopped_text(rec['stopped'])}"
     else:
         state, why = 'stopped', rec.get('error') or 'the record pass failed'
     _write(os.path.join(d, RECORDING_FILE), json.dumps({'state': state, 'why': why, 'when': rec['finished'], 'errors': rec['errors'], 'misses': misses}, indent=1))
@@ -1036,10 +1103,12 @@ def record_summary(rec):
     return text
 
 
-def prove_recording(cfg, io, logpath):
+def prove_recording(cfg, io, logpath, counts=None):
     """The proof that ends a record pass: test copies reset, the stand-in in REPLAY mode with the wait off (no indexer is
     contacted), every side through the same cold round and warm round as the record pass. Returns the requests it could not
-    answer, one {'side', 'request'} each (the side that was visiting when the stand-in logged the MISS), without repeats."""
+    answer, one {'side', 'request'} each (the side that was visiting when the stand-in logged the MISS), without repeats.
+    `counts` ({'visits', 'listed'}, as record_pass keeps them) is where the proof counts its plays; record_all reads it when
+    the proof is stopped."""
     planned = planned_plays(cfg, RECORD_ROUNDS)
     io.reset(ALL_TESTBED, progress_log(io, 0, planned, proof=True))
     handle = io.start_standin(logpath, mode='replay', wait=False)
@@ -1057,7 +1126,7 @@ def prove_recording(cfg, io, logpath):
             return self.inner.visit_http(side, kind, vid, tries)
 
     watched = Watch(io)
-    scratch = {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
+    scratch = counts if counts is not None else {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
     try:
         record_pass(cfg, watched, scratch, list(MAIN_SIDES), proof=True)
         if cfg['one_page']:
@@ -1083,8 +1152,9 @@ def prove_recording(cfg, io, logpath):
 
 def record_pass(cfg, io, rec, sides, proof=False):
     """A cold round, then a warm round with no reset between: in each, every side lists every title and plays its top pick,
-    sides one after another, order rotating per title. `listed` counts the titles a side listed Sources for in any round.
-    The proof replay makes the same rounds with its own count, and its play lines say `proof`."""
+    sides one after another, order rotating per title. `listed` counts the titles a side listed Sources for in any round,
+    and `playing` names the play in progress (a record's rounds have no number). The proof replay makes the same rounds
+    with its own count, and its play lines say `proof`."""
     _check_cap(io)
     listed = {side: set() for side in sides}
     try:
@@ -1093,11 +1163,13 @@ def record_pass(cfg, io, rec, sides, proof=False):
                 k = i % len(sides)
                 for side in sides[k:] + sides[:k]:
                     kind, vid, label = title
+                    rec['playing'] = {'side': side, 'phase': phase, 'round': None, 'title': label}
                     http = io.visit_http(side, kind, vid, cfg['tries'])
                     rec['visits'] += 1
+                    rec['playing'] = None
                     if http.get('sources'):
                         listed[side].add(vid)
-                    print(f"{progress(io, rec['visits'], planned_plays(cfg, RECORD_ROUNDS), proof)} "
+                    print(f"{line_prefix(io, rec['visits'], planned_plays(cfg, RECORD_ROUNDS), proof)} "
                           f"{side} {phase} {label}: {http.get('sources')} Sources, top pick "
                           f"{'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
                     _check_cap(io)
@@ -1248,7 +1320,8 @@ def main(argv):
         smoke(cfg)
     elif a.cmd == 'record':
         try:
-            rec = record_all(cfg, RealIO(cfg))
+            with sigterm_stops():
+                rec = record_all(cfg, RealIO(cfg))
         except PreflightFailed as e:
             for p in e.problems:
                 print(p)
@@ -1258,7 +1331,7 @@ def main(argv):
                   f"once the indexer has reset, run the same command again to top up. Folder: {rec['dir']}")
             return EXIT_STOPPED
         if rec['status'] == 'stopped':
-            print(f"The recording was stopped by hand during {rec['stopped']['during']}. What was stored is kept; "
+            print(f"The recording was {br.stopped_text(rec['stopped'])}. What was stored is kept; "
                   f"run the same command again to top up. Folder: {rec['dir']}")
             return EXIT_INTERRUPTED
         print(f"{record_summary(rec)} Folder: {rec['dir']}")
@@ -1268,7 +1341,8 @@ def main(argv):
             return EXIT_INCOMPLETE
     else:
         try:
-            run = run_all(cfg, RealIO(cfg))
+            with sigterm_stops():
+                run = run_all(cfg, RealIO(cfg))
         except PreflightFailed as e:
             for p in e.problems:
                 print(p)
