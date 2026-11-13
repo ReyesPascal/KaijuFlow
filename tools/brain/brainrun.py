@@ -14,8 +14,9 @@ indexer time for every answer unless --no-wait; the stand-in's lines say which t
 matches them to the right side and visit) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
-row and the report. The first "limit reached" from any indexer aborts the run and records it as null. Ctrl-C stops the
-pass too: the run is recorded as stopped, from the plays that finished (#110).
+row and the report. The first "limit reached" from any indexer aborts the run and records it as null. Ctrl-C or SIGTERM
+(what `timeout` sends) stops the pass too: the run is recorded as stopped, from the plays that finished, and a second
+stop is ignored until that record is written (#110).
 Every line of a play or a reset starts with the UTC time and a count (`05:46:35 [61/160] ...`), and the run's meta.json
 and report say where its wall-clock time went: each pass, round and reset, the pauses (--settle), the failed plays and
 the rest (#112).
