@@ -9,6 +9,10 @@ import json
 import os
 import re
 import statistics
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import common  # noqa: E402
 
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
@@ -350,28 +354,25 @@ def played_source(text):
     return None
 
 
-# The size a side states for a Source in its list text. KaijuFlow, Usenet Ultimate and AltMount's own addon all write it
-# after a disk sign: "... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05 GB 🌐 ninja".
-LISTED_SIZE_RE = re.compile(r'💾\s*(\d+(?:\.\d+)?\s?[KMGT]?B)\b')
-
-
 def top_pick(v):
     """The top pick of one visit, the first Source in the side's list: {'name', 'size', 'listed'}, or None when the side
     listed none.
 
     name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
     Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
-    the failure video, whose size says nothing about the Source). listed: the size the list text states, or None.
+    the failure video, whose size says nothing about the Source). listed: the size the list text states, or None. KaijuFlow,
+    Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05
+    GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
+    from the 140 characters of text it kept.
     """
     tries = v.get('tries') or []
     if not tries:
         return None
     first = tries[0]
     text = str(first.get('title') or '')
-    stated = LISTED_SIZE_RE.search(text)
     return {'name': v.get('played_source') or text or None,
             'size': first.get('size') if first.get('plays') and first.get('size') else None,
-            'listed': stated.group(1) if stated else None}
+            'listed': first.get('listed_size') or common.listed_size(text)}
 
 
 def _pick_size(pick):

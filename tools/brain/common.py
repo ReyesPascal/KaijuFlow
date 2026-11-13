@@ -3,7 +3,7 @@
 parity.py and search.py both import this, so their tables stay comparable: change the title list here only.
 The scripts run under `python3 -I`, which leaves the script's folder off sys.path; each one adds it before importing.
 """
-import hashlib, json, os, statistics, sys, time, urllib.request, urllib.error
+import hashlib, json, os, re, statistics, sys, time, urllib.request, urllib.error
 
 DEFAULT_TEST_DIR = os.path.expanduser('~/kaijuflow-test')  # config folders with secrets; outside the repo (env TEST_DIR overrides in the tools)
 FAILURE_SIZE = 1242455  # UU/KaijuFlow failure video, served when a Source cannot play
@@ -82,8 +82,19 @@ def finish(started):
     print(f'done in {time.time() - started:.1f} s', flush=True)
 
 
+LISTED_SIZE_RE = re.compile(r'💾\s*(\d+(?:\.\d+)?\s?[KMGT]?B)\b')  # the size a side's list text states, after the disk sign
+
+
+def listed_size(text):
+    """The size a Stream's list text states ('95.01 GB'), or None."""
+    found = LISTED_SIZE_RE.search(text or '')
+    return found.group(1) if found else None
+
+
 def play_stream(stream):
-    """One 64 KiB read at the start of a Stream: does it play, and how fast."""
+    """One 64 KiB read at the start of a Stream: does it play, and how fast. `title` keeps the first 140 characters of the
+    Stream's list text; `listed_size` is read from the whole text first, so a long release name cannot cut it off."""
+    text = ' '.join((stream.get('name', '') + ' ' + stream.get('title', '')).split())
     url = stream.get('url', '')
     if not url:
         return {'plays': False, 'note': 'no url (external player stream?)'}
@@ -103,7 +114,7 @@ def play_stream(stream):
     return {'plays': ok, 'status': st, 'ready_s': round(t['ready'], 2), 'first_byte_s': round(t.get('first_byte', t['ready']), 2),
             'total_s': round(t.get('total', t['ready']), 2), 'size': size, 'ctype': ctype, 'note': note,
             'sha': hashlib.sha256(body).hexdigest()[:16] if ok else None,
-            'title': ' '.join((stream.get('name', '') + ' ' + stream.get('title', '')).split())[:140]}
+            'title': text[:140], 'listed_size': listed_size(text)}
 
 
 def seek_reads(url, size):
