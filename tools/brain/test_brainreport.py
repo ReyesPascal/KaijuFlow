@@ -284,6 +284,77 @@ class ReportTest(unittest.TestCase):
         self.assertIn('2', h)
 
 
+def targets_run(**figures):
+    """runs_fixture() with some figures replaced, named '<side> <phase> <round> <field>': targets_run(**{'uu cold 1 start_s': 2.5})."""
+    run = runs_fixture()
+    for name, value in figures.items():
+        side, phase, rnd, field = name.split()
+        [v] = [v for v in run['visits'] if (v['side'], v['phase'], str(v['round'])) == (side, phase, rnd)]
+        v[field] = value
+    return run
+
+
+class TargetsTest(unittest.TestCase):
+    """The table of the six targets (targets.json) near the top of the report."""
+
+    def test_a_met_target_a_missed_one_and_one_inside_the_noise(self):
+        text = br.render_report(targets_run(**{
+            'kaijuflow cold 1 start_s': 4.0, 'kaijuflow cold 2 start_s': 2.0,   # median 3.00 s, the two rounds 2.00 s apart
+            'uu cold 1 start_s': 2.5, 'uu cold 2 start_s': 2.5,
+            'kaijuflow warm 1 list_s': 3.0, 'kaijuflow warm 2 list_s': 3.0}), ['x'])
+        self.assertLess(text.index('## Targets'), text.index('## What changed since the last run'))
+        self.assertIn('| Target | This run | Result |', text)
+        self.assertIn('| Warm list no slower than 4.7 s | KaijuFlow 3.00 s | Met |', text)
+        self.assertIn("| Warm start within 0.05 s of the addon | KaijuFlow 2.00 s, AltMount's own addon 1.00 s | "
+                      'Not met (1.00 s slower) |', text)
+        self.assertIn('| Cold start no slower than Usenet Ultimate | KaijuFlow 3.00 s, Usenet Ultimate 2.50 s | '
+                      "Not met (0.50 s slower), inside the noise: KaijuFlow's two cold rounds differ by 2.00 s "
+                      '(4.00 and 2.00 s), more than the 0.50 s the target is missed by |', text)
+        self.assertIn('1 of 6 targets met.', text)
+
+    def test_a_met_target_can_be_inside_the_noise_too(self):
+        text = br.render_report(targets_run(**{
+            'kaijuflow cold 1 start_s': 4.0, 'kaijuflow cold 2 start_s': 2.0,
+            'uu cold 1 start_s': 3.5, 'uu cold 2 start_s': 3.5}), ['x'])
+        self.assertIn("Met, inside the noise: KaijuFlow's two cold rounds differ by 2.00 s (4.00 and 2.00 s), "
+                      'more than the 0.50 s the target is met by |', text)
+
+    def test_with_a_margin_the_noise_is_held_against_the_distance_to_the_margin(self):
+        # 1.10 s behind the addon where 1 s is allowed: missed by 0.10 s, and the two cold rounds are 0.20 s apart
+        text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 2.2, 'kaijuflow cold 2 start_s': 2.0}), ['x'])
+        self.assertIn("| Cold start within 1 s of the addon | KaijuFlow 2.10 s, AltMount's own addon 1.00 s | "
+                      "Not met (1.10 s slower), inside the noise: KaijuFlow's two cold rounds differ by 0.20 s "
+                      '(2.20 and 2.00 s), more than the 0.10 s the target is missed by |', text)
+
+    def test_rounds_closer_together_than_the_gap_leave_the_result_plain(self):
+        text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 3.2, 'kaijuflow cold 2 start_s': 3.0}), ['x'])
+        self.assertIn("| Cold start within 1 s of the addon | KaijuFlow 3.10 s, AltMount's own addon 1.00 s | "
+                      'Not met (2.10 s slower) |', text)
+
+
+    def test_a_missing_targets_file_gives_one_sentence_and_the_rest_of_the_report(self):
+        path = os.path.join(tempdir(self), 'targets.json')
+        visits = runs_fixture()['visits']
+        self.assertEqual(br.target_lines(visits, path), ['Targets: not judged (targets.json cannot be read: FileNotFoundError).'])
+        self.assertEqual(br.targets_section(visits, path),
+                         ['## Targets', '', 'Not judged (targets.json cannot be read: FileNotFoundError).', ''])
+
+    def test_an_entry_the_tools_cannot_judge_is_named(self):
+        entry = {'target': 'Cold start no slower than Usenet Ultimate', 'measure': 'cold start', 'against': 'uu', 'margin': 0}
+        bad = [({'measure': 'cold sprint'}, 'entry 2: the measure "cold sprint" is not known'),
+               ({'margin': 'small'}, 'entry 2: the margin is not a number from 0 up'),
+               ({'margin': -1}, 'entry 2: the margin is not a number from 0 up'),
+               ({'against': 'nobody'}, 'entry 2: the side "nobody" is not known'),
+               ({'limit': 3}, 'entry 2: "cold start" takes a side (against) or a fixed limit, one of the two'),
+               ({'measure': 'plays per round'}, 'entry 2: "plays per round" takes a fixed limit, not a side'),
+               ({'measure': 'plays', 'limit': 3}, 'entry 2: "plays" takes a side (against), not a fixed limit')]
+        path = os.path.join(tempdir(self), 'targets.json')
+        for change, why in bad:
+            with open(path, 'w') as f:
+                json.dump({'targets': [entry, {**entry, 'against': 'altmount-addon', **change}]}, f)
+            self.assertEqual(br.target_lines(runs_fixture()['visits'], path), [f'Targets: not judged (targets.json, {why}).'])
+
+
 T0 = dt('2026-11-10T18:00:00Z').timestamp() * 1000   # epoch ms of the first visit's start
 
 

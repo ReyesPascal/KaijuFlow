@@ -4,8 +4,9 @@
 
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
 (a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
-or a run folder that cannot be read). The run command prints the same lines at its end
-and stores them in the run folder as CHECK.txt.
+or a run folder that cannot be read). For a finished run it then prints one line per target of
+targets.json (the target, the measured values, met or not met); those do not change the exit code.
+The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import json
 import os
@@ -120,6 +121,8 @@ def check_run(run_dir):
             lines.append(f"- {_visit_name(v)}: {cause}" + (' (a missed request can be the cause)' if v.get('not_recorded') else ''))
     else:
         lines.append('Failures: none.')
+    if status == 'ok' and not err:  # the targets are judged on a finished run only; they do not decide the baseline verdict
+        lines += br.target_lines(visits)
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:
