@@ -360,6 +360,124 @@ class RunTest(unittest.TestCase):
         self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
 
 
+def printed(fn, *args):
+    """(what fn returned, the lines it printed)."""
+    out = io_module.StringIO()
+    with contextlib.redirect_stdout(out):
+        result = fn(*args)
+    return result, out.getvalue().splitlines()
+
+
+class WallClockTest(unittest.TestCase):
+    """The run says where its wall-clock time went (#112). Every figure below is worked out by hand from FakeIO's world:
+    the stand-in starts in 2 s, a reset takes 20 s, a visit whose top pick plays 4 s (list 2.0, start 1.5, seek checks 0.5),
+    one whose top pick fails 12 s, stopping the copies 5 s; the pause after a play is the run's `settle`."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+    def test_every_play_line_starts_with_the_utc_time_and_how_many_plays_are_done(self):
+        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, settle=3), FakeIO())
+        # started 18:00:00, stand-in up at :02, reset done at :22, the first visit ends at :26
+        self.assertEqual(lines[0], '18:00:26 [1/24] kaijuflow cold 1 Matrix: plays list 2.0 s start 1.5 s')
+        self.assertEqual(lines[1], '18:00:33 [2/24] uu cold 1 Matrix: plays list 2.0 s start 1.5 s')  # 3 s pause, 4 s visit
+        # 24 plays of 7 s and a second reset of 20 s after the first twelve; the last pause is still to come
+        self.assertEqual(lines[-1], '18:03:27 [24/24] kaijuflow warm 2 Show S01E01: plays list 2.0 s start 1.5 s')
+        self.assertEqual(len(lines), 24)
+
+    def test_the_count_runs_on_into_the_one_page_side(self):
+        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True), FakeIO())
+        self.assertEqual(lines[23].split()[1], '[24/32]')
+        self.assertEqual(' '.join(lines[24].split()[1:6]), '[25/32] kaijuflow-1page cold 1 Matrix:')
+        self.assertEqual(lines[-1].split()[1], '[32/32]')
+
+    def run_with_one_page(self, io=None, settle=3):
+        run, _ = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=settle), io or FakeIO())
+        return run, json.loads(read(os.path.join(run['dir'], 'meta.json')))
+
+    def time_section(self, run):
+        """The report's section "Where the time went": (its sentence, {part: seconds} of its first table, its other lines)."""
+        text = read(os.path.join(run['dir'], 'report.md')).split('## Where the time went\n\n')[1].split('\n## ')[0]
+        lines = text.split('\n')
+        table = [x for x in lines[2:lines.index('', 2)]]
+        self.assertEqual(table[:2], ['| Part | Seconds | Minutes |', '|---|---|---|'])
+        return lines[0], {row.split(' | ')[0][2:]: float(row.split(' | ')[1]) for row in table[2:]}, lines
+
+    def test_the_report_says_where_the_time_went_and_the_parts_add_up_to_the_whole_run(self):
+        # Usenet Ultimate's top picks fail (12 s a visit), pauses of 2 s. A round of the main sides: 4 plays of 4 s, 2 failed
+        # ones of 12 s, 6 pauses = 52 s; of the one-page side: 2 plays, 2 pauses = 12 s. Main sides 2 x 20 + 4 x 52 = 248 s,
+        # one-page side 2 x 20 + 4 x 12 = 88 s, 2 s for the stand-in before them, 5 s to stop the copies after: 343 s.
+        run, meta = self.run_with_one_page(FakeIO(fail_http_for='uu'), settle=2)
+        sentence, parts, lines = self.time_section(run)
+        self.assertEqual(sentence, 'The whole run took 5.7 minutes (343.0 s), from 18:00:00 to 18:05:43 UTC: '
+                                   'the main sides 4.1 minutes (248.0 s), the one-page side 1.5 minutes (88.0 s).')
+        self.assertEqual(parts, {
+            'Measured list and start time': 84.0,  # 24 top picks played: 2.0 s list + 1.5 s start each
+            'Pauses (`--settle`)': 64.0,           # 32 plays, 2 s after each
+            'Failed plays': 96.0,                  # 8 visits of 12 s
+            'Resets': 80.0,                        # 4 of 20 s
+            'Everything else': 19.0,               # 24 seek checks of 0.5 s, 2 s stand-in start, 5 s to stop the copies
+            'The whole run': 343.0})
+        whole = parts.pop('The whole run')
+        self.assertLessEqual(abs(sum(parts.values()) - whole), 1.0)
+        self.assertEqual(meta['timing']['parts'], {'measured_s': 84.0, 'pauses_s': 64.0, 'failed_s': 96.0, 'resets_s': 80.0,
+                                                   'other_s': 19.0})
+        self.assertEqual((meta['timing']['seconds'], meta['timing']['settle_s']), (343.0, 2))
+
+    def test_every_visit_keeps_its_wall_clock_time_and_a_failed_plays_time_is_in_the_per_title_table(self):
+        run, _ = printed(brainrun.run_all, make_cfg(self.tmp), FakeIO(fail_http_for='uu'))
+        raw = json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits']
+        took = {(br.parse_ts(v['t_end']) - br.parse_ts(v['t_start'])).total_seconds() for v in raw if v['side'] == 'uu'}
+        self.assertEqual(took, {12.0})
+        self.assertEqual({br.visit_wall_s(v) for v in raw if v['side'] != 'uu'}, {4.0})
+        rows = read(os.path.join(run['dir'], 'report.md')).split('## Per title\n\n')[1].split('\n\n')[0].split('\n')[2:]
+        failed = [r for r in rows if '| Usenet Ultimate |' in r]
+        self.assertEqual(len(failed), 8)
+        self.assertTrue(all('failure video: failure video (the whole visit took 12.0 s)' in r for r in failed), failed[0])
+        self.assertFalse(any('took' in r for r in rows if r not in failed))
+
+    def test_the_report_lists_each_round_with_its_reset(self):
+        run, meta = self.run_with_one_page(FakeIO(fail_http_for='uu'), settle=2)
+        _, _, lines = self.time_section(run)
+        at = lines.index('| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |')
+        self.assertEqual(lines[at + 2:at + 10], [
+            '| Main sides | Cold 1 | 18:00:22 | 20.0 | 6 | 52.0 | 0.9 |',
+            '| Main sides | Warm 1 | 18:01:14 | - | 6 | 52.0 | 0.9 |',
+            '| Main sides | Cold 2 | 18:02:26 | 20.0 | 6 | 52.0 | 0.9 |',
+            '| Main sides | Warm 2 | 18:03:18 | - | 6 | 52.0 | 0.9 |',
+            '| One-page side | Cold 1 | 18:04:30 | 20.0 | 2 | 12.0 | 0.2 |',
+            '| One-page side | Warm 1 | 18:04:42 | - | 2 | 12.0 | 0.2 |',
+            '| One-page side | Cold 2 | 18:05:14 | 20.0 | 2 | 12.0 | 0.2 |',
+            '| One-page side | Warm 2 | 18:05:26 | - | 2 | 12.0 | 0.2 |'])
+
+    def test_the_meta_holds_the_time_of_the_whole_run_of_each_pass_each_round_and_each_reset(self):
+        run, meta = self.run_with_one_page()
+        timing = meta['timing']
+        # 2 s stand-in + main sides 208 s + one-page side 96 s + 5 s to stop the copies
+        self.assertEqual((meta['started'], meta['finished'], timing['seconds']),
+                         ('2026-11-10T18:00:00.000Z', '2026-11-10T18:05:11.000Z', 311.0))
+        self.assertEqual(timing['passes'], [
+            {'name': 'main sides', 'sides': ['kaijuflow', 'uu', 'altmount-addon'],
+             'start': '2026-11-10T18:00:02.000Z', 'end': '2026-11-10T18:03:30.000Z', 'seconds': 208.0},
+            {'name': 'one-page side', 'sides': ['kaijuflow-1page'],
+             'start': '2026-11-10T18:03:30.000Z', 'end': '2026-11-10T18:05:06.000Z', 'seconds': 96.0}])
+        # a round of the main sides: 6 plays of 4 s, each followed by a 3 s pause; of the one-page side: 2 plays
+        self.assertEqual([(r['pass'], r['phase'], r['round'], r['start'][11:19], r['end'][11:19], r['seconds'], r['plays'], r['pause_s'])
+                          for r in timing['rounds']], [
+            ('main sides', 'cold', 1, '18:00:22', '18:01:04', 42.0, 6, 18.0),
+            ('main sides', 'warm', 1, '18:01:04', '18:01:46', 42.0, 6, 18.0),
+            ('main sides', 'cold', 2, '18:02:06', '18:02:48', 42.0, 6, 18.0),
+            ('main sides', 'warm', 2, '18:02:48', '18:03:30', 42.0, 6, 18.0),
+            ('one-page side', 'cold', 1, '18:03:50', '18:04:04', 14.0, 2, 6.0),
+            ('one-page side', 'warm', 1, '18:04:04', '18:04:18', 14.0, 2, 6.0),
+            ('one-page side', 'cold', 2, '18:04:38', '18:04:52', 14.0, 2, 6.0),
+            ('one-page side', 'warm', 2, '18:04:52', '18:05:06', 14.0, 2, 6.0)])
+        # one reset before every cold round; the one-page side's first is the switch to one page, which resets too
+        self.assertEqual([(r['pass'], r['phase'], r['round'], r['start'][11:19], r['seconds']) for r in timing['resets']], [
+            ('main sides', 'cold', 1, '18:00:02', 20.0), ('main sides', 'cold', 2, '18:01:46', 20.0),
+            ('one-page side', 'cold', 1, '18:03:30', 20.0), ('one-page side', 'cold', 2, '18:04:18', 20.0)])
+
+
 def interrupt_at(io, n):
     """Ctrl-C during the n-th visit: the visit raises KeyboardInterrupt, as the real one does inside its HTTP read."""
     inner = io.visit_http
@@ -421,6 +539,59 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertIn('| Usenet Ultimate | Cold 1 | 2 of 2 |', rep)  # the failures table: both of its finished plays played
         self.assertIn('| KaijuFlow | Cold 1 | 1 of 1 |', rep)  # the round was cut short: one of its two titles
         self.assertNotIn('| Warm 1 |', rep)  # no row for a round that never began
+
+    def time_table(self, run, head):
+        """The rows of one table of the report's section "Where the time went", found by its header line."""
+        lines = read(os.path.join(run['dir'], 'report.md')).split('## Where the time went\n\n')[1].split('\n')
+        at = lines.index(head)
+        return lines[at + 2:lines.index('', at)]
+
+    def test_a_stopped_run_still_says_where_its_time_went(self):
+        # stand-in 2 s, reset 20 s, four plays of 4 s with a 3 s pause after each, stopped as the fifth began, 5 s to stop the copies
+        io, run = self.stopped_run(5, settle=3)
+        meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
+        timing = meta['timing']
+        self.assertEqual((meta['stopped']['time'], meta['finished'], timing['seconds']),
+                         ('2026-11-10T18:00:50.000Z', '2026-11-10T18:00:55.000Z', 55.0))
+        self.assertEqual(timing['parts'], {'measured_s': 14.0, 'pauses_s': 12.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 9.0})
+        self.assertEqual(timing['passes'], [{'name': 'main sides', 'sides': ['kaijuflow', 'uu', 'altmount-addon'],
+                                             'start': '2026-11-10T18:00:02.000Z', 'end': '2026-11-10T18:00:50.000Z', 'seconds': 48.0}])
+        self.assertEqual(timing['rounds'], [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'plays': 4, 'pause_s': 12.0,
+                                             'start': '2026-11-10T18:00:22.000Z', 'end': '2026-11-10T18:00:50.000Z', 'seconds': 28.0}])
+        self.assertEqual(self.time_table(run, '| Part | Seconds | Minutes |'), [
+            '| Measured list and start time | 14.0 | 0.2 |', '| Pauses (`--settle`) | 12.0 | 0.2 |', '| Failed plays | 0.0 | 0.0 |',
+            '| Resets | 20.0 | 0.3 |', '| Everything else | 9.0 | 0.1 |', '| The whole run | 55.0 | 0.9 |'])
+        self.assertEqual(self.time_table(run, '| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |'),
+                         ['| Main sides | Cold 1 | 18:00:22 | 20.0 | 4 | 28.0 | 0.5 |'])
+
+    def test_a_run_stopped_during_a_reset_keeps_the_time_that_reset_had_taken(self):
+        io = FakeIO()
+        reset = io.reset
+
+        def hanging_second_reset(sides):
+            if [c[0] for c in io.calls].count('reset') == 1:
+                io.calls.append(('reset', tuple(sides)))
+                io.takes(7)  # Ctrl-C seven seconds into it
+                raise KeyboardInterrupt
+            reset(sides)
+        io.reset = hanging_second_reset
+        run = brainrun.run_all(make_cfg(self.tmp), io)  # no pauses: 2 s stand-in, 20 s reset, two rounds of 6 plays of 4 s
+        self.assertEqual((run['status'], run['stopped']['time'], run['stopped']['during']), ('stopped', '2026-11-10T18:01:17.000Z', None))
+        timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
+        self.assertEqual([(r['phase'], r['round'], r['seconds']) for r in timing['resets']], [('cold', 1, 20.0), ('cold', 2, 7.0)])
+        self.assertEqual(timing['parts'], {'measured_s': 42.0, 'pauses_s': 0.0, 'failed_s': 0.0, 'resets_s': 27.0, 'other_s': 13.0})
+        self.assertEqual(timing['seconds'], 82.0)
+        self.assertEqual(self.time_table(run, '| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |'), [
+            '| Main sides | Cold 1 | 18:00:22 | 20.0 | 6 | 24.0 | 0.4 |',
+            '| Main sides | Warm 1 | 18:00:46 | - | 6 | 24.0 | 0.4 |',
+            '| Main sides | Cold 2 | - | 7.0 | 0 | - | - |'])  # the round never began
+
+    def test_a_null_run_that_made_no_play_still_has_its_time_in_the_meta(self):
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}))
+        timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
+        self.assertEqual(run['status'], 'null')
+        self.assertEqual((timing['seconds'], timing['passes'], timing['rounds'], timing['resets']), (5.0, [], [], []))  # 5 s to stop the copies
+        self.assertEqual(timing['parts'], {'measured_s': 0.0, 'pauses_s': 0.0, 'failed_s': 0.0, 'resets_s': 0.0, 'other_s': 5.0})
 
     def test_an_interrupt_between_two_plays_names_no_play(self):
         io = FakeIO()
@@ -739,6 +910,20 @@ class RecordTest(unittest.TestCase):
         rec = {'new_answers': 4, 'stored_answers': 0, 'errors': 0, 'titles': ['A', 'B'],
                'listed': {'kaijuflow': 2, 'kaijuflow-1page': 0}}
         self.assertIn('KaijuFlow, one page per indexer listed no Sources for 2 of 2 titles.', brainrun.record_summary(rec))
+
+    def test_every_play_line_of_a_record_starts_with_the_utc_time_and_a_count_and_the_proof_says_it_is_the_proof(self):
+        self.cfg['one_page'] = True
+        io = RecordIO(self.cfg, self.url)
+        rec, lines = printed(brainrun.record_all, self.cfg, io)
+        self.assertEqual(len(lines), 32)  # 4 sides x 2 titles x 2 rounds, in the record pass and again in the proof
+        # started 18:00:00, reset done at :20, stand-in up at :22, a visit takes 4 s
+        self.assertEqual(lines[0], '18:00:26 [1/16] kaijuflow cold Matrix: 3 Sources, top pick plays')
+        self.assertEqual(lines[11], '18:01:10 [12/16] kaijuflow warm Show S01E01: 3 Sources, top pick plays')
+        self.assertEqual(lines[12], '18:01:34 [13/16] kaijuflow-1page cold Matrix: 3 Sources, top pick plays')  # after the 20 s switch
+        self.assertEqual(lines[15].split()[1], '[16/16]')
+        # the proof: reset 20 s, stand-in 2 s, then its own count
+        self.assertEqual(lines[16], '18:02:12 [1/16] proof kaijuflow cold Matrix: 3 Sources, top pick plays')
+        self.assertEqual(lines[31].split()[1:3], ['[16/16]', 'proof'])
 
     def test_test_copies_are_reset_before_and_after_and_stopped(self):
         io, _ = self.record()
