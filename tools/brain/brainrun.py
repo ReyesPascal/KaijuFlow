@@ -16,12 +16,16 @@ testbed.py before each cold round, plays the top pick of every title on every si
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
 row and the report. The first "limit reached" from any indexer aborts the run and records it as null. Ctrl-C stops the
 pass too: the run is recorded as stopped, from the plays that finished (#110).
+Every line of a play or a reset starts with the UTC time and a count (`05:46:35 [61/160] ...`), and the run's meta.json
+and report say where its wall-clock time went: each pass, round and reset, the pauses (--settle), the failed plays and
+the rest (#112).
 The record command resets the test copies, starts the stand-in in RECORD mode (this spends real indexer requests), sends
 every side through every title in a cold round and then a warm round, then proves the recording: the stand-in in REPLAY mode with the wait off
 (no indexer contacted), test copies reset, the same two rounds again. No miss = state complete; any miss = incomplete (listed); and resets again; running it again only asks for what is not stored yet. Its timings never
 reach a report. Only test containers are touched. Secrets never reach the run folder (settings are scrubbed, logs are scrubbed).
 """
 import argparse
+import contextlib
 import copy
 import datetime
 import hashlib
@@ -104,12 +108,12 @@ def planned_sides(cfg):
     return list(MAIN_SIDES) + (['kaijuflow-1page'] if cfg['one_page'] else [])
 
 
-def switch_to_one_page(io):
+def switch_to_one_page(io, log=print):
     """The one step that turns KaijuFlow's test copy into the fourth side; the run, the record pass and the smoke check share
     it. The config is patched while the copy is stopped, then KaijuFlow and its AltMount are reset and come up again (cold).
-    io.restore_config() undoes it."""
+    io.restore_config() undoes it. `log` gets the reset's lines."""
     io.apply_one_page()
-    io.reset(ONE_PAGE_TESTBED)
+    io.reset(ONE_PAGE_TESTBED, log)
 
 
 def visit_answer(got, tries, play=None, seek=None):
@@ -267,8 +271,8 @@ class RealIO:
     def standin_line_count(self):
         return len(self.standin_lines())
 
-    def reset(self, sides):
-        self.testbed.reset(self.cfg['test_dir'], sides, log=print)
+    def reset(self, sides, log=print):
+        self.testbed.reset(self.cfg['test_dir'], sides, log=log)
         problems = self.testbed.check_empty(self.cfg['test_dir'], sides)
         if problems:
             raise RuntimeError('a test Backend is not empty after reset: ' + '; '.join(problems[:3]))
@@ -743,24 +747,76 @@ def _check_cap(io, visit=None, since=None):
                          f"{visit['side']} log during {visit['title']}")
 
 
-def do_pass(cfg, io, run, logbuf, sides, reset_sides, fresh=False):
-    """Every side through every title in each round of PLAN; each cold round starts with a reset of `reset_sides`, except
-    the first when the caller has just reset them (`fresh`)."""
-    for n, (phase, rnd) in enumerate(PLAN):
-        if phase == 'cold':
-            if not (fresh and n == 0):
-                io.reset(reset_sides)
-            note_addresses(io, run)  # a container gets its address when it starts
-        for i, title in enumerate(cfg['titles']):
-            k = i % len(sides)
-            for side in sides[k:] + sides[:k]:
-                run['playing'] = {'side': side, 'phase': phase, 'round': rnd, 'title': title[2]}
-                v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
-                run['visits'].append(v)
-                run['playing'] = None
-                print(f"{side} {phase} {rnd} {title[2]}: {'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
-                _check_cap(io, v, since=run['started_at'])
+def planned_plays(cfg, rounds):
+    """How many plays a command makes when nothing stops it: every title on every planned side in every round."""
+    return len(rounds) * len(cfg['titles']) * len(planned_sides(cfg))
+
+
+def progress(io, done, planned, proof=False):
+    """How every line starts that a run or a record prints while it plays: the UTC time and the plays done out of those
+    planned (`05:46:35 [61/160]`), so the last line of the log says how far the command is. The proof of a record counts
+    on its own and says `proof`."""
+    return f"{io.now():%H:%M:%S} [{done}/{planned}]{' proof' if proof else ''}"
+
+
+def progress_log(io, done, planned, proof=False):
+    """A log function for what happens between two plays (a reset): its lines start the way the play lines do."""
+    return lambda msg: print(f'{progress(io, done, planned, proof)} {msg}', flush=True)
+
+
+@contextlib.contextmanager
+def clocked(io, rows, **what):
+    """Times one stretch of a run (a pass, a round, a reset) by the io's clock. Its row is in `rows` from the start and gets
+    its end and its seconds however the stretch ends, so a stretch cut short by Ctrl-C, the cap rule or an error is kept."""
+    t0 = io.now()
+    row = dict(what, start=br.iso(t0), end=None, seconds=None)
+    rows.append(row)
+    try:
+        yield row
+    finally:
+        t1 = io.now()
+        row.update(end=br.iso(t1), seconds=round((t1 - t0).total_seconds(), 3))
+
+
+def do_pass(cfg, io, run, logbuf, name, sides, reset_sides, first_reset=None):
+    """One pass: every side of `sides` through every title in each round of PLAN. Each cold round starts with a reset of
+    `reset_sides`; `first_reset(io, log)` takes the place of the first one (the switch to one page, which resets too).
+    The pass, each of its rounds and each of its resets are timed into run['timing'] (#112)."""
+    timing = run['timing']
+    with clocked(io, timing['passes'], name=name, sides=list(sides)):
+        for n, (phase, rnd) in enumerate(PLAN):
+            which = {'pass': name, 'phase': phase, 'round': rnd}
+            if phase == 'cold':
+                log = progress_log(io, len(run['visits']), planned_plays(cfg, PLAN))
+                with clocked(io, timing['resets'], **which):
+                    if first_reset and n == 0:
+                        first_reset(io, log)
+                    else:
+                        io.reset(reset_sides, log)
+                note_addresses(io, run)  # a container gets its address when it starts
+            with clocked(io, timing['rounds'], **which, plays=0, pause_s=0.0) as round_row:
+                do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row)
+
+
+def do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row):
+    """One round of a pass: every title on every side of `sides`, the first side rotating per title, a pause of
+    cfg['settle'] seconds after each play. `round_row` counts the plays and adds up the pauses as the clock saw them."""
+    for i, title in enumerate(cfg['titles']):
+        k = i % len(sides)
+        for side in sides[k:] + sides[:k]:
+            run['playing'] = {'side': side, 'phase': phase, 'round': rnd, 'title': title[2]}
+            v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
+            run['visits'].append(v)
+            run['playing'] = None
+            round_row['plays'] += 1
+            print(f"{progress(io, len(run['visits']), planned_plays(cfg, PLAN))} {side} {phase} {rnd} {title[2]}: "
+                  f"{'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
+            _check_cap(io, v, since=run['started_at'])
+            paused = io.now()
+            try:
                 io.sleep(cfg['settle'])
+            finally:  # a pause cut short by Ctrl-C counts for as long as it lasted
+                round_row['pause_s'] = round(round_row['pause_s'] + (io.now() - paused).total_seconds(), 3)
 
 
 def _write(path, text):
@@ -783,7 +839,8 @@ def run_all(cfg, io):
            'settings': {}, 'commit': None, 'head': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
-                     'one-page side': 'yes' if cfg['one_page'] else 'no'}}
+                     'one-page side': 'yes' if cfg['one_page'] else 'no'},
+           'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []}}
     wait = cfg.get('wait', True)
     logbuf, handle, failure = {}, None, None
     try:
@@ -794,17 +851,17 @@ def run_all(cfg, io):
         try:
             _check_cap(io, since=started)
             handle = io.start_standin(os.path.join(logs_dir, 'standin.log'), mode='replay', wait=wait)
-            do_pass(cfg, io, run, logbuf, list(MAIN_SIDES), ALL_TESTBED)
+            do_pass(cfg, io, run, logbuf, 'main sides', list(MAIN_SIDES), ALL_TESTBED)
             if cfg['one_page']:
-                switch_to_one_page(io)
-                do_pass(cfg, io, run, logbuf, ['kaijuflow-1page'], ONE_PAGE_TESTBED, fresh=True)
+                do_pass(cfg, io, run, logbuf, 'one-page side', ['kaijuflow-1page'], ONE_PAGE_TESTBED,
+                        first_reset=switch_to_one_page)
         except CapReached as e:
             run['status'] = 'null'
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
         except KeyboardInterrupt:  # Ctrl-C: the pass stops, the plays that finished are kept, the ending is the normal one (#110)
             run['status'] = 'stopped'
             run['stopped'] = {'time': br.iso(io.now()), 'plays_done': len(run['visits']),
-                              'plays_planned': len(PLAN) * len(cfg['titles']) * len(run['sides']),
+                              'plays_planned': planned_plays(cfg, PLAN),
                               'during': run.get('playing')}
         finally:
             try:
@@ -819,7 +876,10 @@ def run_all(cfg, io):
     except Exception as e:  # noqa: BLE001
         run['status'], run['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
         failure = e
-    run['finished'] = br.iso(io.now())
+    finished = io.now()
+    run['finished'] = br.iso(finished)
+    run['timing']['seconds'] = round((finished - started).total_seconds(), 3)
+    run['timing']['parts'] = br.time_parts(run)
     sl = os.path.join(logs_dir, 'standin.log')
     if os.path.exists(sl):
         run['standin_misses'] = sum(1 for line in _read_text(sl).splitlines() if line.startswith('MISS '))
@@ -841,7 +901,7 @@ def run_all(cfg, io):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
                                     'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
-                                    'standin_misses', 'changes')}
+                                    'standin_misses', 'changes', 'timing')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
         'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': run['changes'],
@@ -878,15 +938,16 @@ def record_all(cfg, io):
            'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
            'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS), 'misses': []}
     handle, failure, stage = None, None, 'the record pass'
+    planned = planned_plays(cfg, RECORD_ROUNDS)
     try:
         rec['commit'] = io.image_label()
-        io.reset(ALL_TESTBED)
+        io.reset(ALL_TESTBED, progress_log(io, 0, planned))
         handle = io.start_standin(logpath, mode='record')
         try:
             try:
                 record_pass(cfg, io, rec, list(MAIN_SIDES))
                 if cfg['one_page']:
-                    switch_to_one_page(io)
+                    switch_to_one_page(io, progress_log(io, rec['visits'], planned))
                     record_pass(cfg, io, rec, ['kaijuflow-1page'])
             except CapReached as e:
                 rec['status'] = 'null'
@@ -903,7 +964,7 @@ def record_all(cfg, io):
             rec['status'] = 'stopped'
             rec['stopped'] = {'time': br.iso(io.now()), 'visits': rec['visits'], 'during': stage}
         finally:  # the cleanup runs even when stopping the stand-in fails
-            io.reset(ALL_TESTBED)
+            io.reset(ALL_TESTBED, progress_log(io, rec['visits'], planned))
             io.stop_all()
     except Exception as e:  # noqa: BLE001
         rec['status'], rec['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
@@ -979,7 +1040,8 @@ def prove_recording(cfg, io, logpath):
     """The proof that ends a record pass: test copies reset, the stand-in in REPLAY mode with the wait off (no indexer is
     contacted), every side through the same cold round and warm round as the record pass. Returns the requests it could not
     answer, one {'side', 'request'} each (the side that was visiting when the stand-in logged the MISS), without repeats."""
-    io.reset(ALL_TESTBED)
+    planned = planned_plays(cfg, RECORD_ROUNDS)
+    io.reset(ALL_TESTBED, progress_log(io, 0, planned, proof=True))
     handle = io.start_standin(logpath, mode='replay', wait=False)
     windows = []  # (index of the stand-in's first new log line, side) at the start of every visit
 
@@ -997,10 +1059,10 @@ def prove_recording(cfg, io, logpath):
     watched = Watch(io)
     scratch = {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
     try:
-        record_pass(cfg, watched, scratch, list(MAIN_SIDES))
+        record_pass(cfg, watched, scratch, list(MAIN_SIDES), proof=True)
         if cfg['one_page']:
-            switch_to_one_page(io)
-            record_pass(cfg, watched, scratch, ['kaijuflow-1page'])
+            switch_to_one_page(io, progress_log(io, scratch['visits'], planned, proof=True))
+            record_pass(cfg, watched, scratch, ['kaijuflow-1page'], proof=True)
         lines = io.standin_lines()
     finally:
         try:
@@ -1019,9 +1081,10 @@ def prove_recording(cfg, io, logpath):
     return misses
 
 
-def record_pass(cfg, io, rec, sides):
+def record_pass(cfg, io, rec, sides, proof=False):
     """A cold round, then a warm round with no reset between: in each, every side lists every title and plays its top pick,
-    sides one after another, order rotating per title. `listed` counts the titles a side listed Sources for in any round."""
+    sides one after another, order rotating per title. `listed` counts the titles a side listed Sources for in any round.
+    The proof replay makes the same rounds with its own count, and its play lines say `proof`."""
     _check_cap(io)
     listed = {side: set() for side in sides}
     try:
@@ -1034,7 +1097,8 @@ def record_pass(cfg, io, rec, sides):
                     rec['visits'] += 1
                     if http.get('sources'):
                         listed[side].add(vid)
-                    print(f"{side} {phase} {label}: {http.get('sources')} Sources, top pick "
+                    print(f"{progress(io, rec['visits'], planned_plays(cfg, RECORD_ROUNDS), proof)} "
+                          f"{side} {phase} {label}: {http.get('sources')} Sources, top pick "
                           f"{'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
                     _check_cap(io)
                     io.sleep(cfg['settle'])
@@ -1137,7 +1201,7 @@ def build_parser():
     ap.add_argument('--one-page', action='store_true', help='add the fourth side: KaijuFlow, one page per indexer')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
-    ap.add_argument('--settle', type=float, default=3)
+    ap.add_argument('--settle', type=float, default=3, help='seconds to pause after every play (default 3)')
     return ap
 
 

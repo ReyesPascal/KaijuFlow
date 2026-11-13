@@ -693,6 +693,56 @@ class MissReportTest(unittest.TestCase):
         self.assertEqual(cells[2:5], ['5', '-', '-'])
 
 
+class WallClockTest(unittest.TestCase):
+    """Where the wall-clock time of a run went (#112). The run's own timing is tested in test_brainrun.py, on its fake clock."""
+
+    def timed_run(self, **parts):
+        run = runs_fixture(failing=True)  # 12 visits of 7 s; Usenet Ultimate's two cold top picks fail
+        run.update(finished='2026-11-10T18:03:20Z', timing={
+            'seconds': 200.0, 'settle_s': 3, 'passes': [{'name': 'main sides', 'seconds': 190.0}],
+            'rounds': [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'start': '2026-11-10T18:00:20.000Z', 'seconds': 80.0,
+                        'plays': 3, 'pause_s': 9.0},
+                       {'pass': 'main sides', 'phase': 'warm', 'round': 1, 'start': '2026-11-10T18:01:40.000Z', 'seconds': 70.0,
+                        'plays': 3, 'pause_s': 9.0}],
+            'resets': [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'start': '2026-11-10T18:00:04.500Z', 'seconds': 15.5},
+                       {'pass': 'main sides', 'phase': 'cold', 'round': 2, 'start': '2026-11-10T18:02:50.000Z', 'seconds': 25.3}]})
+        run['timing']['parts'] = parts or br.time_parts(run)
+        return run
+
+    def test_the_parts_are_measured_from_the_visits_rounds_and_resets_and_the_rest_is_what_is_left(self):
+        self.assertEqual(self.timed_run()['timing']['parts'], {
+            'measured_s': 68.0,   # list 5 s + start: KaijuFlow 4 x (5 + 2), Usenet Ultimate warm 2 x (5 + 3), the addon 4 x (5 + 1)
+            'pauses_s': 18.0, 'resets_s': 40.8,
+            'failed_s': 14.0,     # two failed visits of 7 s, start to end
+            'other_s': 59.2})     # 200 - 68 - 18 - 14 - 40.8
+
+    def test_a_visit_without_its_times_costs_no_error(self):
+        run = self.timed_run()
+        for v in run['visits']:
+            if not v['ok']:
+                del v['t_end']
+        self.assertEqual(br.time_parts(run)['failed_s'], 0.0)
+        self.assertIn('| failure video: failure video |', br.render_report(run, ['x']))  # and no time in the Result column
+
+    def test_the_parts_as_printed_are_within_a_second_of_the_whole_run(self):
+        # every part ends on .44 s: printed to a whole second they would lose 2.2 s between them
+        run = self.timed_run(measured_s=110.44, pauses_s=18.44, failed_s=14.44, resets_s=40.44, other_s=16.44)
+        run['timing']['seconds'] = 200.2
+        rows = br.render_report(run, ['x']).split('| Part | Seconds | Minutes |\n|---|---|---|\n')[1].split('\n\n')[0].split('\n')
+        seconds = [float(r.split(' | ')[1]) for r in rows]
+        self.assertEqual([r.split(' | ')[0] for r in rows][-1], '| The whole run')
+        self.assertEqual(seconds[-1], 200.2)
+        self.assertLessEqual(abs(sum(seconds[:-1]) - seconds[-1]), 1.0)
+
+    def test_the_section_comes_last_and_a_run_that_was_not_timed_has_none(self):
+        text = br.render_report(self.timed_run(), ['x'])
+        self.assertGreater(text.index('## Where the time went'), text.index('## Per title'))
+        self.assertIn('The whole run took 3.3 minutes (200.0 s), from 18:00:00 to 18:03:20 UTC: the main sides 3.2 minutes (190.0 s).', text)
+        self.assertIn('- **Pauses (`--settle`)**: the pause after every play, 3 s each (6 plays).', text)
+        self.assertIn('| Main sides | Cold 2 | - | 25.3 | 0 | - | - |', text)  # a reset with no round after it
+        self.assertNotIn('Where the time went', br.render_report(runs_fixture(), ['x']))
+
+
 class AttributionTest(unittest.TestCase):
     def visit(self, vid='tt1', start='2026-11-10T18:00:00Z', played='Rel.A.2160p', **kw):
         v = dict(side='kaijuflow', id=vid, t_start=start, t_end='2026-11-10T18:00:07Z', tries=[{'title': played}])

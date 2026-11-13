@@ -893,11 +893,12 @@ def render_report(run, changes, opening=None):
                         continue
                     m = visit_metrics(v)
                     cause = classify_failure(v)
-                    res = 'plays' if v.get('ok') else f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
+                    res = 'plays' if v.get('ok') else failed_result(v, cause)
                     rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
                                 + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
     lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
     lines += not_recorded_section(run)
+    lines += time_section(run)
     return '\n'.join(lines)
 
 
@@ -925,6 +926,112 @@ def not_recorded_section(run):
             + ('; '.join(left_out) if left_out else 'none (every top pick still played).'), '',
             f'To fill the gaps, top up the recording (no indexer is asked for something already stored): `{top_up}`', '']
     return out
+
+
+# --------------------------------------------------------------------------- where the time went (#112)
+
+# The five parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
+TIME_PARTS = [('measured_s', 'Measured list and start time'), ('pauses_s', 'Pauses (`--settle`)'),
+              ('failed_s', 'Failed plays'), ('resets_s', 'Resets'), ('other_s', 'Everything else')]
+
+
+def visit_wall_s(v):
+    """Wall-clock seconds of one visit, from asking for the list until the play ended or gave up; None without both times."""
+    try:
+        return round((parse_ts(v['t_end']) - parse_ts(v['t_start'])).total_seconds(), 3)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def failed_result(v, cause):
+    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took."""
+    text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
+    took = visit_wall_s(v)
+    return text if took is None else f'{text} (the whole visit took {took:.1f} s)'
+
+
+def time_parts(run):
+    """Where the wall-clock time of a run went, in seconds, as the five TIME_PARTS. They add up to the run's total
+    (timing.seconds): four are measured (the list and start times of the top picks that played, the pauses and the resets
+    as the run timed them, the whole visits of the top picks that failed), and `other_s` is what is left of the total.
+    Works on a run that ended early: it takes whatever visits, rounds and resets the run holds."""
+    timing = run.get('timing') or {}
+    visits = run.get('visits') or []
+    parts = {'measured_s': sum((v.get('list_s') or 0) + (v.get('start_s') or 0) for v in visits if v.get('ok')),
+             'pauses_s': sum(r.get('pause_s') or 0 for r in timing.get('rounds') or []),
+             'failed_s': sum(visit_wall_s(v) or 0 for v in visits if not v.get('ok')),
+             'resets_s': sum(r.get('seconds') or 0 for r in timing.get('resets') or [])}
+    parts = {k: round(x, 3) for k, x in parts.items()}
+    parts['other_s'] = round((timing.get('seconds') or 0) - sum(parts.values()), 3)
+    return parts
+
+
+def _s(x):
+    return '-' if x is None else f'{x:.1f}'
+
+
+def _minutes(x):
+    return '-' if x is None else f'{x / 60:.1f}'
+
+
+def _took(x):
+    return f'{_minutes(x)} minutes ({_s(x)} s)'
+
+
+def _time_of_day(iso_time):
+    return str(iso_time)[11:19]
+
+
+def time_section(run):
+    """The report's section on the run's wall-clock time: the whole run and each pass in one sentence, the five parts that
+    add up to the whole run, then each round with the reset before it. Seconds are shown to one decimal, so the parts as
+    printed are within a second of the total. [] for a run that holds no timing (made before #112)."""
+    timing = run.get('timing') or {}
+    parts = timing.get('parts')
+    if not parts:
+        return []
+    visits = run.get('visits') or []
+    rounds, resets = timing.get('rounds') or [], timing.get('resets') or []
+    passes = ', '.join(f"the {p.get('name')} {_took(p.get('seconds'))}" for p in timing.get('passes') or [])
+    out = ['## Where the time went', '',
+           f"The whole run took {_took(timing.get('seconds'))}, from {_time_of_day(run.get('started'))} to "
+           f"{_time_of_day(run.get('finished'))} UTC{': ' + passes if passes else ''}.", '']
+    rows = [[name, _s(parts.get(key)), _minutes(parts.get(key))] for key, name in TIME_PARTS]
+    out += _table(['Part', 'Seconds', 'Minutes'], rows + [['The whole run', _s(timing.get('seconds')), _minutes(timing.get('seconds'))]])
+    failed = sum(1 for v in visits if not v.get('ok'))
+    out += ['',
+            '- **Measured list and start time**: for every top pick that played, the seconds until its Stream list arrived plus '
+            'the seconds from pressing play to the first byte. The tables above are made from these.',
+            f"- **Pauses (`--settle`)**: the pause after every play, {_cell(timing.get('settle_s'))} s each "
+            f"({sum(r.get('plays') or 0 for r in rounds)} plays).",
+            f"- **Failed plays**: the whole visit of every top pick that did not play, from asking for the list until the play "
+            f"gave up ({failed} visit{'' if failed == 1 else 's'}; each one's time is in the Result column of \"Per title\").",
+            '- **Resets**: emptying and restarting the test copies before each cold round. The first reset of the one-page '
+            'side includes the switch to one page.',
+            '- **Everything else**: what is left of the whole run: the seek checks after a top pick played, reading the logs '
+            'after each play, starting and stopping the indexer stand-in and the test copies.', '']
+    out += _table(['Pass', 'Round', 'Started (UTC)', 'Reset before it (s)', 'Plays', 'Round (s)', 'Round (minutes)'],
+                  _round_rows(rounds, resets))
+    out += ['',
+            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount\'s own addon) are played in turn, title by '
+            'title, in one pass; the one-page side has its own pass after them.',
+            '- **Round**: the cold or warm round of every side of the pass, played together, from the first play to the end '
+            'of the pause after the last play. The reset before a cold round is not part of it.', '']
+    return out
+
+
+def _round_rows(rounds, resets):
+    """One row per round of each pass, in the order they were played, with the reset that came before it. A reset with no
+    round after it (the run ended during the reset) gets a row too, so every reset is shown."""
+    def which(r):
+        return r.get('pass'), r.get('phase'), r.get('round')
+    reset_of, round_of = {which(r): r for r in resets}, {which(r): r for r in rounds}
+    rows = []
+    for key in dict.fromkeys(which(r) for r in sorted(resets + rounds, key=lambda r: str(r.get('start')))):
+        r = round_of.get(key) or {}
+        rows.append([str(key[0]).capitalize(), _run_label(str(key[1]), key[2]), _time_of_day(r.get('start')) if r else '-',
+                     _s(reset_of.get(key, {}).get('seconds')), r.get('plays', 0), _s(r.get('seconds')), _minutes(r.get('seconds'))])
+    return rows
 
 
 def render_null_report(run):
