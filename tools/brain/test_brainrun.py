@@ -55,7 +55,15 @@ class Copies:
 
 
 class FakeIO(Copies):
-    """Stands in for Docker, the stand-in and the sides. Records every call in order."""
+    """Stands in for Docker, the stand-in and the sides. Records every call in order.
+
+    Its clock is a clock: reading it does not move it. It moves only while something takes time, by the seconds below:
+    a pause takes what it was asked for, a reset, a visit, starting the stand-in and stopping the copies take what they
+    take in this world. So a time the runner reports can be worked out by hand from what the run did."""
+
+    STANDIN_START_S, RESET_S, STOP_ALL_S = 2, 20, 5
+    LIST_S, START_S, SEEKS_S = 2.0, 1.5, 0.5  # a visit whose top pick plays takes the three together: 4 s
+    FAILED_PLAY_S = 10.0                      # a top pick that fails gives up after this long: the visit takes 12 s
 
     def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=()):
         Copies.__init__(self, up)
@@ -74,12 +82,15 @@ class FakeIO(Copies):
         self.calls.append(('history',))
         return {'history': {'slots': list(self.history), 'noofslots': len(self.history)}, 'status': True, 'error': None}
 
+    def takes(self, seconds):
+        self.clock += datetime.timedelta(seconds=seconds)
+
     def now(self):
-        self.clock += datetime.timedelta(seconds=1)
         return self.clock
 
     def sleep(self, s):
         self.calls.append(('sleep', s))
+        self.takes(s)
 
     def git_info(self):
         return 'repo-head', False
@@ -106,6 +117,7 @@ class FakeIO(Copies):
 
     def start_standin(self, logpath, mode='replay', wait=True):
         self.calls.append(('standin-start', mode, wait))
+        self.takes(self.STANDIN_START_S)
         self.standin_log =['HIT ninjacentral api t=search wait_ms=0', 'MISS drunkenslug api t=search']
         with open(logpath, 'w') as f:
             f.write('\n'.join(self.standin_log) + '\n')
@@ -124,10 +136,12 @@ class FakeIO(Copies):
 
     def reset(self, sides):
         self.calls.append(('reset', tuple(sides)))
+        self.takes(self.RESET_S)
         self.up |= set(sides)
 
     def stop_all(self):
         self.calls.append(('stop-all',))
+        self.takes(self.STOP_ALL_S)
         self.up.clear()
 
     def apply_one_page(self):
@@ -156,9 +170,10 @@ class FakeIO(Copies):
         t = int(self.clock.timestamp() * 1000) + 300  # a moment after the visit began
         self.standin_log += [f'{x} from={self.SIDE_IP[side]} t={t}' for x in self.lines_per_visit.get(self.visits, [])]
         ok = side != self.fail_http_for
+        self.takes(self.LIST_S + (self.START_S + self.SEEKS_S if ok else self.FAILED_PLAY_S))
         if side == 'uu':
             self.history.insert(0, {'nzo_id': f'n{self.visits}', 'nzb_name': 'R', 'status': 'Completed', 'download_time': 4})
-        return dict(list_status=200, list_s=2.0, sources=5, first_try_plays=ok, start_s=1.5 if ok else None,
+        return dict(list_status=200, list_s=self.LIST_S, sources=5, first_try_plays=ok, start_s=self.START_S if ok else None,
                     note=None if ok else 'failure video', seeks={'50': 0.2, '90': 0.3}, tries=[{'plays': ok}])
 
     def logs(self, container, since):
@@ -382,7 +397,7 @@ class InterruptedRunTest(unittest.TestCase):
         meta = json.loads(read(os.path.join(d, 'meta.json')))
         self.assertEqual(meta['status'], 'stopped')
         self.assertEqual(meta['stopped'], {
-            'time': '2026-11-10T18:00:11.000Z', 'plays_done': 4, 'plays_planned': 24,
+            'time': '2026-11-10T18:00:38.000Z', 'plays_done': 4, 'plays_planned': 24,  # 2 s stand-in, 20 s reset, 4 visits of 4 s
             'during': {'side': 'altmount-addon', 'phase': 'cold', 'round': 1, 'title': 'Show S01E01'}})
         rows = [x for x in read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines() if os.path.basename(d) in x]
         self.assertEqual(len(rows), 1)
@@ -399,7 +414,7 @@ class InterruptedRunTest(unittest.TestCase):
         io, run = self.stopped_run(5)
         rep = read(os.path.join(run['dir'], 'report.md'))
         self.assertEqual(rep.split('\n')[0],
-                         "This run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had finished, and it stopped "
+                         "This run was stopped by hand at 2026-11-10T18:00:38.000Z: 4 of 24 plays had finished, and it stopped "
                          "during the next one (AltMount's own addon, cold 1, Show S01E01). The tables below are made from the "
                          "finished plays alone, so the run is not a baseline.")
         self.assertNotIn('each round done twice', rep)
@@ -434,7 +449,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual(code, 1)
         first = out.getvalue().splitlines()[0]  # the fake stand-in's one miss is a second reason, after this one
         self.assertTrue(first.startswith(
-            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had "
+            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:38.000Z: 4 of 24 plays had "
             "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
 
     def test_the_run_command_ends_a_stopped_run_with_the_check_and_exit_code_130(self):
@@ -453,8 +468,8 @@ class InterruptedRunTest(unittest.TestCase):
         first = lines[lines.index(f'stopped: {folder}') + 1]
         self.assertEqual(read(os.path.join(folder, 'CHECK.txt')).splitlines()[0], first)
         self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
-        self.assertTrue(first.startswith(
-            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had "
+        self.assertTrue(first.startswith(  # the command's own --settle: a 3 s pause after each of the four plays
+            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:50.000Z: 4 of 24 plays had "
             "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
 
 
@@ -625,6 +640,7 @@ class RecordIO(FakeIO):
 
     def start_standin(self, logpath, mode='replay', wait=True):
         self.calls.append(('standin-start', mode, wait))
+        self.takes(self.STANDIN_START_S)
         self.mode = mode
         self.seen = set()  # a new pass starts cold again
         conf = self.conf()
@@ -653,6 +669,7 @@ class RecordIO(FakeIO):
         self.calls.append(('visit', side, vid))
         if not self.is_up(side):
             return self.down_answer(tries)
+        self.takes(self.LIST_S + self.START_S + self.SEEKS_S)
         if self.limit_from_visit and self.visits >= self.limit_from_visit:
             fakes.FakeIndexer.limit = True
         base = f'http://127.0.0.1:{self.port}/fake/api'
@@ -819,7 +836,8 @@ class RecordTest(unittest.TestCase):
     def test_an_interrupt_during_the_record_pass_keeps_what_was_stored_and_records_it_as_stopped(self):
         io, rec = self.stopped_record(3)
         self.assertEqual(rec['status'], 'stopped')
-        self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:02.000Z', 'visits': 2, 'during': 'the record pass'})
+        # 20 s reset, 2 s stand-in, two visits of 4 s
+        self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:30.000Z', 'visits': 2, 'during': 'the record pass'})
         self.assertEqual(len(self.stored()), 3)  # KaijuFlow's two pages and Usenet Ultimate's one, for the first title
         self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
         row = read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines()[-1]
