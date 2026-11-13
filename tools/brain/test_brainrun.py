@@ -457,6 +457,21 @@ class WallClockTest(unittest.TestCase):
                                                    'other_s': 19.0})
         self.assertEqual((meta['timing']['seconds'], meta['timing']['settle_s']), (343.0, 2))
 
+    def test_no_part_of_the_time_is_counted_twice(self):
+        """Held against the clock, not against the remainder: every play and every pause lies inside a round, the rounds and
+        the resets lie inside the run. So the parts made of plays and pauses never exceed the rounds' own time, and the
+        measured parts never exceed the whole run, so "Everything else" is never below 0. A part counted twice breaks it."""
+        for kw in ({}, {'fail_http_for': 'uu'}):
+            with self.subTest(**kw):
+                run, meta = self.run_with_one_page(FakeIO(**kw), settle=2)
+                timing, parts = meta['timing'], meta['timing']['parts']
+                in_rounds = sum(r['seconds'] for r in timing['rounds'])
+                in_resets = sum(r['seconds'] for r in timing['resets'])
+                self.assertLessEqual(parts['measured_s'] + parts['failed_s'] + parts['pauses_s'], in_rounds)
+                self.assertLessEqual(in_rounds + in_resets, timing['seconds'])
+                self.assertLessEqual(sum(parts[k] for k in ('measured_s', 'pauses_s', 'failed_s', 'resets_s')), timing['seconds'])
+                self.assertGreaterEqual(parts['other_s'], 0)
+
     def test_every_visit_keeps_its_wall_clock_time_and_a_failed_plays_time_is_in_the_per_title_table(self):
         run, _ = printed(brainrun.run_all, make_cfg(self.tmp), FakeIO(fail_http_for='uu'))
         raw = json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits']
