@@ -134,7 +134,7 @@ class ComposeCmd(unittest.TestCase):
 
     def test_refuses_a_test_dir_that_is_not_the_test_folder(self):
         with self.assertRaises(ValueError):
-            testbed.compose_cmd("/home/ryan/usenet-stack", "stop", "nzbdav")
+            testbed.compose_cmd("~/usenet-stack", "stop", "nzbdav")
 
     def test_compose_file_names_only_test_containers(self):
         text = read(testbed.COMPOSE_FILE)

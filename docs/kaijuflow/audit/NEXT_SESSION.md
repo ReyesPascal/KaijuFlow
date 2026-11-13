@@ -22,7 +22,7 @@ Measure and optimize KaijuFlow with AltMount before InfiniDysk (spec #58). Infin
 Nothing is being built. Spec #77 is done: all 15 tickets (#78 to #92) merged or closed on 2026-11-10 (PRs #93 to #106). What it changed:
 - `record` makes a cold and a warm round per side, then a proof replay (no indexer contact): state `complete`, `incomplete` (exit 3, rerun = top-up) or `stopped` (limit). `preflight --for run` accepts only `complete`.
 - `check --run <folder>` says whether a run can serve as a baseline; `run` prints and stores it (CHECK.txt). The 2026-11-10 baseline checks as not usable (40 warm misses).
-- `usage` prints NinjaCentral allowance used / left (limits file `/home/ryan/kaijuflow-test/limits.json`: 2000 searches, 450 downloads, rolling 24 h); `preflight --for record` shows it.
+- `usage` prints NinjaCentral allowance used / left (limits file `~/kaijuflow-test/limits.json`: 2000 searches, 450 downloads, rolling 24 h); `preflight --for record` shows it.
 - Report: Usenet Ultimate's import time = NzbDAV's own job time; a failed top pick shows its real cause; a Warm start shows only its own Source's steps.
 - KaijuFlow: a first byte answered 400 or a dropped connection keeps the Source alive (ADR 0004); a release name ending in `.mkv` is uploaded to AltMount without the extension, so it plays (#85, proven on fakes only; the redo is its first real test).
 - One page builder `tools/brain/build_page.py`; speed-check page republished (version 6).
@@ -44,10 +44,10 @@ Nothing is being built. Spec #77 is done: all 15 tickets (#78 to #92) merged or 
 4. InfiniDysk 1.x.
 
 ## Where things live
-- Run records: `/home/ryan/kaijuflow-notes/brain-runs/` and its `INDEX.md`.
-- Test folder (compose, configs, key files; outside the repo): `/home/ryan/kaijuflow-test`.
+- Run records: `~/kaijuflow-notes/brain-runs/` and its `INDEX.md`.
+- Test folder (compose, configs, key files; outside the repo): `~/kaijuflow-test`.
 - Runbook: [tools/brain/RUNBOOK.md](../../../tools/brain/RUNBOOK.md).
-- Architecture review (7 candidates, none chosen, nothing lands before the measuring is settled): `/home/ryan/kaijuflow-notes/architecture-review-2026-11-10.html`.
+- Architecture review (7 candidates, none chosen, nothing lands before the measuring is settled): `~/kaijuflow-notes/architecture-review-2026-11-10.html`.
 - Open issues: `gh issue list`.
 
 ## How to update

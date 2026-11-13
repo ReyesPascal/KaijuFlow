@@ -6,7 +6,7 @@
     python3 -I tools/brain/testbed.py settings [--limit 100]   every test copy's settings and the connection budget, read from its config files
 
 Sides: nzbdav, altmount-addon, altmount-kf (Backends), uu, kaijuflow (their health/dead caches).
-Config folders (with secrets) live in TEST_DIR (default /home/ryan/kaijuflow-test), never in the repo.
+Config folders (with secrets) live in TEST_DIR (default ~/kaijuflow-test), never in the repo.
 Every Docker command is pinned to compose project `kaijuflow-test` and to the five test services
 (compose_cmd), so nothing here can act on a live container.
 """

@@ -31,7 +31,7 @@ Indexers are compared by the slug in the indexer stand-in's address, because eac
 
 ## Indexer allowance (spec #77, ticket #87)
 
-**Limits file.** `limits.json` sits next to the key file (default `/home/ryan/kaijuflow-test/limits.json`, outside the repo; you fill it in once). Example: `tools/brain/limits.example.json`.
+**Limits file.** `limits.json` sits next to the key file (default `~/kaijuflow-test/limits.json`, outside the repo; you fill it in once). Example: `tools/brain/limits.example.json`.
 
 ```json
 {"indexers": {"ninjacentral": {"search_per_day": 2000, "download_per_day": 450, "reset": "rolling-24h"}}}
