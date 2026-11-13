@@ -623,9 +623,9 @@ def _defs(cols):
     return [f'- **{c}**: {COLUMN_HELP[c]}' for c in cols]
 
 
-def render_report(run, changes):
+def render_report(run, changes, opening=None):
     g = _groups(run)
-    lines = [answer_sentence(run), '',
+    lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
              "\"-\" means that side does not show the step from outside.", '',
@@ -709,6 +709,24 @@ def render_null_report(run):
         'only to show what happened. Start a new run after the indexer has reset.', ''])
 
 
+def stopped_text(stopped):
+    """How a run that was stopped by hand ended, as the rest of a sentence: when, how many plays had finished, and the
+    play it was in (none when it was stopped between two plays)."""
+    s = stopped or {}
+    d = s.get('during')
+    where = (f"it stopped during the next one ({SIDE_NAMES.get(d['side'], d['side'])}, {d['phase']} {d['round']}, {d['title']})"
+             if d else 'it stopped between two plays')
+    return (f"stopped by hand at {s.get('time', 'an unknown time')}: {s.get('plays_done', 0)} of "
+            f"{s.get('plays_planned', 'an unknown number of')} plays had finished, and {where}")
+
+
+def render_stopped_report(run, changes):
+    """The report of a run that was stopped by hand: it opens by saying so and how far the run got, then holds the usual
+    sections, made from the plays that finished."""
+    return render_report(run, changes, opening=f"This run was {stopped_text(run.get('stopped'))}. The tables below are made "
+                                               "from the finished plays alone, so the run is not a baseline.")
+
+
 # --------------------------------------------------------------------------- run records
 
 def create_run_dir(root, name, now):
@@ -726,7 +744,7 @@ def create_run_dir(root, name, now):
 
 
 INDEX_HEAD = ('# Brain runs\n\nOne row per run, never edited. NULL = the run was stopped by an indexer limit and its numbers '
-              'are not used.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
+              'are not used. stopped = the run was stopped by hand before its last play and is not a baseline.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
               '|---|---|---|---|---|---|\n')
 
 

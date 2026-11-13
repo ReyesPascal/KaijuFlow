@@ -8,6 +8,8 @@ How `brainrun.py run`, `record` and `smoke` work in detail. Back to the [runbook
 
     python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list> [--one-page] [--titles-file titles.json] [--runs-root DIR]
 
+**Stopping a run by hand (#110).** Ctrl-C stops the pass the way the cap rule does, and the normal ending follows: the config is restored, the stand-in and the test copies are stopped, and the run folder gets `raw.json`, `meta.json` and `report.md` from the plays that finished, plus an INDEX.md row with result `stopped` (see [formats](formats.md)). The command prints the check and exits with 130. Only Ctrl-C (an interrupt) is handled this way: a second Ctrl-C during the ending, or a kill, still loses the record.
+
 Run it in the background with a hard `timeout`, like the other tools; it prints one line per visit. `--no-wait` starts the stand-in with its replay wait off (see below). `--user-id` defaults to the first manifest id of the first user in the test container's `config/users.json`; the AltMount download key is computed from `templates/altmount.key`. The recording is made earlier by `brainrun.py record` (next section) and spends real indexer requests.
 
 
@@ -26,4 +28,6 @@ Code: `brainreport.py` (log parsing, medians, failure split, diff, report, run f
 
 **Top-up.** Record mode serves a stored answer instead of asking the indexer again, so running `record` a second time (again both rounds) only asks for what is not stored yet (a second record of a complete list makes zero indexer requests). The report's "Not recorded" section prints the exact command.
 
-**The proof and the record command's exit codes.** The record command ends with a proof: test copies reset, the stand-in in replay mode with the replay wait off (no indexer is contacted), every side through one cold and one warm round. Exit codes: 0 complete, 1 setup problem or failure, 2 stopped (limit reached), 3 incomplete (run the same command again). `brainrun.py --help` lists them.
+**The proof and the record command's exit codes.** The record command ends with a proof: test copies reset, the stand-in in replay mode with the replay wait off (no indexer is contacted), every side through one cold and one warm round. Exit codes: 0 complete, 1 setup problem or failure, 2 stopped (limit reached), 3 incomplete (run the same command again), 130 stopped by hand. `brainrun.py --help` lists them.
+
+**Stopping a record by hand (#110).** Ctrl-C in the record pass or in the proof ends the command the normal way: the stand-in is stopped, the config restored, the test copies reset and stopped. What was stored is kept, `RECORDING.json` says `stopped` (so a run refuses the recording), the folder's `meta.json` has status `stopped`, INDEX.md gets a row with result `stopped`, and the exit code is 130. Run the same record command again: it only asks for what is not stored yet, then proves the recording.

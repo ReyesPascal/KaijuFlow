@@ -73,3 +73,7 @@ _Avoid_: mock, proxy
 **Cap rule**:
 The first "limit reached" from any indexer stops the pass at once, and its result is null: no numbers are reported. The work waits for the indexer's reset.
 _Avoid_: rate-limit handling
+
+**Stopped run**:
+A timed run that was interrupted by hand (Ctrl-C) before its last play. Its record keeps the plays that finished and says where it stopped; it is not a baseline and never the previous run of a comparison.
+_Avoid_: aborted run, cancelled run, null run (null is the cap rule's result)

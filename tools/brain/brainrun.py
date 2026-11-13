@@ -14,7 +14,8 @@ indexer time for every answer unless --no-wait; the stand-in's lines say which t
 matches them to the right side and visit) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
-row and the report. The first "limit reached" from any indexer aborts the run and records it as null.
+row and the report. The first "limit reached" from any indexer aborts the run and records it as null. Ctrl-C stops the
+pass too: the run is recorded as stopped, from the plays that finished (#110).
 The record command resets the test copies, starts the stand-in in RECORD mode (this spends real indexer requests), sends
 every side through every title in a cold round and then a warm round, then proves the recording: the stand-in in REPLAY mode with the wait off
 (no indexer contacted), test copies reset, the same two rounds again. No miss = state complete; any miss = incomplete (listed); and resets again; running it again only asks for what is not stored yet. Its timings never
@@ -66,6 +67,7 @@ NZBDAV_PORT = 3001
 GRACE_S = 5
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
 EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
+EXIT_INTERRUPTED = 130  # run and record: stopped by hand with Ctrl-C (the shell's own code for it)
 
 
 class CapReached(Exception):
@@ -637,8 +639,10 @@ def do_pass(cfg, io, run, logbuf, sides, reset_sides, fresh=False):
         for i, title in enumerate(cfg['titles']):
             k = i % len(sides)
             for side in sides[k:] + sides[:k]:
+                run['playing'] = {'side': side, 'phase': phase, 'round': rnd, 'title': title[2]}
                 v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
                 run['visits'].append(v)
+                run['playing'] = None
                 print(f"{side} {phase} {rnd} {title[2]}: {'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
                 _check_cap(io, v, since=run['started_at'])
                 io.sleep(cfg['settle'])
@@ -682,6 +686,11 @@ def run_all(cfg, io):
         except CapReached as e:
             run['status'] = 'null'
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
+        except KeyboardInterrupt:  # Ctrl-C: the pass stops, the plays that finished are kept, the ending is the normal one (#110)
+            run['status'] = 'stopped'
+            run['stopped'] = {'time': br.iso(io.now()), 'plays_done': len(run['visits']),
+                              'plays_planned': len(PLAN) * len(cfg['titles']) * len(run['sides']),
+                              'during': run.get('playing')}
         finally:
             try:
                 finalize_steps(io, run['visits'])
@@ -709,12 +718,14 @@ def run_all(cfg, io):
     elif run['status'] == 'null':
         report, result = br.render_null_report(run), 'NULL'
         headline = f"NULL: {run['null']['indexer']} limit reached at {run['null']['time']}; no numbers"
+    elif run['status'] == 'stopped':
+        report, result, headline = br.render_stopped_report(run, run['changes']), 'stopped', br.stopped_text(run['stopped'])
     else:
         report, result, headline = f"This run failed before it finished: {run['error']}\n", 'failed', f"failed: {run['error']}"
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
-                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'error',
+                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
                                     'standin_misses', 'changes')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
@@ -733,7 +744,8 @@ def record_all(cfg, io):
 
     Running it again is a top-up: record mode serves what is stored instead of asking the indexer. The first "limit reached"
     stops the pass and the recording is NULL (what was stored stays). Nothing from the pass is a measurement: it gets a folder
-    with the stand-in's log and a meta.json, and an INDEX.md row only when it is NULL or failed.
+    with the stand-in's log and a meta.json, and an INDEX.md row only when it is NULL, stopped or failed. Ctrl-C in the pass
+    or in the proof ends it the normal way with status `stopped` (#110).
     """
     problems = io.preflight('record') + io.setting_conflicts()
     if problems:
@@ -750,7 +762,7 @@ def record_all(cfg, io):
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': planned_sides(cfg),
            'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
            'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS), 'misses': []}
-    handle, failure = None, None
+    handle, failure, stage = None, None, 'the record pass'
     try:
         rec['commit'] = io.image_label()
         io.reset(ALL_TESTBED)
@@ -770,7 +782,11 @@ def record_all(cfg, io):
                 finally:
                     io.restore_config()
             if rec['status'] == 'recorded':
+                stage = 'the proof replay'
                 rec['misses'] = prove_recording(cfg, io, os.path.join(logs_dir, 'standin-proof.log'))
+        except KeyboardInterrupt:  # Ctrl-C in the pass or the proof: what was stored is kept, the ending is the normal one (#110)
+            rec['status'] = 'stopped'
+            rec['stopped'] = {'time': br.iso(io.now()), 'visits': rec['visits'], 'during': stage}
         finally:  # the cleanup runs even when stopping the stand-in fails
             io.reset(ALL_TESTBED)
             io.stop_all()
@@ -789,6 +805,13 @@ def record_all(cfg, io):
             'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'NULL',
             'changed': ['recording stopped; what was stored is kept, top it up after the reset'],
             'headline': f"NULL: {rec['null']['indexer']} limit reached at {rec['null']['time']}; no numbers",
+            'folder': os.path.basename(run_dir)})
+    elif rec['status'] == 'stopped':
+        br.append_index_row(os.path.join(root, 'INDEX.md'), {
+            'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'stopped',
+            'changed': ['recording stopped by hand; what was stored is kept, run the same record command again'],
+            'headline': f"stopped by hand at {rec['stopped']['time']} during {rec['stopped']['during']}, "
+                        f"after {rec['stopped']['visits']} visits; no numbers",
             'folder': os.path.basename(run_dir)})
     elif rec['status'] == 'failed':
         br.append_index_row(os.path.join(root, 'INDEX.md'), {
@@ -812,6 +835,8 @@ def write_recording_state(cfg, rec):
         state, why = 'complete', None
     elif rec['status'] == 'null':
         state, why = 'stopped', f"{rec['null']['indexer']} said its limit was reached"
+    elif rec['status'] == 'stopped':
+        state, why = 'stopped', f"the record command was stopped by hand during {rec['stopped']['during']}"
     else:
         state, why = 'stopped', rec.get('error') or 'the record pass failed'
     _write(os.path.join(d, RECORDING_FILE), json.dumps({'state': state, 'why': why, 'when': rec['finished'], 'errors': rec['errors'], 'misses': misses}, indent=1))
@@ -973,7 +998,9 @@ RECORD_EXIT_CODES = """exit codes of the record command:
   0  complete: every side was recorded and the proof replay (no indexer contacted) answered every request. A run may use it.
   1  nothing recorded: the setup check failed (the sentences say why) or the pass broke.
   2  stopped: an indexer said its limit was reached. What was stored is kept; run the same command again after the indexer reset.
-  3  incomplete: the proof replay missed some requests (listed). Not an error: run the same record command again to top up."""
+  3  incomplete: the proof replay missed some requests (listed). Not an error: run the same record command again to top up.
+  130  stopped by hand (Ctrl-C). What was stored is kept; run the same command again. The run command uses 130 the same way:
+       its folder keeps the plays that finished, and its report and INDEX.md row say stopped."""
 
 
 def build_parser():
@@ -1051,6 +1078,10 @@ def main(argv):
             print(f"The recording stopped: {rec['null']['indexer']} said its limit was reached. What was stored is kept; "
                   f"once the indexer has reset, run the same command again to top up. Folder: {rec['dir']}")
             return EXIT_STOPPED
+        if rec['status'] == 'stopped':
+            print(f"The recording was stopped by hand during {rec['stopped']['during']}. What was stored is kept; "
+                  f"run the same command again to top up. Folder: {rec['dir']}")
+            return EXIT_INTERRUPTED
         print(f"{record_summary(rec)} Folder: {rec['dir']}")
         if rec.get('misses'):
             for m in rec['misses'][:10]:
@@ -1065,6 +1096,8 @@ def main(argv):
             return 1
         print(f"{run['status']}: {run['dir']}")
         runcheck.check_command(run['dir'], store=True)  # the same lines `check` prints, kept in the run folder as CHECK.txt
+        if run['status'] == 'stopped':
+            return EXIT_INTERRUPTED
     common.finish(started)
     return 0
 
