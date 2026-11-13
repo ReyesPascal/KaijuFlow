@@ -1,10 +1,23 @@
 # Brain tools: formats
 
-What the files and lines look like: run folder, targets, recording state, misses, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+What the files and lines look like: run folder, top picks, targets, expected settings, recording state, misses, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Run folder
 
-**Run records.** Every run gets its own folder `<runs-root>/<UTC date-time>-<name>/` (default runs root `~/kaijuflow-notes/brain-runs`; use a temporary one for any trial) with `settings.json` (every side's settings, secrets replaced by `***`, exactly the settings reader's output), `meta.json` (settings, run-level facts, container addresses, KaijuFlow `commit` (the one the test image was built from) and the repository's `head`, titles, indexers, status, what changed), `raw.json` (every visit with its timings, step lines and imports), `logs/` (stand-in log and the test containers' logs, scrubbed of keys) and `report.md`. One row per run is appended to `<runs-root>/INDEX.md` (date, name, result, what changed, headline numbers, folder link). Nothing is overwritten: a rerun, even in the same second, gets a new folder, and INDEX.md is only ever appended to. The report opens with one sentence, then the targets table (see [Targets](#targets-targetsjson)), then "What changed since the last run" (a diff of settings, run-level facts (stand-in replay wait on or off, the one-page side), KaijuFlow commit, titles, indexers and sides against the newest earlier finished run; a run recorded in the older shape, which kept those facts inside its settings, is read as facts too, so it shows no false difference, always ending with the time of day of both runs, and with how many null runs lie between them and when; the same list goes into the INDEX.md row), then the shared-steps table (search time split into "Indexers", the recorded wait, and "Side's own work"), the extras table, failures split into indexer limit / Backend rejection / failure video / other / not recorded, per-title detail and, when there are misses, a "Not recorded" section with the top-up command; every column is defined under its table.
+**Run records.** Every run gets its own folder `<runs-root>/<UTC date-time>-<name>/` (default runs root `~/kaijuflow-notes/brain-runs`; use a temporary one for any trial) with `settings.json` (every side's settings, secrets replaced by `***`, exactly the settings reader's output), `meta.json` (settings, run-level facts, container addresses, KaijuFlow `commit` (the one the test image was built from) and the repository's `head`, titles, indexers, status, what changed), `raw.json` (every visit with its timings, step lines and imports), `logs/` (stand-in log and the test containers' logs, scrubbed of keys) and `report.md`. One row per run is appended to `<runs-root>/INDEX.md` (date, name, result, what changed, headline numbers, folder link). Nothing is overwritten: a rerun, even in the same second, gets a new folder, and INDEX.md is only ever appended to. The report opens with one sentence, then the targets table (see [Targets](#targets-targetsjson)), then "What changed since the last run" (a diff of settings, run-level facts (stand-in replay wait on or off, the one-page side), KaijuFlow commit, titles, indexers and sides against the newest earlier finished run; a run recorded in the older shape, which kept those facts inside its settings, is read as facts too, so it shows no false difference, then one line per title and side whose top pick changed, always ending with the time of day of both runs, and with how many null runs lie between them and when; the same list goes into the INDEX.md row), then the shared-steps table (search time split into "Indexers", the recorded wait, and "Side's own work"), the extras table, failures split into indexer limit / Backend rejection / failure video / other / not recorded, per-title detail (with each visit's top pick and its size) and, when there are misses, a "Not recorded" section with the top-up command; every column is defined under its table.
+
+**Top picks (#109).** The top pick of a visit is the first Source in the side's list, the one that was played; `raw.json` holds it as the visit's `tries[0]` (`title`: the text the side showed for it, `size`: bytes of the served file, `plays`) and, for KaijuFlow, `played_source` (the release name from its own log). `brainreport.top_pick(visit)` reads it. The per-title table shows it in two columns:
+
+- **Top pick**: the release name where KaijuFlow's log gives it, otherwise the side's list text (Usenet Ultimate and AltMount's own addon give no other name). "-" when the side listed no Source.
+- **Size**: the served file's size in GB of 1000 x 1000 x 1000 bytes. A top pick that did not play serves the failure video, whose size says nothing about the Source, so its row shows the size its list text states after the disk sign, marked `listed` (`95.01 GB listed`): the indexer's figure for the post, which KaijuFlow counts in GB of 1024 x 1024 x 1024 bytes.
+
+"What changed since the last run" lists a title whose top pick differs from the previous run's, one line per title and side, with the rounds it differs in and the old and the new pick of the first of them:
+
+```
+Top pick changed: KaijuFlow, Inception (Cold 1, Warm 1, Cold 2, Warm 2): Inception.2010.2160p.UHD.BluRay.Remux.HEVC.DTS-HD.MA.5.1-FGT, 85.4 GB -> Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW, 22.3 GB
+```
+
+The previous run's top picks are read from its folder's `raw.json`, so a run made before this column existed is compared too. Whether two picks are the same Source is decided by the size of the served file when both played, otherwise by the size both lists state, and by the name only when neither size can be compared. The name is not used first, because a side's list text also holds the Source's age and its health-check mark, which change from one run to the next. Only rounds both runs hold are compared, and a title or a side that only one run has is not a changed top pick (it is listed as added or removed). When the previous run's folder holds no top picks, nothing is compared and no line is written.
 
 **A run stopped by hand (#110).** Ctrl-C during a run stops the pass and then runs the normal ending, so the folder is whole. `meta.json` and `raw.json` have status `stopped`, and `meta.json` has `stopped`: `time` (when it was stopped), `plays_done`, `plays_planned` and `during` (`side`, `phase`, `round`, `title` of the play that was cut off, or null when it stopped between two plays). `raw.json` holds every play that finished; the cut-off play is not in it. `report.md` opens with one sentence saying the run was stopped, when and how far it got, then has the usual sections made from the finished plays alone (a round that was cut short shows fewer titles in "Top pick plays"; a round that never began has no row). The INDEX.md row has result `stopped` and that same sentence as its headline, with no numbers. A stopped run is never the "previous run" of a diff, and `check` says it is not usable as a baseline.
 
@@ -43,6 +56,35 @@ Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 6.73 s, U
 ```
 
 A null or failed run gets no target lines. If `targets.json` cannot be used, one sentence says why (`Targets: not judged (targets.json, entry 2: the margin is not a number from 0 up).`) and the rest of the check and the report is unchanged.
+
+## Expected settings (`expected-settings.json`)
+
+The settings every test copy is expected to have are in `tools/brain/expected-settings.json`; the preflight compares each copy with it ([rules.md](rules.md#expected-settings-109)). Change the standard there and in the test copies together.
+
+```json
+{"about": "...",
+ "expected": [
+  {"copies": ["kaijuflow", "uu"],
+   "settings": {"movieFilters": {"sortOrder": ["regexScore", "quality"], "maxFileSize": 32212254720},
+                "tvFilters": {"sortOrder": ["regexScore", "quality"], "maxFileSize": 10737418240}}}
+ ]}
+```
+
+(The example is cut short; the file holds both sections in full.)
+
+| Field | Meaning |
+|---|---|
+| `about` | what the file is, in plain words; not read by the tools |
+| `expected` | the entries; each one names copies and the settings they must have |
+| `copies` | the test copies the entry is for: `kaijuflow`, `uu`, `nzbdav`, `altmount-addon`, `altmount-kf` |
+| `settings` | setting name and expected value. The name is the setting's name in the run's `settings.json`: a top-level name (`movieFilters`) or a dotted one (`healthChecks.sampleCount`) |
+
+- A value that is an object (a section) is compared as a whole: every value in it must match, and a value the copy has there and the file does not is a difference too. A list of plain values (an order) is one setting.
+- The value is compared as the run's `settings.json` holds it. KaijuFlow and Usenet Ultimate keep numbers and true/false. The AltMount copies keep every value as text, and NzbDAV most of them, so those are written as text (`"2"`, `"true"`).
+- The file is in the repository: no host, address, login or key. An entry whose setting has a secret name (the settings reader's own test, `brainreport.is_secret_name`) is refused.
+- A file that cannot be used fails the preflight with one sentence that says why.
+
+Today the file holds the standard sort and filter rules of KaijuFlow and Usenet Ultimate and nothing else; any other setting the settings reader reads can be added the same way.
 
 ## Recording state and misses
 

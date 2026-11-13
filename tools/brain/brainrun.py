@@ -458,7 +458,7 @@ def load_expected_settings(path=EXPECTED_SETTINGS_FILE):
         raise ValueError(f'{name} cannot be read: it has no "expected" list')
     for i, entry in enumerate(entries, 1):
         copies, wanted = (entry.get('copies'), entry.get('settings')) if isinstance(entry, dict) else (None, None)
-        stranger = next((c for c in copies if c not in testbed.SETTINGS), None) if isinstance(copies, list) else None
+        stranger = next((c for c in copies if not isinstance(c, str) or c not in testbed.SETTINGS), None) if isinstance(copies, list) else None
         # the file is in the repository: the settings reader's own test for a secret name keeps keys and logins out of it
         secret = next((k for k, v in br.flatten(wanted).items() if v == '***'), None) if isinstance(wanted, dict) else None
         if not isinstance(copies, list) or not copies:
