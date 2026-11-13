@@ -345,6 +345,44 @@ class RunTest(unittest.TestCase):
         self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
 
 
+class PickIO(FakeIO):
+    """FakeIO whose sides list one named Source on top, kept in the visit the way common.play_stream keeps it."""
+
+    def __init__(self, text, size, **kw):
+        FakeIO.__init__(self, **kw)
+        self.text, self.size = text, size
+
+    def visit_http(self, side, kind, vid, tries):
+        out = FakeIO.visit_http(self, side, kind, vid, tries)
+        for t in out.get('tries', [])[:1]:
+            t.update(title=self.text, size=self.size if t['plays'] else common.FAILURE_SIZE)
+        return out
+
+
+class TopPickRunTest(unittest.TestCase):
+    """Ticket #109: the run's report names every top pick, and says which ones changed since the last run."""
+
+    def test_the_report_names_the_top_picks_and_lists_the_ones_that_changed_since_the_last_run(self):
+        tmp = tempdir(self)
+        brainrun.run_all(make_cfg(tmp, name='one'), PickIO('4K REMUX Matrix 💾 95.01 GB FGT', 85436578297))
+        io2 = PickIO('4K WEB-DL Matrix 💾 21.9 GB NEW', 22300000000)
+        io2.clock += datetime.timedelta(minutes=5)
+        run2 = brainrun.run_all(make_cfg(tmp, name='two'), io2)
+        rep = read(os.path.join(run2['dir'], 'report.md'))
+        changed = rep.split('## What changed since the last run')[1].split('##')[0]
+        for side in ('KaijuFlow', 'Usenet Ultimate', "AltMount's own addon"):
+            self.assertIn(f'- Top pick changed: {side}, Matrix (Cold 1, Warm 1, Cold 2, Warm 2): 4K REMUX Matrix 💾 95.01 GB FGT, 85.4 GB '
+                          '-> 4K WEB-DL Matrix 💾 21.9 GB NEW, 22.3 GB', changed)
+        self.assertEqual(changed.count('Top pick changed'), 2 * 3)  # two titles on three sides
+        self.assertIn('| Matrix | KaijuFlow | Cold 1 | 4K WEB-DL Matrix 💾 21.9 GB NEW | 22.3 GB | 5 |', rep.split('## Per title')[1])
+        self.assertIn('Top pick changed: KaijuFlow, Matrix', read(os.path.join(tmp, 'runs', 'INDEX.md')))
+        # the same top picks again: nothing to list
+        io3 = PickIO('4K WEB-DL Matrix 💾 21.9 GB NEW', 22300000000)
+        io3.clock += datetime.timedelta(minutes=10)
+        run3 = brainrun.run_all(make_cfg(tmp, name='three'), io3)
+        self.assertNotIn('Top pick changed', read(os.path.join(run3['dir'], 'report.md')))
+
+
 def interrupt_at(io, n):
     """Ctrl-C during the n-th visit: the visit raises KeyboardInterrupt, as the real one does inside its HTTP read."""
     inner = io.visit_http

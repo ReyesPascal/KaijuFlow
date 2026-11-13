@@ -10,7 +10,7 @@ Every command runs from the repo root. Long ones: shell background mode with a h
 
 0. A commit that changes the code in the image since the image was built? Add `--rebuild-image` to the first preflight below. The code in the image is `src/`, `ui/`, `package.json`, `package-lock.json`, `tsconfig.json`, `scripts/docker-entrypoint.sh`, the `Dockerfile` and `.dockerignore`. A commit that touches only docs, tools or tests needs no rebuild; the preflight says when one is needed.
 1. Allowance: `python3 -I tools/brain/brainrun.py usage` shows Used, Limit and Left per indexer (limits in `~/kaijuflow-test/limits.json`). Do this before any record.
-2. Preflight: `python3 -I tools/brain/brainrun.py preflight --for record --store <store> --list <list> [--rebuild-image]`. Fix every sentence it prints; exit 0 means go.
+2. Preflight: `python3 -I tools/brain/brainrun.py preflight --for record --store <store> --list <list> [--rebuild-image]`. Fix every sentence it prints; exit 0 means go. It also holds the sort and filter settings of KaijuFlow's and Usenet Ultimate's test copies against `tools/brain/expected-settings.json` and names every setting that differs.
 3. Record: `python3 -I tools/brain/brainrun.py record --name <name> --store <store> --list <list> [--one-page] [--titles-file titles.json]`. It resets the test copies, sends every side through a cold round and a warm round (the only step that asks the real indexer), then proves the recording by replaying it with no indexer contacted. A second `record` of the same list only asks for what is missing (top-up).
 4. Preflight for the run: `... preflight --for run --store <store> --list <list>`.
 5. Run: `python3 -I tools/brain/brainrun.py run --name <name> --store <store> --list <list> [--one-page] [--no-wait]`. Four rounds per side (cold, warm, cold, warm) from the recording; no indexer is contacted. It ends by printing the check.
@@ -54,7 +54,9 @@ The "KaijuFlow Speed Check" page is https://claude.ai/artifact/VUydiLAYH9gbJ63Ft
 - **Stand-in**: the stand-in indexer on port 1340 that records or replays answers.
 - **Cap rule**: the first "limit reached" stops the pass; the result is null.
 - **Target**: one of the goals KaijuFlow is measured against, kept in `tools/brain/targets.json`. "Inside the noise" means KaijuFlow's own two rounds differ by more than the target is met or missed by.
+- **Top pick**: the first Source in a side's list, the one a round plays. The report's per-title table names it with its size, and "What changed since the last run" lists a title whose top pick changed.
+- **Expected settings**: the sort and filter rules every test copy must have, kept in `tools/brain/expected-settings.json`. The preflight fails when a copy differs.
 
 ## Reference
 
-[docs/run-and-record.md](docs/run-and-record.md) (how run, record and smoke work), [docs/rules.md](docs/rules.md) (cap rule, preflight, settings, allowance, how targets are judged), [docs/formats.md](docs/formats.md) (run folder, targets file, recording, step lines, the page's `story.html` and archive), [docs/testbed.md](docs/testbed.md) (test copies). Index: [README.md](README.md).
+[docs/run-and-record.md](docs/run-and-record.md) (how run, record and smoke work), [docs/rules.md](docs/rules.md) (cap rule, preflight, settings, expected settings, allowance, how targets are judged), [docs/formats.md](docs/formats.md) (run folder, top picks, targets file, expected settings file, recording, step lines, the page's `story.html` and archive), [docs/testbed.md](docs/testbed.md) (test copies). Index: [README.md](README.md).
