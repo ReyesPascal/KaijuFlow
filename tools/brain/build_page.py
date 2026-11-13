@@ -172,7 +172,7 @@ class Run:
                 self.titles.append(v['title'])
         seen = {v['side'] for v in self.visits}
         self.sides = [(n, label) for n, label in SIDES if n in seen] + [(n, n) for n in sorted(seen) if n not in dict(SIDES)]
-        self.id = self.name
+        self.id = self.folder_name  # names its tables and their slots: unique, where two runs can share a name (baseline)
 
     def group(self, side, phase=None, rnd=None):
         return [v for v in self.visits if v['side'] == side and (phase is None or v['phase'] == phase) and (rnd is None or v['round'] == rnd)]
@@ -333,7 +333,7 @@ def run_section(run):
     body = numbers_only(run) if story is None else story.strip('\n')
     for name, made in (('__SUMMARY_TABLE__', summary_table(run)), ('__ROUND_TABLE__', round_table(run)), ('__DETAILS__', details)):
         body = body.replace(name, made)
-    mark = f'{run.id} {run.date()}'
+    mark = f'{run.name} {run.date()}'
     return f'<!-- {mark} start -->\n<section>\n{body}\n</section>\n<!-- {mark} end -->\n', tables
 
 
@@ -400,7 +400,8 @@ def load_archive(folder):
 def add_tables(tables, new, owner):
     for tid, table_html in new.items():
         if tid in tables:
-            raise SystemExit(f'Two tables are called "{tid}" (the second one comes from {owner}). Every run on the page needs its own name.')
+            raise SystemExit(f'Two tables are called "{tid}" (the second one comes from {owner}). A run\'s tables are named '
+                             'after its run folder, so an archive entry must not use a run folder\'s name for its tables.')
         tables[tid] = table_html
 
 
@@ -417,13 +418,13 @@ def build(folders, archive=ARCHIVE):
         add_tables(tables, t, run.folder)
     for entry in entries:
         add_tables(tables, entry['tables'], f'the archive entry {entry["name"]}')
-    written = [r.folder_name for r in runs] == [HEADER_FOR] and bool(entries)
+    header_written_for_it = [r.folder_name for r in runs] == [HEADER_FOR] and bool(entries)
     plain_lede = PLAIN_LEDE + (' Below them, the earlier runs whose records are gone, as they were published.' if entries else '')
     footer = ''.join(e['footer.html'] for e in entries)
     parts = [HEAD, '<main>\n<header>\n',
-             f'  <div class="eyebrow">{EYEBROW if written else PLAIN_EYEBROW}</div>\n',
+             f'  <div class="eyebrow">{EYEBROW if header_written_for_it else PLAIN_EYEBROW}</div>\n',
              '  <h1>KaijuFlow Speed Check</h1>\n',
-             f'  <p class="lede">{LEDE if written else plain_lede}</p>\n</header>\n\n', WHO, '\n\n',
+             f'  <p class="lede">{LEDE if header_written_for_it else plain_lede}</p>\n</header>\n\n', WHO, '\n\n',
              '\n'.join(sections + [e['section.html'] for e in entries if e['section.html']]), '\n', WORDS, '\n\n',
              ''.join(e['appendix.html'] + '\n' for e in entries if e['appendix.html']),
              f'<footer>\n{footer}</footer>\n' if footer else '', '</main>\n', SCRIPT]

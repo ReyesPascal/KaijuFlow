@@ -1250,8 +1250,8 @@ RECORD_EXIT_CODES = """exit codes of the record command:
   1  nothing recorded: the setup check failed (the sentences say why) or the pass broke.
   2  stopped: an indexer said its limit was reached. What was stored is kept; run the same command again after the indexer reset.
   3  incomplete: the proof replay missed some requests (listed). Not an error: run the same record command again to top up.
-  130  stopped by hand (Ctrl-C). What was stored is kept; run the same command again. The run command uses 130 the same way:
-       its folder keeps the plays that finished, and its report and INDEX.md row say stopped."""
+  130  stopped by Ctrl-C or SIGTERM (what `timeout` sends). What was stored is kept; run the same command again. The run
+       command uses 130 the same way: its folder keeps the plays that finished, and its report and INDEX.md row say stopped."""
 
 
 def build_parser():

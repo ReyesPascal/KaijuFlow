@@ -18,7 +18,7 @@ Every command runs from the repo root. Long ones: shell background mode with a h
 
 ## The recipe
 
-0. A commit that changes the code in the image since the image was built? Add `--rebuild-image` to the first preflight below. The code in the image is `src/`, `ui/`, `package.json`, `package-lock.json`, `tsconfig.json`, `scripts/docker-entrypoint.sh`, the `Dockerfile` and `.dockerignore`. A commit that touches only docs, tools or tests needs no rebuild; the preflight says when one is needed.
+0. A commit that changes the code in the image since the image was built? Add `--rebuild-image` to the first preflight below. The code in the image is the build inputs, listed once, in `BUILD_INPUTS` in `tools/brain/brainrun.py` ([rules.md](docs/rules.md) says what they are). A commit that touches only docs, tools or tests needs no rebuild; the preflight says when one is needed.
 1. Allowance: `python3 -I tools/brain/brainrun.py usage` shows Used, Limit and Left per indexer (limits in `~/kaijuflow-test/limits.json`). Do this before any record.
 2. Preflight: `python3 -I tools/brain/brainrun.py preflight --for record --store <store> --list <list> [--rebuild-image]`. Fix every sentence it prints; exit 0 means go. It also holds the sort and filter settings of KaijuFlow's and Usenet Ultimate's test copies against `tools/brain/expected-settings.json` and names every setting that differs.
 3. Record: `python3 -I tools/brain/brainrun.py record --name <name> --store <store> --list <list> [--one-page] [--titles-file titles.json]`. It resets the test copies, sends every side through a cold round and a warm round (the only step that asks the real indexer), then proves the recording by replaying it with no indexer contacted. A second `record` of the same list only asks for what is missing (top-up).
@@ -37,8 +37,8 @@ Other commands: `smoke --store <EMPTY folder> --list smoke` (reachability only),
 
 ## Exit codes
 
-- record: 0 complete (a run may use it); 1 setup problem or the pass broke (nothing recorded); 2 stopped by an indexer limit (stored answers kept; run the same command after the reset); 3 incomplete, the proof replay missed requests (not an error: run the same record command again to top up); 130 stopped by hand with Ctrl-C (stored answers kept; run the same command again).
-- run: 0 finished; 1 the preflight failed (sentences printed, no run folder); 130 stopped by hand with Ctrl-C (the folder keeps the plays that finished; report and INDEX.md row say `stopped`; not a baseline). The run's own verdict is in the check.
+- record: 0 complete (a run may use it); 1 setup problem or the pass broke (nothing recorded); 2 stopped by an indexer limit (stored answers kept; run the same command after the reset); 3 incomplete, the proof replay missed requests (not an error: run the same record command again to top up); 130 stopped by Ctrl-C or by SIGTERM from `timeout` (stored answers kept; run the same command again).
+- run: 0 finished; 1 the preflight failed (sentences printed, no run folder); 130 stopped by Ctrl-C or by SIGTERM from `timeout` (the folder keeps the plays that finished; report and INDEX.md row say `stopped`; not a baseline). The run's own verdict is in the check.
 - preflight: 0 setup is right; 1 problems printed.
 - check: 0 usable as a baseline; 1 not usable. Met or missed targets do not change it.
 - usage: 0. smoke: 0 (its verdict is printed).
