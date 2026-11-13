@@ -911,21 +911,28 @@ def time_section(run):
             'side includes the switch to one page.',
             '- **Everything else**: what is left of the whole run: the seek checks after a top pick played, reading the logs '
             'after each play, starting and stopping the indexer stand-in and the test copies.', '']
+    out += _table(['Pass', 'Round', 'Started (UTC)', 'Reset before it (s)', 'Plays', 'Round (s)', 'Round (minutes)'],
+                  _round_rows(rounds, resets))
+    out += ['',
+            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount\'s own addon) are played in turn, title by '
+            'title, in one pass; the one-page side has its own pass after them.',
+            '- **Round**: the cold or warm round of every side of the pass, played together, from the first play to the end '
+            'of the pause after the last play. The reset before a cold round is not part of it.', '']
+    return out
+
+
+def _round_rows(rounds, resets):
+    """One row per round of each pass, in the order they were played, with the reset that came before it. A reset with no
+    round after it (the run ended during the reset) gets a row too, so every reset is shown."""
     def which(r):
         return r.get('pass'), r.get('phase'), r.get('round')
     reset_of, round_of = {which(r): r for r in resets}, {which(r): r for r in rounds}
     rows = []
     for key in dict.fromkeys(which(r) for r in sorted(resets + rounds, key=lambda r: str(r.get('start')))):
-        r = round_of.get(key) or {}  # a run stopped during a reset has the reset and no round after it
-        rows.append([str(key[0]).capitalize(), _run_label(str(key[1]), key[2]), _time_of_day(r['start']) if r else '-',
+        r = round_of.get(key) or {}
+        rows.append([str(key[0]).capitalize(), _run_label(str(key[1]), key[2]), _time_of_day(r.get('start')) if r else '-',
                      _s(reset_of.get(key, {}).get('seconds')), r.get('plays', 0), _s(r.get('seconds')), _minutes(r.get('seconds'))])
-    out += _table(['Pass', 'Round', 'Started (UTC)', 'Reset before it (s)', 'Plays', 'Round (s)', 'Round (minutes)'], rows)
-    out += ['',
-            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount\'s own addon) are played in turn, title by '
-            'title, in one pass; the one-page side has its own pass after them.',
-            '- **Round**: every title of the pass once, cold or warm, from its first play to the end of the pause after its '
-            'last play. The reset before a cold round is not part of it.', '']
-    return out
+    return rows
 
 
 def render_null_report(run):

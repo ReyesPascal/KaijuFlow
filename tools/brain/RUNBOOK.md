@@ -6,6 +6,8 @@ Every command runs from the repo root. Long ones: shell background mode with a h
 
 `<store>` is the folder of recordings, `<list>` the title list's name, `<name>` a label for the folder.
 
+**How far is it, and where did the time go.** While a record or a run goes, `tail -1` of its log says how far it is: every line of a play or of a reset starts with the UTC time and the plays done out of those planned, for example `05:46:35 [61/160] kaijuflow cold 2 Inception: ...` (the proof at the end of a record counts again from 1 and says `proof`). Afterwards the last section of `report.md`, "Where the time went", says how long the run took and on what.
+
 ## The recipe
 
 0. A commit that changes the code in the image since the image was built? Add `--rebuild-image` to the first preflight below. The code in the image is `src/`, `ui/`, `package.json`, `package-lock.json`, `tsconfig.json`, `scripts/docker-entrypoint.sh`, the `Dockerfile` and `.dockerignore`. A commit that touches only docs, tools or tests needs no rebuild; the preflight says when one is needed.
@@ -23,6 +25,7 @@ Other commands: `smoke --store <EMPTY folder> --list smoke` (reachability only),
 - `--for run|record` (preflight): which setup to check. `--rebuild-image`: build `kaijuflow:test` from the current commit when the code in the image has changed since it was built (otherwise the image is left alone).
 - `--one-page`: add the fourth side (KaijuFlow, one page per indexer). `--titles-file`: another title list (JSON). `--no-wait` (run): replay answers at once, for tuning runs only.
 - `--runs-root DIR`: where run folders go (default `~/kaijuflow-notes/brain-runs`; use a temporary one for trials). `--provider-limit N`: connection cap, default 100.
+- `--settle S`: the pause after every play, in seconds (default 3). With 160 plays that is 8 minutes of a run; the report's "Where the time went" shows it as its own part.
 
 ## Exit codes
 

@@ -8,6 +8,25 @@ What the files and lines look like: run folder, targets, recording state, misses
 
 **A run stopped by hand (#110).** Ctrl-C during a run stops the pass and then runs the normal ending, so the folder is whole. `meta.json` and `raw.json` have status `stopped`, and `meta.json` has `stopped`: `time` (when it was stopped), `plays_done`, `plays_planned` and `during` (`side`, `phase`, `round`, `title` of the play that was cut off, or null when it stopped between two plays). `raw.json` holds every play that finished; the cut-off play is not in it. `report.md` opens with one sentence saying the run was stopped, when and how far it got, then has the usual sections made from the finished plays alone (a round that was cut short shows fewer titles in "Top pick plays"; a round that never began has no row). The INDEX.md row has result `stopped` and that same sentence as its headline, with no numbers. A stopped run is never the "previous run" of a diff, and `check` says it is not usable as a baseline.
 
+**Wall-clock time (#112).** A run says how long it took and on what. Every figure is in seconds, by the runner's own clock.
+
+- `meta.json` has `timing`:
+
+  | Field | Meaning |
+  |---|---|
+  | `seconds` | the whole run, from `started` to `finished` |
+  | `settle_s` | the pause asked for after every play (`--settle`) |
+  | `passes` | one entry per pass, `main sides` and then `one-page side`: `name`, `sides`, `start`, `end`, `seconds`. A pass holds its resets and its rounds |
+  | `rounds` | one entry per round of each pass: `pass`, `phase`, `round`, `start`, `end`, `seconds`, `plays` and `pause_s` (the pauses of the round added up, as the clock saw them). A round goes from its first play to the end of the pause after its last play |
+  | `resets` | one entry per reset: `pass`, `phase` and `round` of the cold round it came before, `start`, `end`, `seconds`. The first reset of the one-page side is the switch to one page, which resets too |
+  | `parts` | where the whole run went: `measured_s`, `pauses_s`, `failed_s`, `resets_s`, `other_s` |
+
+- The five `parts` add up to `seconds`. `measured_s` is the list time plus the start time of every top pick that played; `pauses_s` the pauses of all rounds; `failed_s` the whole visit (`t_start` to `t_end`) of every top pick that did not play; `resets_s` all resets; `other_s` is what is left: the seek checks after a top pick played, reading the logs after each play, starting and stopping the stand-in and the test copies.
+- `raw.json`: every visit has `t_start` and `t_end`, so its own wall-clock time is the difference.
+- `report.md` ends with the section "Where the time went": one sentence with the whole run and each pass, a table of the five parts and the whole run (seconds to one decimal, so the parts as printed are within a second of the total), and a table with one row per round and the reset before it. In "Per title", the Result of a top pick that did not play ends with how long its whole visit took, for example `failure video (the whole visit took 37.4 s)`.
+- A run that ended early (stopped by hand, null, failed) has `timing` too. A stretch that was cut short keeps the time it had taken; a run stopped during a reset shows that reset in a row with no round. Only the report of a stopped run has the section; a null or failed run has no tables at all.
+- A run made before #112 has no `timing`, and its report has no such section.
+
 Usenet Ultimate's Import column is NzbDAV's own job time (#82): after each Usenet Ultimate visit the runner reads the test NzbDAV's history answer (port 3001, read-only) and takes `download_time` of the job that is new since before the visit. It is whole seconds (NzbDAV reports no fractions), against AltMount's log figure to the millisecond; the report's column definition says so. A visit that adds no job (item already imported) reads "-". The Usenet Ultimate test copy's own log is kept as `logs/uu-test.log` (scrubbed).
 
 ## Targets (`targets.json`)

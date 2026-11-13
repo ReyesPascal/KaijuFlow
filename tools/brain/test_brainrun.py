@@ -134,9 +134,12 @@ class FakeIO(Copies):
     def standin_lines(self):
         return list(self.standin_log)
 
-    def reset(self, sides):
+    def reset(self, sides, log=print):
         self.calls.append(('reset', tuple(sides)))
-        self.takes(self.RESET_S)
+        for side in sides:  # the two lines testbed.reset logs per test copy, the copies sharing the reset's time
+            log(f'reset {side}: restored from template')
+            self.takes(self.RESET_S / len(sides))
+            log(f'reset {side}: up')
         self.up |= set(sides)
 
     def stop_all(self):
@@ -368,6 +371,11 @@ def printed(fn, *args):
     return result, out.getvalue().splitlines()
 
 
+def play_lines(lines):
+    """The lines a play printed, without the ones a reset printed."""
+    return [x for x in lines if ' reset ' not in x]
+
+
 class WallClockTest(unittest.TestCase):
     """The run says where its wall-clock time went (#112). Every figure below is worked out by hand from FakeIO's world:
     the stand-in starts in 2 s, a reset takes 20 s, a visit whose top pick plays 4 s (list 2.0, start 1.5, seek checks 0.5),
@@ -378,18 +386,41 @@ class WallClockTest(unittest.TestCase):
 
     def test_every_play_line_starts_with_the_utc_time_and_how_many_plays_are_done(self):
         run, lines = printed(brainrun.run_all, make_cfg(self.tmp, settle=3), FakeIO())
+        plays = play_lines(lines)
         # started 18:00:00, stand-in up at :02, reset done at :22, the first visit ends at :26
-        self.assertEqual(lines[0], '18:00:26 [1/24] kaijuflow cold 1 Matrix: plays list 2.0 s start 1.5 s')
-        self.assertEqual(lines[1], '18:00:33 [2/24] uu cold 1 Matrix: plays list 2.0 s start 1.5 s')  # 3 s pause, 4 s visit
+        self.assertEqual(plays[0], '18:00:26 [1/24] kaijuflow cold 1 Matrix: plays list 2.0 s start 1.5 s')
+        self.assertEqual(plays[1], '18:00:33 [2/24] uu cold 1 Matrix: plays list 2.0 s start 1.5 s')  # 3 s pause, 4 s visit
         # 24 plays of 7 s and a second reset of 20 s after the first twelve; the last pause is still to come
-        self.assertEqual(lines[-1], '18:03:27 [24/24] kaijuflow warm 2 Show S01E01: plays list 2.0 s start 1.5 s')
-        self.assertEqual(len(lines), 24)
+        self.assertEqual(plays[-1], '18:03:27 [24/24] kaijuflow warm 2 Show S01E01: plays list 2.0 s start 1.5 s')
+        self.assertEqual(len(plays), 24)
 
     def test_the_count_runs_on_into_the_one_page_side(self):
         run, lines = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True), FakeIO())
-        self.assertEqual(lines[23].split()[1], '[24/32]')
-        self.assertEqual(' '.join(lines[24].split()[1:6]), '[25/32] kaijuflow-1page cold 1 Matrix:')
-        self.assertEqual(lines[-1].split()[1], '[32/32]')
+        plays = play_lines(lines)
+        self.assertEqual(plays[23].split()[1], '[24/32]')
+        self.assertEqual(' '.join(plays[24].split()[1:6]), '[25/32] kaijuflow-1page cold 1 Matrix:')
+        self.assertEqual(plays[-1].split()[1], '[32/32]')
+
+    def test_the_lines_of_a_reset_start_the_same_way_so_the_last_line_of_the_log_always_says_how_far_the_run_is(self):
+        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=3), FakeIO())
+        # the first reset: five test copies, 4 s each, from 18:00:02
+        self.assertEqual(lines[:3], ['18:00:02 [0/32] reset nzbdav: restored from template', '18:00:06 [0/32] reset nzbdav: up',
+                                     '18:00:06 [0/32] reset altmount-addon: restored from template'])
+        self.assertEqual(lines[9], '18:00:22 [0/32] reset kaijuflow: up')
+        # the second one comes after the twelfth play and its pause
+        at = lines.index('18:01:43 [12/32] kaijuflow warm 1 Show S01E01: plays list 2.0 s start 1.5 s')
+        self.assertEqual((lines[at + 1], lines[at + 10]), ('18:01:46 [12/32] reset nzbdav: restored from template',
+                                                           '18:02:06 [12/32] reset kaijuflow: up'))
+        # the switch to one page resets KaijuFlow and its AltMount, 10 s each, from 18:03:30
+        at = lines.index('18:03:27 [24/32] kaijuflow warm 2 Show S01E01: plays list 2.0 s start 1.5 s')
+        self.assertEqual(lines[at + 1:at + 5], [
+            '18:03:30 [24/32] reset kaijuflow: restored from template', '18:03:40 [24/32] reset kaijuflow: up',
+            '18:03:40 [24/32] reset altmount-kf: restored from template', '18:03:50 [24/32] reset altmount-kf: up'])
+        for n, line in enumerate(lines):  # no line of the run without the time and the count
+            time_, count, _ = line.split(' ', 2)
+            datetime.datetime.strptime(time_, '%H:%M:%S')
+            self.assertEqual((count[0], count[-4:]), ('[', '/32]'), line)
+            self.assertLessEqual(int(count[1:-4]), 32)
 
     def run_with_one_page(self, io=None, settle=3):
         run, _ = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=settle), io or FakeIO())
@@ -568,12 +599,12 @@ class InterruptedRunTest(unittest.TestCase):
         io = FakeIO()
         reset = io.reset
 
-        def hanging_second_reset(sides):
+        def hanging_second_reset(sides, log=print):
             if [c[0] for c in io.calls].count('reset') == 1:
                 io.calls.append(('reset', tuple(sides)))
                 io.takes(7)  # Ctrl-C seven seconds into it
                 raise KeyboardInterrupt
-            reset(sides)
+            reset(sides, log)
         io.reset = hanging_second_reset
         run = brainrun.run_all(make_cfg(self.tmp), io)  # no pauses: 2 s stand-in, 20 s reset, two rounds of 6 plays of 4 s
         self.assertEqual((run['status'], run['stopped']['time'], run['stopped']['during']), ('stopped', '2026-11-10T18:01:17.000Z', None))
@@ -915,15 +946,23 @@ class RecordTest(unittest.TestCase):
         self.cfg['one_page'] = True
         io = RecordIO(self.cfg, self.url)
         rec, lines = printed(brainrun.record_all, self.cfg, io)
-        self.assertEqual(len(lines), 32)  # 4 sides x 2 titles x 2 rounds, in the record pass and again in the proof
+        plays = play_lines(lines)
+        self.assertEqual(len(plays), 32)  # 4 sides x 2 titles x 2 rounds, in the record pass and again in the proof
         # started 18:00:00, reset done at :20, stand-in up at :22, a visit takes 4 s
-        self.assertEqual(lines[0], '18:00:26 [1/16] kaijuflow cold Matrix: 3 Sources, top pick plays')
-        self.assertEqual(lines[11], '18:01:10 [12/16] kaijuflow warm Show S01E01: 3 Sources, top pick plays')
-        self.assertEqual(lines[12], '18:01:34 [13/16] kaijuflow-1page cold Matrix: 3 Sources, top pick plays')  # after the 20 s switch
-        self.assertEqual(lines[15].split()[1], '[16/16]')
+        self.assertEqual(plays[0], '18:00:26 [1/16] kaijuflow cold Matrix: 3 Sources, top pick plays')
+        self.assertEqual(plays[11], '18:01:10 [12/16] kaijuflow warm Show S01E01: 3 Sources, top pick plays')
+        self.assertEqual(plays[12], '18:01:34 [13/16] kaijuflow-1page cold Matrix: 3 Sources, top pick plays')  # after the 20 s switch
+        self.assertEqual(plays[15].split()[1], '[16/16]')
         # the proof: reset 20 s, stand-in 2 s, then its own count
-        self.assertEqual(lines[16], '18:02:12 [1/16] proof kaijuflow cold Matrix: 3 Sources, top pick plays')
-        self.assertEqual(lines[31].split()[1:3], ['[16/16]', 'proof'])
+        self.assertEqual(plays[16], '18:02:12 [1/16] proof kaijuflow cold Matrix: 3 Sources, top pick plays')
+        self.assertEqual(plays[31].split()[1:3], ['[16/16]', 'proof'])
+        # the resets' lines start the same way: before the pass, at the switch to one page, before the proof, at the end
+        self.assertEqual(lines[0], '18:00:00 [0/16] reset nzbdav: restored from template')
+        self.assertEqual(lines[lines.index(plays[11]) + 1], '18:01:10 [12/16] reset kaijuflow: restored from template')
+        self.assertEqual(lines[lines.index(plays[15]) + 1], '18:01:46 [0/16] proof reset nzbdav: restored from template')
+        self.assertEqual(lines[lines.index(plays[27]) + 1], '18:02:56 [12/16] proof reset kaijuflow: restored from template')
+        self.assertEqual(lines[-1], '18:03:52 [16/16] reset kaijuflow: up')
+        self.assertTrue(all(x[2] == x[5] == ':' and x[9] == '[' for x in lines), lines)
 
     def test_test_copies_are_reset_before_and_after_and_stopped(self):
         io, _ = self.record()
