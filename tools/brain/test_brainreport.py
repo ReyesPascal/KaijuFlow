@@ -7,8 +7,10 @@ import json
 import os
 import re
 import unittest
+from unittest import mock
 
 import brainreport as br
+import common
 from test_settings import tempdir
 
 KF_LOG = """2026-11-10T18:00:01.100000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":200,"ok":true,"t":"2026-11-10T18:00:01.000Z","ref":"tt1","page":1}
@@ -284,6 +286,267 @@ class ReportTest(unittest.TestCase):
         self.assertIn('2', h)
 
 
+def baseline_picks():
+    """Three titles of the real 2026-11-13 baseline run on all four sides (fixtures/run-2026-11-13/top-picks.json): every
+    visit cut down to what the top pick is read from. Captured before the standard sort and filter rules of #109."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13', 'top-picks.json')
+    with open(path, encoding='utf-8') as f:
+        visits = json.load(f)['visits']
+    return dict(name='baseline', status='ok', visits=visits, titles=['Inception', 'The Matrix', 'Game of Thrones S02E03'],
+                sides=['kaijuflow', 'uu', 'altmount-addon', 'kaijuflow-1page'], commit='750c2eb', dirty=False,
+                indexers=['ninjacentral'], started='2026-11-13T05:32:00.550Z', settings={}, null=None, standin_misses=0)
+
+
+class ListedSizeTest(unittest.TestCase):
+    """The size a side's list text states is read from the whole text, before the text is cut to 140 characters for the
+    run record; a top pick whose size is lost would be compared by its name and could be listed as changed."""
+
+    def test_a_list_text_longer_than_what_is_kept_still_gives_its_stated_size(self):
+        [visit] = [v for v in baseline_picks()['visits'] if (v['side'], v['title'], v['phase'], v['round']) ==
+                   ('altmount-addon', 'Game of Thrones S02E03', 'cold', 1)]
+        captured = visit['tries'][0]['title']  # the addon's list text as the 2026-11-13 run kept it: the size ends at 139 of 140
+        self.assertTrue(captured.endswith('💾 4.07 GB ') and len(captured) == 140, captured)
+        # The same Source listed as a REPACK (a release name 7 characters longer), with the addon's own end after the size
+        # (' 🌐 ninja', as its Inception line shows): the cut now falls inside the size.
+        whole = captured.replace('Die.1080p', 'Die.REPACK.1080p').rstrip() + ' 🌐 ninja'
+        served = (206, {'Content-Range': 'bytes 0-65535/4370000000', 'Content-Type': 'video/x-matroska'}, b'\0' * 65536,
+                  {'ready': 0.1, 'first_byte': 0.1, 'total': 0.2})
+        with mock.patch.object(common, 'get', return_value=served):
+            tried = common.play_stream({'name': 'AltMount', 'title': whole[len('AltMount '):], 'url': 'http://127.0.0.1:9/x.mkv'})
+        self.assertEqual(len(tried['title']), 140)
+        self.assertNotIn('4.07 GB', tried['title'])
+        self.assertEqual(br.top_pick({'tries': [tried]})['listed'], '4.07 GB')
+        self.assertEqual(br.top_pick({'tries': [{'title': captured}]})['listed'], '4.07 GB')  # a record made before: from its text
+
+
+def per_title_rows(report):
+    """The rows of the report's per-title table as {column: cell}."""
+    lines = report.split('## Per title')[1].strip().splitlines()
+    cols = [c.strip() for c in lines[0].strip('|').split('|')]
+    rows = []
+    for line in lines[2:]:
+        if not line.startswith('|'):
+            break
+        rows.append(dict(zip(cols, [c.strip() for c in line.strip('|').split('|')])))
+    return rows
+
+
+class TopPickTest(unittest.TestCase):
+    """Ticket #109: the per-title table names the top pick of every visit and its size."""
+    FGT = 'Inception.2010.2160p.UHD.BluRay.Remux.HEVC.DTS-HD.MA.5.1-FGT'
+
+    def rows(self, run, **where):
+        return [r for r in per_title_rows(br.render_report(run, ['x'])) if all(r[k] == v for k, v in where.items())]
+
+    def test_a_row_names_the_release_kaijuflow_played_and_the_size_of_the_file(self):
+        row, = self.rows(baseline_picks(), Title='Inception', Side='KaijuFlow', Run='Cold 1')
+        self.assertEqual((row['Top pick'], row['Size']), (self.FGT, '85.4 GB'))  # 85436578297 bytes
+
+    def test_a_side_without_a_release_name_shows_the_text_of_its_list_entry(self):
+        row, = self.rows(baseline_picks(), Title='Inception', Side='Usenet Ultimate', Run='Cold 1')
+        self.assertEqual(row['Top pick'], '✅ 4K BluRay REMUX 🎬 Inception (2010) 🗣️ English ⚙️ hevc 💾 95.01 GB 🔊 DTS-HD MA 🏴‍☠️ FGT '
+                                          '🗂️ NinjaCentral 📅 4.2y 📡 Newshosting (3/3) 📊 91.9 Mb')
+        self.assertEqual(row['Size'], '85.4 GB')
+        row, = self.rows(baseline_picks(), Title='Inception', Side="AltMount's own addon", Run='Warm 2')
+        self.assertEqual(row['Top pick'], 'AltMount 🌍 FHD - Inception (2010) [1080p][Dual] Inception 2010 1080p NF WEB-DL DUAL DDP5 1 H 264-TURG '
+                                          '💾 4.05 GB 🌐 ninja')
+        self.assertEqual(row['Size'], '3.5 GB')  # 3549321653 bytes
+
+    def test_a_top_pick_that_did_not_play_shows_the_size_its_list_entry_states(self):
+        # a failed play serves the failure video, so its size says nothing about the Source
+        row, = self.rows(baseline_picks(), Title='Inception', Side='KaijuFlow', Run='Cold 2')
+        self.assertEqual((row['Top pick'], row['Size']), (self.FGT, '95.01 GB listed'))
+        self.assertNotEqual(row['Result'], 'plays')
+        row, = self.rows(baseline_picks(), Title='Game of Thrones S02E03', Side='Usenet Ultimate', Run='Cold 1')
+        self.assertEqual(row['Size'], '27.71 GB listed')
+        row, = self.rows(baseline_picks(), Title='The Matrix', Side='KaijuFlow, one page per indexer', Run='Cold 2')
+        self.assertEqual((row['Top pick'], row['Size']), ('The.Matrix.1999.4K.Remastered.Multi.Complete.UHD.BluRay-MAMA', '73.07 GB listed'))
+
+    def test_every_row_of_the_real_run_shows_a_name_and_a_size(self):
+        rows = self.rows(baseline_picks())
+        self.assertEqual(len(rows), 3 * 4 * 4)  # three titles, four sides, four rounds
+        for row in rows:
+            self.assertNotIn(row['Top pick'], ('', '-'), row)
+            self.assertRegex(row['Size'], r'^\d+(\.\d+)? GB( listed)?$', row)
+
+    def test_the_sample_of_the_real_run_holds_no_address_and_no_key(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13', 'top-picks.json')
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+        for pattern in (r'://', r'(?i)api_?key', r'(?i)(?:key|token|password|secret)=', r'\b\d{1,3}(\.\d{1,3}){3}\b'):
+            self.assertIsNone(re.search(pattern, text), pattern)
+
+    def test_a_visit_without_a_source_has_no_top_pick(self):
+        run = runs_fixture()  # its visits list Sources but carry no play
+        run['visits'][0].update(sources=0, tries=[], ok=False, note='no Sources')
+        row = self.rows(run, Side='KaijuFlow', Run='Cold 1')[0]
+        self.assertEqual((row['Top pick'], row['Size']), ('-', '-'))
+
+    def test_a_bar_in_a_name_cannot_break_the_table(self):
+        run = baseline_picks()
+        run['visits'][1]['tries'][0]['title'] = 'A | B 💾 1.5 GB'
+        row, = self.rows(run, Title='Inception', Side='Usenet Ultimate', Run='Cold 1')
+        self.assertEqual((row['Top pick'], row['Result']), ('A / B 💾 1.5 GB', 'plays'))
+
+    # ---- a top pick that changed since the last run is listed under "What changed since the last run"
+    def with_pick(self, side, title, name, size, text, rounds=br.RUN_ORDER):
+        """The real run again, with another top pick for one side and title in the given rounds."""
+        run = baseline_picks()
+        run['started'] = '2026-11-14T05:32:00.550Z'
+        for v in run['visits']:
+            if (v['side'], v['title']) == (side, title) and (v['phase'], v['round']) in rounds:
+                v.update(ok=True, played_source=name, tries=[{'plays': True, 'size': size, 'note': None, 'title': text}])
+        return run
+
+    def changed(self, prev, cur):
+        return [line for line in br.diff_runs(prev, cur) if line.startswith('Top pick changed')]
+
+    def test_a_changed_top_pick_is_listed_with_its_side_title_rounds_old_and_new_pick(self):
+        cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000,
+                             '✅ 4K WEB-DL 🎬 Inception (2010) 💾 21.9 GB 🏴‍☠️ NEW')
+        self.assertEqual(self.changed(baseline_picks(), cur), [
+            f'Top pick changed: KaijuFlow, Inception (Cold 1, Warm 1, Cold 2, Warm 2): {self.FGT}, 85.4 GB -> '
+            'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW, 22.3 GB'])
+
+    def test_the_same_source_is_no_change_whether_it_played_or_not_and_whatever_its_list_text_says_today(self):
+        cur = baseline_picks()
+        for v in cur['visits']:
+            if (v['side'], v['title'], v['phase'], v['round']) == ('kaijuflow', 'Inception', 'cold', 2):
+                v['tries'][0].update(plays=True, size=85436578297, note=None)  # failed last time, plays now: the same Source
+                v['ok'] = True
+            if (v['side'], v['title'], v['phase'], v['round']) == ('uu', 'Inception', 'cold', 1):
+                v['tries'][0].update(plays=False, size=1242455, note='failure video')  # played last time, fails now
+                v['ok'] = False
+            if v['side'] == 'uu':  # a day later the list text shows another age, and a Source not health-checked has no mark
+                v['tries'][0]['title'] = v['tries'][0]['title'].replace('📅 4.2y', '📅 4.3y').replace('✅ ', '')
+        self.assertEqual(self.changed(baseline_picks(), cur), [])
+        self.assertEqual(self.changed(baseline_picks(), baseline_picks()), [])
+
+    def test_only_the_rounds_that_differ_are_named_and_a_side_that_now_lists_nothing_is_a_change(self):
+        text = '✅ 4K WEB-DL 🎬 Game of Thrones S02E03 💾 8.36 GB 🏴‍☠️ Weasley'
+        cur = self.with_pick('uu', 'Game of Thrones S02E03', None, 8037378833, text, rounds=[('cold', 1), ('cold', 2)])
+        for v in cur['visits']:
+            if (v['side'], v['title'], v['phase']) == ('altmount-addon', 'The Matrix', 'warm'):
+                v.update(ok=False, sources=0, tries=[], note='no Sources')
+        self.assertEqual(self.changed(baseline_picks(), cur), [
+            "Top pick changed: AltMount's own addon, The Matrix (Warm 1, Warm 2): "
+            'AltMount 🇩🇪 4K - Matrix (1999) [2160p][Deu] Matrix.1999.GERMAN.DL.DV.HDR.2160p.WEB.H265-SunDry 💾 24.01 GB 🌐 ninja, 21.2 GB '
+            '-> no top pick',
+            'Top pick changed: Usenet Ultimate, Game of Thrones S02E03 (Cold 1, Cold 2): 4K BluRay 🎬 Game of Thrones S02E03 🗣️ English '
+            f'⚙️ hevc 💾 27.71 GB 🏴‍☠️ BRIENNE 🗂️ NinjaCentral 📅 5.4y 📊 76.3 Mbps, 27.71 GB listed -> {text}, 8.0 GB'])
+
+    def test_a_title_or_a_side_that_only_one_run_has_is_not_a_changed_top_pick(self):
+        prev = baseline_picks()
+        prev['visits'] = [v for v in prev['visits'] if v['title'] != 'Inception' and v['side'] != 'kaijuflow-1page']
+        prev.update(titles=['The Matrix', 'Game of Thrones S02E03'], sides=['kaijuflow', 'uu', 'altmount-addon'])
+        self.assertEqual(self.changed(prev, baseline_picks()), [])
+
+    def test_nothing_changed_says_so_for_the_top_picks_too_when_both_runs_hold_them(self):
+        self.assertEqual(br.diff_runs(baseline_picks(), baseline_picks())[0],
+                         'Nothing changed in the settings, KaijuFlow code, titles, indexers, sides or top picks.')
+        no_picks = {k: v for k, v in baseline_picks().items() if k != 'visits'}  # a run meta whose top picks are not known
+        self.assertEqual(br.diff_runs(no_picks, baseline_picks())[0],
+                         'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.')
+
+    def run_folder(self, root, name, run, visits):
+        """A run folder as the runner leaves it: meta.json without the visits, raw.json with them."""
+        os.makedirs(os.path.join(root, name))
+        with open(os.path.join(root, name, 'meta.json'), 'w') as f:
+            json.dump({k: v for k, v in run.items() if k != 'visits'}, f)
+        if visits is not None:
+            with open(os.path.join(root, name, 'raw.json'), 'w') as f:
+                json.dump({'status': run['status'], 'visits': visits}, f)
+
+    def test_the_top_picks_of_the_previous_run_are_read_from_its_run_folder(self):
+        root, prev = tempdir(self), baseline_picks()
+        self.run_folder(root, '2026-11-13T053200Z-baseline', prev, prev['visits'])
+        cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000, 'x 💾 21.9 GB')
+        lines = self.changed(br.previous_run(root), cur)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn('KaijuFlow, Inception (Cold 1, Warm 1, Cold 2, Warm 2)', lines[0])
+
+    def test_a_previous_run_folder_that_holds_no_top_picks_is_not_compared(self):
+        cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000, 'x 💾 21.9 GB')
+        prev = baseline_picks()
+        cut_down = [{k: v for k, v in visit.items() if k not in ('tries', 'played_source')} for visit in prev['visits']]
+        for name, visits in (('no-raw', None), ('cut-down', cut_down)):
+            root = tempdir(self)
+            self.run_folder(root, name, prev, visits)
+            out = br.diff_runs(br.previous_run(root), cur)
+            self.assertEqual(self.changed(br.previous_run(root), cur), [], name)
+            self.assertEqual(out[0], 'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.', name)
+
+
+def targets_run(**figures):
+    """runs_fixture() with some figures replaced, named '<side> <phase> <round> <field>': targets_run(**{'uu cold 1 start_s': 2.5})."""
+    run = runs_fixture()
+    for name, value in figures.items():
+        side, phase, rnd, field = name.split()
+        [v] = [v for v in run['visits'] if (v['side'], v['phase'], str(v['round'])) == (side, phase, rnd)]
+        v[field] = value
+    return run
+
+
+class TargetsTest(unittest.TestCase):
+    """The table of the six targets (targets.json) near the top of the report."""
+
+    def test_a_met_target_a_missed_one_and_one_inside_the_noise(self):
+        text = br.render_report(targets_run(**{
+            'kaijuflow cold 1 start_s': 4.0, 'kaijuflow cold 2 start_s': 2.0,   # median 3.00 s, the two rounds 2.00 s apart
+            'uu cold 1 start_s': 2.5, 'uu cold 2 start_s': 2.5,
+            'kaijuflow warm 1 list_s': 3.0, 'kaijuflow warm 2 list_s': 3.0}), ['x'])
+        self.assertLess(text.index('## Targets'), text.index('## What changed since the last run'))
+        self.assertIn('| Target | This run | Result |', text)
+        self.assertIn('| Warm list no slower than 4.7 s | KaijuFlow 3.00 s | Met |', text)
+        self.assertIn("| Warm start within 0.05 s of the addon | KaijuFlow 2.00 s, AltMount's own addon 1.00 s | "
+                      'Not met (1.00 s slower) |', text)
+        self.assertIn('| Cold start no slower than Usenet Ultimate | KaijuFlow 3.00 s, Usenet Ultimate 2.50 s | '
+                      "Not met (0.50 s slower), inside the noise: KaijuFlow's two cold rounds differ by 2.00 s "
+                      '(4.00 and 2.00 s), more than the 0.50 s the target is missed by |', text)
+        self.assertIn('1 of 6 targets met.', text)
+
+    def test_a_met_target_can_be_inside_the_noise_too(self):
+        text = br.render_report(targets_run(**{
+            'kaijuflow cold 1 start_s': 4.0, 'kaijuflow cold 2 start_s': 2.0,
+            'uu cold 1 start_s': 3.5, 'uu cold 2 start_s': 3.5}), ['x'])
+        self.assertIn("Met, inside the noise: KaijuFlow's two cold rounds differ by 2.00 s (4.00 and 2.00 s), "
+                      'more than the 0.50 s the target is met by |', text)
+
+    def test_with_a_margin_the_noise_is_held_against_the_distance_to_the_margin(self):
+        # 1.10 s behind the addon where 1 s is allowed: missed by 0.10 s, and the two cold rounds are 0.20 s apart
+        text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 2.2, 'kaijuflow cold 2 start_s': 2.0}), ['x'])
+        self.assertIn("| Cold start within 1 s of the addon | KaijuFlow 2.10 s, AltMount's own addon 1.00 s | "
+                      "Not met (1.10 s slower), inside the noise: KaijuFlow's two cold rounds differ by 0.20 s "
+                      '(2.20 and 2.00 s), more than the 0.10 s the target is missed by |', text)
+
+    def test_rounds_closer_together_than_the_gap_leave_the_result_plain(self):
+        text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 3.2, 'kaijuflow cold 2 start_s': 3.0}), ['x'])
+        self.assertIn("| Cold start within 1 s of the addon | KaijuFlow 3.10 s, AltMount's own addon 1.00 s | "
+                      'Not met (2.10 s slower) |', text)
+
+
+    def test_a_missing_targets_file_gives_one_sentence_and_the_rest_of_the_report(self):
+        path = os.path.join(tempdir(self), 'targets.json')
+        self.assertEqual(br.target_lines(runs_fixture(), path), ['Targets: not judged (targets.json cannot be read: FileNotFoundError).'])
+        self.assertEqual(br.targets_section(runs_fixture(), path),
+                         ['## Targets', '', 'Not judged (targets.json cannot be read: FileNotFoundError).', ''])
+
+    def test_an_entry_the_tools_cannot_judge_is_named(self):
+        entry = {'target': 'Cold start no slower than Usenet Ultimate', 'measure': 'cold start', 'against': 'uu', 'margin': 0}
+        bad = [({'measure': 'cold sprint'}, 'entry 2: the measure "cold sprint" is not known'),
+               ({'margin': 'small'}, 'entry 2: the margin is not a number from 0 up'),
+               ({'margin': -1}, 'entry 2: the margin is not a number from 0 up'),
+               ({'against': 'nobody'}, 'entry 2: the side "nobody" is not known'),
+               ({'limit': 3}, 'entry 2: "cold start" takes a side (against) or a fixed limit, one of the two'),
+               ({'measure': 'plays per round'}, 'entry 2: "plays per round" takes a fixed limit, not a side'),
+               ({'measure': 'plays', 'limit': 3}, 'entry 2: "plays" takes a side (against), not a fixed limit')]
+        path = os.path.join(tempdir(self), 'targets.json')
+        for change, why in bad:
+            with open(path, 'w') as f:
+                json.dump({'targets': [entry, {**entry, 'against': 'altmount-addon', **change}]}, f)
+            self.assertEqual(br.target_lines(runs_fixture(), path), [f'Targets: not judged (targets.json, {why}).'])
+
+
 T0 = dt('2026-11-10T18:00:00Z').timestamp() * 1000   # epoch ms of the first visit's start
 
 
@@ -451,6 +714,56 @@ class MissReportTest(unittest.TestCase):
         row = next(line for line in text.splitlines() if line.startswith('| KaijuFlow | Cold 1 |') and '| 5 |' in line)
         cells = [c.strip() for c in row.strip('|').split('|')]
         self.assertEqual(cells[2:5], ['5', '-', '-'])
+
+
+class WallClockTest(unittest.TestCase):
+    """Where the wall-clock time of a run went (#112). The run's own timing is tested in test_brainrun.py, on its fake clock."""
+
+    def timed_run(self, **parts):
+        run = runs_fixture(failing=True)  # 12 visits of 7 s; Usenet Ultimate's two cold top picks fail
+        run.update(finished='2026-11-10T18:03:20Z', timing={
+            'seconds': 200.0, 'settle_s': 3, 'passes': [{'name': 'main sides', 'seconds': 190.0}],
+            'rounds': [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'start': '2026-11-10T18:00:20.000Z', 'seconds': 80.0,
+                        'plays': 3, 'pause_s': 9.0},
+                       {'pass': 'main sides', 'phase': 'warm', 'round': 1, 'start': '2026-11-10T18:01:40.000Z', 'seconds': 70.0,
+                        'plays': 3, 'pause_s': 9.0}],
+            'resets': [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'start': '2026-11-10T18:00:04.500Z', 'seconds': 15.5},
+                       {'pass': 'main sides', 'phase': 'cold', 'round': 2, 'start': '2026-11-10T18:02:50.000Z', 'seconds': 25.3}]})
+        run['timing']['parts'] = parts or br.time_parts(run)
+        return run
+
+    def test_the_parts_are_measured_from_the_visits_rounds_and_resets_and_the_rest_is_what_is_left(self):
+        self.assertEqual(self.timed_run()['timing']['parts'], {
+            'measured_s': 68.0,   # list 5 s + start: KaijuFlow 4 x (5 + 2), Usenet Ultimate warm 2 x (5 + 3), the addon 4 x (5 + 1)
+            'pauses_s': 18.0, 'resets_s': 40.8,
+            'failed_s': 14.0,     # two failed visits of 7 s, start to end
+            'other_s': 59.2})     # 200 - 68 - 18 - 14 - 40.8
+
+    def test_a_visit_without_its_times_costs_no_error(self):
+        run = self.timed_run()
+        for v in run['visits']:
+            if not v['ok']:
+                del v['t_end']
+        self.assertEqual(br.time_parts(run)['failed_s'], 0.0)
+        self.assertIn('| failure video: failure video |', br.render_report(run, ['x']))  # and no time in the Result column
+
+    def test_the_parts_as_printed_are_within_a_second_of_the_whole_run(self):
+        # every part ends on .44 s: printed to a whole second they would lose 2.2 s between them
+        run = self.timed_run(measured_s=110.44, pauses_s=18.44, failed_s=14.44, resets_s=40.44, other_s=16.44)
+        run['timing']['seconds'] = 200.2
+        rows = br.render_report(run, ['x']).split('| Part | Seconds | Minutes |\n|---|---|---|\n')[1].split('\n\n')[0].split('\n')
+        seconds = [float(r.split(' | ')[1]) for r in rows]
+        self.assertEqual([r.split(' | ')[0] for r in rows][-1], '| The whole run')
+        self.assertEqual(seconds[-1], 200.2)
+        self.assertLessEqual(abs(sum(seconds[:-1]) - seconds[-1]), 1.0)
+
+    def test_the_section_comes_last_and_a_run_that_was_not_timed_has_none(self):
+        text = br.render_report(self.timed_run(), ['x'])
+        self.assertGreater(text.index('## Where the time went'), text.index('## Per title'))
+        self.assertIn('The whole run took 3.3 minutes (200.0 s), from 18:00:00 to 18:03:20 UTC: the main sides 3.2 minutes (190.0 s).', text)
+        self.assertIn('- **Pauses (`--settle`)**: the pause after every play, 3 s each (6 plays).', text)
+        self.assertIn('| Main sides | Cold 2 | - | 25.3 | 0 | - | - |', text)  # a reset with no round after it
+        self.assertNotIn('Where the time went', br.render_report(runs_fixture(), ['x']))
 
 
 class AttributionTest(unittest.TestCase):

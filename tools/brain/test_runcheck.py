@@ -91,6 +91,7 @@ class CheckTests(unittest.TestCase):
             code, out = run_check(run)
         self.assertNotEqual(code, 0)
         self.assertIn('the run is null (ninjacentral said its limit was reached', out.splitlines()[0])
+        self.assertEqual(target_lines(out), [])  # a null run's numbers are not used, so no target is judged on them
 
     def test_failed_run_exits_nonzero(self):
         with tempdir() as tmp:
@@ -99,6 +100,17 @@ class CheckTests(unittest.TestCase):
             code, out = run_check(run)
         self.assertNotEqual(code, 0)
         self.assertIn('the run did not finish (RuntimeError: boom)', out)
+        self.assertEqual(target_lines(out), [])
+
+    def test_stopped_run_exits_nonzero(self):
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+            edit(run, 'meta.json', lambda m: m.update(status='stopped', stopped={
+                'time': '2026-01-01T00:03:00.000Z', 'plays_done': 5, 'plays_planned': 8, 'during': None}))
+            code, out = run_check(run)
+        self.assertEqual(code, 1)
+        self.assertEqual(out.splitlines()[0], 'Not usable as a baseline: the run was stopped by hand at 2026-01-01T00:03:00.000Z: '
+                                              '5 of 8 plays had finished, and it stopped between two plays.')
 
     def test_unreadable_folder_exits_nonzero(self):
         with tempdir() as tmp:
@@ -137,6 +149,55 @@ class CheckTests(unittest.TestCase):
             _, out = run_check(run, store=True)
             with open(os.path.join(run, runcheck.CHECK_FILE)) as f:
                 self.assertEqual(f.read(), out)
+
+
+BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13')
+
+
+def target_lines(out):
+    return [x for x in out.splitlines() if x.startswith('Target: ')]
+
+
+class TargetTests(unittest.TestCase):
+    """The six targets of targets.json. fixtures/run-2026-11-13 is the real 2026-11-13 baseline run (meta.json and raw.json,
+    every visit cut down to the fields the targets read); the expected figures were worked out by hand for the published page."""
+
+    def test_baseline_prints_six_target_lines_and_only_the_warm_list_is_met(self):
+        code, out = run_check(BASELINE)
+        self.assertEqual(code, 0, out)  # the targets do not decide whether a run can serve as a baseline
+        self.assertEqual(target_lines(out), [
+            'Target: Top pick plays on 10 of 10 titles, cold and warm. '
+            'Measured: cold 10 of 10 and 9 of 10, warm 10 of 10 and 10 of 10. Not met.',
+            'Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 6.73 s, Usenet Ultimate 5.51 s. '
+            "Not met (1.22 s slower), inside the noise: KaijuFlow's two cold rounds differ by 1.86 s (8.59 and 6.73 s), "
+            'more than the 1.22 s the target is missed by.',
+            'Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 3.46 s. Met.',
+            "Target: Top pick plays more often than AltMount's own addon. "
+            "Measured: KaijuFlow 39 of 40, AltMount's own addon 40 of 40. Not met.",
+            "Target: Warm start within 0.05 s of the addon. Measured: KaijuFlow 0.18 s, AltMount's own addon 0.07 s. "
+            'Not met (0.11 s slower).',
+            "Target: Cold start within 1 s of the addon. Measured: KaijuFlow 6.73 s, AltMount's own addon 3.70 s. "
+            'Not met (3.03 s slower).'])
+
+    def test_a_target_whose_side_is_not_in_the_run_is_not_measured(self):
+        code, out = run_check(FIXTURE)  # KaijuFlow and the addon only, one cold and one warm round of two titles
+        self.assertEqual(code, 0, out)
+        lines = target_lines(out)
+        self.assertEqual(len(lines), 6, out)
+        self.assertEqual(lines[0], 'Target: Top pick plays on 10 of 10 titles, cold and warm. '
+                                   'Measured: cold 2 of 2, warm 2 of 2. Not met.')
+        self.assertEqual(lines[1], 'Target: Cold start no slower than Usenet Ultimate. '
+                                   'Measured: KaijuFlow 1.00 s, Usenet Ultimate no figure. Not measured.')
+        self.assertEqual(lines[3], "Target: Top pick plays more often than AltMount's own addon. "
+                                   "Measured: KaijuFlow 4 of 4, AltMount's own addon 4 of 4. Not met.")
+
+    def test_a_run_with_no_visits_of_a_side_has_no_plays_figure(self):
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+            edit(run, 'raw.json', lambda raw: raw.update(visits=[v for v in raw['visits'] if v['side'] == 'kaijuflow']))
+            _, out = run_check(run)
+        self.assertEqual(target_lines(out)[3], "Target: Top pick plays more often than AltMount's own addon. "
+                                               "Measured: KaijuFlow 4 of 4, AltMount's own addon no figure. Not measured.")
 
 
 if __name__ == '__main__':

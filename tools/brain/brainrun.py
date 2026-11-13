@@ -14,13 +14,19 @@ indexer time for every answer unless --no-wait; the stand-in's lines say which t
 matches them to the right side and visit) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
-row and the report. The first "limit reached" from any indexer aborts the run and records it as null.
+row and the report. The first "limit reached" from any indexer aborts the run and records it as null. Ctrl-C or SIGTERM
+(what `timeout` sends) stops the pass too: the run is recorded as stopped, from the plays that finished, and a second
+stop is ignored until that record is written (#110).
+Every line of a play or a reset starts with the UTC time and a count (`05:46:35 [61/160] ...`), and the run's meta.json
+and report say where its wall-clock time went: each pass, round and reset, the pauses (--settle), the failed plays and
+the rest (#112).
 The record command resets the test copies, starts the stand-in in RECORD mode (this spends real indexer requests), sends
 every side through every title in a cold round and then a warm round, then proves the recording: the stand-in in REPLAY mode with the wait off
 (no indexer contacted), test copies reset, the same two rounds again. No miss = state complete; any miss = incomplete (listed); and resets again; running it again only asks for what is not stored yet. Its timings never
 reach a report. Only test containers are touched. Secrets never reach the run folder (settings are scrubbed, logs are scrubbed).
 """
 import argparse
+import contextlib
 import copy
 import datetime
 import hashlib
@@ -29,6 +35,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -66,12 +73,55 @@ NZBDAV_PORT = 3001
 GRACE_S = 5
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
 EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
+EXIT_INTERRUPTED = 130  # run and record: stopped by Ctrl-C or SIGTERM (130 is the shell's own code for Ctrl-C)
 
 
 class CapReached(Exception):
     def __init__(self, indexer, time_, where):
         super().__init__(f'{indexer} limit reached at {time_} ({where})')
         self.indexer, self.time, self.where = indexer, time_, where
+
+
+class Stop(KeyboardInterrupt):
+    """A stop signal other than Ctrl-C (SIGTERM, which `timeout` sends), raised where the command is, so it takes the same
+    path as Ctrl-C's KeyboardInterrupt and the command ends the normal way, with status `stopped`."""
+
+    def __init__(self, signal_name):
+        super().__init__(signal_name)
+        self.signal_name = signal_name
+
+
+@contextlib.contextmanager
+def sigterm_stops():
+    """While a run or a record goes, SIGTERM stops it the way Ctrl-C does (raises Stop); the earlier handler comes back after."""
+    def stop(signum, frame):
+        raise Stop(signal.Signals(signum).name)
+    earlier = signal.signal(signal.SIGTERM, stop)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, earlier)
+
+
+def stop_note(io, stopped_by, stage, plays_done, plays_planned, playing):
+    """How a run or a record was stopped, in the one shape both keep (meta.json's `stopped`; brainreport.stopped_text says
+    it in words): when, by which signal (from the KeyboardInterrupt or Stop that `stopped_by` is), in which stage, the plays
+    done out of those planned as the play lines count them, and the play that was cut off (None between two plays)."""
+    return {'time': br.iso(io.now()), 'signal': getattr(stopped_by, 'signal_name', 'SIGINT'), 'stage': stage,
+            'plays_done': plays_done, 'plays_planned': plays_planned, 'during': playing}
+
+
+def finish_after_stop(stopped, command, files):
+    """After the first stop: one line says the command is finishing its record, and further Ctrl-C and SIGTERM are ignored
+    until it is written. Returns the function that puts the earlier handlers back (it does nothing off the main thread,
+    where no handler can be set)."""
+    print(f"Stopped by {br.STOP_SIGNALS.get(stopped['signal'], stopped['signal'])}: the {command} is finishing its record "
+          f"({files}); a second Ctrl-C is ignored until it is written.", flush=True)
+    try:
+        earlier = {s: signal.signal(s, signal.SIG_IGN) for s in (signal.SIGINT, signal.SIGTERM)}
+    except ValueError:
+        return lambda: None
+    return lambda: [signal.signal(s, h) for s, h in earlier.items()]
 
 
 # --------------------------------------------------------------------------- settings
@@ -102,12 +152,12 @@ def planned_sides(cfg):
     return list(MAIN_SIDES) + (['kaijuflow-1page'] if cfg['one_page'] else [])
 
 
-def switch_to_one_page(io):
+def switch_to_one_page(io, log=print):
     """The one step that turns KaijuFlow's test copy into the fourth side; the run, the record pass and the smoke check share
     it. The config is patched while the copy is stopped, then KaijuFlow and its AltMount are reset and come up again (cold).
-    io.restore_config() undoes it."""
+    io.restore_config() undoes it. `log` gets the reset's lines."""
     io.apply_one_page()
-    io.reset(ONE_PAGE_TESTBED)
+    io.reset(ONE_PAGE_TESTBED, log)
 
 
 def visit_answer(got, tries, play=None, seek=None):
@@ -153,6 +203,7 @@ class RealIO:
     def __init__(self, cfg):
         self.cfg = cfg
         self.testbed = testbed
+        self.repo = REPO
         self.backup = os.path.join(cfg['test_dir'], 'config', 'config.json.pre-brainrun')
 
     def now(self):
@@ -162,10 +213,12 @@ class RealIO:
         time.sleep(s)
 
     def git_info(self):
-        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        commit = subprocess.check_output(['git', '-C', repo, 'rev-parse', 'HEAD'], text=True).strip()
-        dirty = bool(subprocess.check_output(['git', '-C', repo, 'status', '--porcelain', '--untracked-files=no'], text=True).strip())
+        commit = subprocess.check_output(['git', '-C', self.repo, 'rev-parse', 'HEAD'], text=True).strip()
+        dirty = bool(subprocess.check_output(['git', '-C', self.repo, 'status', '--porcelain', '--untracked-files=no'], text=True).strip())
         return commit, dirty
+
+    def build_inputs_changed(self, since):
+        return build_inputs_changed(self.repo, since)
 
     def snapshot(self):
         return snapshot_settings(self.cfg['test_dir'])
@@ -183,8 +236,7 @@ class RealIO:
         return label if r.returncode == 0 and label and label != '<no value>' else None
 
     def rebuild_image(self, commit):
-        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        build_image(commit, repo)
+        build_image(commit, self.repo)
 
     def addresses(self):
         return read_addresses()
@@ -263,8 +315,8 @@ class RealIO:
     def standin_line_count(self):
         return len(self.standin_lines())
 
-    def reset(self, sides):
-        self.testbed.reset(self.cfg['test_dir'], sides, log=print)
+    def reset(self, sides, log=print):
+        self.testbed.reset(self.cfg['test_dir'], sides, log=log)
         problems = self.testbed.check_empty(self.cfg['test_dir'], sides)
         if problems:
             raise RuntimeError('a test Backend is not empty after reset: ' + '; '.join(problems[:3]))
@@ -326,6 +378,16 @@ def build_image(commit, repo, popen=subprocess.Popen, run=subprocess.run):
         archive.wait()
 
 
+def build_inputs_changed(repo, since, run=subprocess.run):
+    """Whether a build input differs between the commit `since` and HEAD: True or False, or None when git cannot say
+    (`since` is not a commit id, or the repository does not have that commit)."""
+    if not re.fullmatch(r'[0-9a-f]{7,40}', since or ''):
+        return None
+    r = run(['git', '-C', repo, 'diff', '--quiet', since + '^{commit}', 'HEAD', '--', *BUILD_INPUTS],
+            capture_output=True, text=True, timeout=60)
+    return {0: False, 1: True}.get(r.returncode)
+
+
 def read_addresses(run=subprocess.run):
     """{test container: its address on the test network}, read with `docker inspect` (read-only); a container that is not up
     or has no address is left out."""
@@ -379,6 +441,13 @@ def side_base(cfg, side):
 
 IMAGE = 'kaijuflow:test'
 IMAGE_LABEL = 'kaijuflow.commit'
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# The build inputs: every path the Dockerfile copies into the image (test_preflight.py holds the two in line), the Dockerfile,
+# and the two files that can change what a build gets to see (the image is built from `git archive HEAD`, see build_image).
+BUILD_INPUTS = ('Dockerfile', '.dockerignore', '.gitattributes', 'package.json', 'package-lock.json', 'tsconfig.json',
+                'src', 'ui', 'scripts/docker-entrypoint.sh')
+# The settings every test copy is expected to have (sort and filter rules); the preflight compares each copy with it (#109).
+EXPECTED_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
 
 
 class PreflightFailed(Exception):
@@ -409,6 +478,125 @@ def _list(items):
     return ', '.join(items) if items else 'none'
 
 
+def image_state(label, head, inputs_changed):
+    """Whether the test image holds the code of the commit `head`, given the commit its label names.
+
+    'current': it does (same commit, or no build input changed in between); 'stale': a build input changed since the image's
+    commit; 'unknown': git cannot compare the two (the repository does not have the image's commit); 'missing': no image, or
+    no label on it. `inputs_changed(commit)` answers True, False or None and is only asked when the two commits differ.
+    """
+    if not label:
+        return 'missing'
+    if label == head:
+        return 'current'
+    return {False: 'current', True: 'stale'}.get(inputs_changed(label), 'unknown')
+
+
+def load_expected_settings(path=EXPECTED_SETTINGS_FILE):
+    """The entries of the expected settings file: [{'copies': [side, ...], 'settings': {setting name: value}}].
+    ValueError with a plain reason when the file or one of its entries cannot be used."""
+    name = os.path.basename(path)
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ValueError(f'{name} cannot be read: {type(e).__name__}') from None
+    entries = data.get('expected') if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError(f'{name} cannot be read: it has no "expected" list')
+    for i, entry in enumerate(entries, 1):
+        copies, wanted = (entry.get('copies'), entry.get('settings')) if isinstance(entry, dict) else (None, None)
+        unknown_copy = next((c for c in copies if not isinstance(c, str) or c not in testbed.SETTINGS), None) if isinstance(copies, list) else None
+        # the file is in the repository: the settings reader's own test for a secret name keeps keys and logins out of it
+        secret = next((k for k, v in br.flatten(wanted).items() if v == '***'), None) if isinstance(wanted, dict) else None
+        if not isinstance(copies, list) or not copies:
+            why = 'it names no copies'
+        elif unknown_copy is not None:
+            why = f'"{unknown_copy}" is not a test copy ({_list(testbed.SETTINGS_SIDES)})'
+        elif not isinstance(wanted, dict) or not wanted:
+            why = 'it names no settings'
+        elif secret:
+            why = f'{secret} is a key, a login or a password, which does not belong in this file'
+        else:
+            continue
+        raise ValueError(f'{name}, entry {i}: {why}')
+    return entries
+
+
+def _settings_at(flat, name):
+    """The settings at or below `name` in a flat settings map. A list of plain values (an order such as `sortOrder`, which the
+    map holds as sortOrder[0], sortOrder[1], ...) is one setting, with the list as its value."""
+    out = {}
+    for k, v in flat.items():
+        if k != name and not k.startswith((name + '.', name + '[')):
+            continue
+        entry = re.fullmatch(r'(.+)\[(\d+)\]', k)
+        if entry and len(entry.group(1)) >= len(name):
+            out.setdefault(entry.group(1), {})[int(entry.group(2))] = v
+        else:
+            out[k] = [] if v == '[]' else v  # the map's way of writing an empty list
+    return {k: [v[i] for i in sorted(v)] if isinstance(v, dict) else v for k, v in out.items()}
+
+
+def _whole_gap(key, name, other):
+    """The highest level of the setting `key`, from `name` down, that `other` has nothing of: a section or a rule that is
+    missing as a whole is named once, not once per value in it. a.b[c].d is tried as a, a.b, a.b[c], a.b[c].d."""
+    ends = [m.end() for m in re.finditer(r'\[.*?\](?=[.\[]|$)|[^.\[]+', key)]
+    return next((key[:e] for e in ends if e >= len(name) and not _settings_at(other, key[:e])), key)
+
+
+def _show(value):
+    return json.dumps(value, ensure_ascii=False)
+
+
+def setting_differences(expected, settings, file=None):
+    """One sentence per setting of a test copy that differs from the expected settings; [] when every copy matches.
+
+    expected: the entries of the expected settings file (load_expected_settings). settings: {side: {dotted name: value}}, as
+    the settings reader gives them (testbed.read_settings). file: where the expected settings file is, for the first
+    sentence, which also says what to do (the others stay short).
+    """
+    out = []
+
+    def say(start, end):
+        first = not out
+        out.append(f"{start} the expected settings file{f' ({file})' if first and file else ''} {end}"
+                   + (": change the test copy's config, or the file if the copy's value is the intended one." if first else '.'))
+
+    for entry in expected:
+        for side in entry['copies']:
+            copy_name, have = testbed.SETTINGS[side]['short'], settings.get(side) or {}
+            if not have or '(file missing)' in have:  # a config that cannot be read: the other preflight checks say so
+                continue
+            for name, value in entry['settings'].items():
+                want, got = _settings_at(br.flatten(value, name), name), _settings_at(have, name)
+                gaps = []  # a setting, a rule or a section one of the two lacks as a whole, each named once
+                for k in want:
+                    if k not in got:
+                        gap = (_whole_gap(k, name, got), 'missing')
+                        if gap not in gaps:
+                            gaps.append(gap)
+                            say(f'{copy_name} has no {gap[0]} setting, but', 'has one')
+                    elif got[k] != want[k] and isinstance(got[k], list) and isinstance(want[k], list):
+                        copy_list, expected_list = got[k], want[k]
+                        n = next((i for i, (a, b) in enumerate(zip(copy_list, expected_list)) if a != b), min(len(copy_list), len(expected_list)))
+                        if n >= len(copy_list):
+                            say(f'{copy_name} has no {k} entry {n + 1}, but', f'says {_show(expected_list[n])}')
+                        elif n >= len(expected_list):
+                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(copy_list[n])}, but', f'has no entry {n + 1}')
+                        else:
+                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(copy_list[n])}, but',
+                                f'says {_show(expected_list[n])} (the first entry that differs)')
+                    elif got[k] != want[k]:
+                        say(f'{copy_name} has {k} set to {_show(got[k])}, but', f'says {_show(want[k])}')
+                for k in got:
+                    gap = (_whole_gap(k, name, want), 'extra')
+                    if k not in want and gap not in gaps:
+                        gaps.append(gap)
+                        say(f'{copy_name} has a {gap[0]} setting that', 'does not have')
+    return out
+
+
 def preflight(mode, cfg, io):
     """Checks the setup before a record ('record') or a run ('run'). Returns plain sentences, one per problem; [] means go.
 
@@ -419,20 +607,25 @@ def preflight(mode, cfg, io):
     problems = []
     port = cfg.get('standin_port', 1340)
 
-    # 1. the test image was built from the commit being tested
+    # 1. the test image holds the code of the commit being tested
     commit, dirty = io.git_info()
     label = io.image_label()
     if dirty:
         problems.append('The repository has uncommitted changes, so the test image cannot name the code that runs: commit them first.')
     else:
-        if cfg.get('rebuild_image') and label != commit:
+        state = image_state(label, commit, io.build_inputs_changed)
+        if cfg.get('rebuild_image') and state != 'current':
             io.rebuild_image(commit)
             label = io.image_label()
-        if not label:
+            state = image_state(label, commit, io.build_inputs_changed)
+        if state == 'missing':
             problems.append(f'The test image {IMAGE} is missing or does not say which commit it was built from: build it again with --rebuild-image.')
-        elif label != commit:
-            problems.append(f'The test image was built from commit {label[:7]} but the repository is at {commit[:7]}: '
-                            'build it again with --rebuild-image.')
+        elif state == 'stale':
+            problems.append(f'The test image was built from commit {label[:7]}, and the code that goes into the image has changed '
+                            f'since then (the repository is at {commit[:7]}): build it again with --rebuild-image.')
+        elif state == 'unknown':
+            problems.append(f'The test image was built from commit {label[:7]}, which this repository does not have, so nothing says '
+                            f'whether it holds the code at {commit[:7]}: build it again with --rebuild-image.')
 
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
     titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
@@ -475,11 +668,19 @@ def preflight(mode, cfg, io):
         problems.append(f'The test copies may open {rep["total"]} connections together ({per}), over the provider limit of {rep["limit"]}: '
                         'lower the caps.')
 
-    # 5. the stand-in's port is free
+    # 5. every test copy has the sort and filter settings of the expected settings file
+    path = cfg.get('expected_settings') or EXPECTED_SETTINGS_FILE
+    shown = os.path.relpath(path, REPO) if os.path.abspath(path).startswith(REPO + os.sep) else path
+    try:
+        problems += setting_differences(load_expected_settings(path), rep['settings'], shown)
+    except ValueError as e:
+        problems.append(f'The expected settings file cannot be used ({e}): fix the file.')
+
+    # 6. the stand-in's port is free
     if not io.port_free(port):
         problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (an earlier indexer stand-in?) and try again.")
 
-    # 6. (run only) the recording exists and holds an answer for every enabled indexer
+    # 7. (run only) the recording exists and holds an answer for every enabled indexer
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})
@@ -510,7 +711,7 @@ def preflight_command(mode, cfg, io):
     if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
         print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
-        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps and port all check out.')
+        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out.')
     return 1 if problems else 0
 
 
@@ -590,22 +791,77 @@ def _check_cap(io, visit=None, since=None):
                          f"{visit['side']} log during {visit['title']}")
 
 
-def do_pass(cfg, io, run, logbuf, sides, reset_sides, fresh=False):
-    """Every side through every title in each round of PLAN; each cold round starts with a reset of `reset_sides`, except
-    the first when the caller has just reset them (`fresh`)."""
-    for n, (phase, rnd) in enumerate(PLAN):
-        if phase == 'cold':
-            if not (fresh and n == 0):
-                io.reset(reset_sides)
-            note_addresses(io, run)  # a container gets its address when it starts
-        for i, title in enumerate(cfg['titles']):
-            k = i % len(sides)
-            for side in sides[k:] + sides[:k]:
-                v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
-                run['visits'].append(v)
-                print(f"{side} {phase} {rnd} {title[2]}: {'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
-                _check_cap(io, v, since=run['started_at'])
+def planned_plays(cfg, rounds):
+    """How many plays a command makes when nothing stops it: every title on every planned side in every round."""
+    return len(rounds) * len(cfg['titles']) * len(planned_sides(cfg))
+
+
+def line_prefix(io, done, planned, proof=False):
+    """How every line starts that a run or a record prints while it plays: the UTC time and the plays done out of those
+    planned (`05:46:35 [61/160]`), so the last line of the log says how far the command is. The proof of a record counts
+    on its own and says `proof`."""
+    return f"{io.now():%H:%M:%S} [{done}/{planned}]{' proof' if proof else ''}"
+
+
+def progress_log(io, done, planned, proof=False):
+    """A log function for what happens between two plays (a reset): its lines start the way the play lines do."""
+    return lambda msg: print(f'{line_prefix(io, done, planned, proof)} {msg}', flush=True)
+
+
+@contextlib.contextmanager
+def clocked(io, rows, **what):
+    """Times one stretch of a run (a pass, a round, a reset) by the io's clock. Its row is in `rows` from the start and gets
+    its end and its seconds however the stretch ends, so a stretch cut short by Ctrl-C, the cap rule or an error is kept."""
+    t0 = io.now()
+    row = dict(what, start=br.iso(t0), end=None, seconds=None)
+    rows.append(row)
+    try:
+        yield row
+    finally:
+        t1 = io.now()
+        row.update(end=br.iso(t1), seconds=round((t1 - t0).total_seconds(), 3))
+
+
+def do_pass(cfg, io, run, logbuf, name, sides, reset_sides, first_reset=None):
+    """One pass: every side of `sides` through every title in each round of PLAN. Each cold round starts with a reset of
+    `reset_sides`; `first_reset(io, log)` takes the place of the first one (the switch to one page, which resets too).
+    The pass, each of its rounds and each of its resets are timed into run['timing'] (#112)."""
+    timing = run['timing']
+    run['stage'] = f'the pass of the {name}'
+    with clocked(io, timing['passes'], name=name, sides=list(sides)):
+        for n, (phase, rnd) in enumerate(PLAN):
+            round_key = {'pass': name, 'phase': phase, 'round': rnd}
+            if phase == 'cold':
+                log = progress_log(io, len(run['visits']), planned_plays(cfg, PLAN))
+                with clocked(io, timing['resets'], **round_key):
+                    if first_reset and n == 0:
+                        first_reset(io, log)
+                    else:
+                        io.reset(reset_sides, log)
+                note_addresses(io, run)  # a container gets its address when it starts
+            with clocked(io, timing['rounds'], **round_key, plays=0, pause_s=0.0) as round_row:
+                do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row)
+
+
+def do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row):
+    """One round of a pass: every title on every side of `sides`, the first side rotating per title, a pause of
+    cfg['settle'] seconds after each play. `round_row` counts the plays and adds up the pauses as the clock saw them."""
+    for i, title in enumerate(cfg['titles']):
+        k = i % len(sides)
+        for side in sides[k:] + sides[:k]:
+            run['playing'] = {'side': side, 'phase': phase, 'round': rnd, 'title': title[2]}
+            v = collect_visit(cfg, io, side, phase, rnd, title, logbuf)
+            run['visits'].append(v)
+            run['playing'] = None
+            round_row['plays'] += 1
+            print(f"{line_prefix(io, len(run['visits']), planned_plays(cfg, PLAN))} {side} {phase} {rnd} {title[2]}: "
+                  f"{'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
+            _check_cap(io, v, since=run['started_at'])
+            paused = io.now()
+            try:
                 io.sleep(cfg['settle'])
+            finally:  # a pause cut short by Ctrl-C counts for as long as it lasted
+                round_row['pause_s'] = round(round_row['pause_s'] + (io.now() - paused).total_seconds(), 3)
 
 
 def _write(path, text):
@@ -625,27 +881,32 @@ def run_all(cfg, io):
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
            'sides': planned_sides(cfg), 'standin_misses': 0,
-           'settings': {}, 'commit': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
+           'settings': {}, 'commit': None, 'head': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
-                     'one-page side': 'yes' if cfg['one_page'] else 'no'}}
+                     'one-page side': 'yes' if cfg['one_page'] else 'no'},
+           'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []}}
     wait = cfg.get('wait', True)
-    logbuf, handle, failure = {}, None, None
+    logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     try:
         run['settings'] = io.snapshot()
-        run['dirty'] = io.git_info()[1]
-        run['commit'] = io.image_label()  # the commit the test image was built from, not the repository's
+        run['head'], run['dirty'] = io.git_info()  # the repository's commit; it differs from the image's after a docs-only commit
+        run['commit'] = io.image_label()  # the commit the test image was built from: the code that runs
         _write(os.path.join(run_dir, 'settings.json'), json.dumps(run['settings'], indent=1, sort_keys=True))
         try:
             _check_cap(io, since=started)
             handle = io.start_standin(os.path.join(logs_dir, 'standin.log'), mode='replay', wait=wait)
-            do_pass(cfg, io, run, logbuf, list(MAIN_SIDES), ALL_TESTBED)
+            do_pass(cfg, io, run, logbuf, 'main sides', list(MAIN_SIDES), ALL_TESTBED)
             if cfg['one_page']:
-                switch_to_one_page(io)
-                do_pass(cfg, io, run, logbuf, ['kaijuflow-1page'], ONE_PAGE_TESTBED, fresh=True)
+                do_pass(cfg, io, run, logbuf, 'one-page side', ['kaijuflow-1page'], ONE_PAGE_TESTBED,
+                        first_reset=switch_to_one_page)
         except CapReached as e:
             run['status'] = 'null'
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
+        except KeyboardInterrupt as e:  # Ctrl-C or SIGTERM: the pass stops, the plays that finished are kept, the ending is the normal one (#110)
+            run['status'] = 'stopped'
+            run['stopped'] = stop_note(io, e, run.get('stage'), len(run['visits']), planned_plays(cfg, PLAN), run.get('playing'))
+            restore_signals = finish_after_stop(run['stopped'], 'run', 'report.md, raw.json, meta.json and the INDEX.md row')
         finally:
             try:
                 finalize_steps(io, run['visits'])
@@ -659,7 +920,23 @@ def run_all(cfg, io):
     except Exception as e:  # noqa: BLE001
         run['status'], run['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
         failure = e
-    run['finished'] = br.iso(io.now())
+    try:
+        write_run_ending(cfg, io, run, started, logbuf)
+    finally:
+        restore_signals()
+    if failure:
+        raise failure
+    return run
+
+
+def write_run_ending(cfg, io, run, started, logbuf):
+    """The ending of every run, finished or not: its time, the logs, report.md, raw.json, meta.json and the INDEX.md row."""
+    root, run_dir = cfg['runs_root'], run['dir']
+    logs_dir = os.path.join(run_dir, 'logs')
+    finished = io.now()
+    run['finished'] = br.iso(finished)
+    run['timing']['seconds'] = round((finished - started).total_seconds(), 3)
+    run['timing']['parts'] = br.time_parts(run)
     sl = os.path.join(logs_dir, 'standin.log')
     if os.path.exists(sl):
         run['standin_misses'] = sum(1 for line in _read_text(sl).splitlines() if line.startswith('MISS '))
@@ -673,20 +950,19 @@ def run_all(cfg, io):
     elif run['status'] == 'null':
         report, result = br.render_null_report(run), 'NULL'
         headline = f"NULL: {run['null']['indexer']} limit reached at {run['null']['time']}; no numbers"
+    elif run['status'] == 'stopped':
+        report, result, headline = br.render_stopped_report(run, run['changes']), 'stopped', br.stopped_text(run['stopped'])
     else:
         report, result, headline = f"This run failed before it finished: {run['error']}\n", 'failed', f"failed: {run['error']}"
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
-    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'dirty', 'titles', 'indexers',
-                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'error',
-                                    'standin_misses', 'changes')}
+    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
+                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
+                                    'standin_misses', 'changes', 'timing')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
         'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': run['changes'],
         'headline': headline, 'folder': os.path.basename(run_dir)})
-    if failure:
-        raise failure
-    return run
 
 
 # --------------------------------------------------------------------------- the record command (spec #72, ticket #75)
@@ -697,7 +973,8 @@ def record_all(cfg, io):
 
     Running it again is a top-up: record mode serves what is stored instead of asking the indexer. The first "limit reached"
     stops the pass and the recording is NULL (what was stored stays). Nothing from the pass is a measurement: it gets a folder
-    with the stand-in's log and a meta.json, and an INDEX.md row only when it is NULL or failed.
+    with the stand-in's log and a meta.json, and an INDEX.md row only when it is NULL, stopped or failed. Ctrl-C in the pass
+    or in the proof ends it the normal way with status `stopped` (#110).
     """
     problems = io.preflight('record') + io.setting_conflicts()
     if problems:
@@ -714,33 +991,56 @@ def record_all(cfg, io):
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': planned_sides(cfg),
            'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
            'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS), 'misses': []}
-    handle, failure = None, None
+    handle, failure, restore_signals = None, None, lambda: None
+    planned = planned_plays(cfg, RECORD_ROUNDS)
+    stage, counts = 'the record pass', rec  # the proof counts its plays on its own
+    proof = {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
     try:
         rec['commit'] = io.image_label()
-        io.reset(ALL_TESTBED)
-        handle = io.start_standin(logpath, mode='record')
         try:
-            try:
+            try:  # the opening reset and the stand-in's start are inside, so a stop there ends the normal way too
+                io.reset(ALL_TESTBED, progress_log(io, 0, planned))
+                handle = io.start_standin(logpath, mode='record')
                 record_pass(cfg, io, rec, list(MAIN_SIDES))
                 if cfg['one_page']:
-                    switch_to_one_page(io)
+                    switch_to_one_page(io, progress_log(io, rec['visits'], planned))
                     record_pass(cfg, io, rec, ['kaijuflow-1page'])
             except CapReached as e:
                 rec['status'] = 'null'
                 rec['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
             finally:
                 try:
-                    handle.stop()
+                    if handle:
+                        handle.stop()
                 finally:
                     io.restore_config()
             if rec['status'] == 'recorded':
-                rec['misses'] = prove_recording(cfg, io, os.path.join(logs_dir, 'standin-proof.log'))
+                stage, counts = 'the proof replay', proof
+                rec['misses'] = prove_recording(cfg, io, os.path.join(logs_dir, 'standin-proof.log'), proof)
+        except KeyboardInterrupt as e:  # Ctrl-C or SIGTERM in the pass or the proof: what was stored is kept, the ending is the normal one (#110)
+            rec['status'] = 'stopped'
+            rec['stopped'] = stop_note(io, e, stage, counts['visits'], planned, counts.get('playing'))
+            restore_signals = finish_after_stop(rec['stopped'], 'record command', 'RECORDING.json, meta.json and the INDEX.md row')
         finally:  # the cleanup runs even when stopping the stand-in fails
-            io.reset(ALL_TESTBED)
+            io.reset(ALL_TESTBED, progress_log(io, rec['visits'], planned))
             io.stop_all()
     except Exception as e:  # noqa: BLE001
         rec['status'], rec['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
         failure = e
+    try:
+        write_record_ending(cfg, io, rec, logpath)
+    finally:
+        restore_signals()
+    if failure:
+        raise failure
+    return rec
+
+
+def write_record_ending(cfg, io, rec, logpath):
+    """The ending of every record command, finished or not: the counts from the stand-in's log, RECORDING.json, meta.json
+    and, unless it is complete, the INDEX.md row."""
+    root, run_dir = cfg['runs_root'], rec['dir']
+    rec.pop('playing', None)
     rec['finished'] = br.iso(io.now())
     text = _read_text(logpath) or ''
     rec['new_answers'] = sum(1 for line in text.splitlines() if line.startswith('RECORD '))
@@ -754,13 +1054,16 @@ def record_all(cfg, io):
             'changed': ['recording stopped; what was stored is kept, top it up after the reset'],
             'headline': f"NULL: {rec['null']['indexer']} limit reached at {rec['null']['time']}; no numbers",
             'folder': os.path.basename(run_dir)})
+    elif rec['status'] == 'stopped':
+        br.append_index_row(os.path.join(root, 'INDEX.md'), {
+            'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'stopped',
+            'changed': ['recording stopped; what was stored is kept, run the same record command again'],
+            'headline': f"{br.stopped_text(rec['stopped'])}; no numbers",
+            'folder': os.path.basename(run_dir)})
     elif rec['status'] == 'failed':
         br.append_index_row(os.path.join(root, 'INDEX.md'), {
             'date': rec['started'], 'name': cfg['name'] + ' (record)', 'result': 'failed', 'changed': ['record pass'],
             'headline': f"failed: {rec['error']}", 'folder': os.path.basename(run_dir)})
-    if failure:
-        raise failure
-    return rec
 
 
 def write_recording_state(cfg, rec):
@@ -776,6 +1079,8 @@ def write_recording_state(cfg, rec):
         state, why = 'complete', None
     elif rec['status'] == 'null':
         state, why = 'stopped', f"{rec['null']['indexer']} said its limit was reached"
+    elif rec['status'] == 'stopped':
+        state, why = 'stopped', f"the record command was {br.stopped_text(rec['stopped'])}"
     else:
         state, why = 'stopped', rec.get('error') or 'the record pass failed'
     _write(os.path.join(d, RECORDING_FILE), json.dumps({'state': state, 'why': why, 'when': rec['finished'], 'errors': rec['errors'], 'misses': misses}, indent=1))
@@ -799,11 +1104,14 @@ def record_summary(rec):
     return text
 
 
-def prove_recording(cfg, io, logpath):
+def prove_recording(cfg, io, logpath, counts=None):
     """The proof that ends a record pass: test copies reset, the stand-in in REPLAY mode with the wait off (no indexer is
     contacted), every side through the same cold round and warm round as the record pass. Returns the requests it could not
-    answer, one {'side', 'request'} each (the side that was visiting when the stand-in logged the MISS), without repeats."""
-    io.reset(ALL_TESTBED)
+    answer, one {'side', 'request'} each (the side that was visiting when the stand-in logged the MISS), without repeats.
+    `counts` ({'visits', 'listed'}, as record_pass keeps them) is where the proof counts its plays; record_all reads it when
+    the proof is stopped."""
+    planned = planned_plays(cfg, RECORD_ROUNDS)
+    io.reset(ALL_TESTBED, progress_log(io, 0, planned, proof=True))
     handle = io.start_standin(logpath, mode='replay', wait=False)
     windows = []  # (index of the stand-in's first new log line, side) at the start of every visit
 
@@ -819,12 +1127,12 @@ def prove_recording(cfg, io, logpath):
             return self.inner.visit_http(side, kind, vid, tries)
 
     watched = Watch(io)
-    scratch = {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
+    scratch = counts if counts is not None else {'visits': 0, 'listed': {side: 0 for side in planned_sides(cfg)}}
     try:
-        record_pass(cfg, watched, scratch, list(MAIN_SIDES))
+        record_pass(cfg, watched, scratch, list(MAIN_SIDES), proof=True)
         if cfg['one_page']:
-            switch_to_one_page(io)
-            record_pass(cfg, watched, scratch, ['kaijuflow-1page'])
+            switch_to_one_page(io, progress_log(io, scratch['visits'], planned, proof=True))
+            record_pass(cfg, watched, scratch, ['kaijuflow-1page'], proof=True)
         lines = io.standin_lines()
     finally:
         try:
@@ -843,9 +1151,11 @@ def prove_recording(cfg, io, logpath):
     return misses
 
 
-def record_pass(cfg, io, rec, sides):
+def record_pass(cfg, io, rec, sides, proof=False):
     """A cold round, then a warm round with no reset between: in each, every side lists every title and plays its top pick,
-    sides one after another, order rotating per title. `listed` counts the titles a side listed Sources for in any round."""
+    sides one after another, order rotating per title. `listed` counts the titles a side listed Sources for in any round,
+    and `playing` names the play in progress (a record's rounds have no number). The proof replay makes the same rounds
+    with its own count, and its play lines say `proof`."""
     _check_cap(io)
     listed = {side: set() for side in sides}
     try:
@@ -854,11 +1164,14 @@ def record_pass(cfg, io, rec, sides):
                 k = i % len(sides)
                 for side in sides[k:] + sides[:k]:
                     kind, vid, label = title
+                    rec['playing'] = {'side': side, 'phase': phase, 'round': None, 'title': label}
                     http = io.visit_http(side, kind, vid, cfg['tries'])
                     rec['visits'] += 1
+                    rec['playing'] = None
                     if http.get('sources'):
                         listed[side].add(vid)
-                    print(f"{side} {phase} {label}: {http.get('sources')} Sources, top pick "
+                    print(f"{line_prefix(io, rec['visits'], planned_plays(cfg, RECORD_ROUNDS), proof)} "
+                          f"{side} {phase} {label}: {http.get('sources')} Sources, top pick "
                           f"{'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
                     _check_cap(io)
                     io.sleep(cfg['settle'])
@@ -937,7 +1250,9 @@ RECORD_EXIT_CODES = """exit codes of the record command:
   0  complete: every side was recorded and the proof replay (no indexer contacted) answered every request. A run may use it.
   1  nothing recorded: the setup check failed (the sentences say why) or the pass broke.
   2  stopped: an indexer said its limit was reached. What was stored is kept; run the same command again after the indexer reset.
-  3  incomplete: the proof replay missed some requests (listed). Not an error: run the same record command again to top up."""
+  3  incomplete: the proof replay missed some requests (listed). Not an error: run the same record command again to top up.
+  130  stopped by Ctrl-C or SIGTERM (what `timeout` sends). What was stored is kept; run the same command again. The run
+       command uses 130 the same way: its folder keeps the plays that finished, and its report and INDEX.md row say stopped."""
 
 
 def build_parser():
@@ -951,7 +1266,7 @@ def build_parser():
     ap.add_argument('--runs-root', default=DEFAULT_RUNS_ROOT)
     ap.add_argument('--store')
     ap.add_argument('--list', dest='listname')
-    ap.add_argument('--rebuild-image', action='store_true', help='build kaijuflow:test again from the current commit when the image is not from it')
+    ap.add_argument('--rebuild-image', action='store_true', help='build kaijuflow:test again from the current commit when the code that goes into the image has changed since it was built')
     ap.add_argument('--provider-limit', type=int, default=testbed.PROVIDER_LIMIT)
     ap.add_argument('--key-file')
     ap.add_argument('--test-dir', default=os.environ.get('TEST_DIR', DEFAULT_TEST_DIR))
@@ -959,7 +1274,7 @@ def build_parser():
     ap.add_argument('--one-page', action='store_true', help='add the fourth side: KaijuFlow, one page per indexer')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
-    ap.add_argument('--settle', type=float, default=3)
+    ap.add_argument('--settle', type=float, default=3, help='seconds to pause after every play (default 3)')
     return ap
 
 
@@ -1006,7 +1321,8 @@ def main(argv):
         smoke(cfg)
     elif a.cmd == 'record':
         try:
-            rec = record_all(cfg, RealIO(cfg))
+            with sigterm_stops():
+                rec = record_all(cfg, RealIO(cfg))
         except PreflightFailed as e:
             for p in e.problems:
                 print(p)
@@ -1015,6 +1331,10 @@ def main(argv):
             print(f"The recording stopped: {rec['null']['indexer']} said its limit was reached. What was stored is kept; "
                   f"once the indexer has reset, run the same command again to top up. Folder: {rec['dir']}")
             return EXIT_STOPPED
+        if rec['status'] == 'stopped':
+            print(f"The recording was {br.stopped_text(rec['stopped'])}. What was stored is kept; "
+                  f"run the same command again to top up. Folder: {rec['dir']}")
+            return EXIT_INTERRUPTED
         print(f"{record_summary(rec)} Folder: {rec['dir']}")
         if rec.get('misses'):
             for m in rec['misses'][:10]:
@@ -1022,13 +1342,16 @@ def main(argv):
             return EXIT_INCOMPLETE
     else:
         try:
-            run = run_all(cfg, RealIO(cfg))
+            with sigterm_stops():
+                run = run_all(cfg, RealIO(cfg))
         except PreflightFailed as e:
             for p in e.problems:
                 print(p)
             return 1
         print(f"{run['status']}: {run['dir']}")
         runcheck.check_command(run['dir'], store=True)  # the same lines `check` prints, kept in the run folder as CHECK.txt
+        if run['status'] == 'stopped':
+            return EXIT_INTERRUPTED
     common.finish(started)
     return 0
 

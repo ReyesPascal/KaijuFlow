@@ -2,19 +2,25 @@
 
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
 """
+import contextlib
 import datetime
 import http.server
+import io as io_module
 import json
 import os
+import signal
 import socket
 import sqlite3
+import time
 import unittest
 import urllib.request
+from unittest import mock
 
 import brainreport as br
 import brainrun
 import common
 import indexer_standin
+import runcheck
 import test_indexer_standin as fakes
 import test_preflight
 from test_settings import tempdir
@@ -51,7 +57,15 @@ class Copies:
 
 
 class FakeIO(Copies):
-    """Stands in for Docker, the stand-in and the sides. Records every call in order."""
+    """Stands in for Docker, the stand-in and the sides. Records every call in order.
+
+    Its clock is a clock: reading it does not move it. It moves only while something takes time, by the seconds below:
+    a pause takes what it was asked for, a reset, a visit, starting the stand-in and stopping the copies take what they
+    take in this world. So a time the runner reports can be worked out by hand from what the run did."""
+
+    STANDIN_START_S, RESET_S, STOP_ALL_S = 2, 20, 5
+    LIST_S, START_S, SEEKS_S = 2.0, 1.5, 0.5  # a visit whose top pick plays takes the three together: 4 s
+    FAILED_PLAY_S = 10.0                      # a top pick that fails gives up after this long: the visit takes 12 s
 
     def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=()):
         Copies.__init__(self, up)
@@ -70,15 +84,18 @@ class FakeIO(Copies):
         self.calls.append(('history',))
         return {'history': {'slots': list(self.history), 'noofslots': len(self.history)}, 'status': True, 'error': None}
 
+    def takes(self, seconds):
+        self.clock += datetime.timedelta(seconds=seconds)
+
     def now(self):
-        self.clock += datetime.timedelta(seconds=1)
         return self.clock
 
     def sleep(self, s):
         self.calls.append(('sleep', s))
+        self.takes(s)
 
     def git_info(self):
-        return 'repo-head-must-not-be-recorded', False
+        return 'repo-head', False
 
     def image_label(self):
         return self.commit
@@ -102,6 +119,7 @@ class FakeIO(Copies):
 
     def start_standin(self, logpath, mode='replay', wait=True):
         self.calls.append(('standin-start', mode, wait))
+        self.takes(self.STANDIN_START_S)
         self.standin_log =['HIT ninjacentral api t=search wait_ms=0', 'MISS drunkenslug api t=search']
         with open(logpath, 'w') as f:
             f.write('\n'.join(self.standin_log) + '\n')
@@ -118,12 +136,17 @@ class FakeIO(Copies):
     def standin_lines(self):
         return list(self.standin_log)
 
-    def reset(self, sides):
+    def reset(self, sides, log=print):
         self.calls.append(('reset', tuple(sides)))
+        for side in sides:  # the two lines testbed.reset logs per test copy, the copies sharing the reset's time
+            log(f'reset {side}: restored from template')
+            self.takes(self.RESET_S / len(sides))
+            log(f'reset {side}: up')
         self.up |= set(sides)
 
     def stop_all(self):
         self.calls.append(('stop-all',))
+        self.takes(self.STOP_ALL_S)
         self.up.clear()
 
     def apply_one_page(self):
@@ -152,9 +175,10 @@ class FakeIO(Copies):
         t = int(self.clock.timestamp() * 1000) + 300  # a moment after the visit began
         self.standin_log += [f'{x} from={self.SIDE_IP[side]} t={t}' for x in self.lines_per_visit.get(self.visits, [])]
         ok = side != self.fail_http_for
+        self.takes(self.LIST_S + (self.START_S + self.SEEKS_S if ok else self.FAILED_PLAY_S))
         if side == 'uu':
             self.history.insert(0, {'nzo_id': f'n{self.visits}', 'nzb_name': 'R', 'status': 'Completed', 'download_time': 4})
-        return dict(list_status=200, list_s=2.0, sources=5, first_try_plays=ok, start_s=1.5 if ok else None,
+        return dict(list_status=200, list_s=self.LIST_S, sources=5, first_try_plays=ok, start_s=self.START_S if ok else None,
                     note=None if ok else 'failure video', seeks={'50': 0.2, '90': 0.3}, tries=[{'plays': ok}])
 
     def logs(self, container, since):
@@ -228,6 +252,11 @@ class RunTest(unittest.TestCase):
         self.assertEqual(run['commit'], 'c-from-label')
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['commit'], 'c-from-label')
         self.assertEqual(io.calls_preflight, ['run'])
+
+    def test_run_record_also_keeps_the_repository_commit_as_head(self):
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(commit='c-from-label'))
+        meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
+        self.assertEqual((meta['commit'], meta['head']), ('c-from-label', 'repo-head'))
 
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
@@ -334,6 +363,539 @@ class RunTest(unittest.TestCase):
         self.assertEqual([c[0] for c in io.calls][-2:], ['standin-stop', 'stop-all'])
         self.assertIn('failed', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
         self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
+
+
+def printed(fn, *args):
+    """(what fn returned, the lines it printed)."""
+    out = io_module.StringIO()
+    with contextlib.redirect_stdout(out):
+        result = fn(*args)
+    return result, out.getvalue().splitlines()
+
+
+def play_lines(lines):
+    """The lines a play printed, without the ones a reset printed."""
+    return [x for x in lines if ' reset ' not in x]
+
+
+class WallClockTest(unittest.TestCase):
+    """The run says where its wall-clock time went (#112). Every figure below is worked out by hand from FakeIO's world:
+    the stand-in starts in 2 s, a reset takes 20 s, a visit whose top pick plays 4 s (list 2.0, start 1.5, seek checks 0.5),
+    one whose top pick fails 12 s, stopping the copies 5 s; the pause after a play is the run's `settle`."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+    def test_every_play_line_starts_with_the_utc_time_and_how_many_plays_are_done(self):
+        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, settle=3), FakeIO())
+        plays = play_lines(lines)
+        # started 18:00:00, stand-in up at :02, reset done at :22, the first visit ends at :26
+        self.assertEqual(plays[0], '18:00:26 [1/24] kaijuflow cold 1 Matrix: plays list 2.0 s start 1.5 s')
+        self.assertEqual(plays[1], '18:00:33 [2/24] uu cold 1 Matrix: plays list 2.0 s start 1.5 s')  # 3 s pause, 4 s visit
+        # 24 plays of 7 s and a second reset of 20 s after the first twelve; the last pause is still to come
+        self.assertEqual(plays[-1], '18:03:27 [24/24] kaijuflow warm 2 Show S01E01: plays list 2.0 s start 1.5 s')
+        self.assertEqual(len(plays), 24)
+
+    def test_the_count_runs_on_into_the_one_page_side(self):
+        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True), FakeIO())
+        plays = play_lines(lines)
+        self.assertEqual(plays[23].split()[1], '[24/32]')
+        self.assertEqual(' '.join(plays[24].split()[1:6]), '[25/32] kaijuflow-1page cold 1 Matrix:')
+        self.assertEqual(plays[-1].split()[1], '[32/32]')
+
+    def test_the_lines_of_a_reset_start_the_same_way_so_the_last_line_of_the_log_always_says_how_far_the_run_is(self):
+        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=3), FakeIO())
+        # the first reset: five test copies, 4 s each, from 18:00:02
+        self.assertEqual(lines[:3], ['18:00:02 [0/32] reset nzbdav: restored from template', '18:00:06 [0/32] reset nzbdav: up',
+                                     '18:00:06 [0/32] reset altmount-addon: restored from template'])
+        self.assertEqual(lines[9], '18:00:22 [0/32] reset kaijuflow: up')
+        # the second one comes after the twelfth play and its pause
+        at = lines.index('18:01:43 [12/32] kaijuflow warm 1 Show S01E01: plays list 2.0 s start 1.5 s')
+        self.assertEqual((lines[at + 1], lines[at + 10]), ('18:01:46 [12/32] reset nzbdav: restored from template',
+                                                           '18:02:06 [12/32] reset kaijuflow: up'))
+        # the switch to one page resets KaijuFlow and its AltMount, 10 s each, from 18:03:30
+        at = lines.index('18:03:27 [24/32] kaijuflow warm 2 Show S01E01: plays list 2.0 s start 1.5 s')
+        self.assertEqual(lines[at + 1:at + 5], [
+            '18:03:30 [24/32] reset kaijuflow: restored from template', '18:03:40 [24/32] reset kaijuflow: up',
+            '18:03:40 [24/32] reset altmount-kf: restored from template', '18:03:50 [24/32] reset altmount-kf: up'])
+        for n, line in enumerate(lines):  # no line of the run without the time and the count
+            time_, count, _ = line.split(' ', 2)
+            datetime.datetime.strptime(time_, '%H:%M:%S')
+            self.assertEqual((count[0], count[-4:]), ('[', '/32]'), line)
+            self.assertLessEqual(int(count[1:-4]), 32)
+
+    def run_with_one_page(self, io=None, settle=3):
+        run, _ = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=settle), io or FakeIO())
+        return run, json.loads(read(os.path.join(run['dir'], 'meta.json')))
+
+    def time_section(self, run):
+        """The report's section "Where the time went": (its sentence, {part: seconds} of its first table, its other lines)."""
+        text = read(os.path.join(run['dir'], 'report.md')).split('## Where the time went\n\n')[1].split('\n## ')[0]
+        lines = text.split('\n')
+        table = [x for x in lines[2:lines.index('', 2)]]
+        self.assertEqual(table[:2], ['| Part | Seconds | Minutes |', '|---|---|---|'])
+        return lines[0], {row.split(' | ')[0][2:]: float(row.split(' | ')[1]) for row in table[2:]}, lines
+
+    def test_the_report_says_where_the_time_went_and_the_parts_add_up_to_the_whole_run(self):
+        # Usenet Ultimate's top picks fail (12 s a visit), pauses of 2 s. A round of the main sides: 4 plays of 4 s, 2 failed
+        # ones of 12 s, 6 pauses = 52 s; of the one-page side: 2 plays, 2 pauses = 12 s. Main sides 2 x 20 + 4 x 52 = 248 s,
+        # one-page side 2 x 20 + 4 x 12 = 88 s, 2 s for the stand-in before them, 5 s to stop the copies after: 343 s.
+        run, meta = self.run_with_one_page(FakeIO(fail_http_for='uu'), settle=2)
+        sentence, parts, lines = self.time_section(run)
+        self.assertEqual(sentence, 'The whole run took 5.7 minutes (343.0 s), from 18:00:00 to 18:05:43 UTC: '
+                                   'the main sides 4.1 minutes (248.0 s), the one-page side 1.5 minutes (88.0 s).')
+        self.assertEqual(parts, {
+            'Measured list and start time': 84.0,  # 24 top picks played: 2.0 s list + 1.5 s start each
+            'Pauses (`--settle`)': 64.0,           # 32 plays, 2 s after each
+            'Failed plays': 96.0,                  # 8 visits of 12 s
+            'Resets': 80.0,                        # 4 of 20 s
+            'Everything else': 19.0,               # 24 seek checks of 0.5 s, 2 s stand-in start, 5 s to stop the copies
+            'The whole run': 343.0})
+        whole = parts.pop('The whole run')
+        self.assertLessEqual(abs(sum(parts.values()) - whole), 1.0)
+        self.assertEqual(meta['timing']['parts'], {'measured_s': 84.0, 'pauses_s': 64.0, 'failed_s': 96.0, 'resets_s': 80.0,
+                                                   'other_s': 19.0})
+        self.assertEqual((meta['timing']['seconds'], meta['timing']['settle_s']), (343.0, 2))
+
+    def test_no_part_of_the_time_is_counted_twice(self):
+        """Held against the clock, not against the remainder: every play and every pause lies inside a round, the rounds and
+        the resets lie inside the run. So the parts made of plays and pauses never exceed the rounds' own time, and the
+        measured parts never exceed the whole run, so "Everything else" is never below 0. A part counted twice breaks it."""
+        for kw in ({}, {'fail_http_for': 'uu'}):
+            with self.subTest(**kw):
+                run, meta = self.run_with_one_page(FakeIO(**kw), settle=2)
+                timing, parts = meta['timing'], meta['timing']['parts']
+                in_rounds = sum(r['seconds'] for r in timing['rounds'])
+                in_resets = sum(r['seconds'] for r in timing['resets'])
+                self.assertLessEqual(parts['measured_s'] + parts['failed_s'] + parts['pauses_s'], in_rounds)
+                self.assertLessEqual(in_rounds + in_resets, timing['seconds'])
+                self.assertLessEqual(sum(parts[k] for k in ('measured_s', 'pauses_s', 'failed_s', 'resets_s')), timing['seconds'])
+                self.assertGreaterEqual(parts['other_s'], 0)
+
+    def test_every_visit_keeps_its_wall_clock_time_and_a_failed_plays_time_is_in_the_per_title_table(self):
+        run, _ = printed(brainrun.run_all, make_cfg(self.tmp), FakeIO(fail_http_for='uu'))
+        raw = json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits']
+        took = {(br.parse_ts(v['t_end']) - br.parse_ts(v['t_start'])).total_seconds() for v in raw if v['side'] == 'uu'}
+        self.assertEqual(took, {12.0})
+        self.assertEqual({br.visit_wall_s(v) for v in raw if v['side'] != 'uu'}, {4.0})
+        rows = read(os.path.join(run['dir'], 'report.md')).split('## Per title\n\n')[1].split('\n\n')[0].split('\n')[2:]
+        failed = [r for r in rows if '| Usenet Ultimate |' in r]
+        self.assertEqual(len(failed), 8)
+        self.assertTrue(all('failure video: failure video (the whole visit took 12.0 s)' in r for r in failed), failed[0])
+        self.assertFalse(any('took' in r for r in rows if r not in failed))
+
+    def test_the_report_lists_each_round_with_its_reset(self):
+        run, meta = self.run_with_one_page(FakeIO(fail_http_for='uu'), settle=2)
+        _, _, lines = self.time_section(run)
+        at = lines.index('| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |')
+        self.assertEqual(lines[at + 2:at + 10], [
+            '| Main sides | Cold 1 | 18:00:22 | 20.0 | 6 | 52.0 | 0.9 |',
+            '| Main sides | Warm 1 | 18:01:14 | - | 6 | 52.0 | 0.9 |',
+            '| Main sides | Cold 2 | 18:02:26 | 20.0 | 6 | 52.0 | 0.9 |',
+            '| Main sides | Warm 2 | 18:03:18 | - | 6 | 52.0 | 0.9 |',
+            '| One-page side | Cold 1 | 18:04:30 | 20.0 | 2 | 12.0 | 0.2 |',
+            '| One-page side | Warm 1 | 18:04:42 | - | 2 | 12.0 | 0.2 |',
+            '| One-page side | Cold 2 | 18:05:14 | 20.0 | 2 | 12.0 | 0.2 |',
+            '| One-page side | Warm 2 | 18:05:26 | - | 2 | 12.0 | 0.2 |'])
+
+    def test_the_meta_holds_the_time_of_the_whole_run_of_each_pass_each_round_and_each_reset(self):
+        run, meta = self.run_with_one_page()
+        timing = meta['timing']
+        # 2 s stand-in + main sides 208 s + one-page side 96 s + 5 s to stop the copies
+        self.assertEqual((meta['started'], meta['finished'], timing['seconds']),
+                         ('2026-11-10T18:00:00.000Z', '2026-11-10T18:05:11.000Z', 311.0))
+        self.assertEqual(timing['passes'], [
+            {'name': 'main sides', 'sides': ['kaijuflow', 'uu', 'altmount-addon'],
+             'start': '2026-11-10T18:00:02.000Z', 'end': '2026-11-10T18:03:30.000Z', 'seconds': 208.0},
+            {'name': 'one-page side', 'sides': ['kaijuflow-1page'],
+             'start': '2026-11-10T18:03:30.000Z', 'end': '2026-11-10T18:05:06.000Z', 'seconds': 96.0}])
+        # a round of the main sides: 6 plays of 4 s, each followed by a 3 s pause; of the one-page side: 2 plays
+        self.assertEqual([(r['pass'], r['phase'], r['round'], r['start'][11:19], r['end'][11:19], r['seconds'], r['plays'], r['pause_s'])
+                          for r in timing['rounds']], [
+            ('main sides', 'cold', 1, '18:00:22', '18:01:04', 42.0, 6, 18.0),
+            ('main sides', 'warm', 1, '18:01:04', '18:01:46', 42.0, 6, 18.0),
+            ('main sides', 'cold', 2, '18:02:06', '18:02:48', 42.0, 6, 18.0),
+            ('main sides', 'warm', 2, '18:02:48', '18:03:30', 42.0, 6, 18.0),
+            ('one-page side', 'cold', 1, '18:03:50', '18:04:04', 14.0, 2, 6.0),
+            ('one-page side', 'warm', 1, '18:04:04', '18:04:18', 14.0, 2, 6.0),
+            ('one-page side', 'cold', 2, '18:04:38', '18:04:52', 14.0, 2, 6.0),
+            ('one-page side', 'warm', 2, '18:04:52', '18:05:06', 14.0, 2, 6.0)])
+        # one reset before every cold round; the one-page side's first is the switch to one page, which resets too
+        self.assertEqual([(r['pass'], r['phase'], r['round'], r['start'][11:19], r['seconds']) for r in timing['resets']], [
+            ('main sides', 'cold', 1, '18:00:02', 20.0), ('main sides', 'cold', 2, '18:01:46', 20.0),
+            ('one-page side', 'cold', 1, '18:03:30', 20.0), ('one-page side', 'cold', 2, '18:04:18', 20.0)])
+
+
+class PickIO(FakeIO):
+    """FakeIO whose sides list one named Source on top, kept in the visit the way common.play_stream keeps it."""
+
+    def __init__(self, text, size, **kw):
+        FakeIO.__init__(self, **kw)
+        self.text, self.size = text, size
+
+    def visit_http(self, side, kind, vid, tries):
+        out = FakeIO.visit_http(self, side, kind, vid, tries)
+        for t in out.get('tries', [])[:1]:
+            t.update(title=self.text, size=self.size if t['plays'] else common.FAILURE_SIZE)
+        return out
+
+
+class TopPickRunTest(unittest.TestCase):
+    """Ticket #109: the run's report names every top pick, and says which ones changed since the last run."""
+
+    def test_the_report_names_the_top_picks_and_lists_the_ones_that_changed_since_the_last_run(self):
+        tmp = tempdir(self)
+        brainrun.run_all(make_cfg(tmp, name='one'), PickIO('4K REMUX Matrix 💾 95.01 GB FGT', 85436578297))
+        io2 = PickIO('4K WEB-DL Matrix 💾 21.9 GB NEW', 22300000000)
+        io2.clock += datetime.timedelta(minutes=5)
+        run2 = brainrun.run_all(make_cfg(tmp, name='two'), io2)
+        rep = read(os.path.join(run2['dir'], 'report.md'))
+        changed = rep.split('## What changed since the last run')[1].split('##')[0]
+        for side in ('KaijuFlow', 'Usenet Ultimate', "AltMount's own addon"):
+            self.assertIn(f'- Top pick changed: {side}, Matrix (Cold 1, Warm 1, Cold 2, Warm 2): 4K REMUX Matrix 💾 95.01 GB FGT, 85.4 GB '
+                          '-> 4K WEB-DL Matrix 💾 21.9 GB NEW, 22.3 GB', changed)
+        self.assertEqual(changed.count('Top pick changed'), 2 * 3)  # two titles on three sides
+        self.assertIn('| Matrix | KaijuFlow | Cold 1 | 4K WEB-DL Matrix 💾 21.9 GB NEW | 22.3 GB | 5 |', rep.split('## Per title')[1])
+        self.assertIn('Top pick changed: KaijuFlow, Matrix', read(os.path.join(tmp, 'runs', 'INDEX.md')))
+        # the same top picks again: nothing to list
+        io3 = PickIO('4K WEB-DL Matrix 💾 21.9 GB NEW', 22300000000)
+        io3.clock += datetime.timedelta(minutes=10)
+        run3 = brainrun.run_all(make_cfg(tmp, name='three'), io3)
+        self.assertNotIn('Top pick changed', read(os.path.join(run3['dir'], 'report.md')))
+
+
+def interrupt_at(io, n):
+    """Ctrl-C during the n-th visit: the visit raises KeyboardInterrupt, as the real one does inside its HTTP read."""
+    inner = io.visit_http
+
+    def visit(side, kind, vid, tries):
+        if io.visits == n - 1:
+            io.visits += 1
+            raise KeyboardInterrupt
+        return inner(side, kind, vid, tries)
+    io.visit_http = visit
+    return io
+
+
+def terminate_at(io, n):
+    """SIGTERM during the n-th visit, sent to this process as `timeout` sends it; the visit waits for it to land."""
+    inner = io.visit_http
+
+    def visit(side, kind, vid, tries):
+        if io.visits == n - 1:
+            io.visits += 1
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(5)  # cut short by the signal
+        return inner(side, kind, vid, tries)
+    io.visit_http = visit
+    return io
+
+
+def ctrl_c_again_in_the_ending(io):
+    """The owner presses Ctrl-C again while the command finishes its record: once as the test copies are stopped (the
+    cleanup), once as the clock is next read after that (the writing of the record). Real signals, so that a command
+    that ignores them is seen to ignore them."""
+    stop_all, now, pressed = io.stop_all, io.now, []
+
+    def press():
+        pressed.append(1)
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.2)  # a Ctrl-C that is not ignored cuts this short
+
+    def stop_all_and_press():
+        press()
+        stop_all()
+
+    def now_and_press():
+        if len(pressed) == 1:
+            press()
+        return now()
+    io.stop_all, io.now = stop_all_and_press, now_and_press
+    return io, pressed
+
+
+class SignalGuard(unittest.TestCase):
+    """A SIGTERM that no handler of brainrun catches fails the test instead of ending the test process; SIGINT gets
+    Python's own handler back after every test."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+        def unhandled(signum, frame):
+            raise RuntimeError('SIGTERM reached the test: brainrun has no handler for it')
+        self.unhandled = unhandled
+        self.addCleanup(signal.signal, signal.SIGTERM, signal.signal(signal.SIGTERM, unhandled))
+        self.addCleanup(signal.signal, signal.SIGINT, signal.default_int_handler)
+
+    def command(self, argv, io_for):
+        """brainrun.main with the world of `io_for(cfg)`: (exit code, printed lines, the run folder or record folder)."""
+        cfg = make_cfg(self.tmp)
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', io_for), contextlib.redirect_stdout(out):
+            code = brainrun.main(argv + ['--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root',
+                                         cfg['runs_root'], '--test-dir', cfg['test_dir'], '--titles-file', titles])
+        folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
+        return code, out.getvalue().splitlines(), folder
+
+
+class SigtermTest(SignalGuard):
+    """`timeout` ends a command with SIGTERM: a run or a record ended that way is stopped, like one stopped with Ctrl-C."""
+
+    def test_a_run_ended_by_sigterm_is_stopped_and_keeps_its_record(self):
+        code, lines, folder = self.command(['run'], lambda cfg: terminate_at(FakeIO(), 5))
+        self.assertEqual(code, 130)
+        meta = json.loads(read(os.path.join(folder, 'meta.json')))
+        self.assertEqual((meta['status'], meta['stopped']['signal'], meta['stopped']['plays_done']), ('stopped', 'SIGTERM', 4))
+        self.assertEqual(len(json.loads(read(os.path.join(folder, 'raw.json')))['visits']), 4)
+        self.assertTrue(read(os.path.join(folder, 'report.md')).startswith('This run was stopped by SIGTERM at '))
+        self.assertIn('| trial | stopped |', read(os.path.join(os.path.dirname(folder), 'INDEX.md')))
+        self.assertTrue(lines[lines.index(f'stopped: {folder}') + 1].startswith(
+            'Not usable as a baseline: the run was stopped by SIGTERM at '), lines)
+        self.assertIs(signal.getsignal(signal.SIGTERM), self.unhandled)  # the command's handler is gone again
+
+    def test_a_record_ended_by_sigterm_is_stopped_and_keeps_what_was_stored(self):
+        fake = fakes.serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), fakes.FakeIndexer))
+        self.addCleanup(fake.server_close)
+        self.addCleanup(fake.shutdown)
+        fakes.FakeIndexer.hits, fakes.FakeIndexer.limit, fakes.FakeIndexer.force_status = 0, False, None
+        url = f'http://127.0.0.1:{fake.server_port}'
+        os.makedirs(make_cfg(self.tmp)['store'])
+        code, lines, folder = self.command(['record'], lambda cfg: terminate_at(RecordIO(cfg, url), 3))
+        self.assertEqual(code, 130)
+        self.assertTrue(lines[-1].startswith('The recording was stopped by SIGTERM at '), lines[-1])
+        meta = json.loads(read(os.path.join(folder, 'meta.json')))
+        self.assertEqual((meta['status'], meta['stopped']['signal']), ('stopped', 'SIGTERM'))
+        with open(os.path.join(make_cfg(self.tmp)['store'], 'l', 'RECORDING.json')) as f:
+            self.assertEqual(json.load(f)['state'], 'stopped')
+        self.assertIs(signal.getsignal(signal.SIGTERM), self.unhandled)
+
+
+class SecondStopTest(SignalGuard):
+    """Ctrl-C again while a stopped command finishes its record: one line says it is finishing, and the record is written."""
+
+    def test_a_second_ctrl_c_while_the_run_finishes_its_record_is_ignored(self):
+        io, pressed = ctrl_c_again_in_the_ending(interrupt_at(FakeIO(), 5))
+        try:
+            run, lines = printed(brainrun.run_all, make_cfg(self.tmp), io)
+        except KeyboardInterrupt:
+            self.fail('the second Ctrl-C escaped run_all')
+        self.assertEqual(len(pressed), 2)
+        self.assertIn('Stopped by Ctrl-C (SIGINT): the run is finishing its record (report.md, raw.json, meta.json and the '
+                      'INDEX.md row); a second Ctrl-C is ignored until it is written.', lines)
+        self.assertEqual([c[0] for c in io.calls][-3:], ['restore-config', 'standin-stop', 'stop-all'])  # the cleanup's order
+        for name in ('report.md', 'raw.json', 'meta.json'):
+            self.assertTrue(os.path.exists(os.path.join(run['dir'], name)), name)
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['status'], 'stopped')
+        self.assertIn(os.path.basename(run['dir']), read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+        self.assertIs(signal.getsignal(signal.SIGINT), signal.default_int_handler)  # Ctrl-C works again afterwards
+
+    def test_a_second_ctrl_c_while_the_record_finishes_is_ignored(self):
+        fake = fakes.serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), fakes.FakeIndexer))
+        self.addCleanup(fake.server_close)
+        self.addCleanup(fake.shutdown)
+        fakes.FakeIndexer.hits, fakes.FakeIndexer.limit, fakes.FakeIndexer.force_status = 0, False, None
+        cfg = make_cfg(self.tmp)
+        os.makedirs(cfg['store'])
+        io, pressed = ctrl_c_again_in_the_ending(interrupt_at(RecordIO(cfg, f'http://127.0.0.1:{fake.server_port}'), 3))
+        try:
+            rec, lines = printed(brainrun.record_all, cfg, io)
+        except KeyboardInterrupt:
+            self.fail('the second Ctrl-C escaped record_all')
+        self.assertEqual(len(pressed), 2)
+        self.assertIn('Stopped by Ctrl-C (SIGINT): the record command is finishing its record (RECORDING.json, meta.json and '
+                      'the INDEX.md row); a second Ctrl-C is ignored until it is written.', lines)
+        self.assertEqual([c[0] for c in io.calls][-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+        self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
+        self.assertIn(os.path.basename(rec['dir']), read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+
+
+class InterruptedRunTest(unittest.TestCase):
+    """A run stopped by hand (#110) keeps the plays it finished and ends the normal way."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+    def stopped_run(self, n=5, **kw):
+        io = interrupt_at(FakeIO(), n)
+        try:
+            return io, brainrun.run_all(make_cfg(self.tmp, **kw), io)
+        except KeyboardInterrupt:
+            self.fail('the interrupt escaped run_all')
+
+    def test_an_interrupt_during_a_visit_keeps_every_earlier_visit_and_records_the_run_as_stopped(self):
+        io, run = self.stopped_run(5)  # 3 sides x 2 titles x 4 rounds = 24 plays planned
+        d = run['dir']
+        raw = json.loads(read(os.path.join(d, 'raw.json')))
+        self.assertEqual(raw['status'], 'stopped')
+        self.assertEqual([(v['side'], v['phase'], v['round'], v['title']) for v in raw['visits']],
+                         [('kaijuflow', 'cold', 1, 'Matrix'), ('uu', 'cold', 1, 'Matrix'),
+                          ('altmount-addon', 'cold', 1, 'Matrix'), ('uu', 'cold', 1, 'Show S01E01')])
+        meta = json.loads(read(os.path.join(d, 'meta.json')))
+        self.assertEqual(meta['status'], 'stopped')
+        self.assertEqual(meta['stopped'], {
+            'time': '2026-11-10T18:00:38.000Z', 'plays_done': 4, 'plays_planned': 24,  # 2 s stand-in, 20 s reset, 4 visits of 4 s
+            'signal': 'SIGINT', 'stage': 'the pass of the main sides',
+            'during': {'side': 'altmount-addon', 'phase': 'cold', 'round': 1, 'title': 'Show S01E01'}})
+        rows = [x for x in read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines() if os.path.basename(d) in x]
+        self.assertEqual(len(rows), 1)
+        self.assertIn('| trial | stopped |', rows[0])
+        self.assertIn('4 of 24 plays', rows[0])
+
+    def test_the_cleanup_still_runs_after_an_interrupt(self):
+        io, run = self.stopped_run(5, one_page=True)
+        self.assertEqual(io.visits, 5)  # stopped at once
+        self.assertEqual([c[0] for c in io.calls][-3:], ['restore-config', 'standin-stop', 'stop-all'])
+        self.assertEqual(io.up, set())
+
+    def test_the_report_opens_by_saying_the_run_was_stopped_and_is_made_from_the_finished_plays(self):
+        io, run = self.stopped_run(5)
+        rep = read(os.path.join(run['dir'], 'report.md'))
+        self.assertEqual(rep.split('\n')[0],
+                         "This run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the main sides: "
+                         "4 of 24 plays had finished, and it stopped "
+                         "during the next one (AltMount's own addon, cold 1, Show S01E01). The tables below are made from the "
+                         "finished plays alone, so the run is not a baseline.")
+        self.assertNotIn('each round done twice', rep)
+        self.assertIn('| Usenet Ultimate | Cold 1 | 2 of 2 |', rep)  # the failures table: both of its finished plays played
+        self.assertIn('| KaijuFlow | Cold 1 | 1 of 1 |', rep)  # the round was cut short: one of its two titles
+        self.assertNotIn('| Warm 1 |', rep)  # no row for a round that never began
+
+    def time_table(self, run, head):
+        """The rows of one table of the report's section "Where the time went", found by its header line."""
+        lines = read(os.path.join(run['dir'], 'report.md')).split('## Where the time went\n\n')[1].split('\n')
+        at = lines.index(head)
+        return lines[at + 2:lines.index('', at)]
+
+    def test_a_stopped_run_still_says_where_its_time_went(self):
+        # stand-in 2 s, reset 20 s, four plays of 4 s with a 3 s pause after each, stopped as the fifth began, 5 s to stop the copies
+        io, run = self.stopped_run(5, settle=3)
+        meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
+        timing = meta['timing']
+        self.assertEqual((meta['stopped']['time'], meta['finished'], timing['seconds']),
+                         ('2026-11-10T18:00:50.000Z', '2026-11-10T18:00:55.000Z', 55.0))
+        self.assertEqual(timing['parts'], {'measured_s': 14.0, 'pauses_s': 12.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 9.0})
+        self.assertEqual(timing['passes'], [{'name': 'main sides', 'sides': ['kaijuflow', 'uu', 'altmount-addon'],
+                                             'start': '2026-11-10T18:00:02.000Z', 'end': '2026-11-10T18:00:50.000Z', 'seconds': 48.0}])
+        self.assertEqual(timing['rounds'], [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'plays': 4, 'pause_s': 12.0,
+                                             'start': '2026-11-10T18:00:22.000Z', 'end': '2026-11-10T18:00:50.000Z', 'seconds': 28.0}])
+        self.assertEqual(self.time_table(run, '| Part | Seconds | Minutes |'), [
+            '| Measured list and start time | 14.0 | 0.2 |', '| Pauses (`--settle`) | 12.0 | 0.2 |', '| Failed plays | 0.0 | 0.0 |',
+            '| Resets | 20.0 | 0.3 |', '| Everything else | 9.0 | 0.1 |', '| The whole run | 55.0 | 0.9 |'])
+        self.assertEqual(self.time_table(run, '| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |'),
+                         ['| Main sides | Cold 1 | 18:00:22 | 20.0 | 4 | 28.0 | 0.5 |'])
+
+    def test_a_run_stopped_during_a_reset_keeps_the_time_that_reset_had_taken(self):
+        io = FakeIO()
+        reset = io.reset
+
+        def hanging_second_reset(sides, log=print):
+            if [c[0] for c in io.calls].count('reset') == 1:
+                io.calls.append(('reset', tuple(sides)))
+                io.takes(7)  # Ctrl-C seven seconds into it
+                raise KeyboardInterrupt
+            reset(sides, log)
+        io.reset = hanging_second_reset
+        run = brainrun.run_all(make_cfg(self.tmp), io)  # no pauses: 2 s stand-in, 20 s reset, two rounds of 6 plays of 4 s
+        self.assertEqual((run['status'], run['stopped']['time'], run['stopped']['during']), ('stopped', '2026-11-10T18:01:17.000Z', None))
+        timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
+        self.assertEqual([(r['phase'], r['round'], r['seconds']) for r in timing['resets']], [('cold', 1, 20.0), ('cold', 2, 7.0)])
+        self.assertEqual(timing['parts'], {'measured_s': 42.0, 'pauses_s': 0.0, 'failed_s': 0.0, 'resets_s': 27.0, 'other_s': 13.0})
+        self.assertEqual(timing['seconds'], 82.0)
+        self.assertEqual(self.time_table(run, '| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |'), [
+            '| Main sides | Cold 1 | 18:00:22 | 20.0 | 6 | 24.0 | 0.4 |',
+            '| Main sides | Warm 1 | 18:00:46 | - | 6 | 24.0 | 0.4 |',
+            '| Main sides | Cold 2 | - | 7.0 | 0 | - | - |'])  # the round never began
+
+    def test_a_pause_cut_short_counts_for_as_long_as_it_lasted(self):
+        io = FakeIO()
+        sleep = io.sleep
+
+        def second_pause_cut_short(s):
+            if [c[0] for c in io.calls].count('sleep') == 1:
+                io.calls.append(('sleep', s))
+                io.takes(1)  # Ctrl-C one second into a pause of three
+                raise KeyboardInterrupt
+            sleep(s)
+        io.sleep = second_pause_cut_short
+        run = brainrun.run_all(make_cfg(self.tmp, settle=3), io)
+        timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
+        self.assertEqual((run['status'], timing['rounds'][0]['plays'], timing['rounds'][0]['pause_s']), ('stopped', 2, 4.0))
+        # 2 s stand-in, 20 s reset, two plays of 4 s, pauses of 3 s and 1 s, 5 s to stop the copies
+        self.assertEqual((timing['seconds'], timing['parts']), (39.0, {
+            'measured_s': 7.0, 'pauses_s': 4.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 8.0}))
+
+    def test_a_null_run_that_made_no_play_still_has_its_time_in_the_meta(self):
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}))
+        timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
+        self.assertEqual(run['status'], 'null')
+        self.assertEqual((timing['seconds'], timing['passes'], timing['rounds'], timing['resets']), (5.0, [], [], []))  # 5 s to stop the copies
+        self.assertEqual(timing['parts'], {'measured_s': 0.0, 'pauses_s': 0.0, 'failed_s': 0.0, 'resets_s': 0.0, 'other_s': 5.0})
+
+    def test_an_interrupt_between_two_plays_names_no_play(self):
+        io = FakeIO()
+        sleeps = []
+
+        def sleep(s):
+            sleeps.append(s)
+            if len(sleeps) == 2:
+                raise KeyboardInterrupt
+        io.sleep = sleep
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        self.assertEqual((run['status'], len(run['visits'])), ('stopped', 2))
+        self.assertIsNone(run['stopped']['during'])
+        self.assertIn('2 of 24 plays had finished, and it stopped between two plays.',
+                      read(os.path.join(run['dir'], 'report.md')).split('\n')[0])
+
+    def test_a_stopped_run_judges_no_target_in_its_report_or_its_check(self):
+        io, run = self.stopped_run(5)
+        targets = read(os.path.join(run['dir'], 'report.md')).split('## Targets\n\n')[1].split('\n## ')[0]
+        self.assertEqual(targets.strip(), 'Not judged: the run was stopped before its last play, and the targets are '
+                                          'judged on a finished run alone.')
+        out = io_module.StringIO()
+        with contextlib.redirect_stdout(out):
+            runcheck.check_command(run['dir'])
+        self.assertEqual([x for x in out.getvalue().splitlines() if x.startswith('Target')], [
+            'Targets: not judged: the run was stopped before its last play, and the targets are judged on a finished run alone.'])
+
+    def test_a_stopped_run_is_not_the_previous_run(self):
+        self.stopped_run(5)
+        self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
+
+    def test_check_says_a_stopped_run_is_not_usable_as_a_baseline(self):
+        io, run = self.stopped_run(5)
+        out = io_module.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = runcheck.check_command(run['dir'])
+        self.assertEqual(code, 1)
+        first = out.getvalue().splitlines()[0]  # the fake stand-in's one miss is a second reason, after this one
+        self.assertTrue(first.startswith(
+            "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "Show S01E01)"), first)
+
+    def test_the_run_command_ends_a_stopped_run_with_the_check_and_exit_code_130(self):
+        cfg = make_cfg(self.tmp)
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(FakeIO(), 5)), contextlib.redirect_stdout(out):
+            code = brainrun.main(['run', '--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root', cfg['runs_root'],
+                                  '--test-dir', cfg['test_dir'], '--titles-file', titles])
+        self.assertEqual(code, 130)
+        lines = out.getvalue().splitlines()
+        folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
+        self.assertIn(f'stopped: {folder}', lines)
+        first = lines[lines.index(f'stopped: {folder}') + 1]
+        self.assertEqual(read(os.path.join(folder, 'CHECK.txt')).splitlines()[0], first)
+        self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
+        self.assertTrue(first.startswith(  # the command's own --settle: a 3 s pause after each of the four plays
+            "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:50.000Z in the pass of the "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "Show S01E01)"), first)
 
 
 class WaitSwitchTest(unittest.TestCase):
@@ -503,6 +1065,7 @@ class RecordIO(FakeIO):
 
     def start_standin(self, logpath, mode='replay', wait=True):
         self.calls.append(('standin-start', mode, wait))
+        self.takes(self.STANDIN_START_S)
         self.mode = mode
         self.seen = set()  # a new pass starts cold again
         conf = self.conf()
@@ -531,6 +1094,7 @@ class RecordIO(FakeIO):
         self.calls.append(('visit', side, vid))
         if not self.is_up(side):
             return self.down_answer(tries)
+        self.takes(self.LIST_S + self.START_S + self.SEEKS_S)
         if self.limit_from_visit and self.visits >= self.limit_from_visit:
             fakes.FakeIndexer.limit = True
         base = f'http://127.0.0.1:{self.port}/fake/api'
@@ -600,6 +1164,28 @@ class RecordTest(unittest.TestCase):
         rec = {'new_answers': 4, 'stored_answers': 0, 'errors': 0, 'titles': ['A', 'B'],
                'listed': {'kaijuflow': 2, 'kaijuflow-1page': 0}}
         self.assertIn('KaijuFlow, one page per indexer listed no Sources for 2 of 2 titles.', brainrun.record_summary(rec))
+
+    def test_every_play_line_of_a_record_starts_with_the_utc_time_and_a_count_and_the_proof_says_it_is_the_proof(self):
+        self.cfg['one_page'] = True
+        io = RecordIO(self.cfg, self.url)
+        rec, lines = printed(brainrun.record_all, self.cfg, io)
+        plays = play_lines(lines)
+        self.assertEqual(len(plays), 32)  # 4 sides x 2 titles x 2 rounds, in the record pass and again in the proof
+        # started 18:00:00, reset done at :20, stand-in up at :22, a visit takes 4 s
+        self.assertEqual(plays[0], '18:00:26 [1/16] kaijuflow cold Matrix: 3 Sources, top pick plays')
+        self.assertEqual(plays[11], '18:01:10 [12/16] kaijuflow warm Show S01E01: 3 Sources, top pick plays')
+        self.assertEqual(plays[12], '18:01:34 [13/16] kaijuflow-1page cold Matrix: 3 Sources, top pick plays')  # after the 20 s switch
+        self.assertEqual(plays[15].split()[1], '[16/16]')
+        # the proof: reset 20 s, stand-in 2 s, then its own count
+        self.assertEqual(plays[16], '18:02:12 [1/16] proof kaijuflow cold Matrix: 3 Sources, top pick plays')
+        self.assertEqual(plays[31].split()[1:3], ['[16/16]', 'proof'])
+        # the resets' lines start the same way: before the pass, at the switch to one page, before the proof, at the end
+        self.assertEqual(lines[0], '18:00:00 [0/16] reset nzbdav: restored from template')
+        self.assertEqual(lines[lines.index(plays[11]) + 1], '18:01:10 [12/16] reset kaijuflow: restored from template')
+        self.assertEqual(lines[lines.index(plays[15]) + 1], '18:01:46 [0/16] proof reset nzbdav: restored from template')
+        self.assertEqual(lines[lines.index(plays[27]) + 1], '18:02:56 [12/16] proof reset kaijuflow: restored from template')
+        self.assertEqual(lines[-1], '18:03:52 [16/16] reset kaijuflow: up')
+        self.assertTrue(all(x[2] == x[5] == ':' and x[9] == '[' for x in lines), lines)
 
     def test_test_copies_are_reset_before_and_after_and_stopped(self):
         io, _ = self.record()
@@ -685,6 +1271,97 @@ class RecordTest(unittest.TestCase):
         self.assertIn('NULL', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+
+    # ---- a record pass stopped by hand (#110)
+    def stopped_record(self, n):
+        io = interrupt_at(RecordIO(self.cfg, self.url), n)
+        try:
+            return io, brainrun.record_all(self.cfg, io)
+        except KeyboardInterrupt:
+            self.fail('the interrupt escaped record_all')
+
+    def test_an_interrupt_during_the_record_pass_keeps_what_was_stored_and_records_it_as_stopped(self):
+        io, rec = self.stopped_record(3)
+        self.assertEqual(rec['status'], 'stopped')
+        # 20 s reset, 2 s stand-in, two visits of 4 s
+        self.assertEqual((rec['stopped']['time'], rec['stopped']['plays_done']), ('2026-11-10T18:00:30.000Z', 2))
+        self.assertEqual(len(self.stored()), 3)  # KaijuFlow's two pages and Usenet Ultimate's one, for the first title
+        self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
+        row = read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines()[-1]
+        self.assertIn('| trial (record) | stopped |', row)
+        self.assertIn(os.path.basename(rec['dir']), row)
+        st = self.state()
+        self.assertEqual((st['state'], st['why']), ('stopped', 'the record command was stopped by Ctrl-C (SIGINT) at '
+                                                    '2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, '
+                                                    "and it stopped during the next one (AltMount's own addon, cold, Matrix)"))
+        kinds = [c[0] for c in io.calls]
+        self.assertEqual(kinds.count('standin-start'), 1)  # no proof of a pass that did not finish
+        self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+
+    def test_an_interrupt_during_the_proof_records_it_as_stopped_and_a_run_refuses_the_recording(self):
+        io, rec = self.stopped_record(13)  # the pass makes 12 visits; the 13th is the proof's first
+        self.assertEqual((rec['status'], rec['stopped']['stage'], rec['stopped']['plays_done']), ('stopped', 'the proof replay', 0))
+        self.assertEqual(len(self.stored()), 12)
+        self.assertEqual(self.state()['state'], 'stopped')  # not proven, so not complete: the preflight of a run refuses it
+        self.assertEqual([c[0] for c in io.calls][-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+        self.assertEqual(io.up, set())
+
+    def test_an_interrupt_in_the_opening_reset_or_the_stand_ins_start_still_ends_the_normal_way(self):
+        for step in ('reset', 'start_standin'):
+            with self.subTest(step=step):
+                io = RecordIO(self.cfg, self.url)
+                real = getattr(io, step)
+
+                def cut_short(*args, _step=step, _real=real, **kw):  # Ctrl-C in the first call only
+                    setattr(io, _step, _real)
+                    raise KeyboardInterrupt
+                setattr(io, step, cut_short)
+                try:
+                    rec = brainrun.record_all(self.cfg, io)
+                except KeyboardInterrupt:
+                    self.fail('the interrupt escaped record_all')
+                self.assertEqual((rec['status'], rec['stopped']['plays_done'], rec['stopped']['during']), ('stopped', 0, None))
+                self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
+                self.assertTrue(self.state()['why'].endswith('in the record pass: 0 of 12 plays had finished, and it stopped '
+                                                             'before its first play'), self.state()['why'])
+                self.assertIn(os.path.basename(rec['dir']), read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+                self.assertEqual([c[0] for c in io.calls][-2:], ['reset', 'stop-all'])  # the cleanup still runs
+                self.assertEqual(io.up, set())
+
+    def test_check_on_a_stopped_record_folder_says_it_holds_a_recording_and_how_it_stopped(self):
+        io, rec = self.stopped_record(3)
+        out = io_module.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = runcheck.check_command(rec['dir'])
+        self.assertEqual(code, 1)
+        self.assertEqual(out.getvalue().splitlines()[0],
+                         'Not usable as a baseline: the folder holds a recording, not a timed run; the recording was stopped '
+                         'by Ctrl-C (SIGINT) at 2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, and '
+                         "it stopped during the next one (AltMount's own addon, cold, Matrix).")
+
+    def test_a_stopped_record_and_a_stopped_run_say_how_they_stopped_in_one_shape(self):
+        io, rec = self.stopped_record(3)
+        run = brainrun.run_all(make_cfg(self.tmp), interrupt_at(FakeIO(), 5))
+        self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:30.000Z', 'signal': 'SIGINT', 'stage': 'the record pass',
+                                          'plays_done': 2, 'plays_planned': 12,
+                                          'during': {'side': 'altmount-addon', 'phase': 'cold', 'round': None, 'title': 'Matrix'}})
+        self.assertEqual(sorted(run['stopped']), sorted(rec['stopped']))
+
+    def test_the_record_command_ends_a_stopped_record_with_one_sentence_and_exit_code_130(self):
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(self.cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(RecordIO(cfg, self.url), 3)), \
+                contextlib.redirect_stdout(out):
+            code = brainrun.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
+                                  self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles])
+        self.assertEqual(code, 130)
+        last = out.getvalue().splitlines()[-1]
+        self.assertTrue(last.startswith('The recording was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:36.000Z in the record '
+                                        'pass: 2 of 12 plays had finished, and it stopped during the next one '
+                                        "(AltMount's own addon, cold, Matrix). What was stored is kept; "
+                                        'run the same command again to top up. Folder: '), last)
 
     def marker_files(self):
         return sorted(f for f in os.listdir(self.cfg['store']) if f.startswith('LIMIT_REACHED'))

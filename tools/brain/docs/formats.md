@@ -1,24 +1,144 @@
 # Brain tools: formats
 
-What the files and lines look like: run folder, recording state, misses, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+What the files and lines look like: run folder, top picks, targets, expected settings, recording state, misses, the page's `story.html` and archive, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Run folder
 
-**Run records.** Every run gets its own folder `<runs-root>/<UTC date-time>-<name>/` (default runs root `~/kaijuflow-notes/brain-runs`; use a temporary one for any trial) with `settings.json` (every side's settings, secrets replaced by `***`, exactly the settings reader's output), `meta.json` (settings, run-level facts, container addresses, KaijuFlow commit, titles, indexers, status, what changed), `raw.json` (every visit with its timings, step lines and imports), `logs/` (stand-in log and the test containers' logs, scrubbed of keys) and `report.md`. One row per run is appended to `<runs-root>/INDEX.md` (date, name, result, what changed, headline numbers, folder link). Nothing is overwritten: a rerun, even in the same second, gets a new folder, and INDEX.md is only ever appended to. The report opens with one sentence, then "What changed since the last run" (a diff of settings, run-level facts (stand-in replay wait on or off, the one-page side), KaijuFlow commit, titles, indexers and sides against the newest earlier finished run; a run recorded in the older shape, which kept those facts inside its settings, is read as facts too, so it shows no false difference, always ending with the time of day of both runs, and with how many null runs lie between them and when; the same list goes into the INDEX.md row), then the shared-steps table (search time split into "Indexers", the recorded wait, and "Side's own work"), the extras table, failures split into indexer limit / Backend rejection / failure video / other / not recorded, per-title detail and, when there are misses, a "Not recorded" section with the top-up command; every column is defined under its table.
+**Run records.** Every run gets its own folder `<runs-root>/<UTC date-time>-<name>/` (default runs root `~/kaijuflow-notes/brain-runs`; use a temporary one for any trial) with `settings.json` (every side's settings, secrets replaced by `***`, exactly the settings reader's output), `meta.json` (settings, run-level facts, container addresses, KaijuFlow `commit` (the one the test image was built from) and the repository's `head`, titles, indexers, status, what changed), `raw.json` (every visit with its timings, step lines and imports), `logs/` (stand-in log and the test containers' logs, scrubbed of keys) and `report.md`. One row per run is appended to `<runs-root>/INDEX.md` (date, name, result, what changed, headline numbers, folder link). Nothing is overwritten: a rerun, even in the same second, gets a new folder, and INDEX.md is only ever appended to. The report opens with one sentence, then the targets table (see [Targets](#targets-targetsjson)), then "What changed since the last run" (a diff of settings, run-level facts (stand-in replay wait on or off, the one-page side), KaijuFlow commit, titles, indexers and sides against the newest earlier finished run; a run recorded in the older shape, which kept those facts inside its settings, is read as facts too, so it shows no false difference, then one line per title and side whose top pick changed, always ending with the time of day of both runs, and with how many null runs lie between them and when; the same list goes into the INDEX.md row), then the shared-steps table (search time split into "Indexers", the recorded wait, and "Side's own work"), the extras table, failures split into indexer limit / Backend rejection / failure video / other / not recorded, per-title detail (with each visit's top pick and its size) and, when there are misses, a "Not recorded" section with the top-up command; every column is defined under its table.
+
+**Top picks (#109).** The top pick of a visit is the first Source in the side's list, the one that was played; `raw.json` holds it as the visit's `tries[0]` (`title`: the first 140 characters of the text the side showed for it, `listed_size`: the size that text states after the disk sign, read from the whole text so a long release name cannot cut it off (a run made before it has only `title`, and the size is read from that), `size`: bytes of the served file, `plays`) and, for KaijuFlow, `played_source` (the release name from its own log). `brainreport.top_pick(visit)` reads it. The per-title table shows it in two columns:
+
+- **Top pick**: the release name where KaijuFlow's log gives it, otherwise the side's list text (Usenet Ultimate and AltMount's own addon give no other name). "-" when the side listed no Source.
+- **Size**: the served file's size in GB of 1000 x 1000 x 1000 bytes. A top pick that did not play serves the failure video, whose size says nothing about the Source, so its row shows the size its list text states after the disk sign, marked `listed` (`95.01 GB listed`): the indexer's figure for the post, which KaijuFlow counts in GB of 1024 x 1024 x 1024 bytes.
+
+"What changed since the last run" lists a title whose top pick differs from the previous run's, one line per title and side, with the rounds it differs in and the old and the new pick of the first of them:
+
+```
+Top pick changed: KaijuFlow, Inception (Cold 1, Warm 1, Cold 2, Warm 2): Inception.2010.2160p.UHD.BluRay.Remux.HEVC.DTS-HD.MA.5.1-FGT, 85.4 GB -> Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW, 22.3 GB
+```
+
+The previous run's top picks are read from its folder's `raw.json`, so a run made before this column existed is compared too. Whether two picks are the same Source is decided by the size of the served file when both played, otherwise by the size both lists state, and by the name only when neither size can be compared. The name is not used first, because a side's list text also holds the Source's age and its health-check mark, which change from one run to the next. Only rounds both runs hold are compared, and a title or a side that only one run has is not a changed top pick (it is listed as added or removed). When the previous run's folder holds no top picks, nothing is compared and no line is written.
+
+**A stopped run (#110).** Ctrl-C or SIGTERM (what `timeout` sends) during a run stops the pass and then runs the normal ending, so the folder is whole; a second Ctrl-C while it finishes is ignored until the record is written. `meta.json` and `raw.json` have status `stopped`, and `meta.json` has `stopped`: `time` (when it was stopped), `signal` (`SIGINT` for Ctrl-C, or `SIGTERM`), `stage` (`the pass of the main sides`, `the pass of the one-page side`, or null before the first pass), `plays_done`, `plays_planned` (as the play lines count them) and `during` (`side`, `phase`, `round`, `title` of the play that was cut off, or null when it stopped between two plays). A record command keeps `stopped` in the same shape (its `stage` is `the record pass` or `the proof replay`, its plays are counted per stage as its play lines count them, and `round` is null: a record's rounds have no number). `raw.json` holds every play that finished; the cut-off play is not in it. `report.md` opens with one sentence saying the run was stopped, by what, when and how far it got, then has the usual sections made from the finished plays alone (a round that was cut short shows fewer titles in "Top pick plays"; a round that never began has no row), except the targets: a run that is not finished gets no target verdict (see [Targets](#targets-targetsjson)). The INDEX.md row has result `stopped` and that same sentence as its headline, with no numbers. A stopped run is never the "previous run" of a diff, and `check` says it is not usable as a baseline.
+
+**Wall-clock time (#112).** A run says how long it took and on what. Every figure is in seconds, by the runner's own clock.
+
+- `meta.json` has `timing`:
+
+  | Field | Meaning |
+  |---|---|
+  | `seconds` | the whole run, from `started` to `finished` |
+  | `settle_s` | the pause asked for after every play (`--settle`) |
+  | `passes` | one entry per pass, `main sides` and then `one-page side`: `name`, `sides`, `start`, `end`, `seconds`. A pass holds its resets and its rounds |
+  | `rounds` | one entry per round of each pass: `pass`, `phase`, `round`, `start`, `end`, `seconds`, `plays` and `pause_s` (the pauses of the round added up, as the clock saw them). A round goes from its first play to the end of the pause after its last play |
+  | `resets` | one entry per reset: `pass`, `phase` and `round` of the cold round it came before, `start`, `end`, `seconds`. The first reset of the one-page side is the switch to one page, which resets too |
+  | `parts` | where the whole run went: `measured_s`, `pauses_s`, `failed_s`, `resets_s`, `other_s` |
+
+- The five `parts` add up to `seconds`. `measured_s` is the list time plus the start time of every top pick that played; `pauses_s` the pauses of all rounds; `failed_s` the whole visit (`t_start` to `t_end`) of every top pick that did not play; `resets_s` all resets; `other_s` is what is left: the seek checks after a top pick played, reading the logs after each play, starting and stopping the stand-in and the test copies.
+- `raw.json`: every visit has `t_start` and `t_end`, so its own wall-clock time is the difference.
+- `report.md` ends with the section "Where the time went": one sentence with the whole run and each pass, a table of the five parts and the whole run (seconds to one decimal, so the parts as printed are within a second of the total), and a table with one row per round and the reset before it. In "Per title", the Result of a top pick that did not play ends with how long its whole visit took, for example `failure video (the whole visit took 37.4 s)`.
+- A run that ended early (stopped, null, failed) has `timing` too. A stretch that was cut short keeps the time it had taken; a run stopped during a reset shows that reset in a row with no round. Only the report of a stopped run has the section; a null or failed run has no tables at all.
+- A run made before #112 has no `timing`, and its report has no such section.
 
 Usenet Ultimate's Import column is NzbDAV's own job time (#82): after each Usenet Ultimate visit the runner reads the test NzbDAV's history answer (port 3001, read-only) and takes `download_time` of the job that is new since before the visit. It is whole seconds (NzbDAV reports no fractions), against AltMount's log figure to the millisecond; the report's column definition says so. A visit that adds no job (item already imported) reads "-". The Usenet Ultimate test copy's own log is kept as `logs/uu-test.log` (scrubbed).
 
+## Targets (`targets.json`)
+
+The targets KaijuFlow is measured against are in `tools/brain/targets.json`, one entry per target under `targets`. Change a target there and nowhere else.
+
+```json
+{"target": "Cold start within 1 s of the addon", "measure": "cold start", "against": "altmount-addon", "margin": 1}
+```
+
+| Field | Meaning |
+|---|---|
+| `target` | the target in plain words, as it is printed |
+| `measure` | what is measured on KaijuFlow, see the next table |
+| `against` | the side KaijuFlow is compared with: `uu`, `altmount-addon` or `kaijuflow-1page` |
+| `limit` | a fixed limit instead of a side (seconds, or plays for `plays per round`); an entry has `against` or `limit`, never both |
+| `margin` | how far KaijuFlow may fall short and still meet the target, in the measure's unit; 0 for none |
+
+| `measure` | Figure | Takes |
+|---|---|---|
+| `cold start`, `warm start` | median seconds from pressing play to the first byte, over the top picks that played in both cold (or both warm) rounds together | `against` or `limit` |
+| `cold list`, `warm list` | median seconds until the Stream list arrived, over every title of both rounds together | `against` or `limit` |
+| `plays` | top picks that played out of those counted, all four rounds together (margin: a share between 0 and 1) | `against` |
+| `plays per round` | top picks that played out of those counted, for each round on its own (margin: plays) | `limit` |
+
+"Counted" leaves out a top pick that failed only because a request was not recorded, as everywhere in the report. How a target is judged is in [rules.md](rules.md#targets).
+
+**Where the result shows.** `check --run <folder>` prints one line per target after its other lines, and `report.md` has the same as a table (Target, This run, Result) right under its opening lines, followed by how many targets are met:
+
+```
+Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 3.46 s. Met.
+Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 6.73 s, Usenet Ultimate 5.51 s. Not met (1.22 s slower), inside the noise: KaijuFlow's two cold rounds differ by 1.86 s (8.59 and 6.73 s), more than the 1.22 s the target is missed by.
+```
+
+Only a finished run (status `ok`) is judged: for a stopped, null or failed run, the check prints one line instead (`Targets: not judged: the run was stopped before its last play, and the targets are judged on a finished run alone.`) and the report's Targets section is that one sentence. The check and the report go through the same gate (`brainreport.targets_not_judged`). If `targets.json` cannot be used, one sentence says why (`Targets: not judged (targets.json, entry 2: the margin is not a number from 0 up).`) and the rest of the check and the report is unchanged.
+
+## Expected settings (`expected-settings.json`)
+
+The settings every test copy is expected to have are in `tools/brain/expected-settings.json`; the preflight compares each copy with it ([rules.md](rules.md#expected-settings-109)). Change the standard there and in the test copies together.
+
+```json
+{"about": "...",
+ "expected": [
+  {"copies": ["kaijuflow", "uu"],
+   "settings": {"movieFilters": {"sortOrder": ["regexScore", "quality"], "maxFileSize": 32212254720},
+                "tvFilters": {"sortOrder": ["regexScore", "quality"], "maxFileSize": 10737418240}}}
+ ]}
+```
+
+(The example is cut short; the file holds both sections in full.)
+
+| Field | Meaning |
+|---|---|
+| `about` | what the file is, in plain words; not read by the tools |
+| `expected` | the entries; each one names copies and the settings they must have |
+| `copies` | the test copies the entry is for: `kaijuflow`, `uu`, `nzbdav`, `altmount-addon`, `altmount-kf` |
+| `settings` | setting name and expected value. The name is the setting's name in the run's `settings.json`: a top-level name (`movieFilters`) or a dotted one (`healthChecks.sampleCount`) |
+
+- A value that is an object (a section) is compared as a whole: every value in it must match, and a value the copy has there and the file does not is a difference too. A list of plain values (an order) is one setting.
+- The value is compared as the run's `settings.json` holds it. KaijuFlow and Usenet Ultimate keep numbers and true/false. The AltMount copies keep every value as text, and NzbDAV most of them, so those are written as text (`"2"`, `"true"`).
+- The file is in the repository: no host, address, login or key. An entry whose setting has a secret name (the settings reader's own test, `brainreport.is_secret_name`) is refused.
+- A file that cannot be used fails the preflight with one sentence that says why.
+
+Today the file holds the standard sort and filter rules of KaijuFlow and Usenet Ultimate and nothing else; any other setting the settings reader reads can be added the same way.
+
 ## Recording state and misses
 
-**The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`: the proof replay had no miss; `incomplete`: it had, with each missed request and the side that asked in `misses`; or `stopped` with `why` and `when`) and `errors`, the number of answers in this pass that were errors and were not stored. The command ends with one sentence, for example "12 answers were errors and were not stored: run record again to top them up." The preflight of a run passes only a `complete` recording.
+**The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`: the proof replay had no miss; `incomplete`: it had, with each missed request and the side that asked in `misses`; or `stopped` with `why` and `when`: an indexer limit, a failure, or the command was stopped by Ctrl-C or SIGTERM) and `errors`, the number of answers in this pass that were errors and were not stored. The command ends with one sentence, for example "12 answers were errors and were not stored: run record again to top them up." The preflight of a run passes only a `complete` recording.
 
-**Nothing is measured.** A record pass gets its own folder `<runs-root>/<date>-<name>-record/` with `logs/standin.log` and `meta.json` (status `recorded`, `null` or `failed`, new and already-stored answer counts), but no report, no tables, no INDEX.md row unless it is NULL or failed, and it is never the "previous run" of a diff. Its timings (the first side to ask waits for the real indexer) reach nobody's numbers.
+**Nothing is measured.** A record pass gets its own folder `<runs-root>/<date>-<name>-record/` with `logs/standin.log` and `meta.json` (status `recorded`, `null`, `stopped` or `failed`, new and already-stored answer counts; a stopped pass also has `stopped`, in the shape a stopped run keeps it in (see "A stopped run" above)), but no report, no tables, no INDEX.md row unless it is NULL, stopped or failed, and it is never the "previous run" of a diff. Its timings (the first side to ask waits for the real indexer) reach nobody's numbers.
 
 **Misses and indexer time, matched to the side and the visit.** Every stand-in request line says which address asked and when its answer was sent (`from=<ip> t=<epoch ms>`). The runner reads each test container's address on the test network with `docker inspect` (read-only, test containers only) after every reset, because a container gets its address when it starts, and keeps them in the run's `meta.json` (`addresses`). A line belongs to the side whose container sent it, and within that side to the visit that was current for that side when the line was sent (from that side's visit start until its next visit starts: the same rule the step lines use), so a late background request cannot land on another side's visit. A line from an unknown address falls back to the time window of the visit in progress; the report says how many lines were matched that way. From a visit's lines the report takes:
 
 
 - the misses: every one is counted per side and title in the "Not recorded" table. A failed top pick is the failure cause "Not recorded", and left out of the plays-out-of-ten figure, only when the miss can be the cause: the list came back empty and that side had a search miss for that visit, or that side had an NZB miss while the top pick played (after the list arrived, until the visit ended). Otherwise the pick keeps its real cause (indexer limit, Backend rejection, failure video, other) and stays in the figure.
 - the indexer time: the time that side spent waiting on replayed indexer answers while the list was loading, that is the union of the intervals `[t - wait_ms, t]` of its search answers between the visit's start and the list's arrival (parallel indexers and parallel pages are not added up; NZB files and play-time requests are left out). "Side's own work" is the list time minus that. With the wait off, both read as before (0 and the list time).
+
+## The page: `story.html` and the page archive
+
+`build_page.py` builds the speed-check page (`index.html` and `tables.json`) from run folders; the runbook's "Publish the page" has the steps. The words of a section come from one of two places, never from a built page.
+
+**`story.html`, a run's written findings.** An optional file in a timed run's folder, written by hand: the run's section as HTML, from its `<h2>` heading down, without the `<section>` frame. The builder puts the run's tables in where the story names them:
+
+| Name in the story | What goes there |
+|---|---|
+| `__SUMMARY_TABLE__` | one row per side: start and list medians, cold and warm, and how often the top pick played |
+| `__ROUND_TABLE__` | one row per side with the four rounds side by side |
+| `__DETAILS__` | the two "All numbers" blocks; their per-title tables go to `tables.json` as `<run folder>-start` and `<run folder>-list` (the run folder's name, for example `2026-11-13T053200Z-baseline-start`, so two runs with the same name can share the page) |
+
+A part the story does not name is not shown. Numbers written into the story's sentences are not checked against the run. A run without `story.html` gets a "Numbers only" section made of the same three parts.
+
+**The page archive, for runs whose folders are gone.** `tools/brain/page-archive/<date>-<name>/` holds one lost run as it was published; nothing rebuilds it. An entry has the files it needs out of:
+
+- `section.html`: the run's section. It goes below the sections of the timed runs, newest entry first (by folder name).
+- `appendix.html`: blocks that go below "What the words mean".
+- `footer.html`: `<div>` lines for the page's footer.
+- `tables.json`: the tables for the `data-table` places in those files.
+
+The build stops with one sentence when two tables share a name (an archive entry whose tables carry a run folder's name) or a place has no table. Version 7 of the page, published on 2026-11-13, named the 2026-11-13 run's tables `baseline-start` and `baseline-list`; a build of that run names them after its folder, in the slots and in `tables.json` alike, and is otherwise that page. To keep a run whose folder is about to go: copy its section out of a built `index.html` (from its `<!-- <name> <date> start -->` line to the matching `end` line) into a new entry's `section.html`, and its two tables into the entry's `tables.json`.
 
 ## Step lines (`[KF-STEP]`)
 

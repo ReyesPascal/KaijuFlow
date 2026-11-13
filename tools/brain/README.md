@@ -1,6 +1,6 @@
 # Brain tools
 
-Scripts for live checks on Brain (the owner's server), written for the 1338 Brain check (2026-11-09). They read from the live services and change nothing on them. **The owner's OK is needed before any Brain check**, and the working containers (UU 1337, NzbDAV 3000, AltMount 8085) are never changed, restarted or replaced.
+Scripts for checks on Brain (the owner's server), first written for the 1338 Brain check (2026-11-09). The rules for every Brain check (the owner's go, live containers, indexers, connection caps) are in **[RUNBOOK.md](RUNBOOK.md)**, "Rules".
 
 Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, in the shell tool's background mode. Each script prints one line per title as it goes and ends with `done in N s`; a log without that line is an unfinished run. Watch the log while it runs (a monitor that prints each title line and any line with `Error` or `Traceback`) and stop and report on the first error instead of waiting for the end.
 
@@ -23,8 +23,8 @@ Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, i
 Start with **[RUNBOOK.md](RUNBOOK.md)**: the one-page recipe for a timed run (preflight, record, run, check). The reference pages hold the rest:
 
 - [docs/run-and-record.md](docs/run-and-record.md): how `brainrun.py run`, `record`, `smoke` and the record recipe work, and the record command's exit codes.
-- [docs/rules.md](docs/rules.md): the cap rule, the settings table and preflight, the replay wait, the indexer allowance (`limits.json`, `usage`).
-- [docs/formats.md](docs/formats.md): run folder, recording state, misses, and the `[KF-STEP]` step lines.
+- [docs/rules.md](docs/rules.md): the cap rule, the settings table and preflight, the expected settings the preflight holds the test copies to, the replay wait, the indexer allowance (`limits.json`, `usage`), how the targets are judged.
+- [docs/formats.md](docs/formats.md): run folder, top picks, the targets file (`targets.json`), the expected settings file (`expected-settings.json`), recording state, misses, the page's `story.html` and archive, and the `[KF-STEP]` step lines.
 - [docs/testbed.md](docs/testbed.md): the test copies of every side (`compose.test.yaml`, `testbed.py`) and the 1338 test container.
 
-Code: `brainreport.py` (log parsing, medians, report, run folder; pure logic), `brainrun.py` (orchestration), `allowance.py`, `runcheck.py`, `testbed.py`; tests are the `test_*.py` files next to them (run in CI, no Docker): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
+Code: `brainreport.py` (log parsing, medians, targets, report, run folder; pure logic), `brainrun.py` (orchestration), `allowance.py`, `runcheck.py`, `testbed.py`, `build_page.py` (the speed-check page from run folders and `page-archive/`; RUNBOOK, "Publish the page"); tests are the `test_*.py` files next to them (run in CI, no Docker): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.

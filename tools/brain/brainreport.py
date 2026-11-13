@@ -1,14 +1,18 @@
 """Merge, report and run records for the Brain runs (spec #58, ticket #62). Pure logic: no Docker, no network.
 
 brainrun.py collects one "visit" per run phase, side and title; this module turns visits into
-medians, a failure split, a diff against the previous run, the plain-language report and the
-run folder / INDEX.md bookkeeping.
+medians, a failure split, a diff against the previous run, the targets of targets.json judged on
+the run, the plain-language report and the run folder / INDEX.md bookkeeping.
 """
 import datetime
 import json
 import os
 import re
 import statistics
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import common  # noqa: E402
 
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
@@ -56,13 +60,18 @@ COLUMN_HELP = {
     'Not recorded': 'failures where a miss can be the cause: the list came back empty after a request the recording does not hold, '
                     'or the NZB file of the top pick was not recorded. This says nothing about the side or the Source: top up the recording.',
     'Title': 'the film or episode asked for.',
+    'Top pick': 'the first Source in the side\'s list, the one that was played: its release name where KaijuFlow\'s own log '
+                'gives it, otherwise the text the side showed for it in its list. "-" means there was none: the side listed no Source.',
+    'Size': 'the size of the top pick\'s file as the Backend served it, in GB of 1000 x 1000 x 1000 bytes. For a top pick that '
+            'did not play it is the size the side states in its list, marked "listed": the indexer\'s figure for the post, '
+            'not the measured size of the file (KaijuFlow counts it in GB of 1024 x 1024 x 1024 bytes).',
     'Sources': 'how many Sources the side listed.',
     'Result': '"plays" when the top pick delivered video, otherwise the failure kind and a short note.',
 }
 SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetch', 'Import', 'First byte']
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
 FAIL_COLS = ['Side', 'Run', 'Top pick plays'] + [c for _, c in CAUSES]
-TITLE_COLS = ['Title', 'Side', 'Run', 'Sources', 'Search', 'First byte', 'Result']
+TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Result']
 
 # --------------------------------------------------------------------------- parsing
 
@@ -345,6 +354,93 @@ def played_source(text):
     return None
 
 
+def top_pick(v):
+    """The top pick of one visit, the first Source in the side's list: {'name', 'size', 'listed'}, or None when the side
+    listed none.
+
+    name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
+    Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
+    the failure video, whose size says nothing about the Source). listed: the size the list text states, or None. KaijuFlow,
+    Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05
+    GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
+    from the 140 characters of text it kept.
+    """
+    tries = v.get('tries') or []
+    if not tries:
+        return None
+    first = tries[0]
+    text = str(first.get('title') or '')
+    return {'name': v.get('played_source') or text or None,
+            'size': first.get('size') if first.get('plays') and first.get('size') else None,
+            'listed': first.get('listed_size') or common.listed_size(text)}
+
+
+def _pick_size(pick):
+    """The size of a top pick as the report shows it: of the served file, else the listed one, else '-'."""
+    if pick['size']:
+        return f"{pick['size'] / 1e9:.1f} GB"
+    return f"{pick['listed']} listed" if pick['listed'] else '-'
+
+
+def _pick_cells(pick):
+    """The Top pick and Size cells of a per-title row."""
+    if not pick:
+        return ['-', '-']
+    return [str(pick['name'] or '-').replace('|', '/'), _pick_size(pick)]
+
+
+def top_picks(visits):
+    """{side: {title: {'Cold 1': top pick, ...}}} of a run's visits. A visit that holds no record of what was tried (a run
+    folder cut down, or written before plays were kept) is left out, so it is never compared."""
+    out = {}
+    for v in visits:
+        if 'tries' in v:
+            out.setdefault(v['side'], {}).setdefault(v['title'], {})[_run_label(v['phase'], v['round'])] = top_pick(v)
+    return out
+
+
+def _same_pick(a, b):
+    """Whether two top picks are the same Source: by the size of the served file when both played, else by the size both
+    lists state, else by name. The name alone does not do: a side's list text also holds the Source's age and health-check
+    mark, which change from run to run."""
+    if a is None or b is None:
+        return a is b
+    for key in ('size', 'listed'):
+        if a[key] and b[key]:
+            return a[key] == b[key]
+    return a['name'] == b['name']
+
+
+def _pick_text(pick):
+    if not pick:
+        return 'no top pick'
+    return ', '.join(x for x in (str(pick['name'] or 'no name'), _pick_size(pick)) if x != '-')
+
+
+def top_pick_changes(before, now):
+    """One line per title and side whose top pick differs between two runs (both as top_picks gives them): the rounds it
+    differs in, then the old and the new pick of the first of them. Only rounds both runs hold are compared."""
+    labels = [_run_label(phase, rnd) for phase, rnd in RUN_ORDER]
+    titles = list(dict.fromkeys(t for side in now.values() for t in side))
+    lines = []
+    for title in titles:
+        for side in SIDE_NAMES:
+            old, new = before.get(side, {}).get(title, {}), now.get(side, {}).get(title, {})
+            differ = [x for x in labels if x in old and x in new and not _same_pick(old[x], new[x])]
+            if differ:
+                lines.append(f"Top pick changed: {SIDE_NAMES[side]}, {title} ({', '.join(differ)}): "
+                             f"{_pick_text(old[differ[0]])} -> {_pick_text(new[differ[0]])}")
+    return lines
+
+
+def _picks_of(meta):
+    """The top picks of a run meta: kept in it (previous_run reads them from the run folder) or made from its visits; None
+    when the meta holds neither."""
+    if 'top_picks' in meta:
+        return meta['top_picks']
+    return (top_picks(meta['visits']) or None) if isinstance(meta.get('visits'), list) else None
+
+
 def failure_cause(text):
     """Why KaijuFlow's top pick failed, in KaijuFlow's own words for the visit: the reason on its 'Stream failed' line (without
     the file path) and the Backend's answer at the first byte ('AltMount probe returned 400'). '' when it logged neither."""
@@ -530,8 +626,12 @@ def diff_runs(prev, cur, nulls=None):
             out.append(f"{label} added: {', '.join(x for x in b if x not in a)}")
         if [x for x in a if x not in b]:
             out.append(f"{label} removed: {', '.join(x for x in a if x not in b)}")
+    picks_before, picks_now = _picks_of(prev), _picks_of(cur)
+    compared = picks_before is not None and picks_now is not None  # an earlier run whose top picks are not known is not compared
+    if compared:
+        out += top_pick_changes(picks_before, picks_now)
     if not out:
-        out.append('Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.')
+        out.append(f"Nothing changed in the settings, KaijuFlow code, titles, indexers{', sides or top picks' if compared else ' or sides'}.")
     try:  # the time of day of both runs is always listed (indexers can answer differently by time of day)
         out.append(f"Time of day: previous run {_stamp(parse_ts(prev['started']))}, this run {_stamp(parse_ts(cur['started']))}")
     except (KeyError, ValueError):
@@ -558,6 +658,177 @@ def null_runs_between(root, since, exclude=None):
         if meta.get('status') == 'null' and meta.get('started') and parse_ts(meta['started']) > parse_ts(since):
             found.append(meta)
     return sorted(found, key=lambda m: m['started'])
+
+
+# --------------------------------------------------------------------------- targets
+
+TARGETS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'targets.json')
+JUDGED = 'kaijuflow'  # the side the targets are set for
+# What each measure is held against: a fixed limit, another side (against), or either of the two.
+TARGET_MEASURES = {'plays per round': 'limit', 'plays': 'against',
+                   'cold start': 'either', 'warm start': 'either', 'cold list': 'either', 'warm list': 'either'}
+NO_FIGURE = 'no figure'  # the run holds nothing to measure a target with (a side or a round is not in it)
+
+
+def _secs(x):
+    return NO_FIGURE if x is None else f'{x:.2f} s'
+
+
+def _plays_text(plays):
+    """'p of n' for (top picks that played, top picks counted), or 'no figure' when none was counted."""
+    return f'{plays[0]} of {plays[1]}' if plays[1] else NO_FIGURE
+
+
+def _time(visits, side, phase, what, rnd=None):
+    """Median start (top picks that played) or list time (every visit) of one side: both rounds of a phase, or one round."""
+    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])]
+    return median([v.get('start_s') for v in vs if v.get('ok')] if what == 'start' else [v.get('list_s') for v in vs])
+
+
+def _plays(visits, side, phase=None, rnd=None):
+    """(top picks that played, top picks counted) of one side: every round, or one round."""
+    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])])
+    return sum(1 for v in vs if v.get('ok')), len(vs)
+
+
+MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
+
+
+def _verdict(result, slower_s=None, noise=None):
+    """A target's verdict as a value: the result (MET, NOT_MET or NOT_MEASURED); for a time target that is not met, how many
+    seconds KaijuFlow is slower than what it is held against; and the noise: None, or KaijuFlow's two rounds of the phase
+    with how far the target is met or missed by, when those two rounds differ by more than that."""
+    return {'result': result, 'slower_s': slower_s, 'noise': noise}
+
+
+def verdict_text(verdict):
+    """The Result words of a verdict, as the report's table and the check's lines show them."""
+    text = verdict['result'].capitalize()
+    if verdict['result'] == NOT_MET and verdict['slower_s'] is not None:
+        text += f" ({_secs(verdict['slower_s'])} slower)"
+    noise = verdict['noise']
+    if noise:
+        a, b = noise['rounds']
+        text += (f", inside the noise: {SIDE_NAMES[JUDGED]}'s two {noise['phase']} rounds differ by {_secs(abs(a - b))} "
+                 f"({a:.2f} and {b:.2f} s), more than the {_secs(noise['by'])} the target is "
+                 f"{'missed' if verdict['result'] == NOT_MET else 'met'} by")
+    return text
+
+
+def _measure_target(visits, t):
+    """(measured values, verdict) of one entry of the targets file."""
+    me, margin = SIDE_NAMES[JUDGED], t['margin']
+    if t['measure'] == 'plays per round':  # every round the run holds, cold and warm
+        rounds = {phase: [x for p, r in RUN_ORDER if p == phase for x in [_plays(visits, JUDGED, phase, r)] if x[1]]
+                  for phase in ('cold', 'warm')}
+        measured = ', '.join(f'{phase} ' + (' and '.join(_plays_text(x) for x in rs) or NO_FIGURE) for phase, rs in rounds.items())
+        if not all(rounds.values()):
+            return measured, _verdict(NOT_MEASURED)
+        met = all(p >= t['limit'] - margin and n - p <= margin for rs in rounds.values() for p, n in rs)
+        return measured, _verdict(MET if met else NOT_MET)
+    if t['measure'] == 'plays':  # the share of top picks that played, every round together
+        (p, n), (q, m) = _plays(visits, JUDGED), _plays(visits, t['against'])
+        measured = f"{me} {_plays_text((p, n))}, {SIDE_NAMES[t['against']]} {_plays_text((q, m))}"
+        if not n or not m:
+            return measured, _verdict(NOT_MEASURED)
+        return measured, _verdict(MET if p * m > (q - margin * m) * n else NOT_MET)
+    phase, what = t['measure'].split()
+    mine = _time(visits, JUDGED, phase, what)
+    ref = t['limit'] if 'limit' in t else _time(visits, t['against'], phase, what)
+    measured = f'{me} {_secs(mine)}' + ('' if 'limit' in t else f", {SIDE_NAMES[t['against']]} {_secs(ref)}")
+    if mine is None or ref is None:
+        return measured, _verdict(NOT_MEASURED)
+    over = round(mine - ref - margin, 2)  # above 0: the target is missed by this much; below: met by this much
+    a, b = (_time(visits, JUDGED, phase, what, r) for r in (1, 2))
+    noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
+             if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
+    return measured, _verdict(MET, noise=noise) if over <= 0 else _verdict(NOT_MET, mine - ref, noise)
+
+
+def _is_number(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def load_targets(path=TARGETS_FILE):
+    """The entries of the targets file. ValueError with a plain reason when the file or one of its entries cannot be used."""
+    name = os.path.basename(path)
+    try:
+        with open(path) as f:
+            targets = json.load(f)['targets']
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise ValueError(f'{name} cannot be read: {type(e).__name__}') from None
+    if not isinstance(targets, list):
+        raise ValueError(f'{name} cannot be read: "targets" is not a list')
+    for i, t in enumerate(targets, 1):
+        if not isinstance(t, dict) or not isinstance(t.get('target'), str):
+            why = 'it has no target text'
+        elif t.get('measure') not in TARGET_MEASURES:
+            why = f"the measure \"{t.get('measure')}\" is not known"
+        elif not _is_number(t.get('margin')) or t['margin'] < 0:
+            why = 'the margin is not a number from 0 up'
+        elif 'against' in t and t['against'] not in SIDE_NAMES:
+            why = f"the side \"{t['against']}\" is not known"
+        elif TARGET_MEASURES[t['measure']] == 'limit' and ('against' in t or not _is_number(t.get('limit'))):
+            why = f"\"{t['measure']}\" takes a fixed limit, not a side"
+        elif TARGET_MEASURES[t['measure']] == 'against' and ('limit' in t or 'against' not in t):
+            why = f"\"{t['measure']}\" takes a side (against), not a fixed limit"
+        elif ('against' in t) == ('limit' in t) or ('limit' in t and not _is_number(t['limit'])):
+            why = f"\"{t['measure']}\" takes a side (against) or a fixed limit, one of the two"
+        else:
+            continue
+        raise ValueError(f'{name}, entry {i}: {why}')
+    return targets
+
+
+def target_results(visits, path=TARGETS_FILE):
+    """[(target, measured values, verdict)] for every entry of the targets file, in its order."""
+    return [(t['target'],) + _measure_target(visits, t) for t in load_targets(path)]
+
+
+def targets_not_judged(status):
+    """The one gate of the targets, which the report and the check both go through: None for a finished run (status
+    'ok'), else why its targets are not judged. A stopped, null or failed run holds part of its plays or none, so no
+    verdict is made from it."""
+    if status == 'ok':
+        return None
+    why = {'stopped': 'the run was stopped before its last play',
+           'null': 'the run is null (an indexer said its limit was reached)'}.get(status, 'the run did not finish')
+    return f'{why}, and the targets are judged on a finished run alone'
+
+
+def target_lines(run, path=TARGETS_FILE):
+    """One plain line per target of a run ({'status', 'visits'}), as the check prints them; one sentence when its targets
+    are not judged (targets_not_judged) or the targets file cannot be used."""
+    why = targets_not_judged(run.get('status'))
+    if why:
+        return [f'Targets: not judged: {why}.']
+    try:
+        return [f'Target: {t}. Measured: {m}. {verdict_text(v)}.' for t, m, v in target_results(run['visits'], path)]
+    except ValueError as e:
+        return [f'Targets: not judged ({e}).']
+
+
+TARGETS_HELP = (
+    'Start = seconds from pressing play on the top pick until the first byte. List = seconds from asking for a title until '
+    'its Stream list arrived. Each time is the median over the titles of both cold rounds or both warm rounds together (the '
+    'start over the top picks that played, the list over every title). Plays leave out a top pick that failed only because a '
+    'request was not recorded. "Inside the noise": KaijuFlow\'s own two rounds differ by more than the target is met or '
+    'missed by, so the same run done again could turn the result around. "Not measured": the run holds no figure for it.')
+
+
+def targets_section(run, path=TARGETS_FILE):
+    """The report's table of the targets of a run ({'status', 'visits'}): one row per target, then how many are met and
+    what the words mean. One sentence instead when its targets are not judged (targets_not_judged)."""
+    why = targets_not_judged(run.get('status'))
+    if why:
+        return ['## Targets', '', f'Not judged: {why}.', '']
+    try:  # a targets file that cannot be used must not cost a finished run its report
+        rows = target_results(run['visits'], path)
+    except ValueError as e:
+        return ['## Targets', '', f'Not judged ({e}).', '']
+    met = sum(1 for _, _, verdict in rows if verdict['result'] == MET)
+    return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], [(t, m, verdict_text(v)) for t, m, v in rows]) + [
+        '', f"{met} of {len(rows)} targets met. {TARGETS_HELP}", '']
 
 
 # --------------------------------------------------------------------------- report
@@ -587,30 +858,20 @@ def _counted(vs):
 
 
 def answer_sentence(run):
-    g = _groups(run)
-    parts = {}
-    for phase in ('cold', 'warm'):
-        starts = []
-        for s in _sides(run):
-            vs = _counted([v for r in (1, 2) for v in g.get((s, phase, r), [])])
-            starts.append((s, median([v.get('start_s') for v in vs if v.get('ok')]), sum(1 for v in vs if v.get('ok')), len(vs)))
-        parts[phase] = starts
+    vs = run['visits']
+
     def fmt(phase):
-        return ', '.join(f"{SIDE_NAMES[s]} {_cell(m)} s ({p} of {n} top picks played)" for s, m, p, n in parts[phase])
+        return ', '.join(f"{SIDE_NAMES[s]} {_cell(_time(vs, s, phase, 'start'))} s "
+                         f"({' of '.join(str(x) for x in _plays(vs, s, phase))} top picks played)" for s in _sides(run))
     n = len(run.get('titles', []))
     return (f"Across {n} title{'' if n == 1 else 's'}, each round done twice, the median time from pressing play to the first byte was, "
             f"cold: {fmt('cold')}; warm: {fmt('warm')}.")
 
 
 def headline(run):
-    g = _groups(run)
-    bits = []
-    for s in _sides(run):
-        c = median([v.get('start_s') for r in (1, 2) for v in g.get((s, 'cold', r), []) if v.get('ok')])
-        w = median([v.get('start_s') for r in (1, 2) for v in g.get((s, 'warm', r), []) if v.get('ok')])
-        vs = _counted([v for v in run['visits'] if v['side'] == s])
-        bits.append(f"{SIDE_NAMES[s]} cold {_cell(c)} s / warm {_cell(w)} s, plays {sum(1 for v in vs if v.get('ok'))}/{len(vs)}")
-    return '; '.join(bits)
+    vs = run['visits']
+    return '; '.join(f"{SIDE_NAMES[s]} cold {_cell(_time(vs, s, 'cold', 'start'))} s / warm {_cell(_time(vs, s, 'warm', 'start'))} s, "
+                     f"plays {'/'.join(str(x) for x in _plays(vs, s))}" for s in _sides(run))
 
 
 def _table(cols, rows):
@@ -623,12 +884,12 @@ def _defs(cols):
     return [f'- **{c}**: {COLUMN_HELP[c]}' for c in cols]
 
 
-def render_report(run, changes):
+def render_report(run, changes, opening=None):
     g = _groups(run)
-    lines = [answer_sentence(run), '',
+    lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
-             "\"-\" means that side does not show the step from outside.", '',
+             "\"-\" means that side does not show the step from outside.", ''] + targets_section(run) + [
              '## What changed since the last run', ''] + [f'- {c}' for c in changes] + ['']
     if run.get('standin_misses'):
         lines += [f"Warning: the indexer stand-in had {run['standin_misses']} requests it had not recorded (a side asked "
@@ -665,11 +926,12 @@ def render_report(run, changes):
                         continue
                     m = visit_metrics(v)
                     cause = classify_failure(v)
-                    res = 'plays' if v.get('ok') else f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
-                    rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd), v.get('sources', '-'), _cell(m['search_s']),
-                                 _cell(m['start_s']), res])
+                    res = 'plays' if v.get('ok') else failed_result(v, cause)
+                    rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
     lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
     lines += not_recorded_section(run)
+    lines += time_section(run)
     return '\n'.join(lines)
 
 
@@ -699,6 +961,112 @@ def not_recorded_section(run):
     return out
 
 
+# --------------------------------------------------------------------------- where the time went (#112)
+
+# The five parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
+TIME_PARTS = [('measured_s', 'Measured list and start time'), ('pauses_s', 'Pauses (`--settle`)'),
+              ('failed_s', 'Failed plays'), ('resets_s', 'Resets'), ('other_s', 'Everything else')]
+
+
+def visit_wall_s(v):
+    """Wall-clock seconds of one visit, from asking for the list until the play ended or gave up; None without both times."""
+    try:
+        return round((parse_ts(v['t_end']) - parse_ts(v['t_start'])).total_seconds(), 3)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def failed_result(v, cause):
+    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took."""
+    text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
+    took = visit_wall_s(v)
+    return text if took is None else f'{text} (the whole visit took {took:.1f} s)'
+
+
+def time_parts(run):
+    """Where the wall-clock time of a run went, in seconds, as the five TIME_PARTS. They add up to the run's total
+    (timing.seconds): four are measured (the list and start times of the top picks that played, the pauses and the resets
+    as the run timed them, the whole visits of the top picks that failed), and `other_s` is what is left of the total.
+    Works on a run that ended early: it takes whatever visits, rounds and resets the run holds."""
+    timing = run.get('timing') or {}
+    visits = run.get('visits') or []
+    parts = {'measured_s': sum((v.get('list_s') or 0) + (v.get('start_s') or 0) for v in visits if v.get('ok')),
+             'pauses_s': sum(r.get('pause_s') or 0 for r in timing.get('rounds') or []),
+             'failed_s': sum(visit_wall_s(v) or 0 for v in visits if not v.get('ok')),
+             'resets_s': sum(r.get('seconds') or 0 for r in timing.get('resets') or [])}
+    parts = {k: round(x, 3) for k, x in parts.items()}
+    parts['other_s'] = round((timing.get('seconds') or 0) - sum(parts.values()), 3)
+    return parts
+
+
+def _seconds_cell(x):
+    return '-' if x is None else f'{x:.1f}'
+
+
+def _minutes(x):
+    return '-' if x is None else f'{x / 60:.1f}'
+
+
+def _took(x):
+    return f'{_minutes(x)} minutes ({_seconds_cell(x)} s)'
+
+
+def _time_of_day(iso_time):
+    return str(iso_time)[11:19]
+
+
+def time_section(run):
+    """The report's section on the run's wall-clock time: the whole run and each pass in one sentence, the five parts that
+    add up to the whole run, then each round with the reset before it. Seconds are shown to one decimal, so the parts as
+    printed are within a second of the total. [] for a run that holds no timing (made before #112)."""
+    timing = run.get('timing') or {}
+    parts = timing.get('parts')
+    if not parts:
+        return []
+    visits = run.get('visits') or []
+    rounds, resets = timing.get('rounds') or [], timing.get('resets') or []
+    passes = ', '.join(f"the {p.get('name')} {_took(p.get('seconds'))}" for p in timing.get('passes') or [])
+    out = ['## Where the time went', '',
+           f"The whole run took {_took(timing.get('seconds'))}, from {_time_of_day(run.get('started'))} to "
+           f"{_time_of_day(run.get('finished'))} UTC{': ' + passes if passes else ''}.", '']
+    rows = [[name, _seconds_cell(parts.get(key)), _minutes(parts.get(key))] for key, name in TIME_PARTS]
+    out += _table(['Part', 'Seconds', 'Minutes'], rows + [['The whole run', _seconds_cell(timing.get('seconds')), _minutes(timing.get('seconds'))]])
+    failed = sum(1 for v in visits if not v.get('ok'))
+    out += ['',
+            '- **Measured list and start time**: for every top pick that played, the seconds until its Stream list arrived plus '
+            'the seconds from pressing play to the first byte. The tables above are made from these.',
+            f"- **Pauses (`--settle`)**: the pause after every play, {_cell(timing.get('settle_s'))} s each "
+            f"({sum(r.get('plays') or 0 for r in rounds)} plays).",
+            f"- **Failed plays**: the whole visit of every top pick that did not play, from asking for the list until the play "
+            f"gave up ({failed} visit{'' if failed == 1 else 's'}; each one's time is in the Result column of \"Per title\").",
+            '- **Resets**: emptying and restarting the test copies before each cold round. The first reset of the one-page '
+            'side includes the switch to one page.',
+            '- **Everything else**: what is left of the whole run: the seek checks after a top pick played, reading the logs '
+            'after each play, starting and stopping the indexer stand-in and the test copies.', '']
+    out += _table(['Pass', 'Round', 'Started (UTC)', 'Reset before it (s)', 'Plays', 'Round (s)', 'Round (minutes)'],
+                  _round_rows(rounds, resets))
+    out += ['',
+            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount\'s own addon) are played in turn, title by '
+            'title, in one pass; the one-page side has its own pass after them.',
+            '- **Round**: the cold or warm round of every side of the pass, played together, from the first play to the end '
+            'of the pause after the last play. The reset before a cold round is not part of it.', '']
+    return out
+
+
+def _round_rows(rounds, resets):
+    """One row per round of each pass, in the order they were played, with the reset that came before it. A reset with no
+    round after it (the run ended during the reset) gets a row too, so every reset is shown."""
+    def round_key(r):
+        return r.get('pass'), r.get('phase'), r.get('round')
+    reset_of, round_of = {round_key(r): r for r in resets}, {round_key(r): r for r in rounds}
+    rows = []
+    for key in dict.fromkeys(round_key(r) for r in sorted(resets + rounds, key=lambda r: str(r.get('start')))):
+        r = round_of.get(key) or {}
+        rows.append([str(key[0]).capitalize(), _run_label(str(key[1]), key[2]), _time_of_day(r.get('start')) if r else '-',
+                     _seconds_cell(reset_of.get(key, {}).get('seconds')), r.get('plays', 0), _seconds_cell(r.get('seconds')), _minutes(r.get('seconds'))])
+    return rows
+
+
 def render_null_report(run):
     n = run.get('null') or {}
     return '\n'.join([
@@ -707,6 +1075,33 @@ def render_null_report(run):
         f"Where it was seen: {n.get('where', 'unknown')}.", '',
         'By the cap rule the run stopped at once. No report was made from it; the raw files in this folder are kept '
         'only to show what happened. Start a new run after the indexer has reset.', ''])
+
+
+# The signals that stop a run or a record the normal way (#110): the name kept in `stopped.signal`, and how it is said.
+STOP_SIGNALS = {'SIGINT': 'Ctrl-C (SIGINT)', 'SIGTERM': 'SIGTERM'}
+
+
+def stopped_text(stopped):
+    """How a run or a record that was stopped by a signal ended, as the rest of a sentence: by what, when, in which stage,
+    how many plays had finished, and the play it was in. `stopped` is what brainrun.stop_note keeps (meta.json's
+    `stopped`); the run and the record keep it in the same shape."""
+    s = stopped or {}
+    d = s.get('during')
+    if d:
+        rnd = '' if d.get('round') is None else f" {d['round']}"
+        where = f"it stopped during the next one ({SIDE_NAMES.get(d['side'], d['side'])}, {d['phase']}{rnd}, {d['title']})"
+    else:
+        where = 'it stopped between two plays' if s.get('plays_done') else 'it stopped before its first play'
+    stage = f" in {s['stage']}" if s.get('stage') else ''
+    return (f"stopped by {STOP_SIGNALS.get(s.get('signal'), 'hand')} at {s.get('time', 'an unknown time')}{stage}: "
+            f"{s.get('plays_done', 0)} of {s.get('plays_planned', 'an unknown number of')} plays had finished, and {where}")
+
+
+def render_stopped_report(run, changes):
+    """The report of a run that was stopped by hand: it opens by saying so and how far the run got, then holds the usual
+    sections, made from the plays that finished."""
+    return render_report(run, changes, opening=f"This run was {stopped_text(run.get('stopped'))}. The tables below are made "
+                                               "from the finished plays alone, so the run is not a baseline.")
 
 
 # --------------------------------------------------------------------------- run records
@@ -726,7 +1121,7 @@ def create_run_dir(root, name, now):
 
 
 INDEX_HEAD = ('# Brain runs\n\nOne row per run, never edited. NULL = the run was stopped by an indexer limit and its numbers '
-              'are not used.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
+              'are not used. stopped = the run was stopped (Ctrl-C or SIGTERM) before its last play and is not a baseline.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
               '|---|---|---|---|---|---|\n')
 
 
@@ -753,7 +1148,8 @@ def append_index_row(path, row):
 
 
 def previous_run(root, exclude=None):
-    """meta.json of the newest earlier finished (non-null) run, or None."""
+    """meta.json of the newest earlier finished (non-null) run, or None. Its top picks are added from the folder's raw.json
+    (`top_picks`), so the next run can be compared with them; a folder that holds none stays without."""
     if not os.path.isdir(root):
         return None
     for d in sorted(os.listdir(root), reverse=True):
@@ -764,5 +1160,11 @@ def previous_run(root, exclude=None):
         except (OSError, ValueError):
             continue
         if meta.get('status') == 'ok':
+            try:
+                picks = top_picks(json.loads(_slurp(os.path.join(root, d, 'raw.json')))['visits'])
+            except (OSError, ValueError, KeyError, TypeError):
+                picks = None
+            if picks:
+                meta['top_picks'] = picks
             return meta
     return None
