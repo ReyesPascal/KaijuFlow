@@ -1,0 +1,56 @@
+<section>
+  <h2>Earlier answers, 2026-11-09 (live services)</h2>
+  <p class="note">Four questions about moving from NzbDAV to AltMount. Afternoon: 10 titles the Backends had seen before. Evening: 10 fresh titles nobody had played, each played twice, first cold and then warm. All five runs finished without errors.</p>
+
+  <div class="answer">
+    <h3>1. Which search should KaijuFlow use, its own or AltMount's?</h3>
+    <div class="big">Its own. With the same indexers on both, AltMount's addon still lists faster but keeps failing the same picks; KaijuFlow learns from a bad pick and played 10 of 10 the second time.</div>
+    <table class="mini">
+      <thead><tr><th scope="col"></th><th scope="col">List shows after, cold</th><th scope="col">List shows after, warm</th><th scope="col">Top pick played, cold</th><th scope="col">Top pick played, warm</th><th scope="col">Broken picks, cold (of 29 / 30 / 30 tried)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">AltMount's own addon</th><td class="num">1.19 s</td><td class="num">0.71 s</td><td class="bad">8 of 10</td><td class="bad">8 of 10</td><td class="num">7</td></tr>
+        <tr><th scope="row">KaijuFlow with AltMount</th><td class="num">9.24 s</td><td class="num">4.67 s</td><td class="ok">9 of 10</td><td class="ok">10 of 10</td><td class="num">7</td></tr>
+        <tr><th scope="row">Usenet Ultimate today</th><td class="num">8.94 s</td><td class="num">4.42 s</td><td class="ok">8 of 10</td><td class="ok">10 of 10</td><td class="num">8</td></tr>
+      </tbody>
+    </table>
+    <p>Evening run, fresh titles. The addon lists in about a second because it shows indexer results without checking them; when you press play it finds the missing pieces and gives up. Its top pick failed on Whiplash and Band of Brothers S01E02 the first time and on Whiplash and Band of Brothers S01E02 again the second time: it does not remember a bad Source. KaijuFlow and Usenet Ultimate spend their 9 seconds (cold) or 4 to 5 seconds (warm) health-checking Sources before the list appears. KaijuFlow's one cold miss was The Wire S01E01 (a season pack that showed the failure video on Usenet Ultimate too); it was marked dead, and the warm run played 10 of 10 on both.</p>
+    <p>Sources shown: the addon lists about 156.0 per title, KaijuFlow and Usenet Ultimate about 281.0. AltMount asks each indexer for one page of 100 results and then removes duplicates; KaijuFlow pages through everything. Compare speed and reliability, not the counts. The afternoon run (one indexer on the addon, titles already played) is in the tables below and said the same thing.</p>
+  </div>
+
+  <div class="answer">
+    <h3>2. Does AltMount play the same video as NzbDAV?</h3>
+    <div class="big">Yes, twice over. Fresh titles: all 10 play on both, 9 of 10 are the exact same bytes. Afternoon: all 10 play, 9 of 10 identical.</div>
+    <p>The one fresh title not counted, Band of Brothers S01E02, had a different top pick on each side after the cold run (Usenet Ultimate marked a 4K season pack dead; KaijuFlow with AltMount had played it), so there was nothing to compare. In the afternoon it was Game of Thrones S02E03 for the same reason. No fresh title needed Unscramble at this point: the three Scrambled RAR sets among the fresh picks were Unscrambled during the cold run.</p>
+  </div>
+
+  <div class="answer">
+    <h3>3. How fast does a video start, and how fast can you jump around in it?</h3>
+    <div class="big">Cold start: AltMount through KaijuFlow is about a second slower than NzbDAV, and the second is the Unscramble step. Warm start: AltMount is 4 to 5 times faster. Jumping is under half a second on both.</div>
+    <table class="mini">
+      <thead><tr><th scope="col"></th><th scope="col">NzbDAV (via Usenet Ultimate)</th><th scope="col">AltMount (via KaijuFlow)</th><th scope="col">AltMount (via its own addon)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Start, first time ever (cold)</th><td class="num">3.42 s</td><td class="num">4.53 s</td><td class="num">2.5 s</td></tr>
+        <tr><th scope="row">Start, played before (warm)</th><td class="num">0.28 s</td><td class="num">0.06 s</td><td class="num">0.04 s</td></tr>
+        <tr><th scope="row">Jump to the middle, first time</th><td class="num">0.29 s</td><td class="num">0.45 s</td><td class="num">–</td></tr>
+        <tr><th scope="row">Jump near the end, first time</th><td class="num">0.33 s</td><td class="num">0.41 s</td><td class="num">–</td></tr>
+        <tr><th scope="row">Jump, same spots again (afternoon)</th><td class="num">0.2 / 0.2 s</td><td class="num">0.01 / 0.01 s</td><td class="num">–</td></tr>
+      </tbody>
+    </table>
+    <p>Start times are the top pick of each fresh title, medians over the titles whose top pick played (8 / 9 / 8 titles cold). Cold means the Backend had never seen the file and had to import it. KaijuFlow's cold start includes the Unscramble step from the afternoon's fix: 0.6 to 1.6 s to find out a set is not scrambled, and 3.3 to 4.0 s to rename one that is (three of the evening's picks were: Severance S01E01 as a top pick at 9.4 s, Blade Runner 2049 and Mad Max: Fury Road as third picks). Without that step the two Backends import at about the same speed; the addon, which skips it, is the fastest cold starter but rejects Scrambled sets outright. Once a file has been played, AltMount answers in well under a tenth of a second where NzbDAV takes a quarter to a third.</p>
+    <p>Jumping: the first jump into an unseen part of the file fetches it from Usenet on both Backends, 0.3 to 0.5 s. The afternoon run jumped to spots that had been read before, and there AltMount answered from what it had (0.01 s) while NzbDAV fetched again (0.2 s).</p>
+  </div>
+
+  <div class="answer">
+    <h3>4. The cold run, side by side</h3>
+    <div class="big">Nothing in the cold run changed the picture: KaijuFlow with AltMount is as reliable as today's setup, slower to start the very first time by the Unscramble second, and faster every time after.</div>
+    <table class="mini">
+      <thead><tr><th scope="col"></th><th scope="col">Start cold → warm</th><th scope="col">List cold → warm</th><th scope="col">Top pick plays cold → warm</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">AltMount's own addon</th><td class="num">2.5 → 0.04 s</td><td class="num">1.19 → 0.71 s</td><td>8 → 8 of 10</td></tr>
+        <tr><th scope="row">KaijuFlow with AltMount</th><td class="num">4.53 → 0.06 s</td><td class="num">9.24 → 4.67 s</td><td>9 → 10 of 10</td></tr>
+        <tr><th scope="row">Usenet Ultimate today</th><td class="num">3.42 → 0.28 s</td><td class="num">8.94 → 4.42 s</td><td>8 → 10 of 10</td></tr>
+      </tbody>
+    </table>
+    <p>Cold is the first run on the fresh titles (nothing imported, no health-check memory, no dead marks). Warm is the same titles a few minutes later. The list time halves on KaijuFlow and Usenet Ultimate because the health checks remember what they found; the addon never checked anything, so it has nothing to remember and fails the same two picks again.</p>
+  </div>
+</section>

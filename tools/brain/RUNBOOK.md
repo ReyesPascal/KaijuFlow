@@ -36,6 +36,16 @@ Other commands: `smoke --store <EMPTY folder> --list smoke` (reachability only),
 
 Only `record` and a top-up of it. The proof, `run`, `check`, `usage`, `smoke` and the preflights spend none.
 
+## Publish the page
+
+The "KaijuFlow Speed Check" page is https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD. Publish only when the owner asks for it.
+
+1. Findings: write `story.html` into the run folder ([docs/formats.md](docs/formats.md), "The page"). Without it the run's section says "Numbers only".
+2. Build: `python3 -I tools/brain/build_page.py <run folder> <its recording folder> --out <folder>`. It writes `index.html` and `tables.json` into `<folder>` and publishes nothing. Name every run folder that should be on the page; the runs whose folders are gone (2026-11-10, 2026-11-09) come from `tools/brain/page-archive/` by themselves. The header's words (`HEADER_FOR`, `EYEBROW`, `LEDE` in `build_page.py`) were written for the 2026-11-13 run alone; with other runs the page gets a plain header until they are rewritten.
+3. Read what is published, with the Artifact tool: the page (`action: read` with the URL above), then its data file (the same with `path: tables.json`). A publish that replaces a file nobody read in this session is refused. Check that every section of the published page is in the new `index.html`.
+4. Publish over the same page: `index.html` as the page, `files: {"tables.json": "<folder>/tables.json"}`, and `url` set to the URL above. Without `url` a second page is made.
+5. Open the page: every "All numbers" block must show its table, not "Loading the table..." or "missing".
+
 ## Measuring words
 
 - **Side**: one setup that is played: KaijuFlow, Usenet Ultimate, AltMount's own addon, or KaijuFlow with one page per indexer.
@@ -49,4 +59,4 @@ Only `record` and a top-up of it. The proof, `run`, `check`, `usage`, `smoke` an
 
 ## Reference
 
-[docs/run-and-record.md](docs/run-and-record.md) (how run, record and smoke work), [docs/rules.md](docs/rules.md) (cap rule, preflight, settings, expected settings, allowance, how targets are judged), [docs/formats.md](docs/formats.md) (run folder, top picks, targets file, expected settings file, recording, step lines), [docs/testbed.md](docs/testbed.md) (test copies). Index: [README.md](README.md).
+[docs/run-and-record.md](docs/run-and-record.md) (how run, record and smoke work), [docs/rules.md](docs/rules.md) (cap rule, preflight, settings, expected settings, allowance, how targets are judged), [docs/formats.md](docs/formats.md) (run folder, top picks, targets file, expected settings file, recording, step lines, the page's `story.html` and archive), [docs/testbed.md](docs/testbed.md) (test copies). Index: [README.md](README.md).
