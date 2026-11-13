@@ -12,6 +12,7 @@ import socket
 import sqlite3
 import unittest
 import urllib.request
+from unittest import mock
 
 import brainreport as br
 import brainrun
@@ -431,6 +432,26 @@ class InterruptedRunTest(unittest.TestCase):
             "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had "
             "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
 
+    def test_the_run_command_ends_a_stopped_run_with_the_check_and_exit_code_130(self):
+        cfg = make_cfg(self.tmp)
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(FakeIO(), 5)), contextlib.redirect_stdout(out):
+            code = brainrun.main(['run', '--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root', cfg['runs_root'],
+                                  '--test-dir', cfg['test_dir'], '--titles-file', titles])
+        self.assertEqual(code, 130)
+        lines = out.getvalue().splitlines()
+        folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
+        self.assertIn(f'stopped: {folder}', lines)
+        first = lines[lines.index(f'stopped: {folder}') + 1]
+        self.assertEqual(read(os.path.join(folder, 'CHECK.txt')).splitlines()[0], first)
+        self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
+        self.assertTrue(first.startswith(
+            "Not usable as a baseline: the run was stopped by hand at 2026-11-10T18:00:11.000Z: 4 of 24 plays had "
+            "finished, and it stopped during the next one (AltMount's own addon, cold 1, Show S01E01)"), first)
+
 
 class WaitSwitchTest(unittest.TestCase):
     def setUp(self):
@@ -781,6 +802,51 @@ class RecordTest(unittest.TestCase):
         self.assertIn('NULL', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+
+    # ---- a record pass stopped by hand (#110)
+    def stopped_record(self, n):
+        io = interrupt_at(RecordIO(self.cfg, self.url), n)
+        try:
+            return io, brainrun.record_all(self.cfg, io)
+        except KeyboardInterrupt:
+            self.fail('the interrupt escaped record_all')
+
+    def test_an_interrupt_during_the_record_pass_keeps_what_was_stored_and_records_it_as_stopped(self):
+        io, rec = self.stopped_record(3)
+        self.assertEqual(rec['status'], 'stopped')
+        self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:02.000Z', 'visits': 2, 'during': 'the record pass'})
+        self.assertEqual(len(self.stored()), 3)  # KaijuFlow's two pages and Usenet Ultimate's one, for the first title
+        self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
+        row = read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines()[-1]
+        self.assertIn('| trial (record) | stopped |', row)
+        self.assertIn(os.path.basename(rec['dir']), row)
+        st = self.state()
+        self.assertEqual((st['state'], st['why']), ('stopped', 'the record command was stopped by hand during the record pass'))
+        kinds = [c[0] for c in io.calls]
+        self.assertEqual(kinds.count('standin-start'), 1)  # no proof of a pass that did not finish
+        self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+
+    def test_an_interrupt_during_the_proof_records_it_as_stopped_and_a_run_refuses_the_recording(self):
+        io, rec = self.stopped_record(13)  # the pass makes 12 visits; the 13th is the proof's first
+        self.assertEqual((rec['status'], rec['stopped']['during'], rec['stopped']['visits']), ('stopped', 'the proof replay', 12))
+        self.assertEqual(len(self.stored()), 12)
+        self.assertEqual(self.state()['state'], 'stopped')  # not proven, so not complete: the preflight of a run refuses it
+        self.assertEqual([c[0] for c in io.calls][-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
+        self.assertEqual(io.up, set())
+
+    def test_the_record_command_ends_a_stopped_record_with_one_sentence_and_exit_code_130(self):
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(self.cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(RecordIO(cfg, self.url), 3)), \
+                contextlib.redirect_stdout(out):
+            code = brainrun.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
+                                  self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles])
+        self.assertEqual(code, 130)
+        last = out.getvalue().splitlines()[-1]
+        self.assertTrue(last.startswith('The recording was stopped by hand during the record pass. What was stored is kept; '
+                                        'run the same command again to top up. Folder: '), last)
 
     def marker_files(self):
         return sorted(f for f in os.listdir(self.cfg['store']) if f.startswith('LIMIT_REACHED'))

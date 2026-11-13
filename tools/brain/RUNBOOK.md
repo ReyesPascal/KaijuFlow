@@ -26,8 +26,8 @@ Other commands: `smoke --store <EMPTY folder> --list smoke` (reachability only),
 
 ## Exit codes
 
-- record: 0 complete (a run may use it); 1 setup problem or the pass broke (nothing recorded); 2 stopped by an indexer limit (stored answers kept; run the same command after the reset); 3 incomplete, the proof replay missed requests (not an error: run the same record command again to top up).
-- run: 0 finished; 1 the preflight failed (sentences printed, no run folder). The run's own verdict is in the check.
+- record: 0 complete (a run may use it); 1 setup problem or the pass broke (nothing recorded); 2 stopped by an indexer limit (stored answers kept; run the same command after the reset); 3 incomplete, the proof replay missed requests (not an error: run the same record command again to top up); 130 stopped by hand with Ctrl-C (stored answers kept; run the same command again).
+- run: 0 finished; 1 the preflight failed (sentences printed, no run folder); 130 stopped by hand with Ctrl-C (the folder keeps the plays that finished; report and INDEX.md row say `stopped`; not a baseline). The run's own verdict is in the check.
 - preflight: 0 setup is right; 1 problems printed.
 - check: 0 usable as a baseline; 1 not usable.
 - usage: 0. smoke: 0 (its verdict is printed).

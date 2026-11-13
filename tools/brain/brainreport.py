@@ -744,7 +744,7 @@ def create_run_dir(root, name, now):
 
 
 INDEX_HEAD = ('# Brain runs\n\nOne row per run, never edited. NULL = the run was stopped by an indexer limit and its numbers '
-              'are not used.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
+              'are not used. stopped = the run was stopped by hand before its last play and is not a baseline.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
               '|---|---|---|---|---|---|\n')
 
 

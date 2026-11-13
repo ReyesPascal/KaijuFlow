@@ -3,7 +3,7 @@
     python3 -I tools/brain/brainrun.py check --run <run folder>
 
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
-(a request the recording did not hold, a planned side that is absent, a null or failed run,
+(a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
 or a run folder that cannot be read). The run command prints the same lines at its end
 and stores them in the run folder as CHECK.txt.
 """
