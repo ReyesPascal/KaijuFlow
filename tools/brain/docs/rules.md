@@ -1,6 +1,6 @@
 # Brain tools: rules and settings
 
-The cap rule, the preflight, the settings table, the replay wait, the indexer allowance and how the targets are judged. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+The cap rule, the preflight, the settings table, the expected settings, the replay wait, the indexer allowance and how the targets are judged. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Cap rule
 
@@ -16,12 +16,35 @@ The cap rule, the preflight, the settings table, the replay wait, the indexer al
 2. record only: the key file (default `<test dir>/indexers.json`) exists, is readable only by the owner, and names exactly the indexers switched on in every test copy (only the names are read, so per-indexer settings added later are fine);
 3. every indexer address in every test copy (also switched-off ones, plus Easynews or Prowlarr when on) is `http://host.docker.internal:1340/<slug>` with or without `/api`;
 4. the caps add up to at most the provider limit (default 100);
-5. the stand-in's port 1340 is free;
-6. run only: the recording `<store>/<list>/<slug>/` holds at least one answer for each switched-on indexer, and its state file `<store>/<list>/RECORDING.json` (written by the record command) says `complete`; for a recording that stopped early or is `incomplete` (the proof replay missed requests) the preflight says why and gives the record command to top it up.
+5. every test copy has the sort and filter settings of the expected settings file `tools/brain/expected-settings.json` (see [Expected settings](#expected-settings-109) below);
+6. the stand-in's port 1340 is free;
+7. run only: the recording `<store>/<list>/<slug>/` holds at least one answer for each switched-on indexer, and its state file `<store>/<list>/RECORDING.json` (written by the record command) says `complete`; for a recording that stopped early or is `incomplete` (the proof replay missed requests) the preflight says why and gives the record command to top it up.
 
 Indexers are compared by the slug in the indexer stand-in's address, because each copy names them its own way (for example `IndexerOne` in one copy and `indexerone` in another). Every sentence is plain: the key-file fix reads "make the key file readable only by you (run: chmod 600 <path>)", and "the indexer stand-in" is explained once, in the first address sentence. The tools carry no indexer names. The run record's `commit` is the image label (the code that ran); its `head` is the repository's HEAD, which is a later commit after a docs-only change.
 
-**For the record command (#75).** Call `brainrun.preflight('record', cfg, io)` (or `'run'`); it returns a list of sentences, `[]` meaning go, and `brainrun.preflight_command(mode, cfg, io)` prints them and returns the exit code. `cfg` needs `test_dir`, `store`, `listname`; optional `limit`, `standin_port`, `key_file`, `rebuild_image`. `io` is the runner's IO object (`RealIO`) and needs `git_info`, `image_label`, `build_inputs_changed`, `rebuild_image`, `setup_report`, `key_state`, `port_free`, `recording`; `FakeIO` in the tests shows the shortcut (`io.preflight(mode)`). The image decision alone is `brainrun.image_state(label, head, inputs_changed)`: `current`, `stale`, `unknown` or `missing`. Tests: `test_settings.py`, `test_preflight.py`.
+**For the record command (#75).** Call `brainrun.preflight('record', cfg, io)` (or `'run'`); it returns a list of sentences, `[]` meaning go, and `brainrun.preflight_command(mode, cfg, io)` prints them and returns the exit code. `cfg` needs `test_dir`, `store`, `listname`; optional `limit`, `standin_port`, `key_file`, `rebuild_image`. `io` is the runner's IO object (`RealIO`) and needs `git_info`, `image_label`, `build_inputs_changed`, `rebuild_image`, `setup_report`, `key_state`, `port_free`, `recording`; `FakeIO` in the tests shows the shortcut (`io.preflight(mode)`). The image decision alone is `brainrun.image_state(label, head, inputs_changed)`: `current`, `stale`, `unknown` or `missing`. The settings comparison alone is `brainrun.setting_differences(expected, settings, file)`: the entries of the expected settings file (`brainrun.load_expected_settings(path)`) and the settings reader's output in, sentences out; `cfg['expected_settings']` names another file than the committed one (the tests use it). Tests: `test_settings.py`, `test_preflight.py`.
+
+## Expected settings (#109)
+
+**Why.** The 2026-11-13 baseline ran on test copies that had lost their sort and filter rules, and nothing noticed: on KaijuFlow and Usenet Ultimate every film's top pick was a 66 to 91 GB file. The old rules could not be recovered, so the owner defined standard ones in issue #109, and the preflight now holds every copy to them.
+
+**The file.** `tools/brain/expected-settings.json` ([format](formats.md#expected-settings-expected-settingsjson)) holds, for KaijuFlow and Usenet Ultimate alike, the whole `movieFilters` and `tvFilters`: KaijuFlow's default sort and filter object, plus the largest single file (`maxFileSize`: 30 GB for films, 10 GB for episodes, written in bytes) and the drop rule "No disc images". AltMount's own addon keeps its own scoring and NzbDAV has no such rules, so the file names neither. The file is in the repository, so it holds no host, address, login or key; an entry with a secret name is refused. To change the standard, change the file and both test copies together.
+
+**The comparison.** Both sides are read the same way (`testbed.read_settings`, the reader behind the settings table and `settings.json`), so no secret can reach a sentence. For every setting the file names, the copy must hold exactly the file's value. A setting given as a whole section (`movieFilters`) is compared as a whole, both ways: a value that differs, a value the copy lacks, and a value the copy has and the file does not are each a difference. KaijuFlow uses `movieFilters` and `tvFilters` in place of its default rules as a whole, so an extra or a missing value there changes the ranking. One sentence per difference:
+
+```
+KaijuFlow has movieFilters.maxFileSize set to 53687091200, but the expected settings file (tools/brain/expected-settings.json) says 32212254720: change the test copy's config, or the file if the copy's value is the intended one.
+Usenet Ultimate has no tvFilters setting, but the expected settings file has one.
+KaijuFlow has a movieFilters.minFileSize setting that the expected settings file does not have.
+KaijuFlow has movieFilters.sortOrder entry 2 set to "size", but the expected settings file says "quality" (the first entry that differs).
+```
+
+- The first sentence names the file and says what to do; the others stay short.
+- An order (`sortOrder`, `resolutionPriority` and the like) is one setting: one sentence names the first entry that differs.
+- A section or a rule that is missing as a whole, or that only the copy has, is named once, not once per value in it.
+- A copy whose config cannot be read is left to the checks that say so. A file that cannot be used costs one sentence (`The expected settings file cannot be used (expected-settings.json, entry 1: ...): fix the file.`) and the preflight fails.
+
+**The size cap and the report's Size column are two figures.** `maxFileSize` is compared with the size the indexer gives for the post, the figure a Stream shows after the disk sign, which KaijuFlow counts in GB of 1024 x 1024 x 1024 bytes (`src/addon/filters.ts`, `src/parsers/metadataParsers.ts`). The Size column of the per-title table is the size of the served file in GB of 1000 x 1000 x 1000 bytes. So a top pick of 31 GB in the report can be inside the 30 GB cap.
 
 ## Recording and the cap rule
 

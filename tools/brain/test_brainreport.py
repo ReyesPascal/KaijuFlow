@@ -284,6 +284,175 @@ class ReportTest(unittest.TestCase):
         self.assertIn('2', h)
 
 
+def baseline_picks():
+    """Three titles of the real 2026-11-13 baseline run on all four sides (fixtures/run-2026-11-13/top-picks.json): every
+    visit cut down to what the top pick is read from. Captured before the standard sort and filter rules of #109."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13', 'top-picks.json')
+    with open(path, encoding='utf-8') as f:
+        visits = json.load(f)['visits']
+    return dict(name='baseline', status='ok', visits=visits, titles=['Inception', 'The Matrix', 'Game of Thrones S02E03'],
+                sides=['kaijuflow', 'uu', 'altmount-addon', 'kaijuflow-1page'], commit='750c2eb', dirty=False,
+                indexers=['ninjacentral'], started='2026-11-13T05:32:00.550Z', settings={}, null=None, standin_misses=0)
+
+
+def per_title_rows(report):
+    """The rows of the report's per-title table as {column: cell}."""
+    lines = report.split('## Per title')[1].strip().splitlines()
+    cols = [c.strip() for c in lines[0].strip('|').split('|')]
+    rows = []
+    for line in lines[2:]:
+        if not line.startswith('|'):
+            break
+        rows.append(dict(zip(cols, [c.strip() for c in line.strip('|').split('|')])))
+    return rows
+
+
+class TopPickTest(unittest.TestCase):
+    """Ticket #109: the per-title table names the top pick of every visit and its size."""
+    FGT = 'Inception.2010.2160p.UHD.BluRay.Remux.HEVC.DTS-HD.MA.5.1-FGT'
+
+    def rows(self, run, **where):
+        return [r for r in per_title_rows(br.render_report(run, ['x'])) if all(r[k] == v for k, v in where.items())]
+
+    def test_a_row_names_the_release_kaijuflow_played_and_the_size_of_the_file(self):
+        row, = self.rows(baseline_picks(), Title='Inception', Side='KaijuFlow', Run='Cold 1')
+        self.assertEqual((row['Top pick'], row['Size']), (self.FGT, '85.4 GB'))  # 85436578297 bytes
+
+    def test_a_side_without_a_release_name_shows_the_text_of_its_list_entry(self):
+        row, = self.rows(baseline_picks(), Title='Inception', Side='Usenet Ultimate', Run='Cold 1')
+        self.assertEqual(row['Top pick'], '✅ 4K BluRay REMUX 🎬 Inception (2010) 🗣️ English ⚙️ hevc 💾 95.01 GB 🔊 DTS-HD MA 🏴‍☠️ FGT '
+                                          '🗂️ NinjaCentral 📅 4.2y 📡 Newshosting (3/3) 📊 91.9 Mb')
+        self.assertEqual(row['Size'], '85.4 GB')
+        row, = self.rows(baseline_picks(), Title='Inception', Side="AltMount's own addon", Run='Warm 2')
+        self.assertEqual(row['Top pick'], 'AltMount 🌍 FHD - Inception (2010) [1080p][Dual] Inception 2010 1080p NF WEB-DL DUAL DDP5 1 H 264-TURG '
+                                          '💾 4.05 GB 🌐 ninja')
+        self.assertEqual(row['Size'], '3.5 GB')  # 3549321653 bytes
+
+    def test_a_top_pick_that_did_not_play_shows_the_size_its_list_entry_states(self):
+        # a failed play serves the failure video, so its size says nothing about the Source
+        row, = self.rows(baseline_picks(), Title='Inception', Side='KaijuFlow', Run='Cold 2')
+        self.assertEqual((row['Top pick'], row['Size']), (self.FGT, '95.01 GB listed'))
+        self.assertNotEqual(row['Result'], 'plays')
+        row, = self.rows(baseline_picks(), Title='Game of Thrones S02E03', Side='Usenet Ultimate', Run='Cold 1')
+        self.assertEqual(row['Size'], '27.71 GB listed')
+        row, = self.rows(baseline_picks(), Title='The Matrix', Side='KaijuFlow, one page per indexer', Run='Cold 2')
+        self.assertEqual((row['Top pick'], row['Size']), ('The.Matrix.1999.4K.Remastered.Multi.Complete.UHD.BluRay-MAMA', '73.07 GB listed'))
+
+    def test_every_row_of_the_real_run_shows_a_name_and_a_size(self):
+        rows = self.rows(baseline_picks())
+        self.assertEqual(len(rows), 3 * 4 * 4)  # three titles, four sides, four rounds
+        for row in rows:
+            self.assertNotIn(row['Top pick'], ('', '-'), row)
+            self.assertRegex(row['Size'], r'^\d+(\.\d+)? GB( listed)?$', row)
+
+    def test_the_sample_of_the_real_run_holds_no_address_and_no_key(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13', 'top-picks.json')
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+        for pattern in (r'://', r'(?i)api_?key', r'(?i)(?:key|token|password|secret)=', r'\b\d{1,3}(\.\d{1,3}){3}\b'):
+            self.assertIsNone(re.search(pattern, text), pattern)
+
+    def test_a_visit_without_a_source_has_no_top_pick(self):
+        run = runs_fixture()  # its visits list Sources but carry no play
+        run['visits'][0].update(sources=0, tries=[], ok=False, note='no Sources')
+        row = self.rows(run, Side='KaijuFlow', Run='Cold 1')[0]
+        self.assertEqual((row['Top pick'], row['Size']), ('-', '-'))
+
+    def test_a_bar_in_a_name_cannot_break_the_table(self):
+        run = baseline_picks()
+        run['visits'][1]['tries'][0]['title'] = 'A | B 💾 1.5 GB'
+        row, = self.rows(run, Title='Inception', Side='Usenet Ultimate', Run='Cold 1')
+        self.assertEqual((row['Top pick'], row['Result']), ('A / B 💾 1.5 GB', 'plays'))
+
+    # ---- a top pick that changed since the last run is listed under "What changed since the last run"
+    def with_pick(self, side, title, name, size, text, rounds=br.RUN_ORDER):
+        """The real run again, with another top pick for one side and title in the given rounds."""
+        run = baseline_picks()
+        run['started'] = '2026-11-14T05:32:00.550Z'
+        for v in run['visits']:
+            if (v['side'], v['title']) == (side, title) and (v['phase'], v['round']) in rounds:
+                v.update(ok=True, played_source=name, tries=[{'plays': True, 'size': size, 'note': None, 'title': text}])
+        return run
+
+    def changed(self, prev, cur):
+        return [line for line in br.diff_runs(prev, cur) if line.startswith('Top pick changed')]
+
+    def test_a_changed_top_pick_is_listed_with_its_side_title_rounds_old_and_new_pick(self):
+        cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000,
+                             '✅ 4K WEB-DL 🎬 Inception (2010) 💾 21.9 GB 🏴‍☠️ NEW')
+        self.assertEqual(self.changed(baseline_picks(), cur), [
+            f'Top pick changed: KaijuFlow, Inception (Cold 1, Warm 1, Cold 2, Warm 2): {self.FGT}, 85.4 GB -> '
+            'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW, 22.3 GB'])
+
+    def test_the_same_source_is_no_change_whether_it_played_or_not_and_whatever_its_list_text_says_today(self):
+        cur = baseline_picks()
+        for v in cur['visits']:
+            if (v['side'], v['title'], v['phase'], v['round']) == ('kaijuflow', 'Inception', 'cold', 2):
+                v['tries'][0].update(plays=True, size=85436578297, note=None)  # failed last time, plays now: the same Source
+                v['ok'] = True
+            if (v['side'], v['title'], v['phase'], v['round']) == ('uu', 'Inception', 'cold', 1):
+                v['tries'][0].update(plays=False, size=1242455, note='failure video')  # played last time, fails now
+                v['ok'] = False
+            if v['side'] == 'uu':  # a day later the list text shows another age, and a Source not health-checked has no mark
+                v['tries'][0]['title'] = v['tries'][0]['title'].replace('📅 4.2y', '📅 4.3y').replace('✅ ', '')
+        self.assertEqual(self.changed(baseline_picks(), cur), [])
+        self.assertEqual(self.changed(baseline_picks(), baseline_picks()), [])
+
+    def test_only_the_rounds_that_differ_are_named_and_a_side_that_now_lists_nothing_is_a_change(self):
+        text = '✅ 4K WEB-DL 🎬 Game of Thrones S02E03 💾 8.36 GB 🏴‍☠️ Weasley'
+        cur = self.with_pick('uu', 'Game of Thrones S02E03', None, 8037378833, text, rounds=[('cold', 1), ('cold', 2)])
+        for v in cur['visits']:
+            if (v['side'], v['title'], v['phase']) == ('altmount-addon', 'The Matrix', 'warm'):
+                v.update(ok=False, sources=0, tries=[], note='no Sources')
+        self.assertEqual(self.changed(baseline_picks(), cur), [
+            "Top pick changed: AltMount's own addon, The Matrix (Warm 1, Warm 2): "
+            'AltMount 🇩🇪 4K - Matrix (1999) [2160p][Deu] Matrix.1999.GERMAN.DL.DV.HDR.2160p.WEB.H265-SunDry 💾 24.01 GB 🌐 ninja, 21.2 GB '
+            '-> no top pick',
+            'Top pick changed: Usenet Ultimate, Game of Thrones S02E03 (Cold 1, Cold 2): 4K BluRay 🎬 Game of Thrones S02E03 🗣️ English '
+            f'⚙️ hevc 💾 27.71 GB 🏴‍☠️ BRIENNE 🗂️ NinjaCentral 📅 5.4y 📊 76.3 Mbps, 27.71 GB listed -> {text}, 8.0 GB'])
+
+    def test_a_title_or_a_side_that_only_one_run_has_is_not_a_changed_top_pick(self):
+        prev = baseline_picks()
+        prev['visits'] = [v for v in prev['visits'] if v['title'] != 'Inception' and v['side'] != 'kaijuflow-1page']
+        prev.update(titles=['The Matrix', 'Game of Thrones S02E03'], sides=['kaijuflow', 'uu', 'altmount-addon'])
+        self.assertEqual(self.changed(prev, baseline_picks()), [])
+
+    def test_nothing_changed_says_so_for_the_top_picks_too_when_both_runs_hold_them(self):
+        self.assertEqual(br.diff_runs(baseline_picks(), baseline_picks())[0],
+                         'Nothing changed in the settings, KaijuFlow code, titles, indexers, sides or top picks.')
+        no_picks = {k: v for k, v in baseline_picks().items() if k != 'visits'}  # a run meta whose top picks are not known
+        self.assertEqual(br.diff_runs(no_picks, baseline_picks())[0],
+                         'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.')
+
+    def run_folder(self, root, name, run, visits):
+        """A run folder as the runner leaves it: meta.json without the visits, raw.json with them."""
+        os.makedirs(os.path.join(root, name))
+        with open(os.path.join(root, name, 'meta.json'), 'w') as f:
+            json.dump({k: v for k, v in run.items() if k != 'visits'}, f)
+        if visits is not None:
+            with open(os.path.join(root, name, 'raw.json'), 'w') as f:
+                json.dump({'status': run['status'], 'visits': visits}, f)
+
+    def test_the_top_picks_of_the_previous_run_are_read_from_its_run_folder(self):
+        root, prev = tempdir(self), baseline_picks()
+        self.run_folder(root, '2026-11-13T053200Z-baseline', prev, prev['visits'])
+        cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000, 'x 💾 21.9 GB')
+        lines = self.changed(br.previous_run(root), cur)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn('KaijuFlow, Inception (Cold 1, Warm 1, Cold 2, Warm 2)', lines[0])
+
+    def test_a_previous_run_folder_that_holds_no_top_picks_is_not_compared(self):
+        cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000, 'x 💾 21.9 GB')
+        prev = baseline_picks()
+        cut_down = [{k: v for k, v in visit.items() if k not in ('tries', 'played_source')} for visit in prev['visits']]
+        for name, visits in (('no-raw', None), ('cut-down', cut_down)):
+            root = tempdir(self)
+            self.run_folder(root, name, prev, visits)
+            out = br.diff_runs(br.previous_run(root), cur)
+            self.assertEqual(self.changed(br.previous_run(root), cur), [], name)
+            self.assertEqual(out[0], 'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.', name)
+
+
 def targets_run(**figures):
     """runs_fixture() with some figures replaced, named '<side> <phase> <round> <field>': targets_run(**{'uu cold 1 start_s': 2.5})."""
     run = runs_fixture()

@@ -56,13 +56,18 @@ COLUMN_HELP = {
     'Not recorded': 'failures where a miss can be the cause: the list came back empty after a request the recording does not hold, '
                     'or the NZB file of the top pick was not recorded. This says nothing about the side or the Source: top up the recording.',
     'Title': 'the film or episode asked for.',
+    'Top pick': 'the first Source in the side\'s list, the one that was played: its release name where KaijuFlow\'s own log '
+                'gives it, otherwise the text the side showed for it in its list. "-" means there was none: the side listed no Source.',
+    'Size': 'the size of the top pick\'s file as the Backend served it, in GB of 1000 x 1000 x 1000 bytes. For a top pick that '
+            'did not play it is the size the side states in its list, marked "listed": the indexer\'s figure for the post, '
+            'not the measured size of the file (KaijuFlow counts it in GB of 1024 x 1024 x 1024 bytes).',
     'Sources': 'how many Sources the side listed.',
     'Result': '"plays" when the top pick delivered video, otherwise the failure kind and a short note.',
 }
 SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetch', 'Import', 'First byte']
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
 FAIL_COLS = ['Side', 'Run', 'Top pick plays'] + [c for _, c in CAUSES]
-TITLE_COLS = ['Title', 'Side', 'Run', 'Sources', 'Search', 'First byte', 'Result']
+TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Result']
 
 # --------------------------------------------------------------------------- parsing
 
@@ -345,6 +350,96 @@ def played_source(text):
     return None
 
 
+# The size a side states for a Source in its list text. KaijuFlow, Usenet Ultimate and AltMount's own addon all write it
+# after a disk sign: "... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05 GB 🌐 ninja".
+LISTED_SIZE_RE = re.compile(r'💾\s*(\d+(?:\.\d+)?\s?[KMGT]?B)\b')
+
+
+def top_pick(v):
+    """The top pick of one visit, the first Source in the side's list: {'name', 'size', 'listed'}, or None when the side
+    listed none.
+
+    name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
+    Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
+    the failure video, whose size says nothing about the Source). listed: the size the list text states, or None.
+    """
+    tries = v.get('tries') or []
+    if not tries:
+        return None
+    first = tries[0]
+    text = str(first.get('title') or '')
+    stated = LISTED_SIZE_RE.search(text)
+    return {'name': v.get('played_source') or text or None,
+            'size': first.get('size') if first.get('plays') and first.get('size') else None,
+            'listed': stated.group(1) if stated else None}
+
+
+def _pick_size(pick):
+    """The size of a top pick as the report shows it: of the served file, else the listed one, else '-'."""
+    if pick['size']:
+        return f"{pick['size'] / 1e9:.1f} GB"
+    return f"{pick['listed']} listed" if pick['listed'] else '-'
+
+
+def _pick_cells(pick):
+    """The Top pick and Size cells of a per-title row."""
+    if not pick:
+        return ['-', '-']
+    return [str(pick['name'] or '-').replace('|', '/'), _pick_size(pick)]
+
+
+def top_picks(visits):
+    """{side: {title: {'Cold 1': top pick, ...}}} of a run's visits. A visit that holds no record of what was tried (a run
+    folder cut down, or written before plays were kept) is left out, so it is never compared."""
+    out = {}
+    for v in visits:
+        if 'tries' in v:
+            out.setdefault(v['side'], {}).setdefault(v['title'], {})[_run_label(v['phase'], v['round'])] = top_pick(v)
+    return out
+
+
+def _same_pick(a, b):
+    """Whether two top picks are the same Source: by the size of the served file when both played, else by the size both
+    lists state, else by name. The name alone does not do: a side's list text also holds the Source's age and health-check
+    mark, which change from run to run."""
+    if a is None or b is None:
+        return a is b
+    for key in ('size', 'listed'):
+        if a[key] and b[key]:
+            return a[key] == b[key]
+    return a['name'] == b['name']
+
+
+def _pick_text(pick):
+    if not pick:
+        return 'no top pick'
+    return ', '.join(x for x in (str(pick['name'] or 'no name'), _pick_size(pick)) if x != '-')
+
+
+def top_pick_changes(before, now):
+    """One line per title and side whose top pick differs between two runs (both as top_picks gives them): the rounds it
+    differs in, then the old and the new pick of the first of them. Only rounds both runs hold are compared."""
+    labels = [_run_label(phase, rnd) for phase, rnd in RUN_ORDER]
+    titles = list(dict.fromkeys(t for side in now.values() for t in side))
+    lines = []
+    for title in titles:
+        for side in SIDE_NAMES:
+            old, new = before.get(side, {}).get(title, {}), now.get(side, {}).get(title, {})
+            differ = [x for x in labels if x in old and x in new and not _same_pick(old[x], new[x])]
+            if differ:
+                lines.append(f"Top pick changed: {SIDE_NAMES[side]}, {title} ({', '.join(differ)}): "
+                             f"{_pick_text(old[differ[0]])} -> {_pick_text(new[differ[0]])}")
+    return lines
+
+
+def _picks_of(meta):
+    """The top picks of a run meta: kept in it (previous_run reads them from the run folder) or made from its visits; None
+    when the meta holds neither."""
+    if 'top_picks' in meta:
+        return meta['top_picks']
+    return (top_picks(meta['visits']) or None) if isinstance(meta.get('visits'), list) else None
+
+
 def failure_cause(text):
     """Why KaijuFlow's top pick failed, in KaijuFlow's own words for the visit: the reason on its 'Stream failed' line (without
     the file path) and the Backend's answer at the first byte ('AltMount probe returned 400'). '' when it logged neither."""
@@ -530,8 +625,12 @@ def diff_runs(prev, cur, nulls=None):
             out.append(f"{label} added: {', '.join(x for x in b if x not in a)}")
         if [x for x in a if x not in b]:
             out.append(f"{label} removed: {', '.join(x for x in a if x not in b)}")
+    picks_before, picks_now = _picks_of(prev), _picks_of(cur)
+    compared = picks_before is not None and picks_now is not None  # an earlier run whose top picks are not known is not compared
+    if compared:
+        out += top_pick_changes(picks_before, picks_now)
     if not out:
-        out.append('Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.')
+        out.append(f"Nothing changed in the settings, KaijuFlow code, titles, indexers{', sides or top picks' if compared else ' or sides'}.")
     try:  # the time of day of both runs is always listed (indexers can answer differently by time of day)
         out.append(f"Time of day: previous run {_stamp(parse_ts(prev['started']))}, this run {_stamp(parse_ts(cur['started']))}")
     except (KeyError, ValueError):
@@ -795,8 +894,8 @@ def render_report(run, changes, opening=None):
                     m = visit_metrics(v)
                     cause = classify_failure(v)
                     res = 'plays' if v.get('ok') else failed_result(v, cause)
-                    rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd), v.get('sources', '-'), _cell(m['search_s']),
-                                 _cell(m['start_s']), res])
+                    rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
     lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
     lines += not_recorded_section(run)
     lines += time_section(run)
@@ -1007,7 +1106,8 @@ def append_index_row(path, row):
 
 
 def previous_run(root, exclude=None):
-    """meta.json of the newest earlier finished (non-null) run, or None."""
+    """meta.json of the newest earlier finished (non-null) run, or None. Its top picks are added from the folder's raw.json
+    (`top_picks`), so the next run can be compared with them; a folder that holds none stays without."""
     if not os.path.isdir(root):
         return None
     for d in sorted(os.listdir(root), reverse=True):
@@ -1018,5 +1118,11 @@ def previous_run(root, exclude=None):
         except (OSError, ValueError):
             continue
         if meta.get('status') == 'ok':
+            try:
+                picks = top_picks(json.loads(_slurp(os.path.join(root, d, 'raw.json')))['visits'])
+            except (OSError, ValueError, KeyError, TypeError):
+                picks = None
+            if picks:
+                meta['top_picks'] = picks
             return meta
     return None

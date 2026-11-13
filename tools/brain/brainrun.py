@@ -402,6 +402,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # and the two files that can change what a build gets to see (the image is built from `git archive HEAD`, see build_image).
 BUILD_INPUTS = ('Dockerfile', '.dockerignore', '.gitattributes', 'package.json', 'package-lock.json', 'tsconfig.json',
                 'src', 'ui', 'scripts/docker-entrypoint.sh')
+# The settings every test copy is expected to have (sort and filter rules); the preflight compares each copy with it (#109).
+EXPECTED_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
 
 
 class PreflightFailed(Exception):
@@ -444,6 +446,111 @@ def image_state(label, head, inputs_changed):
     if label == head:
         return 'current'
     return {False: 'current', True: 'stale'}.get(inputs_changed(label), 'unknown')
+
+
+def load_expected_settings(path=EXPECTED_SETTINGS_FILE):
+    """The entries of the expected settings file: [{'copies': [side, ...], 'settings': {setting name: value}}].
+    ValueError with a plain reason when the file or one of its entries cannot be used."""
+    name = os.path.basename(path)
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ValueError(f'{name} cannot be read: {type(e).__name__}') from None
+    entries = data.get('expected') if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError(f'{name} cannot be read: it has no "expected" list')
+    for i, entry in enumerate(entries, 1):
+        copies, wanted = (entry.get('copies'), entry.get('settings')) if isinstance(entry, dict) else (None, None)
+        stranger = next((c for c in copies if not isinstance(c, str) or c not in testbed.SETTINGS), None) if isinstance(copies, list) else None
+        # the file is in the repository: the settings reader's own test for a secret name keeps keys and logins out of it
+        secret = next((k for k, v in br.flatten(wanted).items() if v == '***'), None) if isinstance(wanted, dict) else None
+        if not isinstance(copies, list) or not copies:
+            why = 'it names no copies'
+        elif stranger is not None:
+            why = f'"{stranger}" is not a test copy ({_list(testbed.SETTINGS_SIDES)})'
+        elif not isinstance(wanted, dict) or not wanted:
+            why = 'it names no settings'
+        elif secret:
+            why = f'{secret} is a key, a login or a password, which does not belong in this file'
+        else:
+            continue
+        raise ValueError(f'{name}, entry {i}: {why}')
+    return entries
+
+
+def _settings_at(flat, name):
+    """The settings at or below `name` in a flat settings map. A list of plain values (an order such as `sortOrder`, which the
+    map holds as sortOrder[0], sortOrder[1], ...) is one setting, with the list as its value."""
+    out = {}
+    for k, v in flat.items():
+        if k != name and not k.startswith((name + '.', name + '[')):
+            continue
+        entry = re.fullmatch(r'(.+)\[(\d+)\]', k)
+        if entry and len(entry.group(1)) >= len(name):
+            out.setdefault(entry.group(1), {})[int(entry.group(2))] = v
+        else:
+            out[k] = [] if v == '[]' else v  # the map's way of writing an empty list
+    return {k: [v[i] for i in sorted(v)] if isinstance(v, dict) else v for k, v in out.items()}
+
+
+def _whole_gap(key, name, other):
+    """The highest level of the setting `key`, from `name` down, that `other` has nothing of: a section or a rule that is
+    missing as a whole is named once, not once per value in it. a.b[c].d is tried as a, a.b, a.b[c], a.b[c].d."""
+    ends = [m.end() for m in re.finditer(r'\[.*?\](?=[.\[]|$)|[^.\[]+', key)]
+    return next((key[:e] for e in ends if e >= len(name) and not _settings_at(other, key[:e])), key)
+
+
+def _show(value):
+    return json.dumps(value, ensure_ascii=False)
+
+
+def setting_differences(expected, settings, file=None):
+    """One sentence per setting of a test copy that differs from the expected settings; [] when every copy matches.
+
+    expected: the entries of the expected settings file (load_expected_settings). settings: {side: {dotted name: value}}, as
+    the settings reader gives them (testbed.read_settings). file: where the expected settings file is, for the first
+    sentence, which also says what to do (the others stay short).
+    """
+    out = []
+
+    def say(start, end):
+        first = not out
+        out.append(f"{start} the expected settings file{f' ({file})' if first and file else ''} {end}"
+                   + (": change the test copy's config, or the file if the copy's value is the intended one." if first else '.'))
+
+    for entry in expected:
+        for side in entry['copies']:
+            copy_name, have = testbed.SETTINGS[side]['short'], settings.get(side) or {}
+            if not have or '(file missing)' in have:  # a config that cannot be read: the other preflight checks say so
+                continue
+            for name, value in entry['settings'].items():
+                want, got = _settings_at(br.flatten(value, name), name), _settings_at(have, name)
+                gaps = []  # a setting, a rule or a section one of the two lacks as a whole, each named once
+                for k in want:
+                    if k not in got:
+                        gap = (_whole_gap(k, name, got), 'missing')
+                        if gap not in gaps:
+                            gaps.append(gap)
+                            say(f'{copy_name} has no {gap[0]} setting, but', 'has one')
+                    elif got[k] != want[k] and isinstance(got[k], list) and isinstance(want[k], list):
+                        mine, theirs = got[k], want[k]
+                        n = next((i for i, (a, b) in enumerate(zip(mine, theirs)) if a != b), min(len(mine), len(theirs)))
+                        if n >= len(mine):
+                            say(f'{copy_name} has no {k} entry {n + 1}, but', f'says {_show(theirs[n])}')
+                        elif n >= len(theirs):
+                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(mine[n])}, but', f'has no entry {n + 1}')
+                        else:
+                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(mine[n])}, but',
+                                f'says {_show(theirs[n])} (the first entry that differs)')
+                    elif got[k] != want[k]:
+                        say(f'{copy_name} has {k} set to {_show(got[k])}, but', f'says {_show(want[k])}')
+                for k in got:
+                    gap = (_whole_gap(k, name, want), 'extra')
+                    if k not in want and gap not in gaps:
+                        gaps.append(gap)
+                        say(f'{copy_name} has a {gap[0]} setting that', 'does not have')
+    return out
 
 
 def preflight(mode, cfg, io):
@@ -517,11 +624,19 @@ def preflight(mode, cfg, io):
         problems.append(f'The test copies may open {rep["total"]} connections together ({per}), over the provider limit of {rep["limit"]}: '
                         'lower the caps.')
 
-    # 5. the stand-in's port is free
+    # 5. every test copy has the sort and filter settings of the expected settings file
+    path = cfg.get('expected_settings') or EXPECTED_SETTINGS_FILE
+    shown = os.path.relpath(path, REPO) if os.path.abspath(path).startswith(REPO + os.sep) else path
+    try:
+        problems += setting_differences(load_expected_settings(path), rep['settings'], shown)
+    except ValueError as e:
+        problems.append(f'The expected settings file cannot be used ({e}): fix the file.')
+
+    # 6. the stand-in's port is free
     if not io.port_free(port):
         problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (an earlier indexer stand-in?) and try again.")
 
-    # 6. (run only) the recording exists and holds an answer for every enabled indexer
+    # 7. (run only) the recording exists and holds an answer for every enabled indexer
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})
@@ -552,7 +667,7 @@ def preflight_command(mode, cfg, io):
     if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
         print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
-        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps and port all check out.')
+        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out.')
     return 1 if problems else 0
 
 
