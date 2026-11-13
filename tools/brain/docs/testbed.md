@@ -14,7 +14,7 @@ The test copies of every side and the 1338 test container. Back to the [runbook]
 | `altmount-addon` | `altmount-addon-test` | 8086 | AltMount for the addon side |
 | `altmount-kf` | `altmount-kf-test` | 8087 | AltMount for KaijuFlow |
 
-All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`, `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). Every side's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59). Settings per side: `~/kaijuflow-notes/spec58/SETTINGS.md`.
+All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`, `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). Every side's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59). Settings per side: `python3 -I tools/brain/testbed.py settings` (the hand-written `SETTINGS.md` was lost with the old machine).
 
 Recipe (from the repo root; `testbed.py` runs every Docker command through the test project and refuses any other service):
 
@@ -24,7 +24,7 @@ Recipe (from the repo root; `testbed.py` runs every Docker command through the t
 4. Emptiness check alone: `python3 -I tools/brain/testbed.py check [side ...]` (database tables, the Backend's own API/WebDAV listing, leftover files, cache files). Exit 1 and `NOT EMPTY: ...` lines otherwise.
 5. Stop when done: `python3 -I tools/brain/testbed.py stop`. `status` lists the test containers.
 
-Never run two test Backends at the same time (connection budget, see SETTINGS.md). Tests of the scripts (no Docker, run in CI): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
+Never run two test Backends at the same time (connection budget: [rules.md](rules.md#settings-table-and-preflight-spec-72-ticket-74), `testbed.py settings`). Tests of the scripts (no Docker, run in CI): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
 
 ## The 1338 test container
 

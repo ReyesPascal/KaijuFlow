@@ -2,7 +2,15 @@
 
 Every command runs from the repo root. Long ones: shell background mode with a hard `timeout`, and watch the log (stop at the first `Error`).
 
-**Rules.** Every timed run needs the owner's go. Live containers (UU 1337, NzbDAV 3000, AltMount 8085) are never touched. Only NinjaCentral is used: DrunkenSlug is switched off in the test copies but left in place. The default key file `~/kaijuflow-test/indexers.json` holds NinjaCentral only, so never pass `--key-file`. If an indexer says "limit reached", the work waits for NinjaCentral's reset (cap rule: the pass stops and the recording is null).
+**Rules.** This is the one place the rules are stated; other files point here, and [docs/rules.md](docs/rules.md) holds the detail.
+
+- Every timed run, and every other Brain check, needs the owner's go.
+- A test touches only the test copies. This machine has no live stacks (Usenet Ultimate, NzbDAV, AltMount); if they are rebuilt, no test ever touches them.
+- Only NinjaCentral is used, on every side: DrunkenSlug is switched off in the test copies but left in place; delete nothing. The default key file `~/kaijuflow-test/indexers.json` holds NinjaCentral only, so never pass `--key-file`.
+- Cap rule: if an indexer says "limit reached", the pass stops and its result is null; the work waits for NinjaCentral's reset, and DrunkenSlug is never switched on to finish it. The allowance is in `~/kaijuflow-test/limits.json` (step 1).
+- Each test Backend is capped at 25 connections, and the caps of all test copies add up to at most the provider limit (100); the preflight checks the sum.
+- Every run is recorded (its own run folder and an INDEX.md row; the run command does this), and its report opens with what changed since the last run.
+- Rebuild the image only when the code in it changed (step 0).
 
 `<store>` is the folder of recordings, `<list>` the title list's name, `<name>` a label for the folder.
 

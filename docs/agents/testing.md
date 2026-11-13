@@ -9,4 +9,4 @@ Commands are the `package.json` scripts. The things they don't tell you:
 - **Parity:** shared scenarios live in `tests/integration/parity/scenarios.mjs` and run against every fake Backend (`parity-nzbdav.mjs`, `parity-altmount.mjs`).
 - **Fake news server:** `tests/integration/parity/fake-nntp.mjs` serves synthetic RAR5 first articles over loopback and is KaijuFlow's only health-check provider in the Parity suites (`useFakeNews`). `scrambledRarSet` builds a Scrambled RAR set NZB; the Unscramble unit tests use the same helpers.
 - **Fake Backends:** their replies must keep the real Backend's layout. `tests/unit/fake-backend-shape.test.ts` compares them with replies captured on Brain (`tests/fixtures/backends/`); when a real Backend changes, capture a new reply there.
-- **Live checks on Brain** (Parity on real Backends, article checks): `tools/brain/README.md`. Owner's OK first.
+- **Live checks on Brain** (Parity on real Backends, article checks): `tools/brain/README.md`; the rules (the owner's go first) are in `tools/brain/RUNBOOK.md`.

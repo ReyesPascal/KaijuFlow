@@ -1,6 +1,6 @@
 # Brain tools
 
-Scripts for live checks on Brain (the owner's server), written for the 1338 Brain check (2026-11-09). They read from the live services and change nothing on them. **The owner's OK is needed before any Brain check**, and the working containers (UU 1337, NzbDAV 3000, AltMount 8085) are never changed, restarted or replaced.
+Scripts for checks on Brain (the owner's server), first written for the 1338 Brain check (2026-11-09). The rules for every Brain check (the owner's go, live containers, indexers, connection caps) are in **[RUNBOOK.md](RUNBOOK.md)**, "Rules".
 
 Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, in the shell tool's background mode. Each script prints one line per title as it goes and ends with `done in N s`; a log without that line is an unfinished run. Watch the log while it runs (a monitor that prints each title line and any line with `Error` or `Traceback`) and stop and report on the first error instead of waiting for the end.
 
