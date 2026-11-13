@@ -58,9 +58,25 @@ _Avoid_: cached play, repeat play
 One setup that is played in a timed run: KaijuFlow, Usenet Ultimate, AltMount's own addon, or KaijuFlow with one page per indexer. Each side has its own test copy.
 _Avoid_: variant, candidate, contestant
 
+**Pass**:
+The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of the three main sides and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
+_Avoid_: batch, phase (cold or warm is the phase)
+
 **Round**:
-One pass of every title on one side, either cold or warm. A timed run plays four rounds per side: cold, warm, cold, warm.
+Every title played once, cold or warm, on every side of a pass. A timed run plays four rounds: cold, warm, cold, warm. A side's figures for a round are made of its own plays in it; the time a round takes covers every side of the pass.
 _Avoid_: iteration, lap
+
+**Top pick**:
+The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match.
+_Avoid_: first result, winner
+
+**Target**:
+One of the goals KaijuFlow is measured against, kept in `tools/brain/targets.json` and judged on a finished run only: met, not met, or not measured when the run holds no figure for it. A time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by.
+_Avoid_: goal, KPI, threshold
+
+**Expected settings**:
+The sort and filter rules every test copy must have, kept in `tools/brain/expected-settings.json`. The preflight fails when a copy differs.
+_Avoid_: baseline settings, golden config
 
 **Recording**:
 The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing.
@@ -75,5 +91,5 @@ The first "limit reached" from any indexer stops the pass at once, and its resul
 _Avoid_: rate-limit handling
 
 **Stopped run**:
-A timed run that was interrupted by hand (Ctrl-C) before its last play. Its record keeps the plays that finished and says where it stopped; it is not a baseline and never the previous run of a comparison.
+A timed run that was stopped by Ctrl-C, or by SIGTERM as `timeout` sends it, before its last play. Its record keeps the plays that finished and says where it stopped; it is not a baseline, its targets are not judged, and it is never the previous run of a comparison. A record command is stopped the same way.
 _Avoid_: aborted run, cancelled run, null run (null is the cap rule's result)

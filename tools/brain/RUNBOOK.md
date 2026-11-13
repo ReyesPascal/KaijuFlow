@@ -59,14 +59,7 @@ The "KaijuFlow Speed Check" page is https://claude.ai/artifact/VUydiLAYH9gbJ63Ft
 
 ## Measuring words
 
-- **Side**: one setup that is played: KaijuFlow, Usenet Ultimate, AltMount's own addon, or KaijuFlow with one page per indexer.
-- **Round**: one pass of every title on one side, cold or warm.
-- **Recording**: the indexer answers stored once, then replayed by the stand-in in every run.
-- **Stand-in**: the stand-in indexer on port 1340 that records or replays answers.
-- **Cap rule**: the first "limit reached" stops the pass; the result is null.
-- **Target**: one of the goals KaijuFlow is measured against, kept in `tools/brain/targets.json`. "Inside the noise" means KaijuFlow's own two rounds differ by more than the target is met or missed by.
-- **Top pick**: the first Source in a side's list, the one a round plays. The report's per-title table names it with its size, and "What changed since the last run" lists a title whose top pick changed.
-- **Expected settings**: the sort and filter rules every test copy must have, kept in `tools/brain/expected-settings.json`. The preflight fails when a copy differs.
+Side, Pass, Round, Top pick, Target, Expected settings, Recording, Stand-in, Cap rule, Stopped run, Cold start and Warm start are defined once, in [GLOSSARY.md](../../GLOSSARY.md) ("Measuring").
 
 ## Reference
 

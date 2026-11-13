@@ -999,7 +999,7 @@ def time_parts(run):
     return parts
 
 
-def _s(x):
+def _seconds_cell(x):
     return '-' if x is None else f'{x:.1f}'
 
 
@@ -1008,7 +1008,7 @@ def _minutes(x):
 
 
 def _took(x):
-    return f'{_minutes(x)} minutes ({_s(x)} s)'
+    return f'{_minutes(x)} minutes ({_seconds_cell(x)} s)'
 
 
 def _time_of_day(iso_time):
@@ -1029,8 +1029,8 @@ def time_section(run):
     out = ['## Where the time went', '',
            f"The whole run took {_took(timing.get('seconds'))}, from {_time_of_day(run.get('started'))} to "
            f"{_time_of_day(run.get('finished'))} UTC{': ' + passes if passes else ''}.", '']
-    rows = [[name, _s(parts.get(key)), _minutes(parts.get(key))] for key, name in TIME_PARTS]
-    out += _table(['Part', 'Seconds', 'Minutes'], rows + [['The whole run', _s(timing.get('seconds')), _minutes(timing.get('seconds'))]])
+    rows = [[name, _seconds_cell(parts.get(key)), _minutes(parts.get(key))] for key, name in TIME_PARTS]
+    out += _table(['Part', 'Seconds', 'Minutes'], rows + [['The whole run', _seconds_cell(timing.get('seconds')), _minutes(timing.get('seconds'))]])
     failed = sum(1 for v in visits if not v.get('ok'))
     out += ['',
             '- **Measured list and start time**: for every top pick that played, the seconds until its Stream list arrived plus '
@@ -1056,14 +1056,14 @@ def time_section(run):
 def _round_rows(rounds, resets):
     """One row per round of each pass, in the order they were played, with the reset that came before it. A reset with no
     round after it (the run ended during the reset) gets a row too, so every reset is shown."""
-    def which(r):
+    def round_key(r):
         return r.get('pass'), r.get('phase'), r.get('round')
-    reset_of, round_of = {which(r): r for r in resets}, {which(r): r for r in rounds}
+    reset_of, round_of = {round_key(r): r for r in resets}, {round_key(r): r for r in rounds}
     rows = []
-    for key in dict.fromkeys(which(r) for r in sorted(resets + rounds, key=lambda r: str(r.get('start')))):
+    for key in dict.fromkeys(round_key(r) for r in sorted(resets + rounds, key=lambda r: str(r.get('start')))):
         r = round_of.get(key) or {}
         rows.append([str(key[0]).capitalize(), _run_label(str(key[1]), key[2]), _time_of_day(r.get('start')) if r else '-',
-                     _s(reset_of.get(key, {}).get('seconds')), r.get('plays', 0), _s(r.get('seconds')), _minutes(r.get('seconds'))])
+                     _seconds_cell(reset_of.get(key, {}).get('seconds')), r.get('plays', 0), _seconds_cell(r.get('seconds')), _minutes(r.get('seconds'))])
     return rows
 
 

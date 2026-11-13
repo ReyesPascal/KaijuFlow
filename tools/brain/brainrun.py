@@ -505,13 +505,13 @@ def load_expected_settings(path=EXPECTED_SETTINGS_FILE):
         raise ValueError(f'{name} cannot be read: it has no "expected" list')
     for i, entry in enumerate(entries, 1):
         copies, wanted = (entry.get('copies'), entry.get('settings')) if isinstance(entry, dict) else (None, None)
-        stranger = next((c for c in copies if not isinstance(c, str) or c not in testbed.SETTINGS), None) if isinstance(copies, list) else None
+        unknown_copy = next((c for c in copies if not isinstance(c, str) or c not in testbed.SETTINGS), None) if isinstance(copies, list) else None
         # the file is in the repository: the settings reader's own test for a secret name keeps keys and logins out of it
         secret = next((k for k, v in br.flatten(wanted).items() if v == '***'), None) if isinstance(wanted, dict) else None
         if not isinstance(copies, list) or not copies:
             why = 'it names no copies'
-        elif stranger is not None:
-            why = f'"{stranger}" is not a test copy ({_list(testbed.SETTINGS_SIDES)})'
+        elif unknown_copy is not None:
+            why = f'"{unknown_copy}" is not a test copy ({_list(testbed.SETTINGS_SIDES)})'
         elif not isinstance(wanted, dict) or not wanted:
             why = 'it names no settings'
         elif secret:
@@ -577,15 +577,15 @@ def setting_differences(expected, settings, file=None):
                             gaps.append(gap)
                             say(f'{copy_name} has no {gap[0]} setting, but', 'has one')
                     elif got[k] != want[k] and isinstance(got[k], list) and isinstance(want[k], list):
-                        mine, theirs = got[k], want[k]
-                        n = next((i for i, (a, b) in enumerate(zip(mine, theirs)) if a != b), min(len(mine), len(theirs)))
-                        if n >= len(mine):
-                            say(f'{copy_name} has no {k} entry {n + 1}, but', f'says {_show(theirs[n])}')
-                        elif n >= len(theirs):
-                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(mine[n])}, but', f'has no entry {n + 1}')
+                        copy_list, expected_list = got[k], want[k]
+                        n = next((i for i, (a, b) in enumerate(zip(copy_list, expected_list)) if a != b), min(len(copy_list), len(expected_list)))
+                        if n >= len(copy_list):
+                            say(f'{copy_name} has no {k} entry {n + 1}, but', f'says {_show(expected_list[n])}')
+                        elif n >= len(expected_list):
+                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(copy_list[n])}, but', f'has no entry {n + 1}')
                         else:
-                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(mine[n])}, but',
-                                f'says {_show(theirs[n])} (the first entry that differs)')
+                            say(f'{copy_name} has {k} entry {n + 1} set to {_show(copy_list[n])}, but',
+                                f'says {_show(expected_list[n])} (the first entry that differs)')
                     elif got[k] != want[k]:
                         say(f'{copy_name} has {k} set to {_show(got[k])}, but', f'says {_show(want[k])}')
                 for k in got:
