@@ -118,6 +118,8 @@ def check_run(run_dir):
             lines.append(f"- {_visit_name(v)}: {cause}" + (' (a missed request can be the cause)' if v.get('not_recorded') else ''))
     else:
         lines.append('Failures: none.')
+    if status == 'ok' and not err:  # the targets are judged on a finished run only; they do not decide the baseline verdict
+        lines += br.target_lines(visits)
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:

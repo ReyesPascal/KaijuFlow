@@ -560,6 +560,95 @@ def null_runs_between(root, since, exclude=None):
     return sorted(found, key=lambda m: m['started'])
 
 
+# --------------------------------------------------------------------------- targets
+
+TARGETS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'targets.json')
+JUDGED = 'kaijuflow'  # the side the targets are set for
+
+
+NO_FIGURE = 'no figure'  # the run holds nothing to measure a target with (a side or a round is not in it)
+
+
+def _secs(x):
+    return NO_FIGURE if x is None else f'{x:.2f} s'
+
+
+def _of(plays):
+    return f'{plays[0]} of {plays[1]}' if plays[1] else NO_FIGURE
+
+
+def _time(visits, side, phase, what, rnd=None):
+    """Median start (top picks that played) or list time (every visit) of one side: both rounds of a phase, or one round."""
+    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])]
+    return median([v.get('start_s') for v in vs if v.get('ok')] if what == 'start' else [v.get('list_s') for v in vs])
+
+
+def _plays(visits, side, phase=None, rnd=None):
+    """(top picks that played, top picks counted) of one side: every round, or one round."""
+    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])])
+    return sum(1 for v in vs if v.get('ok')), len(vs)
+
+
+def _judge(visits, t):
+    """(measured values, result) of one entry of the targets file."""
+    me, margin = SIDE_NAMES[JUDGED], t['margin']
+    if t['measure'] == 'plays per round':  # every round the run holds, cold and warm
+        rounds = {phase: [x for p, r in RUN_ORDER if p == phase for x in [_plays(visits, JUDGED, phase, r)] if x[1]]
+                  for phase in ('cold', 'warm')}
+        measured = ', '.join(f'{phase} ' + (' and '.join(_of(x) for x in rs) or NO_FIGURE) for phase, rs in rounds.items())
+        if not all(rounds.values()):
+            return measured, 'Not measured'
+        met = all(p >= t['limit'] - margin and n - p <= margin for rs in rounds.values() for p, n in rs)
+        return measured, 'Met' if met else 'Not met'
+    if t['measure'] == 'plays':  # the share of top picks that played, every round together
+        (p, n), (q, m) = _plays(visits, JUDGED), _plays(visits, t['against'])
+        measured = f"{me} {_of((p, n))}, {SIDE_NAMES[t['against']]} {_of((q, m))}"
+        if not n or not m:
+            return measured, 'Not measured'
+        return measured, 'Met' if p * m > (q - margin * m) * n else 'Not met'
+    phase, what = t['measure'].split()
+    mine = _time(visits, JUDGED, phase, what)
+    ref = t['limit'] if 'limit' in t else _time(visits, t['against'], phase, what)
+    measured = f'{me} {_secs(mine)}' + ('' if 'limit' in t else f", {SIDE_NAMES[t['against']]} {_secs(ref)}")
+    if mine is None or ref is None:
+        return measured, 'Not measured'
+    over = round(mine - ref - margin, 2)  # above 0: the target is missed by this much; below: met by this much
+    result = 'Met' if over <= 0 else f'Not met ({_secs(mine - ref)} slower)'
+    a, b = (_time(visits, JUDGED, phase, what, r) for r in (1, 2))
+    if a is not None and b is not None and round(abs(a - b), 2) > abs(over):
+        result += (f", inside the noise: {me}'s two {phase} rounds differ by {_secs(abs(a - b))} ({a:.2f} and {b:.2f} s), "
+                   f"more than the {_secs(abs(over))} the target is {'missed' if over > 0 else 'met'} by")
+    return measured, result
+
+
+def target_results(visits, path=TARGETS_FILE):
+    """[(target, measured values, result)] for every entry of the targets file, in its order."""
+    with open(path) as f:
+        targets = json.load(f)['targets']
+    return [(t['target'],) + _judge(visits, t) for t in targets]
+
+
+def target_lines(visits, path=TARGETS_FILE):
+    """One plain line per target, as the check prints them."""
+    return [f'Target: {t}. Measured: {m}. {r}.' for t, m, r in target_results(visits, path)]
+
+
+TARGETS_HELP = (
+    'Start = seconds from pressing play on the top pick until the first byte. List = seconds from asking for a title until '
+    'its Stream list arrived. Each time is the median over the titles of both cold rounds or both warm rounds together (the '
+    'start over the top picks that played, the list over every title). Plays leave out a top pick that failed only because a '
+    'request was not recorded. "Inside the noise": KaijuFlow\'s own two rounds differ by more than the target is met or '
+    'missed by, so the same run done again could turn the result around. "Not measured": the run holds no figure for it.')
+
+
+def targets_section(visits, path=TARGETS_FILE):
+    """The report's table of the targets: one row per target, then how many are met and what the words mean."""
+    rows = target_results(visits, path)
+    met = sum(1 for _, _, result in rows if result.startswith('Met'))
+    return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], rows) + [
+        '', f"{met} of {len(rows)} targets met. {TARGETS_HELP}", '']
+
+
 # --------------------------------------------------------------------------- report
 
 def _groups(run):
@@ -628,7 +717,7 @@ def render_report(run, changes):
     lines = [answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
-             "\"-\" means that side does not show the step from outside.", '',
+             "\"-\" means that side does not show the step from outside.", ''] + targets_section(run['visits']) + [
              '## What changed since the last run', ''] + [f'- {c}' for c in changes] + ['']
     if run.get('standin_misses'):
         lines += [f"Warning: the indexer stand-in had {run['standin_misses']} requests it had not recorded (a side asked "

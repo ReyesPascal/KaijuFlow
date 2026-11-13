@@ -1,0 +1,33 @@
+{
+ "commit": "750c2eba3f92725a5962dc67c13ded956a81beeb",
+ "dirty": false,
+ "error": null,
+ "finished": "2026-11-13T06:10:57.096Z",
+ "indexers": [
+  "ninjacentral"
+ ],
+ "name": "baseline",
+ "null": null,
+ "sides": [
+  "kaijuflow",
+  "uu",
+  "altmount-addon",
+  "kaijuflow-1page"
+ ],
+ "standin_misses": 0,
+ "standin_unmatched": 0,
+ "started": "2026-11-13T05:32:00.550Z",
+ "status": "ok",
+ "titles": [
+  "Inception",
+  "Interstellar",
+  "Oppenheimer",
+  "The Matrix",
+  "Dune",
+  "The Dark Knight",
+  "Pulp Fiction",
+  "Breaking Bad S01E01",
+  "Chernobyl S01E02",
+  "Game of Thrones S02E03"
+ ]
+}
