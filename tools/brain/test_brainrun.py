@@ -78,7 +78,7 @@ class FakeIO(Copies):
         self.calls.append(('sleep', s))
 
     def git_info(self):
-        return 'repo-head-must-not-be-recorded', False
+        return 'repo-head', False
 
     def image_label(self):
         return self.commit
@@ -228,6 +228,11 @@ class RunTest(unittest.TestCase):
         self.assertEqual(run['commit'], 'c-from-label')
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['commit'], 'c-from-label')
         self.assertEqual(io.calls_preflight, ['run'])
+
+    def test_run_record_also_keeps_the_repository_commit_as_head(self):
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(commit='c-from-label'))
+        meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
+        self.assertEqual((meta['commit'], meta['head']), ('c-from-label', 'repo-head'))
 
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())

@@ -153,6 +153,7 @@ class RealIO:
     def __init__(self, cfg):
         self.cfg = cfg
         self.testbed = testbed
+        self.repo = REPO
         self.backup = os.path.join(cfg['test_dir'], 'config', 'config.json.pre-brainrun')
 
     def now(self):
@@ -162,10 +163,12 @@ class RealIO:
         time.sleep(s)
 
     def git_info(self):
-        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        commit = subprocess.check_output(['git', '-C', repo, 'rev-parse', 'HEAD'], text=True).strip()
-        dirty = bool(subprocess.check_output(['git', '-C', repo, 'status', '--porcelain', '--untracked-files=no'], text=True).strip())
+        commit = subprocess.check_output(['git', '-C', self.repo, 'rev-parse', 'HEAD'], text=True).strip()
+        dirty = bool(subprocess.check_output(['git', '-C', self.repo, 'status', '--porcelain', '--untracked-files=no'], text=True).strip())
         return commit, dirty
+
+    def build_inputs_changed(self, since):
+        return build_inputs_changed(self.repo, since)
 
     def snapshot(self):
         return snapshot_settings(self.cfg['test_dir'])
@@ -183,8 +186,7 @@ class RealIO:
         return label if r.returncode == 0 and label and label != '<no value>' else None
 
     def rebuild_image(self, commit):
-        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        build_image(commit, repo)
+        build_image(commit, self.repo)
 
     def addresses(self):
         return read_addresses()
@@ -326,6 +328,16 @@ def build_image(commit, repo, popen=subprocess.Popen, run=subprocess.run):
         archive.wait()
 
 
+def build_inputs_changed(repo, since, run=subprocess.run):
+    """Whether a build input differs between the commit `since` and HEAD: True or False, or None when git cannot say
+    (`since` is not a commit id, or the repository does not have that commit)."""
+    if not re.fullmatch(r'[0-9a-f]{7,40}', since or ''):
+        return None
+    r = run(['git', '-C', repo, 'diff', '--quiet', since + '^{commit}', 'HEAD', '--', *BUILD_INPUTS],
+            capture_output=True, text=True, timeout=60)
+    return {0: False, 1: True}.get(r.returncode)
+
+
 def read_addresses(run=subprocess.run):
     """{test container: its address on the test network}, read with `docker inspect` (read-only); a container that is not up
     or has no address is left out."""
@@ -379,6 +391,11 @@ def side_base(cfg, side):
 
 IMAGE = 'kaijuflow:test'
 IMAGE_LABEL = 'kaijuflow.commit'
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# The build inputs: every path the Dockerfile copies into the image (test_preflight.py holds the two in line), the Dockerfile,
+# and the two files that can change what a build gets to see (the image is built from `git archive HEAD`, see build_image).
+BUILD_INPUTS = ('Dockerfile', '.dockerignore', '.gitattributes', 'package.json', 'package-lock.json', 'tsconfig.json',
+                'src', 'ui', 'scripts/docker-entrypoint.sh')
 
 
 class PreflightFailed(Exception):
@@ -409,6 +426,20 @@ def _list(items):
     return ', '.join(items) if items else 'none'
 
 
+def image_state(label, head, inputs_changed):
+    """Whether the test image holds the code of the commit `head`, given the commit its label names.
+
+    'current': it does (same commit, or no build input changed in between); 'stale': a build input changed since the image's
+    commit; 'unknown': git cannot compare the two (the repository does not have the image's commit); 'missing': no image, or
+    no label on it. `inputs_changed(commit)` answers True, False or None and is only asked when the two commits differ.
+    """
+    if not label:
+        return 'missing'
+    if label == head:
+        return 'current'
+    return {False: 'current', True: 'stale'}.get(inputs_changed(label), 'unknown')
+
+
 def preflight(mode, cfg, io):
     """Checks the setup before a record ('record') or a run ('run'). Returns plain sentences, one per problem; [] means go.
 
@@ -419,20 +450,25 @@ def preflight(mode, cfg, io):
     problems = []
     port = cfg.get('standin_port', 1340)
 
-    # 1. the test image was built from the commit being tested
+    # 1. the test image holds the code of the commit being tested
     commit, dirty = io.git_info()
     label = io.image_label()
     if dirty:
         problems.append('The repository has uncommitted changes, so the test image cannot name the code that runs: commit them first.')
     else:
-        if cfg.get('rebuild_image') and label != commit:
+        state = image_state(label, commit, io.build_inputs_changed)
+        if cfg.get('rebuild_image') and state != 'current':
             io.rebuild_image(commit)
             label = io.image_label()
-        if not label:
+            state = image_state(label, commit, io.build_inputs_changed)
+        if state == 'missing':
             problems.append(f'The test image {IMAGE} is missing or does not say which commit it was built from: build it again with --rebuild-image.')
-        elif label != commit:
-            problems.append(f'The test image was built from commit {label[:7]} but the repository is at {commit[:7]}: '
-                            'build it again with --rebuild-image.')
+        elif state == 'stale':
+            problems.append(f'The test image was built from commit {label[:7]}, and the code that goes into the image has changed '
+                            f'since then (the repository is at {commit[:7]}): build it again with --rebuild-image.')
+        elif state == 'unknown':
+            problems.append(f'The test image was built from commit {label[:7]}, which this repository does not have, so nothing says '
+                            f'whether it holds the code at {commit[:7]}: build it again with --rebuild-image.')
 
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
     titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
@@ -625,7 +661,7 @@ def run_all(cfg, io):
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
            'sides': planned_sides(cfg), 'standin_misses': 0,
-           'settings': {}, 'commit': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
+           'settings': {}, 'commit': None, 'head': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
                      'one-page side': 'yes' if cfg['one_page'] else 'no'}}
@@ -633,8 +669,8 @@ def run_all(cfg, io):
     logbuf, handle, failure = {}, None, None
     try:
         run['settings'] = io.snapshot()
-        run['dirty'] = io.git_info()[1]
-        run['commit'] = io.image_label()  # the commit the test image was built from, not the repository's
+        run['head'], run['dirty'] = io.git_info()  # the repository's commit; it differs from the image's after a docs-only commit
+        run['commit'] = io.image_label()  # the commit the test image was built from: the code that runs
         _write(os.path.join(run_dir, 'settings.json'), json.dumps(run['settings'], indent=1, sort_keys=True))
         try:
             _check_cap(io, since=started)
@@ -677,7 +713,7 @@ def run_all(cfg, io):
         report, result, headline = f"This run failed before it finished: {run['error']}\n", 'failed', f"failed: {run['error']}"
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
-    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'dirty', 'titles', 'indexers',
+    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
                                     'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'error',
                                     'standin_misses', 'changes')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
@@ -951,7 +987,7 @@ def build_parser():
     ap.add_argument('--runs-root', default=DEFAULT_RUNS_ROOT)
     ap.add_argument('--store')
     ap.add_argument('--list', dest='listname')
-    ap.add_argument('--rebuild-image', action='store_true', help='build kaijuflow:test again from the current commit when the image is not from it')
+    ap.add_argument('--rebuild-image', action='store_true', help='build kaijuflow:test again from the current commit when the code that goes into the image has changed since it was built')
     ap.add_argument('--provider-limit', type=int, default=testbed.PROVIDER_LIMIT)
     ap.add_argument('--key-file')
     ap.add_argument('--test-dir', default=os.environ.get('TEST_DIR', DEFAULT_TEST_DIR))
