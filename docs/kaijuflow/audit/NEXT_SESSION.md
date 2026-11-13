@@ -22,15 +22,17 @@ Measure and optimize KaijuFlow with AltMount before InfiniDysk (spec #58). Infin
   - Its open question, why KaijuFlow and Usenet Ultimate picked a 66 to 91 GB file for every film, is answered in #109: the test copies had no sort and filter rules, so the largest 4K remux came first.
 - Standard filter rules (new, since the old ones are lost; #109 and its comments): films at most 30 GiB, episodes at most 10 GiB, disc images dropped, KaijuFlow's defaults otherwise. Applied to both test copies (KaijuFlow and Usenet Ultimate); `preflight` checks them against `tools/brain/expected-settings.json`. The 2026-11-13 baseline predates them.
 
+- Retro of the 2026-11-13 baseline: PR #121, merged into `main` on 2026-11-13 (e3c28ad), closing #109, #110, #112, #113, #115, #116 and #117. It went through a code review (standards and spec) and one round of fixes. 346 tool tests; not yet exercised by a real run.
+  - #110: a run or record stopped with Ctrl-C or SIGTERM (`timeout`) keeps the plays and answers it finished, ends the normal way and exits 130; a second Ctrl-C during the ending is ignored.
+  - #112: every play and reset line starts with the UTC time and the play count, and `report.md` ends with "Where the time went".
+  - #113: `preflight` asks for `--rebuild-image` only when the code in the image changed (runbook, step 0). #121 changed none, so the image built from 750c2eb is still current.
+  - #115: `build_page.py` takes a run's `story.html`, keeps the lost runs' sections from `tools/brain/page-archive/`, and the runbook says how to publish. A run's tables are keyed by its run folder, so the next publish renames the 2026-11-13 run's table slots.
+  - #116: `check` and the report judge the six targets from `tools/brain/targets.json` (finished runs only).
+  - #109: `preflight` compares the test copies' sort and filter settings with `tools/brain/expected-settings.json`; the per-title table names each top pick and its size; a changed top pick is listed under "What changed since the last run".
+  - #117: this note.
+
 ## In progress
-Branch `feat/retro-2026-11-13` (the retro of the 2026-11-13 baseline), not yet on `main`:
-- #110: a run or record stopped with Ctrl-C or SIGTERM (`timeout`) keeps the plays and answers it finished, ends the normal way and exits 130.
-- #112: every play and reset line starts with the UTC time and the play count, and `report.md` ends with "Where the time went".
-- #113: `preflight` asks for `--rebuild-image` only when the code in the image changed (runbook, step 0).
-- #115: `build_page.py` takes a run's `story.html`, keeps the lost runs' sections from `tools/brain/page-archive/`, and the runbook says how to publish.
-- #116: `check` and the report judge the six targets from `tools/brain/targets.json`.
-- #109: `preflight` compares the test copies' sort and filter settings with `tools/brain/expected-settings.json`; the per-title table names each top pick and its size; a changed top pick is listed under "What changed since the last run".
-- #117: this note.
+Nothing is being built.
 
 Waiting on the owner (from the retro):
 - #111 short runs by choosing sides, rounds and titles (a decision, not agreed work).
