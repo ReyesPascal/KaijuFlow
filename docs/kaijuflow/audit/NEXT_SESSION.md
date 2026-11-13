@@ -24,14 +24,13 @@ Measure and optimize KaijuFlow with AltMount before InfiniDysk (spec #58). Infin
 
 ## In progress
 Branch `feat/retro-2026-11-13` (the retro of the 2026-11-13 baseline), not yet on `main`:
-- #110: a run or record stopped by hand with Ctrl-C keeps the plays and answers it finished, ends the normal way and exits 130.
+- #110: a run or record stopped with Ctrl-C or SIGTERM (`timeout`) keeps the plays and answers it finished, ends the normal way and exits 130.
 - #112: every play and reset line starts with the UTC time and the play count, and `report.md` ends with "Where the time went".
-- #113: `preflight` asks for `--rebuild-image` only when the code in the image changed. New rule: only a commit that changes what goes into the image needs `--rebuild-image`; the preflight says when.
+- #113: `preflight` asks for `--rebuild-image` only when the code in the image changed (runbook, step 0).
 - #115: `build_page.py` takes a run's `story.html`, keeps the lost runs' sections from `tools/brain/page-archive/`, and the runbook says how to publish.
 - #116: `check` and the report judge the six targets from `tools/brain/targets.json`.
 - #109: `preflight` compares the test copies' sort and filter settings with `tools/brain/expected-settings.json`; the per-title table names each top pick and its size; a changed top pick is listed under "What changed since the last run".
 - #117: this note.
-- Gap left by #110: a run ended by `timeout` (SIGTERM) still loses its record; only Ctrl-C is handled.
 
 Waiting on the owner (from the retro):
 - #111 short runs by choosing sides, rounds and titles (a decision, not agreed work).

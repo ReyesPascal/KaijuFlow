@@ -7,8 +7,10 @@ import json
 import os
 import re
 import unittest
+from unittest import mock
 
 import brainreport as br
+import common
 from test_settings import tempdir
 
 KF_LOG = """2026-11-10T18:00:01.100000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":200,"ok":true,"t":"2026-11-10T18:00:01.000Z","ref":"tt1","page":1}
@@ -295,6 +297,28 @@ def baseline_picks():
                 indexers=['ninjacentral'], started='2026-11-13T05:32:00.550Z', settings={}, null=None, standin_misses=0)
 
 
+class ListedSizeTest(unittest.TestCase):
+    """The size a side's list text states is read from the whole text, before the text is cut to 140 characters for the
+    run record; a top pick whose size is lost would be compared by its name and could be listed as changed."""
+
+    def test_a_list_text_longer_than_what_is_kept_still_gives_its_stated_size(self):
+        [visit] = [v for v in baseline_picks()['visits'] if (v['side'], v['title'], v['phase'], v['round']) ==
+                   ('altmount-addon', 'Game of Thrones S02E03', 'cold', 1)]
+        captured = visit['tries'][0]['title']  # the addon's list text as the 2026-11-13 run kept it: the size ends at 139 of 140
+        self.assertTrue(captured.endswith('💾 4.07 GB ') and len(captured) == 140, captured)
+        # The same Source listed as a REPACK (a release name 7 characters longer), with the addon's own end after the size
+        # (' 🌐 ninja', as its Inception line shows): the cut now falls inside the size.
+        whole = captured.replace('Die.1080p', 'Die.REPACK.1080p').rstrip() + ' 🌐 ninja'
+        served = (206, {'Content-Range': 'bytes 0-65535/4370000000', 'Content-Type': 'video/x-matroska'}, b'\0' * 65536,
+                  {'ready': 0.1, 'first_byte': 0.1, 'total': 0.2})
+        with mock.patch.object(common, 'get', return_value=served):
+            tried = common.play_stream({'name': 'AltMount', 'title': whole[len('AltMount '):], 'url': 'http://127.0.0.1:9/x.mkv'})
+        self.assertEqual(len(tried['title']), 140)
+        self.assertNotIn('4.07 GB', tried['title'])
+        self.assertEqual(br.top_pick({'tries': [tried]})['listed'], '4.07 GB')
+        self.assertEqual(br.top_pick({'tries': [{'title': captured}]})['listed'], '4.07 GB')  # a record made before: from its text
+
+
 def per_title_rows(report):
     """The rows of the report's per-title table as {column: cell}."""
     lines = report.split('## Per title')[1].strip().splitlines()
@@ -503,9 +527,8 @@ class TargetsTest(unittest.TestCase):
 
     def test_a_missing_targets_file_gives_one_sentence_and_the_rest_of_the_report(self):
         path = os.path.join(tempdir(self), 'targets.json')
-        visits = runs_fixture()['visits']
-        self.assertEqual(br.target_lines(visits, path), ['Targets: not judged (targets.json cannot be read: FileNotFoundError).'])
-        self.assertEqual(br.targets_section(visits, path),
+        self.assertEqual(br.target_lines(runs_fixture(), path), ['Targets: not judged (targets.json cannot be read: FileNotFoundError).'])
+        self.assertEqual(br.targets_section(runs_fixture(), path),
                          ['## Targets', '', 'Not judged (targets.json cannot be read: FileNotFoundError).', ''])
 
     def test_an_entry_the_tools_cannot_judge_is_named(self):
@@ -521,7 +544,7 @@ class TargetsTest(unittest.TestCase):
         for change, why in bad:
             with open(path, 'w') as f:
                 json.dump({'targets': [entry, {**entry, 'against': 'altmount-addon', **change}]}, f)
-            self.assertEqual(br.target_lines(runs_fixture()['visits'], path), [f'Targets: not judged (targets.json, {why}).'])
+            self.assertEqual(br.target_lines(runs_fixture(), path), [f'Targets: not judged (targets.json, {why}).'])
 
 
 T0 = dt('2026-11-10T18:00:00Z').timestamp() * 1000   # epoch ms of the first visit's start

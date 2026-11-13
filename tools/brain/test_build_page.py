@@ -163,6 +163,21 @@ class BuildFixture(unittest.TestCase):
         self.assertEqual(sorted(tables), ['fixture-run-list', 'fixture-run-start'])
         self.assertEqual(index.count('<section>'), index.count('</section>'))
 
+    def test_two_runs_with_the_same_name_share_a_page_each_with_its_own_tables(self):
+        d = tempdir(self)
+        old = make_run(d, '2026-11-13T053200Z-baseline', fail=('uu', 'Beta'))
+        new = make_run(d, '2026-11-20T090000Z-baseline', fail=('kaijuflow', 'Alpha'))
+        for folder in (old, new):
+            json.dump({'name': 'baseline', 'finished': '2026-11-11T10:00:00.000Z', 'indexers': ['ninjacentral']},
+                      open(os.path.join(folder, 'meta.json'), 'w'))
+        index, tables = bp.build([old, new], archive=None)
+        self.assertEqual(re.findall(r'data-table="([^"]+)"', index), [
+            '2026-11-20T090000Z-baseline-start', '2026-11-20T090000Z-baseline-list',
+            '2026-11-13T053200Z-baseline-start', '2026-11-13T053200Z-baseline-list'])
+        self.assertEqual(sorted(tables), sorted(re.findall(r'data-table="([^"]+)"', index)))
+        self.assertNotIn('<td class="bad">fails</td>', tables['2026-11-13T053200Z-baseline-start'].split('Alpha')[1].split('</tr>')[0])
+        self.assertIn('<td class="bad">fails</td>', tables['2026-11-20T090000Z-baseline-start'].split('Alpha')[1].split('</tr>')[0])
+
     def test_recording_folder_alone_is_not_enough(self):
         d = tempdir(self)
         with self.assertRaises(SystemExit):
@@ -309,6 +324,7 @@ class PageRules(unittest.TestCase):
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-13T053200Z-baseline/')
 REC = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-13T035846Z-baseline-record/')
+V7 = os.path.expanduser('~/kaijuflow-notes/retro-2026-11-13-build/page-v7/')  # the page as published on 2026-11-13
 
 
 @unittest.skipUnless(os.path.exists(REAL + 'story.html') and os.path.exists(REC + 'meta.json'), 'the real run folders are not on this machine')
@@ -321,10 +337,29 @@ class RealBaseline(unittest.TestCase):
         self.assertNotIn('Numbers only', index)
         # numbers the builder puts into the story: the one-page side's row of the summary table, as published
         self.assertIn('<tr><th scope="row">KaijuFlow, one page per indexer</th><td class="num">5.53 s</td>', section)
-        self.assertEqual(re.findall(r'data-table="([^"]+)"', section), ['baseline-start', 'baseline-list'])
+        self.assertEqual(re.findall(r'data-table="([^"]+)"', section),
+                         ['2026-11-13T053200Z-baseline-start', '2026-11-13T053200Z-baseline-list'])
         self.assertIn('2026-11-13 baseline run · 2026-11-10 first baseline', index)
         self.assertEqual(len(tables), 9)
-        self.assertIn('<td class="bad">fails</td>', tables['baseline-start'])
+        self.assertIn('<td class="bad">fails</td>', tables['2026-11-13T053200Z-baseline-start'])
+
+    @unittest.skipUnless(os.path.exists(V7 + 'index.html'), 'the published version 7 is not on this machine')
+    def test_the_build_is_the_published_version_7_with_the_runs_tables_named_after_its_folder(self):
+        """Version 7 named the run's two tables after the run (baseline-start, baseline-list); a build names them after
+        the run folder, in the slots and in tables.json alike. Nothing else differs but a blank line."""
+        index, tables = bp.build([REAL, REC])
+        with open(V7 + 'index.html') as fh:
+            published = fh.read()
+        with open(V7 + 'tables.json') as fh:
+            published_tables = json.load(fh)
+        renamed = {'baseline-start': '2026-11-13T053200Z-baseline-start', 'baseline-list': '2026-11-13T053200Z-baseline-list'}
+        self.assertEqual(tables, {renamed.get(k, k): v for k, v in published_tables.items()})
+        for old, new in renamed.items():
+            published = published.replace(f'data-table="{old}"', f'data-table="{new}"')
+
+        def blank_lines_as_one(text):
+            return re.sub(r'\n{3,}', '\n\n', text)
+        self.assertEqual(blank_lines_as_one(index), blank_lines_as_one(published))
 
 
 if __name__ == '__main__':

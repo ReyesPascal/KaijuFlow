@@ -9,6 +9,10 @@ import json
 import os
 import re
 import statistics
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import common  # noqa: E402
 
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
@@ -350,28 +354,25 @@ def played_source(text):
     return None
 
 
-# The size a side states for a Source in its list text. KaijuFlow, Usenet Ultimate and AltMount's own addon all write it
-# after a disk sign: "... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05 GB 🌐 ninja".
-LISTED_SIZE_RE = re.compile(r'💾\s*(\d+(?:\.\d+)?\s?[KMGT]?B)\b')
-
-
 def top_pick(v):
     """The top pick of one visit, the first Source in the side's list: {'name', 'size', 'listed'}, or None when the side
     listed none.
 
     name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
     Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
-    the failure video, whose size says nothing about the Source). listed: the size the list text states, or None.
+    the failure video, whose size says nothing about the Source). listed: the size the list text states, or None. KaijuFlow,
+    Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05
+    GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
+    from the 140 characters of text it kept.
     """
     tries = v.get('tries') or []
     if not tries:
         return None
     first = tries[0]
     text = str(first.get('title') or '')
-    stated = LISTED_SIZE_RE.search(text)
     return {'name': v.get('played_source') or text or None,
             'size': first.get('size') if first.get('plays') and first.get('size') else None,
-            'listed': stated.group(1) if stated else None}
+            'listed': first.get('listed_size') or common.listed_size(text)}
 
 
 def _pick_size(pick):
@@ -673,7 +674,8 @@ def _secs(x):
     return NO_FIGURE if x is None else f'{x:.2f} s'
 
 
-def _of(plays):
+def _plays_text(plays):
+    """'p of n' for (top picks that played, top picks counted), or 'no figure' when none was counted."""
     return f'{plays[0]} of {plays[1]}' if plays[1] else NO_FIGURE
 
 
@@ -689,36 +691,58 @@ def _plays(visits, side, phase=None, rnd=None):
     return sum(1 for v in vs if v.get('ok')), len(vs)
 
 
-def _judge(visits, t):
-    """(measured values, result) of one entry of the targets file."""
+MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
+
+
+def _verdict(result, slower_s=None, noise=None):
+    """A target's verdict as a value: the result (MET, NOT_MET or NOT_MEASURED); for a time target that is not met, how many
+    seconds KaijuFlow is slower than what it is held against; and the noise: None, or KaijuFlow's two rounds of the phase
+    with how far the target is met or missed by, when those two rounds differ by more than that."""
+    return {'result': result, 'slower_s': slower_s, 'noise': noise}
+
+
+def verdict_text(verdict):
+    """The Result words of a verdict, as the report's table and the check's lines show them."""
+    text = verdict['result'].capitalize()
+    if verdict['result'] == NOT_MET and verdict['slower_s'] is not None:
+        text += f" ({_secs(verdict['slower_s'])} slower)"
+    noise = verdict['noise']
+    if noise:
+        a, b = noise['rounds']
+        text += (f", inside the noise: {SIDE_NAMES[JUDGED]}'s two {noise['phase']} rounds differ by {_secs(abs(a - b))} "
+                 f"({a:.2f} and {b:.2f} s), more than the {_secs(noise['by'])} the target is "
+                 f"{'missed' if verdict['result'] == NOT_MET else 'met'} by")
+    return text
+
+
+def _measure_target(visits, t):
+    """(measured values, verdict) of one entry of the targets file."""
     me, margin = SIDE_NAMES[JUDGED], t['margin']
     if t['measure'] == 'plays per round':  # every round the run holds, cold and warm
         rounds = {phase: [x for p, r in RUN_ORDER if p == phase for x in [_plays(visits, JUDGED, phase, r)] if x[1]]
                   for phase in ('cold', 'warm')}
-        measured = ', '.join(f'{phase} ' + (' and '.join(_of(x) for x in rs) or NO_FIGURE) for phase, rs in rounds.items())
+        measured = ', '.join(f'{phase} ' + (' and '.join(_plays_text(x) for x in rs) or NO_FIGURE) for phase, rs in rounds.items())
         if not all(rounds.values()):
-            return measured, 'Not measured'
+            return measured, _verdict(NOT_MEASURED)
         met = all(p >= t['limit'] - margin and n - p <= margin for rs in rounds.values() for p, n in rs)
-        return measured, 'Met' if met else 'Not met'
+        return measured, _verdict(MET if met else NOT_MET)
     if t['measure'] == 'plays':  # the share of top picks that played, every round together
         (p, n), (q, m) = _plays(visits, JUDGED), _plays(visits, t['against'])
-        measured = f"{me} {_of((p, n))}, {SIDE_NAMES[t['against']]} {_of((q, m))}"
+        measured = f"{me} {_plays_text((p, n))}, {SIDE_NAMES[t['against']]} {_plays_text((q, m))}"
         if not n or not m:
-            return measured, 'Not measured'
-        return measured, 'Met' if p * m > (q - margin * m) * n else 'Not met'
+            return measured, _verdict(NOT_MEASURED)
+        return measured, _verdict(MET if p * m > (q - margin * m) * n else NOT_MET)
     phase, what = t['measure'].split()
     mine = _time(visits, JUDGED, phase, what)
     ref = t['limit'] if 'limit' in t else _time(visits, t['against'], phase, what)
     measured = f'{me} {_secs(mine)}' + ('' if 'limit' in t else f", {SIDE_NAMES[t['against']]} {_secs(ref)}")
     if mine is None or ref is None:
-        return measured, 'Not measured'
+        return measured, _verdict(NOT_MEASURED)
     over = round(mine - ref - margin, 2)  # above 0: the target is missed by this much; below: met by this much
-    result = 'Met' if over <= 0 else f'Not met ({_secs(mine - ref)} slower)'
     a, b = (_time(visits, JUDGED, phase, what, r) for r in (1, 2))
-    if a is not None and b is not None and round(abs(a - b), 2) > abs(over):
-        result += (f", inside the noise: {me}'s two {phase} rounds differ by {_secs(abs(a - b))} ({a:.2f} and {b:.2f} s), "
-                   f"more than the {_secs(abs(over))} the target is {'missed' if over > 0 else 'met'} by")
-    return measured, result
+    noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
+             if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
+    return measured, _verdict(MET, noise=noise) if over <= 0 else _verdict(NOT_MET, mine - ref, noise)
 
 
 def _is_number(x):
@@ -757,14 +781,29 @@ def load_targets(path=TARGETS_FILE):
 
 
 def target_results(visits, path=TARGETS_FILE):
-    """[(target, measured values, result)] for every entry of the targets file, in its order."""
-    return [(t['target'],) + _judge(visits, t) for t in load_targets(path)]
+    """[(target, measured values, verdict)] for every entry of the targets file, in its order."""
+    return [(t['target'],) + _measure_target(visits, t) for t in load_targets(path)]
 
 
-def target_lines(visits, path=TARGETS_FILE):
-    """One plain line per target, as the check prints them; one sentence when the targets file cannot be used."""
+def targets_not_judged(status):
+    """The one gate of the targets, which the report and the check both go through: None for a finished run (status
+    'ok'), else why its targets are not judged. A stopped, null or failed run holds part of its plays or none, so no
+    verdict is made from it."""
+    if status == 'ok':
+        return None
+    why = {'stopped': 'the run was stopped before its last play',
+           'null': 'the run is null (an indexer said its limit was reached)'}.get(status, 'the run did not finish')
+    return f'{why}, and the targets are judged on a finished run alone'
+
+
+def target_lines(run, path=TARGETS_FILE):
+    """One plain line per target of a run ({'status', 'visits'}), as the check prints them; one sentence when its targets
+    are not judged (targets_not_judged) or the targets file cannot be used."""
+    why = targets_not_judged(run.get('status'))
+    if why:
+        return [f'Targets: not judged: {why}.']
     try:
-        return [f'Target: {t}. Measured: {m}. {r}.' for t, m, r in target_results(visits, path)]
+        return [f'Target: {t}. Measured: {m}. {verdict_text(v)}.' for t, m, v in target_results(run['visits'], path)]
     except ValueError as e:
         return [f'Targets: not judged ({e}).']
 
@@ -777,14 +816,18 @@ TARGETS_HELP = (
     'missed by, so the same run done again could turn the result around. "Not measured": the run holds no figure for it.')
 
 
-def targets_section(visits, path=TARGETS_FILE):
-    """The report's table of the targets: one row per target, then how many are met and what the words mean."""
+def targets_section(run, path=TARGETS_FILE):
+    """The report's table of the targets of a run ({'status', 'visits'}): one row per target, then how many are met and
+    what the words mean. One sentence instead when its targets are not judged (targets_not_judged)."""
+    why = targets_not_judged(run.get('status'))
+    if why:
+        return ['## Targets', '', f'Not judged: {why}.', '']
     try:  # a targets file that cannot be used must not cost a finished run its report
-        rows = target_results(visits, path)
+        rows = target_results(run['visits'], path)
     except ValueError as e:
         return ['## Targets', '', f'Not judged ({e}).', '']
-    met =sum(1 for _, _, result in rows if result.startswith('Met'))
-    return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], rows) + [
+    met = sum(1 for _, _, verdict in rows if verdict['result'] == MET)
+    return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], [(t, m, verdict_text(v)) for t, m, v in rows]) + [
         '', f"{met} of {len(rows)} targets met. {TARGETS_HELP}", '']
 
 
@@ -815,30 +858,20 @@ def _counted(vs):
 
 
 def answer_sentence(run):
-    g = _groups(run)
-    parts = {}
-    for phase in ('cold', 'warm'):
-        starts = []
-        for s in _sides(run):
-            vs = _counted([v for r in (1, 2) for v in g.get((s, phase, r), [])])
-            starts.append((s, median([v.get('start_s') for v in vs if v.get('ok')]), sum(1 for v in vs if v.get('ok')), len(vs)))
-        parts[phase] = starts
+    vs = run['visits']
+
     def fmt(phase):
-        return ', '.join(f"{SIDE_NAMES[s]} {_cell(m)} s ({p} of {n} top picks played)" for s, m, p, n in parts[phase])
+        return ', '.join(f"{SIDE_NAMES[s]} {_cell(_time(vs, s, phase, 'start'))} s "
+                         f"({' of '.join(str(x) for x in _plays(vs, s, phase))} top picks played)" for s in _sides(run))
     n = len(run.get('titles', []))
     return (f"Across {n} title{'' if n == 1 else 's'}, each round done twice, the median time from pressing play to the first byte was, "
             f"cold: {fmt('cold')}; warm: {fmt('warm')}.")
 
 
 def headline(run):
-    g = _groups(run)
-    bits = []
-    for s in _sides(run):
-        c = median([v.get('start_s') for r in (1, 2) for v in g.get((s, 'cold', r), []) if v.get('ok')])
-        w = median([v.get('start_s') for r in (1, 2) for v in g.get((s, 'warm', r), []) if v.get('ok')])
-        vs = _counted([v for v in run['visits'] if v['side'] == s])
-        bits.append(f"{SIDE_NAMES[s]} cold {_cell(c)} s / warm {_cell(w)} s, plays {sum(1 for v in vs if v.get('ok'))}/{len(vs)}")
-    return '; '.join(bits)
+    vs = run['visits']
+    return '; '.join(f"{SIDE_NAMES[s]} cold {_cell(_time(vs, s, 'cold', 'start'))} s / warm {_cell(_time(vs, s, 'warm', 'start'))} s, "
+                     f"plays {'/'.join(str(x) for x in _plays(vs, s))}" for s in _sides(run))
 
 
 def _table(cols, rows):
@@ -856,7 +889,7 @@ def render_report(run, changes, opening=None):
     lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
-             "\"-\" means that side does not show the step from outside.", ''] + targets_section(run['visits']) + [
+             "\"-\" means that side does not show the step from outside.", ''] + targets_section(run) + [
              '## What changed since the last run', ''] + [f'- {c}' for c in changes] + ['']
     if run.get('standin_misses'):
         lines += [f"Warning: the indexer stand-in had {run['standin_misses']} requests it had not recorded (a side asked "
@@ -966,7 +999,7 @@ def time_parts(run):
     return parts
 
 
-def _s(x):
+def _seconds_cell(x):
     return '-' if x is None else f'{x:.1f}'
 
 
@@ -975,7 +1008,7 @@ def _minutes(x):
 
 
 def _took(x):
-    return f'{_minutes(x)} minutes ({_s(x)} s)'
+    return f'{_minutes(x)} minutes ({_seconds_cell(x)} s)'
 
 
 def _time_of_day(iso_time):
@@ -996,8 +1029,8 @@ def time_section(run):
     out = ['## Where the time went', '',
            f"The whole run took {_took(timing.get('seconds'))}, from {_time_of_day(run.get('started'))} to "
            f"{_time_of_day(run.get('finished'))} UTC{': ' + passes if passes else ''}.", '']
-    rows = [[name, _s(parts.get(key)), _minutes(parts.get(key))] for key, name in TIME_PARTS]
-    out += _table(['Part', 'Seconds', 'Minutes'], rows + [['The whole run', _s(timing.get('seconds')), _minutes(timing.get('seconds'))]])
+    rows = [[name, _seconds_cell(parts.get(key)), _minutes(parts.get(key))] for key, name in TIME_PARTS]
+    out += _table(['Part', 'Seconds', 'Minutes'], rows + [['The whole run', _seconds_cell(timing.get('seconds')), _minutes(timing.get('seconds'))]])
     failed = sum(1 for v in visits if not v.get('ok'))
     out += ['',
             '- **Measured list and start time**: for every top pick that played, the seconds until its Stream list arrived plus '
@@ -1023,14 +1056,14 @@ def time_section(run):
 def _round_rows(rounds, resets):
     """One row per round of each pass, in the order they were played, with the reset that came before it. A reset with no
     round after it (the run ended during the reset) gets a row too, so every reset is shown."""
-    def which(r):
+    def round_key(r):
         return r.get('pass'), r.get('phase'), r.get('round')
-    reset_of, round_of = {which(r): r for r in resets}, {which(r): r for r in rounds}
+    reset_of, round_of = {round_key(r): r for r in resets}, {round_key(r): r for r in rounds}
     rows = []
-    for key in dict.fromkeys(which(r) for r in sorted(resets + rounds, key=lambda r: str(r.get('start')))):
+    for key in dict.fromkeys(round_key(r) for r in sorted(resets + rounds, key=lambda r: str(r.get('start')))):
         r = round_of.get(key) or {}
         rows.append([str(key[0]).capitalize(), _run_label(str(key[1]), key[2]), _time_of_day(r.get('start')) if r else '-',
-                     _s(reset_of.get(key, {}).get('seconds')), r.get('plays', 0), _s(r.get('seconds')), _minutes(r.get('seconds'))])
+                     _seconds_cell(reset_of.get(key, {}).get('seconds')), r.get('plays', 0), _seconds_cell(r.get('seconds')), _minutes(r.get('seconds'))])
     return rows
 
 
@@ -1044,15 +1077,24 @@ def render_null_report(run):
         'only to show what happened. Start a new run after the indexer has reset.', ''])
 
 
+# The signals that stop a run or a record the normal way (#110): the name kept in `stopped.signal`, and how it is said.
+STOP_SIGNALS = {'SIGINT': 'Ctrl-C (SIGINT)', 'SIGTERM': 'SIGTERM'}
+
+
 def stopped_text(stopped):
-    """How a run that was stopped by hand ended, as the rest of a sentence: when, how many plays had finished, and the
-    play it was in (none when it was stopped between two plays)."""
+    """How a run or a record that was stopped by a signal ended, as the rest of a sentence: by what, when, in which stage,
+    how many plays had finished, and the play it was in. `stopped` is what brainrun.stop_note keeps (meta.json's
+    `stopped`); the run and the record keep it in the same shape."""
     s = stopped or {}
     d = s.get('during')
-    where = (f"it stopped during the next one ({SIDE_NAMES.get(d['side'], d['side'])}, {d['phase']} {d['round']}, {d['title']})"
-             if d else 'it stopped between two plays')
-    return (f"stopped by hand at {s.get('time', 'an unknown time')}: {s.get('plays_done', 0)} of "
-            f"{s.get('plays_planned', 'an unknown number of')} plays had finished, and {where}")
+    if d:
+        rnd = '' if d.get('round') is None else f" {d['round']}"
+        where = f"it stopped during the next one ({SIDE_NAMES.get(d['side'], d['side'])}, {d['phase']}{rnd}, {d['title']})"
+    else:
+        where = 'it stopped between two plays' if s.get('plays_done') else 'it stopped before its first play'
+    stage = f" in {s['stage']}" if s.get('stage') else ''
+    return (f"stopped by {STOP_SIGNALS.get(s.get('signal'), 'hand')} at {s.get('time', 'an unknown time')}{stage}: "
+            f"{s.get('plays_done', 0)} of {s.get('plays_planned', 'an unknown number of')} plays had finished, and {where}")
 
 
 def render_stopped_report(run, changes):
@@ -1079,7 +1121,7 @@ def create_run_dir(root, name, now):
 
 
 INDEX_HEAD = ('# Brain runs\n\nOne row per run, never edited. NULL = the run was stopped by an indexer limit and its numbers '
-              'are not used. stopped = the run was stopped by hand before its last play and is not a baseline.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
+              'are not used. stopped = the run was stopped (Ctrl-C or SIGTERM) before its last play and is not a baseline.\n\n| Date (UTC) | Name | Result | What changed from the previous run | Headline numbers | Folder |\n'
               '|---|---|---|---|---|---|\n')
 
 
