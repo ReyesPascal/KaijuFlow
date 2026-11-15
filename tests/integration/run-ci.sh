@@ -13,6 +13,8 @@ git ls-files -- src ui/src | LC_ALL=C sort | while IFS= read -r f; do sha256sum 
 parent_ns="$(readlink /proc/self/ns/net)"
 [[ -n "$parent_ns" ]] || exit 11
 sudo -n true
+# The scenarios run node as user nobody (in-namespace.sh), so node must be reachable outside /home (docs/agents/testing.md).
+sudo -n runuser -u nobody -- env -i PATH="$PATH" node --version >/dev/null 2>&1 || { echo "NODE-UNREACHABLE: user nobody cannot run node from PATH (yours: $(command -v node)); see docs/agents/testing.md"; exit 17; }
 sandbox="$(mktemp -d -t kaijuflow-a4-XXXXXXXX)"
 chmod 755 "$sandbox"
 trap 'sudo rm -rf "$sandbox"; rm -f "$before" "$after"' EXIT
