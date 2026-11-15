@@ -88,6 +88,14 @@ stremio:
               score: 200
               enabled: true
               is_custom: true
+            - id: kf-4k-words-beside-1080p-or-720p
+              name: 4K words beside 1080p or 720p
+              category: ""
+              pattern: (?i)\b(4k|uhd)\b.*\b(1080[pi]?|720p?)\b|\b(1080[pi]?|720p?)\b.*\b(4k|uhd)\b
+              pattern_type: regex
+              score: -400
+              enabled: true
+              is_custom: true
             - id: kf-no-disc-images
               name: No disc images
               category: ""

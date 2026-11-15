@@ -264,5 +264,39 @@ class FirstTryTests(unittest.TestCase):
                       out.splitlines())
 
 
+
+TEST_1 = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-15-test1')
+
+
+class Test1Tests(unittest.TestCase):
+    """Test 1 (#154). fixtures/run-2026-11-15-test1 is the real 2026-11-15T115540Z-baseline run: raw.json as the run kept
+    it, meta.json cut down to the fields the check reads. AltMount direct played "1080p UHD" releases (1080p encodes from
+    4K discs) where KaijuFlow played 4K; the check read them as 4K. Expected lines worked out by hand from raw.json."""
+
+    def test_the_check_names_altmount_directs_1080p_titles_as_not_like_for_like(self):
+        _, out = run_check(TEST_1)
+        lines = out.splitlines()
+        start = lines.index('Not like for like with KaijuFlow, so left out of the targets against that setup:')
+        self.assertEqual(lines[start + 1:start + 8], [
+            f"- AltMount's own addon, {t}: KaijuFlow's top pick is 2160p, AltMount's own addon's is 1080p (Cold 1)."
+            for t in ('Inception', 'Interstellar', 'Oppenheimer', 'Dune', 'The Dark Knight', 'Pulp Fiction', 'Chernobyl S01E02')])
+        self.assertTrue(lines[start + 8].startswith('Top picks per title, '), lines[start + 8])  # The Matrix: 1080p on every side
+
+
+    def test_the_check_prints_each_titles_top_picks_with_the_resolution_read_and_the_size(self):
+        _, out = run_check(TEST_1)
+        lines = out.splitlines()
+        start = lines.index('Top picks per title, Cold 1: the resolution the like-for-like check reads, and the size '
+                            'served (else listed).')
+        self.assertEqual(lines[start + 1:start + 3], [
+            "| Title | KaijuFlow | Usenet Ultimate | AltMount's own addon |", '|---|---|---|---|'])
+        rows = {x.split(' | ')[0][2:]: x for x in lines[start + 3:start + 13]}
+        self.assertEqual(len(rows), 10, lines[start:start + 13])
+        self.assertEqual(rows['Inception'], '| Inception | 2160p, 26.6 GB | 2160p, 26.6 GB | 1080p, 18.6 GB |')
+        self.assertEqual(rows['The Matrix'], '| The Matrix | 1080p, 23.8 GB | 1080p, 23.8 GB | 1080p, 18.5 GB |')
+        # AltMount direct's top pick did not play (HTTP 503), so its size is the one its list states
+        self.assertEqual(rows['Chernobyl S01E02'], '| Chernobyl S01E02 | 2160p, 8.1 GB | 2160p, 8.1 GB | 1080p, 4.24 GB listed |')
+
+
 if __name__ == '__main__':
     unittest.main()

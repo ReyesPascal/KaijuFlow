@@ -1,5 +1,5 @@
 {
- "about": "The settings every test copy is expected to have; the preflight of brainrun.py compares each copy with this file (tools/brain/docs/rules.md). It holds the standard sort and filter rules the owner defined in issue #109 on 2026-11-13: KaijuFlow's default filter object, plus the largest single file (maxFileSize, 30 GB for films and 10 GB for episodes, in bytes) and the drop rule \"No disc images\". No host, address, login or key belongs here. Like for like (#142): AltMount direct (altmount-addon) gets one try (max_fallback_releases 0, no library streams), the 4K-first resolution order as custom formats (2160p 400, 1080p 300, 720p 200) and the same disc-image rule as a custom format scored -10000, which AltMount drops (any format at -1500 or below). Its settings are named with dots, as AltMount's config.yaml nests them.",
+ "about": "The settings every test copy is expected to have; the preflight of brainrun.py compares each copy with this file (tools/brain/docs/rules.md). It holds the standard sort and filter rules the owner defined in issue #109 on 2026-11-13: KaijuFlow's default filter object, plus the largest single file (maxFileSize, 30 GB for films and 10 GB for episodes, in bytes) and the drop rule \"No disc images\". No host, address, login or key belongs here. Like for like (#142): AltMount direct (altmount-addon) gets one try (max_fallback_releases 0, no library streams), the 4K-first resolution order as custom formats (2160p 400, 1080p 300, 720p 200; AltMount adds the score of every format a title matches, so \"4K words beside 1080p or 720p\" takes back the 400 that \"1080p UHD BluRay\" gets from the words, #154) and the same disc-image rule as a custom format scored -10000, which AltMount drops (any format at -1500 or below). Its settings are named with dots, as AltMount's config.yaml nests them.",
  "expected": [
   {
    "copies": ["kaijuflow", "uu"],
@@ -160,6 +160,15 @@
       "pattern": "(?i)\\b720p?\\b",
       "pattern_type": "regex",
       "score": 200,
+      "enabled": true,
+      "is_custom": true
+     },
+     {
+      "id": "kf-4k-words-beside-1080p-or-720p",
+      "name": "4K words beside 1080p or 720p",
+      "pattern": "(?i)\\b(4k|uhd)\\b.*\\b(1080[pi]?|720p?)\\b|\\b(1080[pi]?|720p?)\\b.*\\b(4k|uhd)\\b",
+      "pattern_type": "regex",
+      "score": -400,
       "enabled": true,
       "is_custom": true
      },

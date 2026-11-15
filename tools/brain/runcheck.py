@@ -146,6 +146,7 @@ def check_run(run_dir):
         if parts:
             lines.append(f"Fails, {_side(s)}: " + '; '.join(parts) + '.')
     lines += br.like_for_like_lines(visits)
+    lines += br.top_pick_table(visits)
     if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
         lines += br.target_lines({'status': status, 'visits': visits})
     if reasons:
