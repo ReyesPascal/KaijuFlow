@@ -587,6 +587,8 @@ class SpeedTest(unittest.TestCase):
         words = section(self.index, 'What the words mean')
         for term in ('Fail', 'Title to video', 'Easy list', 'Hard list', 'Final bar'):
             self.assertIn(f'<dt>{term}</dt>', words)
+        bar = br.load_speed_targets()['final_bar']  # the final bar's words come from targets.json, not the page's own copy
+        self.assertIn(html.escape(f'The goal beyond the targets: {bar[0].lower()}{bar[1:]} Shown apart'), words)
         for page in (self.index, self.report):
             self.assertIn('AltMount direct', text(page))
             for avoid in ("AltMount's own addon", 'addon', 'altmount-addon', 'kaijuflow-1page'):

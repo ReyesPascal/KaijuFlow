@@ -1432,7 +1432,28 @@ def _counted(vs):
     return [v for v in vs if classify_failure(v) != 'not_recorded']
 
 
+def _list_counts(run):
+    """'4 titles (2 easy, 2 hard)'."""
+    lists = run.get('lists') or {v['title']: v.get('list') for v in run['visits']}
+    n = len(run.get('titles', [])) or len(lists)
+    parts = ', '.join(f"{sum(1 for x in lists.values() if x == lst)} {lst}" for lst in run_lists(run['visits']))
+    return f"{n} title{'' if n == 1 else 's'} ({parts})"
+
+
+def _speed_answer(run):
+    """A tagged run's opening sentence (#159: fails first, then title to video; list and start times stay as detail)."""
+    vs, lists = run['visits'], run_lists(run['visits'])
+    fails = '; '.join(f"{SIDE_NAMES[s]} " + ', '.join(f'{x} {fails_words(fail_figure(vs, s, lst=x))}' for x in lists)
+                      for s in _sides(run))
+    video = '; '.join(f"{SIDE_NAMES[s]} " + ', '.join(f"{x} {_cell(_time(vs, s, 'cold', 'video', lst=x))} s" for x in lists)
+                      for s in _sides(run))
+    return (f"Across {_list_counts(run)}, each round done {'once' if run.get('rounds') == 1 else 'twice'}. "
+            f'Fails, every round: {fails}. Median cold title to video: {video}.')
+
+
 def answer_sentence(run):
+    if tagged(run['visits']):
+        return _speed_answer(run)
     vs = run['visits']
 
     def fmt(phase):
@@ -1444,7 +1465,13 @@ def answer_sentence(run):
 
 
 def headline(run):
+    """The run's INDEX.md headline: a tagged run's fails and cold title to video per list, else its start times and plays."""
     vs = run['visits']
+    if tagged(vs):
+        lists = run_lists(vs)
+        return '; '.join(f"{SIDE_NAMES[s]} fails " + ', '.join(f'{x} {fails_words(fail_figure(vs, s, lst=x))}' for x in lists)
+                         + ', cold title to video ' + ' / '.join(f"{_cell(_time(vs, s, 'cold', 'video', lst=x))} s" for x in lists)
+                         for s in _sides(run))
     return '; '.join(f"{SIDE_NAMES[s]} cold {_cell(_time(vs, s, 'cold', 'start'))} s / warm {_cell(_time(vs, s, 'warm', 'start'))} s, "
                      f"plays {'/'.join(str(x) for x in _plays(vs, s))}" for s in _sides(run))
 

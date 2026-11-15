@@ -1231,6 +1231,18 @@ class TaggedRunTest(unittest.TestCase):
         self.assertIn('Fails, KaijuFlow: easy 0 titles failed · 0 of 8 plays; hard 1 title failed · 2 of 8 plays '
                       '(Cold 1 Old Film; Cold 2 Old Film).', lines)
 
+    def test_the_report_of_a_tagged_run_opens_on_fails_then_title_to_video_and_start_times_stay_as_detail(self):
+        run = br.load_run(speed_run_folder(self, self.FAILS, video('kaijuflow', 'hard', 5.0), sides=('kaijuflow', 'altmount-addon')))
+        first = br.render_report(run, ['First run.']).splitlines()[0]
+        self.assertEqual(first, 'Across 4 titles (2 easy, 2 hard), each round done twice. Fails, every round: KaijuFlow '
+                                'easy 0 titles failed · 0 of 8 plays, hard 1 title failed · 1 of 8 plays; AltMount direct '
+                                'easy 1 title failed · 1 of 8 plays, hard 1 title failed · 1 of 8 plays. Median cold title '
+                                'to video: KaijuFlow easy 3.5 s, hard 5 s; AltMount direct easy 3.5 s, hard 3.5 s.')
+        self.assertEqual(br.headline(run), 'KaijuFlow fails easy 0 titles failed · 0 of 8 plays, hard 1 title failed · 1 of 8 '
+                                           'plays, cold title to video 3.5 s / 5 s; AltMount direct fails easy 1 title failed · '
+                                           '1 of 8 plays, hard 1 title failed · 1 of 8 plays, cold title to video 3.5 s / 3.5 s')
+        self.assertNotIn('pressing play', first)
+
     def test_the_replayed_2026_11_13_run_read_untagged_still_gives_altmount_direct_36_of_40_and_no_lists(self):
         run = br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports'))
         self.assertEqual(br.side_plays(run['visits'], 'altmount-addon'), (36, 40))
