@@ -8,7 +8,7 @@ Nothing is published: the script writes index.html, the whole page, and report.h
 ~/kaijuflow-notes/brain-1338/page/). RUNBOOK.md, "Publish the page", has the steps from there.
 
 The page is about one run: the newest timed run given, which must be finished (status "ok"), because its targets are
-judged. The newest finished run before it, when one is given, is what it is compared with ("what changed", the change
+judged. The newest finished run before it that is not marked never compared with (#153), when one is given, is what it is compared with ("what changed", the change
 under each headline number), and every timed run given gets a row in "Every run so far".
 
 Where things come from, never typed into the page by hand:
@@ -46,7 +46,7 @@ class Run:
         self.folder_name = os.path.basename(self.folder.rstrip('/'))
         with open(self.folder + 'meta.json') as fh:
             self.meta = json.load(fh)
-        self.name = self.meta.get('name') or self.folder_name
+        self.name = self.meta.get('label') or self.meta.get('name') or self.folder_name  # a label (#153) is the readable name
         with open(self.folder + 'raw.json') as fh:
             self.visits = json.load(fh)['visits']
         self.titles = []
@@ -177,7 +177,7 @@ def page_model(runs):
     why = br.targets_not_judged(run.status)
     if why:
         raise SystemExit(f'{run.folder}: no page for this run: {why}.')
-    prev = next((r for r in runs[1:] if r.status == 'ok'), None)
+    prev = next((r for r in runs[1:] if r.status == 'ok' and not br.never_compared(r.meta)), None)
     targets = run.targets()
     findings, next_step = read_findings(run)
     setups = [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.numbers(side)} for side in run.sides]

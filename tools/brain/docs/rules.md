@@ -77,6 +77,10 @@ KaijuFlow has movieFilters.sortOrder entry 2 set to "size", but the expected set
 
 **Like for like per title.** For every title and round, KaijuFlow's top pick is compared with each other setup's (not KaijuFlow's one-page variant). The pair is not like for like when the two picks state different resolutions (2160p, 1080p, 720p, read from the name or list text; "4K" and "UHD" are 2160p, "FHD" 1080p), or when either served file breaks the rules above: a disc image, or a file larger than the cap of its kind (the served file is never larger than its post, so a file over the cap means the post was over it; a season pack has no cap). Two files of one resolution inside the cap are like for like, whatever their sizes (owner, 2026-11-15). Such a title is named in the report's "Like for like" section and in `check`, with the first round that shows it, and left out of every target held against that setup (the target's "This run" says how many titles were left out). Targets with a fixed limit keep every title.
 
+## Never compared with (#153)
+
+**A run marked never compared with** (`"never_compared": true` in its `meta.json`, with its readable name in `"label"`) is like for like and stays in the runs root, but no later run is compared with it: it is never the previous run of a diff, a short run's baseline or the run the page compares with, and `check` says it is not usable as a baseline. Its page still builds from it alone, and the page and report call it by its label. Test 1 (`2026-11-15T115540Z-baseline`, the owner's decision of 2026-11-15) is the first so marked.
+
 ## Recording and the cap rule
 
 **Cap rule for recording.** The first "limit reached" stops the pass at once; the recording is NULL: what was stored stays, the stand-in's `LIMIT_REACHED.json` stays in the store, the record pass gets an INDEX.md row `NULL` and the command exits with 2. A marker left by an earlier command never blocks a later one: a new `record` moves it aside (kept, renamed `LIMIT_REACHED.<its time>.json`) and goes on from what is stored; if the limit still holds, the first answer writes a new marker and the pass stops as before.

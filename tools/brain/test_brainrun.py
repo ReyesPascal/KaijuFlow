@@ -1748,5 +1748,38 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(lines[0], 'Not usable as a baseline: archived (not like for like): the folder is in the archive.')
 
 
+class NeverComparedTest(unittest.TestCase):
+    """#153: a run marked never compared with (meta.json "never_compared") is kept beside the others but never compared with."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+        self.root = os.path.join(self.tmp, 'runs')
+
+    def mark(self, run_dir, label='Test 1'):
+        path = os.path.join(run_dir, 'meta.json')
+        meta = json.loads(read(path))
+        meta.update(label=label, never_compared=True)
+        with open(path, 'w') as f:
+            json.dump(meta, f)
+
+    def test_a_run_after_a_marked_run_is_the_first_one(self):
+        self.mark(brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO(commit='c1'))['dir'])
+        run = brainrun.run_all(make_cfg(self.tmp, name='tuning'), CleanIO(commit='c2'))
+        self.assertEqual(run['changes'], ['No earlier run to compare with: this is the first one.'])
+        self.assertIn('No earlier run to compare with: this is the first one.', read(os.path.join(run['dir'], 'report.md')))
+
+    def test_a_short_run_is_never_compared_with_a_marked_run(self):
+        self.mark(brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO())['dir'])
+        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
+        self.assertEqual(short['changes'], ['No earlier run to compare with: this is the first one.'])
+
+    def test_the_check_says_a_marked_run_is_not_usable_as_a_baseline(self):
+        run = brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO())
+        self.mark(run['dir'])
+        usable, lines = runcheck.check_run(run['dir'])
+        self.assertFalse(usable)
+        self.assertEqual(lines[0], 'Not usable as a baseline: marked never compared with (Test 1).')
+
+
 if __name__ == '__main__':
     unittest.main()
