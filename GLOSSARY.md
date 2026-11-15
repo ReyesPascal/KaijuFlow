@@ -83,8 +83,32 @@ Every title played once, cold or warm, on every side of a pass. A timed run play
 _Avoid_: iteration, lap
 
 **Top pick**:
-The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. A top pick **plays** only on the first try: video that arrives after the top pick's own import failed is a **fallback**, counted as not played (#143).
+The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. In a tuning test a top pick **plays** only on the first try: video that arrives after the top pick's own import failed is a **fallback**, counted as not played (#143). In a speed test the app's own retries are allowed: they are timed in title to video and shown, and a title that still ends with no video is a fail.
 _Avoid_: first result, winner
+
+**Fail**:
+In a speed test, a title that ends with no video: the viewer presses the top pick and, after whatever retries the app makes by itself, gets an error, the failure video or a refusal. Speed never makes up for a fail; no fails comes first, then fast.
+_Avoid_: miss (a miss is a request the Recording cannot answer), error
+
+**Title to video**:
+Seconds from asking for a title until its video arrives: the list, the start and any retries the app makes by itself, on one clock for every side, so checking before the list, checking at play time and retrying all cost the same. A fail has no title-to-video time.
+_Avoid_: total time, end-to-end time
+
+**Easy list**:
+A title list of popular, well-kept titles whose top Sources nearly always play; it shows what checking costs where little is dead.
+_Avoid_: baseline list, normal titles
+
+**Hard list**:
+A title list of the kinds where dead Sources are common (older releases, titles prone to takedowns, less popular titles), chosen by kind only and played as each app plays it, with no check beforehand; never chosen by which side failed. It shows what checking saves.
+_Avoid_: stress list, fail list
+
+**Speed test**:
+A timed run on an easy list and a hard list of titles no side has played before, new for every speed test, with every app playing as it would at home (its own retries included). It says how KaijuFlow compares with the other setups. The first speed test that works is the baseline.
+_Avoid_: baseline, benchmark
+
+**Tuning test**:
+A timed run that plays a title list again, so a change to one setup can be compared with the tuning test before it on the same titles.
+_Avoid_: speed test (when the titles are reused), rerun
 
 **Target**:
 One of the goals KaijuFlow is measured against, kept in `tools/brain/targets.json` and judged on a finished run only: met, not met, or not measured when the run holds no figure for it. A time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by.
@@ -95,7 +119,7 @@ The sort and filter rules every test copy must have, kept in `tools/brain/expect
 _Avoid_: baseline settings, golden config
 
 **Like for like**:
-The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, one try per play with no hidden fallback, and the same indexer and Backend connections. A comparison between sides counts only when the run was like for like. Per title, the report and `check` compare KaijuFlow's top pick with each setup's (#143): a different resolution, or a served file over the cap or a disc image, makes that title not like for like, and it is left out of the targets against that setup.
+The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, the same indexer and Backend connections, and the same retry rule for every side: in a speed test each app's own retries, timed and shown; in a tuning test one try per play with no fallback. A comparison between sides counts only when the run was like for like. Per title, the report and `check` compare KaijuFlow's top pick with each setup's (#143): a different resolution, or a served file over the cap or a disc image, makes that title not like for like, and it is left out of the targets against that setup.
 _Avoid_: fair run, same settings
 
 **Recording**:
