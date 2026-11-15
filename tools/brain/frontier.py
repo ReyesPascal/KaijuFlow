@@ -3,7 +3,10 @@
     python3 -I tools/brain/frontier.py [parent]
 
 Prints the open sub-issues of the parent (default #159, the map) that have no open blocker and no assignee,
-in the parent's sub-issue order, one line each: number, all its labels (e.g. `[bug, ready-for-agent]`), title.
+in the parent's sub-issue order, one line each: number, all its labels (e.g. `[bug, ready-for-agent]`), title; a
+`ready-for-human` ticket gets one more line (run in this session by the runbook, the owner's go per live step, never a
+parallel build). Issues labelled `spec` are maps, not tickets: left out, and one warning on stderr names any open one that
+carries a triage label.
 When none qualifies it prints one line saying so. An open sub-issue whose body repeats its blockers (a "Blocked by"
 heading or line) gets a warning on stderr: the tracker's blocked-by links are the only source. Exits 0; 1 when gh fails or prints something that is not JSON;
 2 when the parent is not an issue number. Every failure is one line on stderr.
@@ -18,6 +21,9 @@ import sys
 DEFAULT_PARENT = 159  # the map (spec #159; #58 was closed on 2026-11-15)
 # One page is the whole list: GitHub allows at most 100 sub-issues per parent.
 BLOCKED_BY_IN_BODY = re.compile(r'^\s*(#+\s*Blocked by\s*$|Blocked by\s*:)', re.IGNORECASE | re.MULTILINE)
+TRIAGE_LABELS = ('needs-triage', 'needs-info', 'ready-for-agent', 'ready-for-human', 'wontfix')
+HUMAN_LINE = ("  Run in this session by the runbook (tools/brain/RUNBOOK.md); the owner's go for each live step; "
+              'never a parallel build.')
 
 
 class GhError(Exception):
@@ -40,6 +46,10 @@ def can_start(issue):
     return issue['state'] == 'open' and not issue['issue_dependencies_summary']['blocked_by'] and not issue['assignees']
 
 
+def is_spec(issue):
+    return any(lb['name'] == 'spec' for lb in issue['labels'])
+
+
 def repeats_blockers(issue):
     """An open sub-issue whose body lists blockers that the tracker's links already hold (and that go stale)."""
     return issue['state'] == 'open' and bool(BLOCKED_BY_IN_BODY.search(issue.get('body') or ''))
@@ -59,12 +69,19 @@ def main(argv, run_gh=gh):
     except json.JSONDecodeError as e:
         print(f'Cannot read the sub-issues of #{parent}: gh did not print JSON ({e}).', file=sys.stderr)
         return 1
-    ready = [i for i in issues if can_start(i)]
+    ready = [i for i in issues if can_start(i) and not is_spec(i)]
     for i in ready:
-        labels = ', '.join(lb['name'] for lb in i['labels'])
-        print(f"#{i['number']} [{labels}] {i['title']}")
+        names = [lb['name'] for lb in i['labels']]
+        print(f"#{i['number']} [{', '.join(names)}] {i['title']}")
+        if 'ready-for-human' in names:
+            print(HUMAN_LINE)
     if not ready:
         print(f'Nothing can start: #{parent} has no open sub-issue without a blocker or an assignee.')
+    labelled = [i['number'] for i in issues if i['state'] == 'open' and is_spec(i)
+                and any(lb['name'] in TRIAGE_LABELS for lb in i['labels'])]
+    if labelled:
+        print(f"Warning: spec issues {', '.join('#%d' % n for n in labelled)} carry a triage label "
+              '(docs/agents/triage-labels.md); a spec is a map, not a ticket: remove the label.', file=sys.stderr)
     for i in issues:
         if repeats_blockers(i):
             print(f'Warning: #{i["number"]}\'s body has a "Blocked by" section. The tracker\'s blocked-by links are the '

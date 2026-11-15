@@ -463,8 +463,9 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         self.assertEqual((entry['stremio.max_fallback_releases'], entry['stremio.include_library_streams']), (0, False))  # one try
         formats = entry['stremio.scoring.custom_formats']
         self.assertEqual([(f['name'], f['score']) for f in formats],
-                         [('2160p', 400), ('1080p', 300), ('720p', 200), ('No disc images', -10000)])  # 4K first; -1500 or below drops
-        self.assertEqual(formats[3]['pattern'], '(?i)' + self.DROP)  # the same rule as KaijuFlow's and Usenet Ultimate's
+                         [('2160p', 400), ('1080p', 300), ('720p', 200), ('4K words beside 1080p or 720p', -400),
+                          ('No disc images', -10000)])  # 4K first; -1500 or below drops
+        self.assertEqual(formats[-1]['pattern'], '(?i)' + self.DROP)  # the same rule as KaijuFlow's and Usenet Ultimate's
         self.assertEqual(self.committed()['movieFilters']['rules']['rankedRegexPatterns'][0]['pattern'], self.DROP)
         titles = {'Film.2010.2160p.UHD.BluRay.REMUX': '2160p', 'Film.2010.UHD.BluRay': '2160p', 'Film.2010.1080p.WEB-DL': '1080p',
                   'Film 2010 1080i HDTV': '1080p', 'Show.S01E02.720p.WEB': '720p', 'Film.2010.COMPLETE.UHD.BLURAY': 'No disc images',
@@ -472,6 +473,27 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         for title, want in titles.items():  # on ASCII titles Python's re and Go's RE2 read these patterns alike
             hit = [f['name'] for f in formats if re.search(f['pattern'], title)]
             self.assertEqual(hit[-1:] if want == 'No disc images' else hit, [want] if want else [], title)
+
+    def test_altmount_directs_formats_score_test_1s_releases_by_their_stated_resolution(self):
+        # AltMount v0.4.0 adds the score of every enabled format a title matches (internal/stremio/scorer.go,
+        # EvaluateRelease), so "1080p UHD" took 2160p's 400 and 1080p's 300 and beat real 4K in Test 1 (#154).
+        formats = brainrun.load_expected_settings()[1]['settings']['stremio.scoring.custom_formats']
+        score = {'2160p': 400, '1080p': 300, '720p': 200, None: 0}
+        for title, want in {  # top picks of Test 1 (2026-11-15T115540Z-baseline), and the names around them
+                'Inception 2010 PROPER 1080p UHD BluRay DD+5.1 x264-LoRD': '1080p',
+                'Interstellar 2014 UHD BluRay 1080p DDP 5 1 DoVi HDR10 x265-SM737': '1080p',
+                'Oppenheimer 2023 REPACK IMAX 1080p UHD BluRay DoVi HDR10 DD 5 1 x265': '1080p',
+                'The Matrix 1999 4K Remaster 1080p BluRay DTS x264-Geek': '1080p',
+                'Dune 2021 1080p UHD BluRay x265 HDR DD 5 1-Pahe in': '1080p',
+                'Pulp.Fiction.1994.PROPER.UHD.BluRay.1080p.DDP.5.1.DoVi.HDR10.x265-S': '1080p',
+                'Chernobyl.2019.S01E02.1080p.UHD.BDRip.DV.HDR.DDP5.1.x265.Vialle': '1080p',
+                'Breaking.Bad.S01E01.POLISH.2160p.WEB.H265-FLAME': '2160p',
+                'Inception.2010.2160p.UHD.Bluray.x265.HDR10.DTS-HDMA.5.1-4K4U': '2160p',
+                'Dune.2021.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HDR.AV1-CoSMiCSuRFeR': '2160p',
+                'Film.2010.UHD.BluRay.x265': '2160p', 'Show.S01E02.720p.UHD.WEB': '720p', 'Film.2010.DVDRip': None}.items():
+            self.assertEqual(br.resolution(title), want, title)  # what KaijuFlow's like-for-like check states for it
+            got = sum(f['score'] for f in formats if f['enabled'] and re.search(f['pattern'], title))
+            self.assertEqual(got, score[want], title)
 
     def test_the_committed_file_holds_the_standard_rules_for_kaijuflow_and_usenet_ultimate(self):
         rules_ = self.committed()

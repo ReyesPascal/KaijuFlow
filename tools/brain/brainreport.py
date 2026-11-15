@@ -18,7 +18,7 @@ import indexer_standin  # noqa: E402
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
     'uu': 'Usenet Ultimate',
-    'altmount-addon': "AltMount's own addon",
+    'altmount-addon': "AltMount direct",
     'kaijuflow-1page': 'KaijuFlow, one page per indexer',
 }
 SHORT_NAMES = {'kaijuflow': 'KaijuFlow', 'uu': 'Usenet Ultimate', 'altmount-addon': 'AltMount direct',
@@ -33,7 +33,7 @@ COLUMN_HELP = {
     'Run': 'Cold 1 and Cold 2 start from an empty Backend (nothing imported yet); Warm 1 and Warm 2 follow right after, '
            'so the Backend already knows the titles. The number is the first or second time the whole round was done.',
     'Search': 'seconds from asking for the Stream list of a title until the list arrived. For KaijuFlow and Usenet '
-              'Ultimate this includes their health checks; AltMount\'s own addon has none.',
+              'Ultimate this includes their health checks; AltMount direct has none.',
     'NZB fetch': 'seconds to download the chosen Source\'s NZB file from the indexer stand-in. Only KaijuFlow reports '
                  'it; the other sides do not show it from outside, so it reads "-".',
     'Import': 'seconds the Backend needed to take the NZB in and make the video ready. KaijuFlow: its own timing, to the '
@@ -78,6 +78,15 @@ SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetc
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
 FAIL_COLS = ['Side', 'Run', 'Top pick plays', 'Fallback'] + [c for _, c in CAUSES]
 TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Result']
+# A run on a tagged title list (#167) shows each title's list and its title to video too; a run without tags shows neither.
+LIST_COLUMN_HELP = {
+    'List': 'the title list the title is on: easy (popular, well kept) or hard (older releases, takedown-prone shows, less '
+            'popular titles).',
+    'Title to video': 'seconds from asking for the title until video arrived: Search plus First byte. "-" for a fail: no '
+                      'video, or video only after a fallback.',
+}
+TAGGED_TITLE_COLS = ['Title', 'List', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Title to video',
+                     'Result']
 
 # --------------------------------------------------------------------------- parsing
 
@@ -367,7 +376,7 @@ def top_pick(v):
     name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
     Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
     the failure video, and a fallback another file, whose size says nothing about the Source). listed: the size the list
-    text states, or None. KaijuFlow, Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01
+    text states, or None. KaijuFlow, Usenet Ultimate and AltMount direct all write it after a disk sign ("... 💾 95.01
     GB 🔊 DTS-HD MA ...", "... 💾 4.05 GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
     from the 140 characters of text it kept.
     """
@@ -413,15 +422,40 @@ def plays(v):
     return bool(v.get('ok')) and not fallbacks(v)
 
 
-RESOLUTIONS = [('2160p', '2160p|4k|uhd'), ('1080p', '1080p|fhd'), ('720p', '720p')]  # first match wins: "UHD" is no "HD"
+def title_to_video(v):
+    """Seconds from asking for the title until video arrived (#167): the list time plus the start time. None for a fail
+    (no video, or video only after a fallback: GLOSSARY.md, "a fail has no title-to-video time") and without both times."""
+    if not plays(v) or v.get('list_s') is None or v.get('start_s') is None:
+        return None
+    return round(v['list_s'] + v['start_s'], 3)
+
+
+def top_picks_played(counts):
+    """The sentence of how many top picks played, per side and round, in the words `check` and the record command share:
+    `Top picks played, KaijuFlow: cold 9 of 10, warm 10 of 10; Usenet Ultimate: ...`. counts: [(side, {'cold': (played,
+    of), 'warm': (played, of)})], in the order to name them."""
+    return 'Top picks played, ' + '; '.join(
+        f"{SIDE_NAMES.get(side, side)}: " + ', '.join(f'{phase} {p} of {n}' for phase, (p, n) in by.items())
+        for side, by in counts) + '.'
+
+
+RESOLUTIONS = {'2160p': ('2160p', '4k|uhd'), '1080p': ('1080p', 'fhd'), '720p': ('720p', '')}  # (stated number, words)
+
+
+def _first_of(text, pick):
+    """The resolution whose pattern (pick: 0 the number, 1 the words) comes first in the text, or None."""
+    words = '|'.join(f'(?P<r{res}>{w[pick]})' for res, w in RESOLUTIONS.items() if w[pick])
+    m = re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', text)
+    return m and m.lastgroup[1:]
 
 
 def resolution(text):
-    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none."""
-    for res, words in RESOLUTIONS:
-        if re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', str(text or '').lower()):
-            return res
-    return None
+    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none (#154).
+    A stated number wins over the words 4K, UHD (2160p) and FHD (1080p), which count only when no number is stated: "1080p
+    UHD BluRay" is a 1080p encode from a 4K disc. A side's own label ("AltMount FHD - ... [1080p]", "4K BluRay") is read
+    with the release name as one text, so the first stated number wins (tools/brain/docs/rules.md, "Like for like")."""
+    text = str(text or '').lower()
+    return _first_of(text, 0) or _first_of(text, 1)
 
 
 def _rule_break(v, rules):
@@ -504,6 +538,24 @@ def _pick_cells(pick):
     if not pick:
         return ['-', '-']
     return [str(pick['name'] or '-').replace('|', '/'), _pick_size(pick)]
+
+
+def top_pick_table(visits):
+    """The check's per-title table (#154): per title and side, the resolution the like-for-like check reads from the top
+    pick (`resolution`) and its size (served, else listed), in the first round that holds top picks; [] when none does."""
+    picks = top_picks(visits)
+    held = {x for side in picks.values() for rounds in side.values() for x in rounds}
+    label = next((x for x in (_run_label(p, r) for p, r in RUN_ORDER) if x in held), None)
+    if not label:
+        return []
+    sides = [s for s in SIDE_NAMES if s in picks]
+
+    def cell(pick):
+        return f"{resolution(pick['name']) or '-'}, {_pick_size(pick)}" if pick else '-'
+    return ([f'Top picks per title, {label}: the resolution the like-for-like check reads, and the size served (else listed).',
+             '| Title | ' + ' | '.join(SIDE_NAMES[s] for s in sides) + ' |', '|---' * (len(sides) + 1) + '|'] +
+            [f'| {title} | ' + ' | '.join(cell(picks[s].get(title, {}).get(label)) for s in sides) + ' |'
+             for title in dict.fromkeys(v['title'] for v in visits)])
 
 
 def top_picks(visits):
@@ -853,39 +905,80 @@ def _plays_text(plays):
     return f'{plays[0]} of {plays[1]}' if plays[1] else NO_FIGURE
 
 
-def _time(visits, side, phase, what, rnd=None):
-    """Median start (top picks that played) or list time (every visit) of one side: both rounds of a phase, or one round."""
-    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])]
-    return median([v.get('start_s') for v in vs if plays(v)] if what == 'start' else [v.get('list_s') for v in vs])
+def _time(visits, side, phase, what, rnd=None, lst=None):
+    """Median start or title to video (top picks that played) or list time (every visit) of one side: both rounds of a
+    phase, or one round; every title, or the titles of one list (#167)."""
+    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])
+          and lst in (None, v.get('list'))]
+    if what == 'list':
+        return median([v.get('list_s') for v in vs])
+    return median([v.get('start_s') if what == 'start' else title_to_video(v) for v in vs if plays(v)])  # a fail has neither
 
 
-def _plays(visits, side, phase=None, rnd=None):
-    """(top picks that played, top picks counted) of one side: every round, or one round."""
-    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])])
+def _plays(visits, side, phase=None, rnd=None, lst=None):
+    """(top picks that played, top picks counted) of one side: every round, or one round; every title, or one list's."""
+    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])
+                   and lst in (None, v.get('list'))])
     return sum(1 for v in vs if plays(v)), len(vs)
 
 
-def side_time(visits, side, phase, what):
-    """The median start or list time of one side over both rounds of a phase: the figure the targets judge, for the
-    Speed Check page (build_page.py), so the page and the verdict show one number."""
-    return _time(visits, side, phase, what)
+def side_time(visits, side, phase, what, lst=None):
+    """The median start, list or title to video ('start', 'list', 'video') of one side over both rounds of a phase: the
+    figure the targets judge, for the Speed Check page (build_page.py), so the page and the verdict show one number. With
+    `lst` ('easy' or 'hard'), over the titles of that list alone (#167); title to video is over the top picks that played."""
+    return _time(visits, side, phase, what, lst=lst)
 
 
-def side_plays(visits, side):
-    """(top picks that played, top picks counted) of one side over every round, as the targets count them."""
-    return _plays(visits, side)
+def side_fails(visits, side, phase=None, rnd=None, lst=None):
+    """How many of one side's counted top picks failed (#167): every round, one phase or one round; every title, or the
+    titles of one list. A fail is a top pick that did not play on its one try: no video, the failure video, a refusal, or
+    video only after a fallback. Each visit counts on its own, so a cold fail stays a fail when the warm play after it works."""
+    played, counted = _plays(visits, side, phase, rnd, lst)
+    return counted - played
+
+
+def fail_figure(visits, side, phase=None, rnd=None, lst=None):
+    """One side's fails as every count shows them (#167, owner: "Plays, say both"): {'titles': titles with at least one
+    failed play, 'fails': failed plays, 'counted': plays counted}, over every round, one phase or one round, and every
+    title or one list's. The targets, the outcome and the final bar are judged on 'fails', the failed plays."""
+    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])
+                   and lst in (None, v.get('list'))])
+    failed = [v for v in vs if not plays(v)]
+    return {'titles': len({v['title'] for v in failed}), 'fails': len(failed), 'counted': len(vs)}
+
+
+def fails_words(f):
+    """'2 titles failed · 4 of 40 plays': a fail figure (fail_figure) in words, the titles and the plays both named, or
+    'no figure' when no play was counted."""
+    if not f['counted']:
+        return NO_FIGURE
+    return f"{f['titles']} title{'' if f['titles'] == 1 else 's'} failed · {f['fails']} of {f['counted']} plays"
+
+
+def fail_visits(visits, side, lst=None):
+    """The counted visits of one side (of one list) whose top pick failed, in the order they were played."""
+    return [v for v in _counted([v for v in visits if v['side'] == side and lst in (None, v.get('list'))]) if not plays(v)]
+
+
+def side_plays(visits, side, lst=None):
+    """(top picks that played, top picks counted) of one side over every round, as the targets count them; with `lst`,
+    over the titles of that list alone (#167)."""
+    return _plays(visits, side, lst=lst)
 
 
 MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
 
 
-def _verdict(result, slower_s=None, noise=None, value=None, limit=None):
+def _verdict(result, slower_s=None, noise=None, value=None, limit=None, **held):
     """A target's verdict as a value: the result (MET, NOT_MET or NOT_MEASURED); for a time target that is not met, how many
     seconds KaijuFlow is slower than what it is held against; the noise: None, or KaijuFlow's two rounds of the phase
     with how far the target is met or missed by, when those two rounds differ by more than that; and the two figures the
     result compares (None when not measured): KaijuFlow's value and the limit it is held to, both in seconds for a time
-    target (the limit includes the margin), both (top picks that played, top picks counted) for a plays target."""
-    return {'result': result, 'slower_s': slower_s, 'noise': noise, 'value': value, 'limit': limit}
+    target (the limit includes the margin), both (top picks that played, top picks counted) for a plays target, both fail
+    figures (fail_figure) for a speed test's fails target. A speed test's verdict also names what the two figures were
+    judged on (`held`): 'held_against', the setup the limit is from (None for a fixed limit), and 'left_out', how many
+    titles were left out of both figures as not like for like."""
+    return {'result': result, 'slower_s': slower_s, 'noise': noise, 'value': value, 'limit': limit, **held}
 
 
 def verdict_text(verdict):
@@ -988,6 +1081,238 @@ def target_results(visits, path=TARGETS_FILE):
     return [(t['target'],) + _measure_target(visits, t, unlike) for t in load_targets(path)]
 
 
+SPEED_MEASURES = ('fails', 'cold title to video', 'warm title to video')  # a speed test's measures (#169), judged per list
+
+
+def load_speed_targets(path=TARGETS_FILE):
+    """The speed test's part of the targets file: {'targets': [entry]}. ValueError with a plain reason when it cannot be used."""
+    name = os.path.basename(path)
+    try:
+        with open(path) as f:
+            speed = json.load(f)['speed_test']
+        targets = speed['targets']
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise ValueError(f'{name} cannot be read: {type(e).__name__} in "speed_test"') from None
+    for i, t in enumerate(targets, 1):
+        if not isinstance(t, dict) or not isinstance(t.get('target'), str):
+            why = 'it has no target text'
+        elif t.get('measure') not in SPEED_MEASURES:
+            why = f"the measure \"{t.get('measure')}\" is not known"
+        elif t['measure'] == 'warm title to video' and not _is_number(t.get('limit')):
+            why = '"warm title to video" takes a fixed limit'
+        else:
+            continue
+        raise ValueError(f'{name}, speed test entry {i}: {why}')
+    if not isinstance(speed.get('final_bar'), str):
+        raise ValueError(f'{name}, speed test: the final bar has no text')
+    return speed
+
+
+def _others(visits):
+    """The setups KaijuFlow is held against in a run: every side but KaijuFlow and its variants, in SIDE_NAMES order."""
+    return [s for s in SIDE_NAMES if not s.startswith(JUDGED) and any(v['side'] == s for v in visits)]
+
+
+def _pair(visits, side, lst, unlike):
+    """KaijuFlow against one other setup on one list, on the titles that are like for like between the two:
+    {'side', 'mine', 'theirs', 'left_out', 'rounds'}, where mine and theirs are fail figures (fail_figure) with 'video'
+    added (the median cold title to video, None without a top pick that played), left_out is how many of the list's titles
+    were left out of both, and rounds is KaijuFlow's cold title to video in each of its two cold rounds."""
+    left_out = unlike.get(side, {})
+    vs = [v for v in visits if v.get('list') == lst and v['title'] not in left_out]
+    titles = {v['title'] for v in visits if v.get('list') == lst}
+
+    def figures(s):
+        return {**fail_figure(vs, s, lst=lst), 'video': _time(vs, s, 'cold', 'video', lst=lst)}
+    return {'side': side, 'mine': figures(JUDGED), 'theirs': figures(side), 'left_out': len(titles & set(left_out)),
+            'rounds': tuple(_time(vs, JUDGED, 'cold', 'video', r, lst) for r in (1, 2))}
+
+
+def left_out_words(n):
+    """'1 title left out: not like for like', or '' when none was."""
+    return f"{n} title{'' if n == 1 else 's'} left out: not like for like" if n else ''
+
+
+def _fails_part(f):
+    return [fails_words(f)]
+
+
+def _video_part(f):
+    return [_secs(f['video']), fails_words(f)]
+
+
+def _part_text(part):
+    """'3.50 s (1 title failed · 1 of 8 plays; more failed plays: not held against it)' from [main, detail...]."""
+    main, *details = part
+    return main + (f" ({'; '.join(details)})" if details else '')
+
+
+def _pairs_text(pairs, mine, part, note=None):
+    """'KaijuFlow 1 title failed · 1 of 8 plays, Usenet Ultimate 2 titles failed · 2 of 8 plays, AltMount direct 1 title
+    failed · 1 of 6 plays (KaijuFlow 1 title failed · 1 of 6 plays on the same titles; 1 title left out: not like for
+    like)': KaijuFlow's figure, then each other setup's, with what note(pair) says of it and KaijuFlow's figure on the same
+    titles when some were left out."""
+    out = [f'{SHORT_NAMES[JUDGED]} {_part_text(part(mine))}']
+    for p in pairs:
+        main, *details = part(p['theirs'])
+        details += [x for x in [note and note(p)] if x]
+        if p['left_out']:
+            details.append(f"{SHORT_NAMES[JUDGED]} {_part_text(part(p['mine']))} on the same titles; {left_out_words(p['left_out'])}")
+        out.append(f"{SHORT_NAMES[p['side']]} {_part_text([main] + details)}")
+    return ', '.join(out)
+
+
+def _vs(p):
+    """'KaijuFlow 1 title failed · 2 of 8 plays against Usenet Ultimate 0 titles failed · 0 of 8 plays', the two figures of
+    a pair on the titles they were judged on, with how many were left out."""
+    words = (f"{SHORT_NAMES[JUDGED]} {fails_words(p['mine'])} against {SHORT_NAMES[p['side']]} "
+             f"{fails_words(p['theirs'])}")
+    return words + (f"; {left_out_words(p['left_out'])}" if p['left_out'] else '')
+
+
+def _time_verdict(mine, limit, rounds, phase, strict=False, **held):
+    """The verdict of a time target: met when KaijuFlow's figure is no higher than the limit (lower, when strict), with
+    the noise of KaijuFlow's two rounds of the phase (`rounds`) as the targets of before have it."""
+    over = round(mine - limit, 2)  # above 0: missed by this much; below: met by this much
+    a, b = rounds
+    noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
+             if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
+    if over < 0 or (over == 0 and not strict):
+        return _verdict(MET, noise=noise, value=mine, limit=limit, **held)
+    return _verdict(NOT_MET, over, noise, value=mine, limit=limit, **held)
+
+
+def _judge_fails(visits, lst, pairs, entry):
+    """Target 1 on one list: KaijuFlow fails no more plays than any other setup, and none on the easy list. Against a
+    setup it is judged on the titles like for like with it; the no-fail rule of the easy list is a fixed limit and keeps
+    every title. The verdict's figures are the ones the result was decided on: on the easy list KaijuFlow's against no
+    fail, on the hard list KaijuFlow's against the setup it is closest to failing more than (on the same titles)."""
+    mine = _pair(visits, JUDGED, lst, {})['mine']
+    measured = _pairs_text(pairs, mine, _fails_part)
+    if not mine['counted'] or not pairs:
+        return measured, _verdict(NOT_MEASURED)
+    met = all(p['mine']['fails'] <= p['theirs']['fails'] for p in pairs) and not (lst == 'easy' and mine['fails'])
+    if lst == 'easy':
+        none = {'titles': 0, 'fails': 0, 'counted': mine['counted']}
+        return measured, _verdict(MET if met else NOT_MET, value=mine, limit=none, held_against=None, left_out=0)
+    p = max(pairs, key=lambda p: (p['mine']['fails'] - p['theirs']['fails'], -p['left_out']))
+    return measured, _verdict(MET if met else NOT_MET, value=p['mine'], limit=p['theirs'], held_against=p['side'],
+                              left_out=p['left_out'])
+
+
+def _judge_cold_video(visits, lst, pairs, entry):
+    """Target 2 on one list: KaijuFlow's median cold title to video, over the titles it played, is no slower than that of
+    any setup with as few fails or fewer (owner, 2026-11-15): a faster setup that fails more plays than KaijuFlow is not
+    held against it (fails come first), nor is a setup with no title to video."""
+    mine = _pair(visits, JUDGED, lst, {})['mine']
+    measured = _pairs_text(pairs, mine, _video_part,
+                           lambda p: 'more failed plays: not held against it' if p['theirs']['fails'] > p['mine']['fails'] else None)
+    if mine['video'] is None or not pairs:
+        return measured, _verdict(NOT_MEASURED)
+    held = [p for p in pairs if p['theirs']['fails'] <= p['mine']['fails'] and None not in (p['mine']['video'], p['theirs']['video'])]
+    if not held:
+        return measured + '; every other setup fails more plays', _verdict(MET, value=mine['video'], held_against=None, left_out=0)
+    p = max(held, key=lambda p: p['mine']['video'] - p['theirs']['video'])  # the setup KaijuFlow is furthest behind
+    return measured, _time_verdict(p['mine']['video'], p['theirs']['video'], p['rounds'], 'cold', held_against=p['side'],
+                                   left_out=p['left_out'])
+
+
+def _judge_warm_video(visits, lst, pairs, entry):
+    """Target 3 on one list: KaijuFlow's median warm title to video is under the limit (1.00 s is not under 1 s)."""
+    mine = _time(visits, JUDGED, 'warm', 'video', lst=lst)
+    measured = f'{SHORT_NAMES[JUDGED]} {_secs(mine)}'
+    if mine is None:
+        return measured, _verdict(NOT_MEASURED)
+    rounds = tuple(_time(visits, JUDGED, 'warm', 'video', r, lst) for r in (1, 2))
+    return measured, _time_verdict(mine, entry['limit'], rounds, 'warm', strict=True, held_against=None, left_out=0)
+
+
+SPEED_JUDGES = {'fails': _judge_fails, 'cold title to video': _judge_cold_video, 'warm title to video': _judge_warm_video}
+
+
+# The three outcomes of the hard list, decided before the first speed test (ADR 0007, spec #159), and what each says to do.
+OUTCOME_TUNE, OUTCOME_NO_PRE_LIST_CHECK, OUTCOME_BUG = 'tune its speed', 'try without its pre-list check', 'find the bug'
+OUTCOME_HEAD = 'Outcome on the hard list: '
+ALTMOUNT = 'altmount-addon'  # the setup the outcome compares KaijuFlow with: AltMount direct
+
+
+def _outcome(visits, unlike):
+    """{'outcome', 'text'}: which outcome the hard list gave, KaijuFlow against AltMount direct on the titles like for
+    like between the two (failed plays first, then the median cold title to video). The same fails with KaijuFlow no
+    slower is "as reliable and no slower: tune its speed" (owner, 2026-11-15). Outcome None when it cannot be named."""
+    if 'hard' not in run_lists(visits) or ALTMOUNT not in _others(visits):
+        why = 'the run has no hard list' if 'hard' not in run_lists(visits) else f'{SHORT_NAMES[ALTMOUNT]} is not in the run'
+        return {'outcome': None, 'text': f'{OUTCOME_HEAD}not named: {why}.'}
+    p = _pair(visits, ALTMOUNT, 'hard', unlike)
+    me, them, (a, b) = SHORT_NAMES[JUDGED], SHORT_NAMES[ALTMOUNT], (p['mine'], p['theirs'])
+    if a['fails'] < b['fails']:
+        return {'outcome': OUTCOME_TUNE, 'text': f'{OUTCOME_HEAD}{me} fails fewer plays than {them} ({_vs(p)}), so tune its speed.'}
+    if a['fails'] > b['fails']:
+        return {'outcome': OUTCOME_BUG, 'text': f"{OUTCOME_HEAD}{them} fails fewer plays than {me} ({_vs(p)}), so {me}'s "
+                                                'checking has a bug to find first.'}
+    if a['video'] is None or b['video'] is None:
+        return {'outcome': None, 'text': f'{OUTCOME_HEAD}not named: {me} and {them} fail as many plays ({_vs(p)}), and one '
+                                         'of them has no cold title to video.'}
+    video = f"cold title to video {_secs(a['video'])} against {_secs(b['video'])}"
+    if b['video'] < a['video']:
+        return {'outcome': OUTCOME_NO_PRE_LIST_CHECK, 'text': (
+            f"{OUTCOME_HEAD}{me} and {them} fail as many plays ({_vs(p)}) and {them} is faster (cold title to video "
+            f"{_secs(b['video'])} against {_secs(a['video'])}), so try {me} without its own pre-list check, behind AltMount.")}
+    return {'outcome': OUTCOME_TUNE, 'text': f'{OUTCOME_HEAD}{me} is as reliable and no slower: tune its speed ({_vs(p)}; {video}).'}
+
+
+def _bar_on_list(visits, lst, pairs):
+    """{'result', 'why'}: the final bar on one list. Fewest fails: no more failed plays than any other setup, any tie
+    counting as fewest (owner, 2026-11-15); then strictly the fastest median cold title to video among the setups with as
+    few. A setup that fails more is not held against KaijuFlow's speed. Each comparison is on the titles like for like."""
+    me, mine = SHORT_NAMES[JUDGED], _pair(visits, JUDGED, lst, {})['mine']
+    if not mine['counted'] or not pairs:
+        return {'result': NOT_MEASURED, 'why': f'no {"figure" if pairs else "other setup"} to judge it on'}
+    for p in pairs:
+        if p['theirs']['fails'] < p['mine']['fails']:
+            return {'result': NOT_MET, 'why': f"{SHORT_NAMES[p['side']]} fails fewer plays ({_vs(p)})"}
+    tied = [p for p in pairs if p['theirs']['fails'] == p['mine']['fails']]
+    for p in tied:
+        a, b = p['mine'], p['theirs']
+        if a['video'] is None or (b['video'] is not None and b['video'] <= a['video']):
+            return {'result': NOT_MET, 'why': f"{SHORT_NAMES[p['side']]} fails as few plays ({_vs(p)}) and is as fast or "
+                                              f"faster (cold title to video {_secs(b['video'])} against {me}'s {_secs(a['video'])})"}
+    speed = ('; '.join(f"cold title to video {_secs(p['mine']['video'])} against {SHORT_NAMES[p['side']]}'s "
+                       f"{_secs(p['theirs']['video'])}" for p in tied) if tied else 'no other setup fails as few plays')
+    closest = min(pairs, key=lambda p: (p['theirs']['fails'] - p['mine']['fails'], p['left_out']))  # the next fewest
+    return {'result': MET, 'why': f"{me} fails the fewest plays ({_vs(closest)}) and is the fastest among setups with as "
+                                  f'few ({speed})'}
+
+
+def _final_bar(visits, lists, text):
+    """{'target', 'lists': {list: {'result', 'why'}}, 'verdict'}: the final bar on each list and on both together. Met
+    when met on both lists; not measured when the run lacks a list or a list holds no figure for it."""
+    results = [r['result'] for r in lists.values()]
+    if set(run_lists(visits)) != set(LISTS) or NOT_MEASURED in results:
+        result = NOT_MEASURED
+    else:
+        result = MET if all(r == MET for r in results) else NOT_MET
+    return {'target': text, 'lists': lists, 'verdict': _verdict(result)}
+
+
+def speed_test_judgement(visits, path=TARGETS_FILE):
+    """The judgement of a tagged run (#169), for the check, the report and the page: {'targets': [{'number', 'target',
+    'list', 'measured', 'verdict'}], 'outcome': {'outcome', 'text'}, 'final_bar': {'target', 'lists', 'verdict'}}: each
+    target of the targets file's speed test part judged on each list of the run, list by list; the outcome of the hard
+    list (_outcome); and the owner's final bar (_final_bar), which is shown apart and never counted with the targets.
+    ValueError when the targets file cannot be used."""
+    speed = load_speed_targets(path)
+    unlike = unlike_titles(visits)
+    rows, bar = [], {}
+    for lst in run_lists(visits):
+        pairs = [_pair(visits, s, lst, unlike) for s in _others(visits)]
+        for n, t in enumerate(speed['targets'], 1):
+            measured, verdict = SPEED_JUDGES[t['measure']](visits, lst, pairs, t)
+            rows.append({'number': n, 'target': t['target'], 'list': lst, 'measured': measured, 'verdict': verdict})
+        bar[lst] = _bar_on_list(visits, lst, pairs)
+    return {'targets': rows, 'outcome': _outcome(visits, unlike), 'final_bar': _final_bar(visits, bar, speed['final_bar'])}
+
+
 def targets_not_judged(status):
     """The one gate of the targets, which the report and the check both go through: None for a finished run (status
     'ok'), else why its targets are not judged. A stopped, null or failed run holds part of its plays or none, so no
@@ -1006,9 +1331,36 @@ def target_lines(run, path=TARGETS_FILE):
     if why:
         return [f'Targets: not judged: {why}.']
     try:
+        if tagged(run['visits']):
+            return speed_test_lines(speed_test_judgement(run['visits'], path))
         return [f'Target: {t}. Measured: {m}. {verdict_text(v)}.' for t, m, v in target_results(run['visits'], path)]
     except ValueError as e:
         return [f'Targets: not judged ({e}).']
+
+
+SPEED_TARGETS_HEAD = 'Speed test targets, judged per list (an untagged run is judged on the six of before):'
+FINAL_BAR_NOTE = 'shown apart from the targets, not counted towards usable'
+FINAL_BAR_HEAD = f'Final bar ({FINAL_BAR_NOTE}): '
+
+
+def met_count(rows):
+    """'5 of 6 targets met.' for a speed test's target rows (speed_test_judgement); the final bar is never one of them."""
+    return f"{sum(1 for r in rows if r['verdict']['result'] == MET)} of {len(rows)} targets met."
+
+
+def final_bar_text(bar):
+    """The final bar in one sentence after its text: its result, then each list's result and why."""
+    return (f"{bar['target']} {bar['verdict']['result'].capitalize()}. " +
+            ' '.join(f"{x.capitalize()} list: {r['result']}, {r['why']}." for x, r in bar['lists'].items()))
+
+
+def speed_test_lines(judgement):
+    """The check's lines of a tagged run's judgement (speed_test_judgement): one line per target and list, how many are
+    met, the outcome line, and the final bar on a line of its own."""
+    rows = judgement['targets']
+    return ([SPEED_TARGETS_HEAD] +
+            [f"Target, {r['list']} list: {r['target']}. Measured: {r['measured']}. {verdict_text(r['verdict'])}." for r in rows] +
+            [met_count(rows), judgement['outcome']['text'], FINAL_BAR_HEAD + final_bar_text(judgement['final_bar'])])
 
 
 TARGETS_HELP = (
@@ -1026,12 +1378,33 @@ def targets_section(run, path=TARGETS_FILE):
     if why:
         return ['## Targets', '', f'Not judged: {why}.', '']
     try:  # a targets file that cannot be used must not cost a finished run its report
+        if tagged(run['visits']):
+            return speed_targets_section(speed_test_judgement(run['visits'], path))
         rows = target_results(run['visits'], path)
     except ValueError as e:
         return ['## Targets', '', f'Not judged ({e}).', '']
     met = sum(1 for _, _, verdict in rows if verdict['result'] == MET)
     return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], [(t, m, verdict_text(v)) for t, m, v in rows]) + [
         '', f"{met} of {len(rows)} targets met. {TARGETS_HELP}", '']
+
+
+SPEED_TARGETS_HELP = (
+    'Each target is judged on each list on its own. Fails = plays whose top pick did not play on its one try, every round '
+    'together; each count names the titles with a failed play and the failed plays. Title to video = seconds from asking '
+    'for the title until video arrived, the median over the top picks that played in both cold (or both warm) rounds. A '
+    'setup that fails more plays than KaijuFlow is not held against its title to video. A title that is not like for like '
+    'with a setup is left out of judging KaijuFlow against it, on both sides. '
+    '"Inside the noise": KaijuFlow\'s own two rounds differ by more than the target is met or missed by.')
+
+
+def speed_targets_section(judgement):
+    """The report's Targets section of a tagged run (speed_test_judgement): one row per list and target, how many are
+    met, the outcome line, and the final bar in a paragraph of its own."""
+    rows = judgement['targets']
+    return ['## Targets', ''] + _table(['List', 'Target', 'This run', 'Result'], [
+        (r['list'], r['target'], r['measured'], verdict_text(r['verdict'])) for r in rows]) + [
+        '', f'{met_count(rows)} {SPEED_TARGETS_HELP}', '', judgement['outcome']['text'], '',
+        f"**Final bar** ({FINAL_BAR_NOTE}): {final_bar_text(judgement['final_bar'])}", '']
 
 
 # --------------------------------------------------------------------------- report
@@ -1060,7 +1433,28 @@ def _counted(vs):
     return [v for v in vs if classify_failure(v) != 'not_recorded']
 
 
+def _list_counts(run):
+    """'4 titles (2 easy, 2 hard)'."""
+    lists = run.get('lists') or {v['title']: v.get('list') for v in run['visits']}
+    n = len(run.get('titles', [])) or len(lists)
+    parts = ', '.join(f"{sum(1 for x in lists.values() if x == lst)} {lst}" for lst in run_lists(run['visits']))
+    return f"{n} title{'' if n == 1 else 's'} ({parts})"
+
+
+def _speed_answer(run):
+    """A tagged run's opening sentence (#159: fails first, then title to video; list and start times stay as detail)."""
+    vs, lists = run['visits'], run_lists(run['visits'])
+    fails = '; '.join(f"{SIDE_NAMES[s]} " + ', '.join(f'{x} {fails_words(fail_figure(vs, s, lst=x))}' for x in lists)
+                      for s in _sides(run))
+    video = '; '.join(f"{SIDE_NAMES[s]} " + ', '.join(f"{x} {_cell(_time(vs, s, 'cold', 'video', lst=x))} s" for x in lists)
+                      for s in _sides(run))
+    return (f"Across {_list_counts(run)}, each round done {'once' if run.get('rounds') == 1 else 'twice'}. "
+            f'Fails, every round: {fails}. Median cold title to video: {video}.')
+
+
 def answer_sentence(run):
+    if tagged(run['visits']):
+        return _speed_answer(run)
     vs = run['visits']
 
     def fmt(phase):
@@ -1072,7 +1466,13 @@ def answer_sentence(run):
 
 
 def headline(run):
+    """The run's INDEX.md headline: a tagged run's fails and cold title to video per list, else its start times and plays."""
     vs = run['visits']
+    if tagged(vs):
+        lists = run_lists(vs)
+        return '; '.join(f"{SIDE_NAMES[s]} fails " + ', '.join(f'{x} {fails_words(fail_figure(vs, s, lst=x))}' for x in lists)
+                         + ', cold title to video ' + ' / '.join(f"{_cell(_time(vs, s, 'cold', 'video', lst=x))} s" for x in lists)
+                         for s in _sides(run))
     return '; '.join(f"{SIDE_NAMES[s]} cold {_cell(_time(vs, s, 'cold', 'start'))} s / warm {_cell(_time(vs, s, 'warm', 'start'))} s, "
                      f"plays {'/'.join(str(x) for x in _plays(vs, s))}" for s in _sides(run))
 
@@ -1084,11 +1484,60 @@ def _table(cols, rows):
 
 
 def _defs(cols):
-    return [f'- **{c}**: {COLUMN_HELP[c]}' for c in cols]
+    return [f'- **{c}**: {COLUMN_HELP.get(c) or LIST_COLUMN_HELP[c]}' for c in cols]
+
+
+def load_run(folder):
+    """A run folder as the report reads a run: its meta.json, with the visits of its raw.json under 'visits'."""
+    with open(os.path.join(folder, 'meta.json')) as f:
+        run = json.load(f)
+    with open(os.path.join(folder, 'raw.json'), encoding='utf-8') as f:
+        run['visits'] = json.load(f).get('visits') or []
+    return run
+
+
+def tagged(visits):
+    """Whether a run's visits were played on a tagged title list (#167): any visit keeps its title's list."""
+    return any(v.get('list') for v in visits)
+
+
+LISTS = common.LISTS
+LIST_SECTION = '## Fails and title to video per list'
+LIST_HELP = ('Fails = plays whose top pick did not play on its one try: no video, the failure video, a refusal, or video '
+             'only after a fallback ("played after N fallbacks"). "1 title failed · 2 of 20 plays" names the titles with a failed '
+             'play and the failed plays out of the plays of the list in the phase, then each round. A warm play that works '
+             'after a cold fail is a warm play; the cold fail stays a fail. Title to video = seconds from asking for the title '
+             'until video arrived (list time plus start time), the median over the top picks that played in both rounds of the phase.')
+
+
+def run_lists(visits):
+    """The lists a run's titles are on, in LISTS order; [] for a run without tags."""
+    return [x for x in LISTS if any(v.get('list') == x for v in visits)]
+
+
+def list_section(run):
+    """The report's table of a tagged run (#167): per side, list and phase, the median title to video. Empty for a run
+    without tags."""
+    vs = run['visits']
+    rows = [[SIDE_NAMES[s], x, phase.capitalize(), _round_fails(vs, s, phase, x), _cell(_time(vs, s, phase, 'video', lst=x))]
+            for s in _sides(run) for x in run_lists(vs) for phase in ('cold', 'warm')]
+    if not rows:
+        return []
+    return [LIST_SECTION, ''] + _table(['Side', 'List', 'Phase', 'Fails', 'Title to video'], rows) + ['', LIST_HELP, '']
+
+
+def _round_fails(vs, side, phase, lst):
+    """'1 title failed · 1 of 20 plays: 1 of 10 in Cold 1, 0 of 10 in Cold 2': the fails of one side and list in a phase,
+    then in each of its rounds the run holds."""
+    rounds = ', '.join(f"{side_fails(vs, side, phase, r, lst)} of {n} in {_run_label(phase, r)}"
+                       for p, r in RUN_ORDER if p == phase for n in [_plays(vs, side, phase, r, lst)[1]] if n)
+    return f'{fails_words(fail_figure(vs, side, phase, lst=lst))}: {rounds}' if rounds else '-'
+
 
 
 def render_report(run, changes, opening=None):
     g = _groups(run)
+    lists = tagged(run['visits'])
     lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
@@ -1120,6 +1569,7 @@ def render_report(run, changes, opening=None):
                          sum(1 for c in causes if c == 'fallback')] + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
     lines += ['## Steps every side shares', ''] + _table(SHARED_COLS, shared) + [''] + _defs(SHARED_COLS) + ['']
     lines += ['## Extras (steps only some sides have)', ''] + _table(EXTRA_COLS, extra) + [''] + _defs(EXTRA_COLS[2:]) + ['']
+    lines += list_section(run)
     lines += ['## Failures', ''] + _table(FAIL_COLS, fail) + [''] + _defs(FAIL_COLS[2:]) + ['']
     rows = []
     for t in run.get('titles', []):
@@ -1131,9 +1581,15 @@ def render_report(run, changes, opening=None):
                     m = visit_metrics(v)
                     cause = classify_failure(v)
                     res = 'plays' if plays(v) else failed_result(v, cause)
-                    rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
-                                + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
-    lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
+                    if lists:
+                        rows.append([t, v.get('list') or '-', SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                    + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']),
+                                       _cell(title_to_video(v)), res])
+                    else:
+                        rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                    + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
+    cols = TAGGED_TITLE_COLS if lists else TITLE_COLS
+    lines += ['## Per title', ''] + _table(cols, rows) + [''] + _defs(cols) + ['']
     lines += not_recorded_section(run)
     lines += time_section(run)
     return '\n'.join(lines)
@@ -1254,7 +1710,7 @@ def time_section(run):
     out += _table(['Pass', 'Round', 'Started (UTC)', 'Reset before it (s)', 'Plays', 'Round (s)', 'Round (minutes)'],
                   _round_rows(rounds, resets))
     out += ['',
-            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount\'s own addon) are played in turn, title by '
+            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount direct) are played in turn, title by '
             'title, in one pass; the one-page side has its own pass after them.',
             '- **Round**: the cold or warm round of every side of the pass, played together, from the first play to the end '
             'of the pause after the last play. The reset before a cold round is not part of it.', '']

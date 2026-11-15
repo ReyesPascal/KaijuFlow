@@ -87,7 +87,7 @@ The first Source in a side's list for a title, the one a round plays. Two top pi
 _Avoid_: first result, winner
 
 **Fail**:
-In a speed test, a title whose top pick does not play: the viewer presses it and gets an error, the failure video, a refusal, or video only after a fallback. Speed never makes up for a fail; no fails comes first, then fast.
+In a speed test, a play whose top pick does not play on its one try: the viewer presses it and gets an error, the failure video, a refusal, or video only after a fallback. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Title to video**:
@@ -113,6 +113,10 @@ _Avoid_: speed test (when the titles are reused), rerun
 **Target**:
 One of the goals KaijuFlow is measured against, kept in `tools/brain/targets.json` and judged on a finished run only: met, not met, or not measured when the run holds no figure for it. A time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by.
 _Avoid_: goal, KPI, threshold
+
+**Final bar**:
+The owner's goal for a speed test beyond its three targets, shown apart from them and never counted with them or towards "usable" (spec #159, #169). The rule lives in `tools/brain/docs/rules.md` ("A speed test's targets, outcome and final bar"); its words are in `tools/brain/targets.json`.
+_Avoid_: final target, end goal
 
 **Expected settings**:
 The sort and filter rules every test copy must have, kept in `tools/brain/expected-settings.json`. The preflight fails when a copy differs.

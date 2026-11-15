@@ -14,7 +14,7 @@ The test copies of every side and the 1338 test container. Back to the [runbook]
 | `altmount-addon` | `altmount-addon-test` | 8086 | AltMount for the addon side |
 | `altmount-kf` | `altmount-kf-test` | 8087 | AltMount for KaijuFlow |
 
-All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`, `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). Every side's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59). Settings per side: `python3 -I tools/brain/testbed.py settings` (the hand-written `SETTINGS.md` was lost with the old machine).
+All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`, `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). Every side's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59). Settings per side: `python3 -I tools/brain/testbed.py settings` (the hand-written `SETTINGS.md` was lost with the old machine). `python3 -I tools/brain/testbed.py apply <copy>` writes the expected settings into one copy, its config backed up into `backups/` first ([formats.md](formats.md#expected-settings-expected-settingsjson); the owner's go, [runbook](../RUNBOOK.md) step 2).
 
 Recipe (from the repo root; `testbed.py` runs every Docker command through the test project and refuses any other service):
 

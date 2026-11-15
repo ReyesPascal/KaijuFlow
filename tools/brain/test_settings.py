@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
+import unittest.mock
 
 import brainrun
 import testbed
@@ -186,6 +187,35 @@ class CommandTest(unittest.TestCase):
     def test_snapshot_of_the_runner_is_the_readers_output(self):
         td = make_copies(self)
         self.assertEqual(brainrun.snapshot_settings(td), testbed.settings_report(td)['settings'])
+
+
+class ShowCommandTest(unittest.TestCase):
+    """`testbed.py read-settings [side]`: the reader's output as JSON, the command the secret hook points to (#161)."""
+
+    def run_cmd(self, td, *args):
+        out = io.StringIO()
+        with unittest.mock.patch.dict(os.environ, {'TEST_DIR': td}), contextlib.redirect_stdout(out):
+            code = testbed.main(['testbed.py', 'read-settings'] + list(args))
+        return code, out.getvalue()
+
+    def test_prints_every_copys_settings_and_no_secret(self):
+        td = make_copies(self)
+        code, text = self.run_cmd(td)
+        self.assertEqual(code, 0)
+        self.assertNotIn(SECRET, text)
+        self.assertEqual(json.loads(text), testbed.read_settings(td))
+        self.assertIn('***', text)
+
+    def test_prints_one_copy_when_named(self):
+        code, text = self.run_cmd(make_copies(self), 'uu')
+        self.assertEqual((code, list(json.loads(text))), (0, ['uu']))
+        self.assertNotIn(SECRET, text)
+
+    def test_an_unknown_copy_says_which_exist_and_exits_2(self):
+        code, text = self.run_cmd(make_copies(self), 'nope')
+        self.assertEqual(code, 2)
+        self.assertIn('nope', text)
+        self.assertIn('kaijuflow', text)
 
 
 if __name__ == '__main__':

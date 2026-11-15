@@ -551,7 +551,7 @@ class TopPickRunTest(unittest.TestCase):
         run2 = brainrun.run_all(make_cfg(tmp, name='two'), io2)
         rep = read(os.path.join(run2['dir'], 'report.md'))
         changed = rep.split('## What changed since the last run')[1].split('##')[0]
-        for side in ('KaijuFlow', 'Usenet Ultimate', "AltMount's own addon"):
+        for side in ('KaijuFlow', 'Usenet Ultimate', "AltMount direct"):
             self.assertIn(f'- Top pick changed: {side}, Matrix (Cold 1, Warm 1, Cold 2, Warm 2): 4K REMUX Matrix 💾 95.01 GB FGT, 85.4 GB '
                           '-> 4K WEB-DL Matrix 💾 21.9 GB NEW, 22.3 GB', changed)
         self.assertEqual(changed.count('Top pick changed'), 2 * 3)  # two titles on three sides
@@ -627,18 +627,48 @@ class SignalGuard(unittest.TestCase):
         self.addCleanup(signal.signal, signal.SIGTERM, signal.signal(signal.SIGTERM, unhandled))
         self.addCleanup(signal.signal, signal.SIGINT, signal.default_int_handler)
 
-    def command(self, argv, io_for):
-        """brainrun.main with the world of `io_for(cfg)`: (exit code, printed lines, the run folder or record folder)."""
+    def command(self, argv, io_for, titles=None):
+        """brainrun.main with the world of `io_for(cfg)`, on the test's titles or the `titles` given: (exit code, printed
+        lines, the run folder or record folder)."""
         cfg = make_cfg(self.tmp)
-        titles = os.path.join(self.tmp, 'titles.json')
-        with open(titles, 'w') as f:
-            json.dump(cfg['titles'], f)
+        titles_file = os.path.join(self.tmp, 'titles.json')
+        with open(titles_file, 'w') as f:
+            json.dump(titles or cfg['titles'], f)
         out = io_module.StringIO()
         with mock.patch.object(brainrun, 'RealIO', io_for), contextlib.redirect_stdout(out):
             code = brainrun.main(argv + ['--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root',
-                                         cfg['runs_root'], '--test-dir', cfg['test_dir'], '--titles-file', titles])
+                                         cfg['runs_root'], '--test-dir', cfg['test_dir'], '--titles-file', titles_file])
         folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
         return code, out.getvalue().splitlines(), folder
+
+
+TAGGED = [['movie', 'tt1', 'Matrix', 'easy'], ['series', 'tt2:1:1', 'Show S01E01', 'hard']]  # #165's tagged title list
+
+
+class TaggedListTest(SignalGuard):
+    """#167: a speed test's tagged title list ([type, id, label, list]) goes through run and record, and each title's list
+    lands in the run folder."""
+
+    def test_a_run_on_a_tagged_list_keeps_each_titles_list_in_meta_and_raw(self):
+        code, _, folder = self.command(['run'], lambda cfg: CleanIO(), titles=TAGGED)
+        self.assertEqual(code, 0)
+        meta = json.loads(read(os.path.join(folder, 'meta.json')))
+        self.assertEqual(meta['lists'], {'Matrix': 'easy', 'Show S01E01': 'hard'})
+        self.assertEqual(meta['titles'], ['Matrix', 'Show S01E01'])
+        visits = json.loads(read(os.path.join(folder, 'raw.json')))['visits']
+        self.assertEqual({(v['title'], v['list']) for v in visits}, {('Matrix', 'easy'), ('Show S01E01', 'hard')})
+        self.assertIn('## Fails and title to video per list', read(os.path.join(folder, 'report.md')))
+
+    def test_a_tagged_list_is_a_speed_tests_whole_list_not_a_short_run(self):
+        code, lines, folder = self.command(['run'], lambda cfg: CleanIO(), titles=TAGGED)
+        self.assertIsNone(json.loads(read(os.path.join(folder, 'meta.json')))['short'])
+        self.assertTrue(runcheck.check_run(folder)[0], lines)
+
+    def test_a_run_without_tags_keeps_no_list(self):
+        code, _, folder = self.command(['run'], lambda cfg: CleanIO())
+        self.assertNotIn('lists', json.loads(read(os.path.join(folder, 'meta.json'))))
+        self.assertFalse(any('list' in v for v in json.loads(read(os.path.join(folder, 'raw.json')))['visits']))
+        self.assertNotIn('per list', read(os.path.join(folder, 'report.md')))
 
 
 class SigtermTest(SignalGuard):
@@ -756,7 +786,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual(rep.split('\n')[0],
                          "This run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the main sides: "
                          "4 of 24 plays had finished, and it stopped "
-                         "during the next one (AltMount's own addon, cold 1, Show S01E01). The tables below are made from the "
+                         "during the next one (AltMount direct, cold 1, Show S01E01). The tables below are made from the "
                          "finished plays alone, so the run is not a baseline.")
         self.assertNotIn('each round done twice', rep)
         self.assertIn('| Usenet Ultimate | Cold 1 | 2 of 2 |', rep)  # the failures table: both of its finished plays played
@@ -873,7 +903,7 @@ class InterruptedRunTest(unittest.TestCase):
         first = out.getvalue().splitlines()[0]  # the fake stand-in's one miss is a second reason, after this one
         self.assertTrue(first.startswith(
             "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the "
-            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount direct, cold 1, "
             "Show S01E01)"), first)
 
     def test_the_run_command_ends_a_stopped_run_with_the_check_and_exit_code_130(self):
@@ -894,7 +924,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
         self.assertTrue(first.startswith(  # the command's own --settle: a 3 s pause after each of the four plays
             "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:50.000Z in the pass of the "
-            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount direct, cold 1, "
             "Show S01E01)"), first)
 
 
@@ -1034,9 +1064,10 @@ class RecordIO(FakeIO):
     """FakeIO whose stand-in is the real one in record mode on loopback, in front of a fake indexer; the 'sides' ask it
     for different requests, the way the three sides do. Everything else (containers, resets) is the fake's."""
 
-    def __init__(self, cfg, fake_url, limit_from_visit=None, drop=None, proof_asks_more=False):
+    def __init__(self, cfg, fake_url, limit_from_visit=None, drop=None, proof_asks_more=False, fails=()):
         super().__init__()
         self.proof_asks_more, self.mode = proof_asks_more, None
+        self.fails = set(fails)  # (side, title id, 'cold' or 'warm'): the visits of the record pass whose top pick does not play
         self.cfg, self.fake_url, self.limit_from_visit, self.drop = cfg, fake_url, limit_from_visit, drop or []
         self.port, self.server, self.recording_dir = None, None, cfg['store']
         self.up = set()
@@ -1101,6 +1132,7 @@ class RecordIO(FakeIO):
         asks = {'kaijuflow': [f'?t=search&q={vid}&offset=0', f'?t=search&q={vid}&cat=2000'],  # two searches (a later page is empty, #142)
                 'kaijuflow-1page': [f'?t=search&q={vid}&offset=0&limit=100'],
                 'uu': [f'?t=search&q={vid}&cat=uu'], 'altmount-addon': [f'?t=search&q={vid}&o=json']}[side]
+        phase = 'warm' if (side, vid) in self.seen else 'cold'
         if (side, vid) in self.seen:  # what only a warm visit asks: a health-check replacement, the addon's second search
             asks = asks + {'kaijuflow': [f'?t=search&q={vid}-replacement'],
                            'altmount-addon': [f'?t=search&q={vid}&o=json&again=1']}.get(side, [])
@@ -1112,7 +1144,7 @@ class RecordIO(FakeIO):
                 urllib.request.urlopen(f'{base}{a}&apikey=dummy', timeout=10).read()
             except OSError:
                 pass
-        return dict(sources=3, first_try_plays=True)
+        return dict(sources=3, first_try_plays=self.mode == 'replay' or (side, vid, phase) not in self.fails)
 
 
 class RecordTest(unittest.TestCase):
@@ -1200,6 +1232,18 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(set(io.calls[resets[0]][1]), {'nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow'})
         self.assertIn(('standin-start', 'record', True), io.calls)
         self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 24)  # per side and title: a cold and a warm visit, then the same in the proof
+
+    def test_a_record_on_a_tagged_list_keeps_each_titles_list_in_its_meta(self):
+        self.cfg['titles'] = [tuple(t) for t in TAGGED]
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        meta = json.load(open(os.path.join(rec['dir'], 'meta.json')))
+        self.assertEqual((meta['titles'], meta['lists']), (['Matrix', 'Show S01E01'], {'Matrix': 'easy', 'Show S01E01': 'hard'}))
+        self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 24)  # every title played, as on a list without tags
+
+    def test_a_record_without_tags_keeps_no_list(self):
+        io, rec = self.record()
+        self.assertNotIn('lists', json.load(open(os.path.join(rec['dir'], 'meta.json'))))
 
     def test_nothing_reaches_a_report_and_a_good_record_has_no_index_row(self):
         io, rec = self.record()
@@ -1293,7 +1337,7 @@ class RecordTest(unittest.TestCase):
         st = self.state()
         self.assertEqual((st['state'], st['why']), ('stopped', 'the record command was stopped by Ctrl-C (SIGINT) at '
                                                     '2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, '
-                                                    "and it stopped during the next one (AltMount's own addon, cold, Matrix)"))
+                                                    "and it stopped during the next one (AltMount direct, cold, Matrix)"))
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds.count('standin-start'), 1)  # no proof of a pass that did not finish
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
@@ -1337,7 +1381,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(out.getvalue().splitlines()[0],
                          'Not usable as a baseline: the folder holds a recording, not a timed run; the recording was stopped '
                          'by Ctrl-C (SIGINT) at 2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, and '
-                         "it stopped during the next one (AltMount's own addon, cold, Matrix).")
+                         "it stopped during the next one (AltMount direct, cold, Matrix).")
 
     def test_a_stopped_record_and_a_stopped_run_say_how_they_stopped_in_one_shape(self):
         io, rec = self.stopped_record(3)
@@ -1360,8 +1404,51 @@ class RecordTest(unittest.TestCase):
         last = out.getvalue().splitlines()[-1]
         self.assertTrue(last.startswith('The recording was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:36.000Z in the record '
                                         'pass: 2 of 12 plays had finished, and it stopped during the next one '
-                                        "(AltMount's own addon, cold, Matrix). What was stored is kept; "
+                                        "(AltMount direct, cold, Matrix). What was stored is kept; "
                                         'run the same command again to top up. Folder: '), last)
+
+    def record_command(self, **kw):
+        """The record command as the owner runs it, on the fake stand-in world; returns (exit code, printed lines)."""
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(self.cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: RecordIO(cfg, self.url, **kw)), contextlib.redirect_stdout(out):
+            code = brainrun.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
+                                  self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles, '--settle', '0'])
+        lines = out.getvalue().splitlines()
+        self.assertTrue(lines[-1].startswith('done in '), lines[-1])  # every brain tool ends so (README)
+        return code, lines[:-1]
+
+    def test_a_record_where_every_top_pick_played_ends_with_the_plays_per_side_and_round(self):
+        code, lines = self.record_command()
+        self.assertEqual(code, 0, lines)
+        self.assertTrue(lines[-1].endswith(
+            ' Top picks played, KaijuFlow: cold 2 of 2, warm 2 of 2; Usenet Ultimate: cold 2 of 2, warm 2 of 2; '
+            "AltMount direct: cold 2 of 2, warm 2 of 2."), lines[-1])
+        self.assertTrue(lines[-1].startswith('Recorded 12 new answers'), lines[-1])
+        self.assertTrue(lines[-2].startswith('Folder: '), lines[-2])
+
+    def test_a_record_where_some_top_picks_did_not_play_ends_with_the_right_counts_in_checks_words(self):
+        fails = {('kaijuflow', 'tt1', 'cold'), ('altmount-addon', 'tt1', 'warm'), ('altmount-addon', 'tt2:1:1', 'warm')}
+        code, lines = self.record_command(fails=fails)
+        self.assertEqual(code, 0, lines)
+        sentence = lines[-1].split(' Top picks played, ')[1]
+        self.assertEqual(sentence, 'KaijuFlow: cold 1 of 2, warm 2 of 2; Usenet Ultimate: cold 2 of 2, warm 2 of 2; '
+                                   "AltMount direct: cold 2 of 2, warm 0 of 2.")
+        # check's lines for the same plays, from a run folder that holds them
+        run = os.path.join(self.tmp, 'same-plays')
+        os.makedirs(run)
+        visits = [{'side': s, 'phase': ph, 'round': 1, 'title': t[2], 'ok': (s, t[1], ph) not in fails, 'start_s': 1.0, 'list_s': 1.0}
+                  for s in brainrun.MAIN_SIDES for ph in ('cold', 'warm') for t in self.cfg['titles']]
+        with open(os.path.join(run, 'meta.json'), 'w') as f:
+            json.dump({'name': 'same', 'status': 'ok', 'sides': list(brainrun.MAIN_SIDES)}, f)
+        with open(os.path.join(run, 'raw.json'), 'w') as f:
+            json.dump({'visits': visits}, f)
+        checked = [x for x in runcheck.check_run(run)[1] if x.startswith('Top picks played, ')]
+        self.assertEqual(len(checked), 3, checked)
+        for line in checked:
+            self.assertIn(line[len('Top picks played, '):-1], sentence)
 
     def marker_files(self):
         return sorted(f for f in os.listdir(self.cfg['store']) if f.startswith('LIMIT_REACHED'))

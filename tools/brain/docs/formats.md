@@ -1,6 +1,6 @@
 # Brain tools: formats
 
-What the files and lines look like: run folder, top picks, targets, expected settings, recording state, misses, the page's `findings.html`, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+What the files and lines look like: run folder, top picks, targets, expected settings, the pool and the tagged title list, recording state, misses, the page's `findings.html`, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Run folder
 
@@ -8,7 +8,7 @@ What the files and lines look like: run folder, top picks, targets, expected set
 
 **Top picks (#109).** The top pick of a visit is the first Source in the side's list, the one that was played; `raw.json` holds it as the visit's `tries[0]` (`title`: the first 140 characters of the text the side showed for it, `listed_size`: the size that text states after the disk sign, read from the whole text so a long release name cannot cut it off (a run made before it has only `title`, and the size is read from that), `size`: bytes of the served file, `plays`) and, for KaijuFlow, `played_source` (the release name from its own log). `brainreport.top_pick(visit)` reads it. The per-title table shows it in two columns:
 
-- **Top pick**: the release name where KaijuFlow's log gives it, otherwise the side's list text (Usenet Ultimate and AltMount's own addon give no other name). "-" when the side listed no Source.
+- **Top pick**: the release name where KaijuFlow's log gives it, otherwise the side's list text (Usenet Ultimate and AltMount direct give no other name). "-" when the side listed no Source.
 - **Size**: the served file's size in GB of 1000 x 1000 x 1000 bytes. A top pick that did not play serves the failure video, whose size says nothing about the Source, so its row shows the size its list text states after the disk sign, marked `listed` (`95.01 GB listed`): the indexer's figure for the post, which KaijuFlow counts in GB of 1024 x 1024 x 1024 bytes.
 
 "What changed since the last run" lists a title whose top pick differs from the previous run's, one line per title and side, with the rounds it differs in and the old and the new pick of the first of them:
@@ -22,6 +22,14 @@ The previous run's top picks are read from its folder's `raw.json`, so a run mad
 **Archived runs (#144).** Runs from before the like-for-like rules (#142) are moved, by hand, into `<runs-root>/archive/` and kept there as a record; their INDEX.md rows say `archived (not like for like)` and link into `archive/`. The tools look for runs only directly in the runs root (`brainreport.run_folders`), so an archived run is never the "previous run" of a diff, a short run's baseline or a null run counted between two runs; `check` says `Not usable as a baseline: archived (not like for like)` and exits 1, and `build_page.py` refuses the folder. Recordings are not archived: the next runs replay them.
 
 **A run never compared with (#153).** Two `meta.json` fields, added by hand: `"never_compared": true` keeps the run out of every comparison ([rules](rules.md#never-compared-with-153)), and `"label"` (for example `"Test 1"`) is the name the page and the one-page report call it by instead of `name`.
+
+**A run on a tagged title list (#167).** A speed test's title list is tagged ([#165](#the-pool-pooljson-and-the-tagged-title-list)): each entry is `[type, id, label, list]`, `list` being `"easy"` or `"hard"`. `record` and `run` take it with `--titles-file` like any title list and keep each title's list: `meta.json` has `lists` (`{"<label>": "easy"}`, beside `titles`; a record folder's `meta.json` too), and every visit in `raw.json` has `list`. A tagged list is a speed test's whole list, so a run on it is not a short run. The report adds, for such a run:
+
+- its opening sentence and its INDEX.md headline: each setup's fails per list, then its median cold title to video per list (#159: list and start times stay as detail, in the tables);
+- in "Per title", the columns **List** and **Title to video** (that visit's list time plus its start time; "-" for a fail);
+- after the extras table, "Fails and title to video per list": one row per setup, list and phase, with the fails of the phase and of each round (`1 title failed · 1 of 20 plays: 1 of 10 in Cold 1, 0 of 10 in Cold 2`) and the median title to video over the top picks that played in both rounds of the phase.
+
+`check` adds one line per setup, naming each fail: `Fails, KaijuFlow: easy 0 titles failed · 0 of 40 plays; hard 2 titles failed · 2 of 40 plays (Cold 1 <title>; Cold 2 <title>, played after 1 fallback).` Every fail count names both the titles with a failed play and the failed plays ([rules](rules.md#fails-and-title-to-video-in-a-speed-test-167)). A run without tags (Test 1, the tuning tests) has none of this: its `meta.json`, `raw.json`, report and check are as before. The figures come from one place, for the targets and the page to share: `brainreport.fail_figure(visits, side, phase, rnd, lst)` (`{'titles', 'fails', 'counted'}`: titles with a failed play, failed plays, plays counted) and `brainreport.fails_words(figure)` (its words), `brainreport.side_fails(visits, side, phase, rnd, lst)` (how many failed plays), `brainreport.fail_visits(visits, side, lst)` (which), `brainreport.side_time(visits, side, phase, 'video', lst)` (the median title to video), `brainreport.title_to_video(visit)`, `brainreport.run_lists(visits)` and `brainreport.load_run(folder)`.
 
 **A stopped run (#110).** Ctrl-C or SIGTERM (what `timeout` sends) during a run stops the pass and then runs the normal ending, so the folder is whole; a second Ctrl-C while it finishes is ignored until the record is written. `meta.json` and `raw.json` have status `stopped`, and `meta.json` has `stopped`: `time` (when it was stopped), `signal` (`SIGINT` for Ctrl-C, or `SIGTERM`), `stage` (`the pass of the main sides`, `the pass of the one-page side`, or null before the first pass), `plays_done`, `plays_planned` (as the play lines count them) and `during` (`side`, `phase`, `round`, `title` of the play that was cut off, or null when it stopped between two plays). A record command keeps `stopped` in the same shape (its `stage` is `the record pass` or `the proof replay`, its plays are counted per stage as its play lines count them, and `round` is null: a record's rounds have no number). `raw.json` holds every play that finished; the cut-off play is not in it. `report.md` opens with one sentence saying the run was stopped, by what, when and how far it got, then has the usual sections made from the finished plays alone (a round that was cut short shows fewer titles in "Top pick plays"; a round that never began has no row), except the targets: a run that is not finished gets no target verdict (see [Targets](#targets-targetsjson)). The INDEX.md row has result `stopped` and that same sentence as its headline, with no numbers. A stopped run is never the "previous run" of a diff, and `check` says it is not usable as a baseline.
 
@@ -71,12 +79,43 @@ The targets KaijuFlow is measured against are in `tools/brain/targets.json`, one
 
 "Counted" leaves out a top pick that failed only because a request was not recorded, as everywhere in the report. How a target is judged is in [rules.md](rules.md#targets).
 
+**A speed test** (a run on a tagged title list, #167) is judged on the three targets under `speed_test` instead (spec #159, ADR 0007), each on the easy list and on the hard list on its own; the six entries under `targets` judge an untagged run (Test 1 and before), as they always did. `speed_test` also holds the owner's final bar, in the owner's words:
+
+```json
+"speed_test": {
+ "targets": [
+  {"target": "KaijuFlow fails no more plays than any other setup, and none on the easy list", "measure": "fails"},
+  {"target": "KaijuFlow's median cold title to video is no slower than any setup with as few fails or fewer", "measure": "cold title to video"},
+  {"target": "Warm title to video under about 1 s", "measure": "warm title to video", "limit": 1}
+ ],
+ "final_bar": "On both lists, KaijuFlow has the fewest fails (a tie counts as fewest), and the fastest title to video among setups with as few fails."
+}
+```
+
+| `measure` | Figure, per list | Takes |
+|---|---|---|
+| `fails` | failed plays (a play whose top pick did not play on its one try), all four rounds together, of KaijuFlow and of each other setup | nothing |
+| `cold title to video` | median seconds from asking for the title until video, over the top picks that played in both cold rounds | nothing |
+| `warm title to video` | the same over both warm rounds | `limit` (seconds) |
+
+The final bar is shown beside the targets and never counted with them, and like every target it does not decide whether a run is usable.
+
 **Where the result shows.** `check --run <folder>` prints one line per target after its other lines, and `report.md` has the same as a table (Target, This run, Result) right under its opening lines, followed by how many targets are met:
 
 ```
 Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 3.46 s. Met.
 Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 6.73 s, Usenet Ultimate 5.51 s. Not met (1.22 s slower), inside the noise: KaijuFlow's two cold rounds differ by 1.86 s (8.59 and 6.73 s), more than the 1.22 s the target is missed by.
 ```
+
+For a speed test, `check` prints one line per list and target, how many are met, the outcome line and the final bar on a line of its own; `report.md` has the same as a table (List, Target, This run, Result), then the outcome and a **Final bar** paragraph:
+
+```
+Target, hard list: KaijuFlow fails no more plays than any other setup, and none on the easy list. Measured: KaijuFlow 0 titles failed · 0 of 8 plays, Usenet Ultimate 0 titles failed · 0 of 8 plays, AltMount direct 1 title failed · 1 of 6 plays (KaijuFlow 0 titles failed · 0 of 6 plays on the same titles; 1 title left out: not like for like). Met.
+Outcome on the hard list: KaijuFlow fails fewer plays than AltMount direct (KaijuFlow 0 titles failed · 0 of 6 plays against AltMount direct 1 title failed · 1 of 6 plays; 1 title left out: not like for like), so tune its speed.
+Final bar (shown apart from the targets, not counted towards usable): On both lists, KaijuFlow has the fewest fails (a tie counts as fewest), and the fastest title to video among setups with as few fails. Not met. Easy list: met, ... Hard list: not met, ...
+```
+
+Each verdict shows the counts it was decided on: against another setup, the titles like for like with it, and how many were left out; the easy list's "none" is a fixed limit on every title. The page reads the same judgement from `brainreport.speed_test_judgement` (targets per list, outcome, final bar); a verdict's `value` and `limit` are the two figures compared, `held_against` the setup the limit is from (none for a fixed limit) and `left_out` the titles left out of both.
 
 Only a finished run (status `ok`) is judged: for a stopped, null or failed run, the check prints one line instead (`Targets: not judged: the run was stopped before its last play, and the targets are judged on a finished run alone.`) and the report's Targets section is that one sentence. The check and the report go through the same gate (`brainreport.targets_not_judged`). If `targets.json` cannot be used, one sentence says why (`Targets: not judged (targets.json, entry 2: the margin is not a number from 0 up).`) and the rest of the check and the report is unchanged.
 
@@ -113,11 +152,52 @@ A setting is named from the top of the copy's config down, with dots: a whole se
 - The file is in the repository: no host, address, login or key. An entry whose setting has a secret name (the settings reader's own test, `brainreport.is_secret_name`) is refused.
 - A file that cannot be used fails the preflight with one sentence that says why.
 
-Today the file holds the standard sort and filter rules of KaijuFlow and Usenet Ultimate and nothing else; any other setting the settings reader reads can be added the same way.
+Today the file holds the standard sort and filter rules of KaijuFlow and Usenet Ultimate and AltMount direct's like-for-like settings; any other setting the settings reader reads can be added the same way.
+
+**Applying it (#163).** `python3 -I tools/brain/testbed.py apply <copy> [--expected FILE]` writes every setting the file names for that copy (all its entries together) into the copy's config (`config.json`, or `config.yaml` for an AltMount copy), each named setting replaced as a whole, and leaves everything else as it was (it refuses to write when anything else would change). It reads the file as it is, so a change to the file is picked up with no change to the command. Before writing it copies the config to `<test folder>/backups/<copy>-<UTC time>-<file name>`. It prints, one line each, the backup, every setting that changed (`KaijuFlow: movieFilters.maxFileSize: 53687091200 -> 32212254720`; a setting, rule or section that was missing or extra as a whole is named once, as the preflight names it: `AltMount direct: stremio.scoring.custom_formats: added`, `KaijuFlow: tvFilters.minFileSize: removed (was 5)`), and how many changed. Values are shown as the settings reader reads them, so no secret is printed. A copy that already holds the values gets one line, `<copy>: nothing changed; <config> already holds the expected settings.`, and no backup. A copy the file names nothing for, or NzbDAV (its settings are in a database), gets `Nothing applied: ...` and exit 1.
+
+## The pool (`pool.json`) and the tagged title list
+
+Every speed test plays titles no speed test has played before (ADR 0007). They come from the pool, `tools/brain/pool.json` (#165): titles are not secret, so it is in the repository. `pool.py draw` takes a speed test's titles from it and marks them used; a used title is never drawn again.
+
+```json
+{"about": "...",
+ "titles": [
+  {"type": "movie", "id": "tt0071360", "label": "The Conversation", "list": "hard", "reason": "1974 film, older release"},
+  {"type": "series", "id": "tt4574334:4:1", "label": "Stranger Things S04E01", "list": "easy", "reason": "very popular streaming show, 2022 season", "used_by": "Test 2"}
+ ]}
+```
+
+| Field | Meaning |
+|---|---|
+| `about` | what the file is, in plain words; not read by the tools |
+| `type` | `movie` (a film) or `series` (an episode), as in a title list |
+| `id` | the IMDb ID; an episode's is the show's ID, its season and its episode: `tt4574334:4:1` |
+| `label` | the name the tables show: a film's TMDB title, or the show's TMDB name and `S04E01` |
+| `list` | `easy` or `hard` ([GLOSSARY.md](../../../GLOSSARY.md), "Easy list" and "Hard list") |
+| `reason` | one line saying why the title is on its list, by kind only (`1974 film, older release`, `anime series, takedown-prone`) |
+| `used_by` | the speed test that drew it (`Test 2`); absent while the title is unused |
+
+**Filling it.** An agent adds titles by kind only, without asking the owner: easy, popular well-kept titles whose top Sources nearly always play; hard, the kinds where dead Sources are common (older releases, takedown-prone shows, less popular titles). A title is never chosen by which side failed and never checked before it is played (no indexer search, no article check), and a title whose Sources all turn out dead stays. Each ID (and an episode's season and episode) is checked against TMDB with `python3 -I tools/brain/pool.py check-ids`, which reads the metadata key from KaijuFlow's test copy (`<TEST_DIR>/config/config.json`, `searchConfig.tmdbApiKey`) itself and never prints it. It prints one line per title with what TMDB has (`OK`, `NOT FOUND` or `LABEL DIFFERS`, with TMDB's name, year and id, and an episode's name and air date) and exits 1 when any title is not as the pool says. Keep the pool at three speed tests' worth or more: 18 films and 12 episodes on each list.
+
+**What the pool refuses.** `draw` and `check-ids` refuse, with one sentence and nothing changed, a pool that holds one of Test 1's ten titles (`common.TITLES`), a title twice, a list other than `easy` or `hard`, an ID that does not fit its type, or a title without a reason. `draw` also refuses when a list has fewer unused titles than a speed test needs, naming what is missing (`The pool is too small for Test 5: the hard list has 2 unused episodes of the 4 a speed test needs.`); nothing is marked then.
+
+**The draw.** `python3 -I tools/brain/pool.py draw --test "Test 2" --out <titles.json>` takes the first 6 unused films and the first 4 unused episodes of each list, in the pool's order, marks the 20 titles `used_by` that speed test in the pool, then writes the speed test's tagged title list to `--out` (`--pool` names another pool file, for a trial on a copy). The pool is written first, so a list that cannot be written wastes the 20 titles (one sentence says so; draw again under another name) and never lets a later draw take them again. Commit the pool after a draw, so the next speed test cannot draw the same titles.
+
+**The tagged title list.** The run's title list (a JSON list of `[type, id, label]`, as `--titles-file` takes it) with a fourth field, the list the title is on:
+
+```json
+[
+  ["movie", "tt1630029", "Avatar: The Way of Water", "easy"],
+  ["series", "tt0098936:1:2", "Twin Peaks S01E02", "hard"]
+]
+```
+
+The field is called the list, not the kind: kind already means film or series. A draw writes the easy films, the easy episodes, the hard films, then the hard episodes.
 
 ## Recording state and misses
 
-**The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`: the proof replay had no miss; `incomplete`: it had, with each missed request and the side that asked in `misses`; or `stopped` with `why` and `when`: an indexer limit, a failure, or the command was stopped by Ctrl-C or SIGTERM) and `errors`, the number of answers in this pass that were errors and were not stored. The command ends with one sentence, for example "12 answers were errors and were not stored: run record again to top them up." The preflight of a run passes only a `complete` recording.
+**The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`: the proof replay had no miss; `incomplete`: it had, with each missed request and the side that asked in `misses`; or `stopped` with `why` and `when`: an indexer limit, a failure, or the command was stopped by Ctrl-C or SIGTERM) and `errors`, the number of answers in this pass that were errors and were not stored. A finished record prints `Folder: <record folder>`, then one line of sentences, for example "12 answers were errors and were not stored: run record again to top them up." Its last sentence counts the top picks of the record pass that played on the first try, per side and round, in the words `check` uses for a run (`brainreport.top_picks_played`, shared by both): `Top picks played, KaijuFlow: cold 9 of 10, warm 10 of 10; Usenet Ultimate: cold 10 of 10, warm 10 of 10; AltMount direct: cold 8 of 10, warm 9 of 10.` Every play of the record pass counts, the proof's do not; the counts are kept in the folder's `meta.json` as `plays` (`{side: {round: [played, plays]}}`). The preflight of a run passes only a `complete` recording.
 
 **Nothing is measured.** A record pass gets its own folder `<runs-root>/<date>-<name>-record/` with `logs/standin.log` and `meta.json` (status `recorded`, `null`, `stopped` or `failed`, new and already-stored answer counts; a stopped pass also has `stopped`, in the shape a stopped run keeps it in (see "A stopped run" above)), but no report, no tables, no INDEX.md row unless it is NULL, stopped or failed, and it is never the "previous run" of a diff. Its timings (the first side to ask waits for the real indexer) reach nobody's numbers.
 
@@ -129,9 +209,11 @@ Today the file holds the standard sort and filter rules of KaijuFlow and Usenet 
 
 ## The page: `findings.html`
 
-`build_page.py` builds the Speed Check page, one `index.html`, in the owner's "Starting line" design (#132; drawn by `startline.py`) from run folders; the runbook's "Publish the page" has the steps. The page is about the newest timed run given, which must be finished (status `ok`); the newest finished run before it, when one is given, is what it is compared with, and every timed run given gets a row in "Every run so far". Every number comes from the runs' `raw.json` through `brainreport` (the medians the targets are judged on), every verdict from `brainreport.target_results`, and "What changed" from the newest run's `meta.json` `changes`. The headings that state a finding (for example "KaijuFlow starts slower than Usenet Ultimate") are worked out from the same numbers.
+`build_page.py` builds the Speed Check page, one `index.html`, in the owner's "Starting line" design (#132; drawn by `startline.py`) from run folders; the runbook's "Publish the page" has the steps. The page is about the newest timed run given, which must be finished (status `ok`); the newest finished run before it, when one is given, is what it is compared with, and every timed run given gets a row in "Every run so far". Every number comes from the runs' `raw.json` through `brainreport` (the medians the targets are judged on), every verdict from `brainreport.target_results` (a speed test's from `brainreport.speed_test_judgement`), and "What changed" from the newest run's `meta.json` `changes`. The headings that state a finding (for example "KaijuFlow starts slower than Usenet Ultimate") are worked out from the same numbers.
 
 **`report.html`, the one-page report (#133).** The same build writes it beside `index.html`, from the same page model, so its numbers and verdicts are the page's. It is a fixed Letter sheet (816 x 1056 px, `@page` Letter with no margin, white paper, no dark theme) in the same design: the header, the verdict with KaijuFlow's four headline numbers, the cold start ruler with its limits, the targets (result, target, KaijuFlow, limit, margin; a target inside the noise says so with both rounds), what changed (the run's own changes and, against an earlier run, KaijuFlow before and after as a table), the warm list ruler, the findings and the next step from `findings.html`, and a footer that says what Start, List and "inside the noise" mean and "Page 1 of 1". Long findings can push it past one sheet; the render check (816 px) then flags CUT OFF.
+
+**A speed test on the page and the report (#171).** A run on a tagged title list is judged per list, fails first, then title to video, and the page and report show it that way, from `brainreport.speed_test_judgement`: the verdict counts its three targets on each list (the final bar is never one of them); the lead under it is the outcome line of the hard list; the headline numbers are KaijuFlow's failed plays on each list (with its titles failed), then its median cold title to video on each list; the first rulers are cold title to video on each list, every setup sorted fewest failed plays first, then fastest, each lane with its fails on a line under its bar; the targets are grouped under "Easy list" and "Hard list" (the report puts one row per target with both lists beside it), each with what was measured on every setup (page only); the final bar is a box of its own under the targets, with why on each list. Start and list stay as detail on four rulers with no target, beside each setup's fails over both lists. "Title by title" is one section per list: KaijuFlow's cold title to video per title, and a table of every setup where a note names each round, of all four, whose top pick failed ("Failed: Cold 1 after a fallback"); the report has the same fails per setup and list in one table, each cell its fails in words and one title with its rounds ("every round" when it failed in all four), then "+N more", so the sheet stays one page; the report's rulers carry no fails, the table under them does. A speed test is compared only with an earlier speed test; a run without tags renders as before.
 
 **`findings.html`, the words nobody can compute.** An optional file in the newest run's folder, written by hand: the findings, then the next step. Each finding is an `<h3>` heading that states it, then its paragraphs; the next step, if there is one, is an `<h2>` heading and its paragraphs, after the last finding:
 

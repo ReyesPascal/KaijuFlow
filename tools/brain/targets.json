@@ -6,5 +6,13 @@
   {"target": "Top pick plays at least as often as AltMount direct, and more often unless both play every time", "measure": "plays", "against": "altmount-addon", "margin": 0},
   {"target": "Warm start within 0.05 s of AltMount direct", "measure": "warm start", "against": "altmount-addon", "margin": 0.05},
   {"target": "Cold start within 1 s of AltMount direct", "measure": "cold start", "against": "altmount-addon", "margin": 1}
- ]
+ ],
+ "speed_test": {
+  "targets": [
+   {"target": "KaijuFlow fails no more plays than any other setup, and none on the easy list", "measure": "fails"},
+   {"target": "KaijuFlow's median cold title to video is no slower than any setup with as few fails or fewer", "measure": "cold title to video"},
+   {"target": "Warm title to video under about 1 s", "measure": "warm title to video", "limit": 1}
+  ],
+  "final_bar": "On both lists, KaijuFlow has the fewest fails (a tie counts as fewest), and the fastest title to video among setups with as few fails."
+ }
 }

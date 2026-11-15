@@ -5,7 +5,8 @@
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
 (a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
 a recording folder, or a run folder that cannot be read). For a finished run it then prints one line per
-target of targets.json (the target, the measured values, met or not met); for any other run one line
+target of targets.json (the target, the measured values, met or not met; for a run on a tagged title list, one line per
+list and speed test target, the outcome line and the final bar apart, brainreport.speed_test_lines); for any other run one line
 says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
 The targets do not change the exit code.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
@@ -85,11 +86,11 @@ def check_run(run_dir):
         reasons.append('planned side absent: ' + ', '.join(_side(s) for s in absent))
     # top picks played per side, cold and warm (a top pick "played" when its visit served video on the first try, br.plays)
     for s in sides:
-        parts = []
+        by = {}
         for phase in ('cold', 'warm'):
             vs = [v for v in visits if v['side'] == s and v['phase'] == phase]
-            parts.append(f"{phase} {sum(1 for v in vs if br.plays(v))} of {len(vs)}")
-        lines.append(f"Top picks played, {_side(s)}: " + ', '.join(parts) + '.')
+            by[phase] = (sum(1 for v in vs if br.plays(v)), len(vs))
+        lines.append(br.top_picks_played([(s, by)]))
     # missed requests: requests the indexer stand-in did not hold, per round and side
     missed = [v for v in visits if v.get('misses')]
     if missed:
@@ -136,7 +137,17 @@ def check_run(run_dir):
     if fell_back:
         lines.append(f'Played after a fallback ({len(fell_back)}), not counted as played:')
         lines += [f'- {_visit_name(v)}: {br.failed_result(v, "fallback")}' for v in fell_back]
+    for s in sides:  # a run on a tagged title list (#167): the fails of each setup per list
+        parts = []
+        for x in br.run_lists(visits):
+            failed = br.fail_visits(visits, s, x)
+            names = [f"{v['phase'].capitalize()} {v['round']} {v['title']}"
+                     + (f", {br.failed_result(v, 'fallback')}" if br.fallbacks(v) else '') for v in failed]
+            parts.append(f"{x} {br.fails_words(br.fail_figure(visits, s, lst=x))}" + (f" ({'; '.join(names)})" if names else ''))
+        if parts:
+            lines.append(f"Fails, {_side(s)}: " + '; '.join(parts) + '.')
     lines += br.like_for_like_lines(visits)
+    lines += br.top_pick_table(visits)
     if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
         lines += br.target_lines({'status': status, 'visits': visits})
     if reasons:
