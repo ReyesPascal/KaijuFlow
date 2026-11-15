@@ -92,8 +92,22 @@ class Run:
         value = br.median(times)
         return {'value': value, 'played': len(times), 'rounds': len(counted)}
 
+    @property
+    def tagged(self):
+        """Whether the run is a speed test: its titles are on the easy and hard lists (#167)."""
+        return br.tagged(self.visits)
+
+    def judgement(self):
+        """A speed test's judgement (#169): its targets per list, the outcome line and the final bar."""
+        return br.speed_test_judgement(self.visits)
+
     def targets(self):
-        """The targets judged on this run: target_results with each entry's measure, side and margin beside its verdict."""
+        """The targets judged on this run: target_results with each entry's measure, side and margin beside its verdict;
+        for a speed test, its three targets on each list (never the final bar), each with its list and measured words."""
+        if self.tagged:
+            measures = [t['measure'] for t in br.load_speed_targets()['targets']]
+            return [{'text': r['target'], 'measure': measures[r['number'] - 1], 'list': r['list'], 'measured': r['measured'],
+                     'against': None, 'margin': 0, **r['verdict']} for r in self.judgement()['targets']]
         entries = br.load_targets()
         out = []
         for entry, (text, _, verdict) in zip(entries, br.target_results(self.visits)):

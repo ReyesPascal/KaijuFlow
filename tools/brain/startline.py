@@ -38,6 +38,11 @@ def plays_text(p):
     return '–' if p is None or not p[1] else f'{p[0]} of {p[1]}'
 
 
+def fails_text(n):
+    """'1 fail', '2 fails', '0 fails'."""
+    return f'{n} fail' + ('' if n == 1 else 's')
+
+
 def num(x):
     """A tick label: 0.5, 2, 2.5, never 2.0."""
     return f'{x:g}'
@@ -169,6 +174,12 @@ def target_figures(t):
     v, lim, result = t['value'], t['limit'], t['result']
     if result == 'not measured':
         return '–', '–', 'No figure in this run'
+    if t['measure'] == 'fails':  # a speed test's fails (#169): KaijuFlow's and the fewest it may have
+        over = v - lim
+        words = ('None' if not v else 'No more than any other setup') if over <= 0 else f'{fails_text(over)} too many'
+        return fails_text(v), fails_text(lim), words
+    if lim is None:  # cold title to video when every other setup fails more titles: none is held against KaijuFlow
+        return secs(v), '–', 'Every other setup fails more titles'
     if isinstance(v, tuple):  # plays: (played, counted)
         if t['measure'] == 'plays per round':
             short = lim[0] - v[0]
@@ -209,12 +220,21 @@ def target_rows(targets, report=False):
         noise = noise_short(t) if report else noise_words(t)
         if noise:
             margin += f'<small>{esc(noise)}</small>'
-        draw = ('' if report else mini(t['value'], t['limit']) if t['result'] != 'not measured' and not isinstance(t['value'], tuple)
-                else '<span class="sl-empty"></span>')
+        drawn = t['result'] != 'not measured' and t['measure'] != 'fails' and t['limit'] is not None and not isinstance(t['value'], tuple)
+        draw = '' if report else mini(t['value'], t['limit']) if drawn else '<span class="sl-empty"></span>'
         rows.append(f'<li class="sl-trow"><span class="sl-ts">{status(t["result"])}</span><span class="sl-tt">{esc(t["text"])}</span>'
                     f'<span class="sl-num sl-r"><span class="sl-lab">KaijuFlow</span>{mine}</span>'
                     f'<span class="sl-num sl-r"><span class="sl-lab">Limit</span>{lim}</span><span class="sl-tm">{margin}</span>{draw}</li>')
     return ''.join(rows)
+
+
+def target_lists(targets, report=False):
+    """The target rows in a list; a speed test's (#169) in one list per title list, each under its name."""
+    lists = list(dict.fromkeys(t['list'] for t in targets if t.get('list')))
+    if not lists:
+        return f'<ul>{target_rows(targets, report)}</ul>'
+    return ''.join(f'<h3 class="sl-list">{esc(x.capitalize())} list</h3><ul>{target_rows([t for t in targets if t.get("list") == x], report)}</ul>'
+                   for x in lists)
 
 
 def limit_label(t):
@@ -536,7 +556,7 @@ def targets_section(m):
     return (f'<section class="sl-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
             '<p class="sl-text sl-sub">Each target compares KaijuFlow with a limit. On the small rulers the yellow bar is KaijuFlow '
             'and the upright line is the limit. Every time is the median over the titles of both rounds of its kind.</p>'
-            f'<div class="sl-targets">{head}<ul>{target_rows(m["targets"])}</ul></div></section>')
+            f'<div class="sl-targets">{head}{target_lists(m["targets"])}</div></section>')
 
 
 PAIRS = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Cold list', 'cold_list'), ('Warm list', 'warm_list')]
@@ -793,7 +813,7 @@ def report(m):
              f'<section class="sl-r-top"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>{headline_numbers(m)}</section>',
              f'<section class="sl-r-sec">{cold}</section>',
              f'<section class="sl-r-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
-             f'<div class="sl-targets">{head}<ul>{target_rows(m["targets"], report=True)}</ul></div></section>',
+             f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div></section>',
              f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
     if finds:
         parts.append(f'<section class="sl-r-sec"><h2>What the run found</h2><ul class="sl-finds">{finds}</ul></section>')

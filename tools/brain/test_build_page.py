@@ -17,6 +17,7 @@ import unittest
 
 import brainreport as br
 import build_page as bp
+from test_brainreport import TAGGED_TITLES, tagged_visit
 from test_settings import tempdir
 
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13')
@@ -414,6 +415,75 @@ class Command(unittest.TestCase):
             with open(os.path.join(out, name)) as f:
                 self.assertIn('<h1>1 of 6 targets met</h1>', f.read())
             self.assertIn(name, said.getvalue())
+
+
+SPEED_SIDES = ('kaijuflow', 'uu', 'altmount-addon')
+FAILED = {('kaijuflow', 'cold', 1, 'Old Film'), ('altmount-addon', 'cold', 2, 'Matrix'), ('uu', 'cold', 1, 'Old Film'),
+          ('uu', 'cold', 2, 'Old Film')}
+FALLBACK = ('altmount-addon', 'cold', 1, 'Rare Show S01E01')  # video only after its top pick's own import failed
+
+
+def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
+    """A finished speed test (a run on the tagged title list) as a run folder under root: KaijuFlow, Usenet Ultimate and
+    AltMount direct, four rounds of Matrix and Dune (easy) and Old Film and Rare Show S01E01 (hard).
+
+    Every top pick plays with list 2.0 s and start 1.5 s (3.5 s title to video), except: KaijuFlow lists in 1.0 s on the
+    easy list (2.5 s) and plays warm in 0.4 + 0.2 s (0.6 s); AltMount direct lists in 0.5 s (2.0 s); the plays in FAILED
+    give no video and FALLBACK plays after a fallback. So the easy list has KaijuFlow 0 fails, Usenet Ultimate 0, AltMount
+    direct 1 (Matrix, Cold 2); the hard list KaijuFlow 1 (Old Film, Cold 1), Usenet Ultimate 2 (Old Film, both cold
+    rounds), AltMount direct 1 (Rare Show S01E01, Cold 1, after a fallback). Worked out by hand: 5 of 6 targets met (the
+    hard list's cold title to video is not: KaijuFlow 3.50 s, AltMount direct 2.00 s with as few fails), the outcome is
+    "try KaijuFlow without its own pre-list check", and the final bar is met on the easy list and not on the hard one."""
+    visits = [tagged_visit(side, phase, rnd, t[2]) for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in SPEED_SIDES]
+    for v in visits:
+        key = (v['side'], v['phase'], v['round'], v['title'])
+        if v['side'] == 'kaijuflow' and v['list'] == 'easy':
+            v['list_s'] = 1.0
+        if v['side'] == 'kaijuflow' and v['phase'] == 'warm':
+            v.update(list_s=0.4, start_s=0.2)
+        if v['side'] == 'altmount-addon':
+            v['list_s'] = 0.5
+        if key in FAILED:
+            v.update(ok=False, start_s=None, note='failure video', tries=[{'plays': False, 'size': None, 'title': v['title']}])
+        if key == FALLBACK:
+            v['imports'] = [{'name': 'Rare Show S01E01.2160p.WEB-DL-GRP', 'ok': False}, {'name': 'Rare.Show.S01E01.720p-OTHER', 'ok': True}]
+    folder = os.path.join(root, folder_name)
+    os.makedirs(folder)
+    m = dict(name='speed', label='Test 2', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z',
+             titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES}, sides=list(SPEED_SIDES),
+             rounds=2, short=None, changes=['First speed test.'], **meta)
+    with open(os.path.join(folder, 'meta.json'), 'w') as f:
+        json.dump(m, f)
+    with open(os.path.join(folder, 'raw.json'), 'w') as f:
+        json.dump({'status': 'ok', 'visits': visits}, f)
+    return folder
+
+
+class SpeedTest(unittest.TestCase):
+    """#171: a speed test (a tagged run) on the page and the one-page report: both lists, fails first, then title to video."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as root:
+            folder = speed_test_run(root)
+            cls.index, cls.report = bp.build([folder]), bp.build_report([folder])
+
+    def test_the_verdict_counts_the_three_targets_on_each_list(self):
+        for page in (self.index, self.report):
+            self.assertIn('<h1>5 of 6 targets met</h1>', page)
+            groups = re.findall(r'<h3 class="sl-list">(.*?)</h3><ul>(.*?)</ul>', page)
+            self.assertEqual([g for g, _ in groups], ['Easy list', 'Hard list'])
+            easy, hard = ([text(r) for r in re.findall(r'<li class="sl-trow">.*?</li>', rows)] for _, rows in groups)
+            self.assertEqual([re.match('Not met|Met', r).group(0) for r in easy], ['Met', 'Met', 'Met'])
+            self.assertEqual([re.match('Not met|Met', r).group(0) for r in hard], ['Met', 'Not met', 'Met'])
+            self.assertTrue(easy[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
+                                               'list KaijuFlow 0 fails Limit 0 fails'), easy[0])
+            self.assertTrue(hard[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
+                                               'list KaijuFlow 1 fail Limit 1 fail'), hard[0])
+            self.assertTrue(hard[1].startswith("Not met KaijuFlow's median cold title to video is no slower than any setup "
+                                               'with as many fails or more KaijuFlow 3.50 s Limit 2.00 s 1.50 s over'), hard[1])
+            self.assertTrue(easy[2].startswith('Met Warm title to video under about 1 s KaijuFlow 0.60 s Limit 1.00 s '
+                                               '0.40 s to spare'), easy[2])
 
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline/')  # Test 1 (#127, #150); 3.46 s since #154 reads The Matrix as 1080p on both sides
