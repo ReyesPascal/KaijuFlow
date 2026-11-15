@@ -5,6 +5,8 @@
     python3 -I tools/brain/testbed.py check [side ...]    emptiness check only
     python3 -I tools/brain/testbed.py settings [--limit 100]   every test copy's settings and the connection budget, read from its config files
 
+    python3 -I tools/brain/testbed.py read-settings [side]   the settings reader's output as JSON, secrets as ***
+
 Sides: nzbdav, altmount-addon, altmount-kf (Backends), uu, kaijuflow (their health/dead caches).
 Config folders (with secrets) live in TEST_DIR (default ~/kaijuflow-test), never in the repo.
 Every Docker command is pinned to compose project `kaijuflow-test` and to the five test services
@@ -533,6 +535,15 @@ def main(argv):
     if len(argv) >= 2 and argv[1] == "settings":
         limit = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else PROVIDER_LIMIT
         print(render_settings(settings_report(test_dir, limit)), end="")
+        return 0
+    if len(argv) >= 2 and argv[1] == "read-settings":
+        snap = read_settings(test_dir)
+        if len(argv) > 2:
+            if argv[2] not in snap:
+                print("No test copy %r: choose one of %s." % (argv[2], ", ".join(snap)))
+                return 2
+            snap = {argv[2]: snap[argv[2]]}
+        print(json.dumps(snap, indent=1, sort_keys=True))
         return 0
     if len(argv) < 2 or argv[1] not in ("up", "stop", "status", "reset", "check"):
         print(__doc__)
