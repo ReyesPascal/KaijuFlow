@@ -73,6 +73,8 @@ def check_run(run_dir):
         reasons.append(err)
     if br.is_archived(run_dir):
         reasons.append(f'{br.ARCHIVED_TEXT}: the folder is in the archive')
+    if br.never_compared(meta):
+        reasons.append(f"marked never compared with ({meta.get('label') or meta.get('name')})")
     if meta.get('short'):  # last: the reasons that say what went wrong with a plan that was played come first
         reasons.append(f"short run ({meta['short']})")
     lines.append(f"Run: {meta.get('name')}, status: {status}.")

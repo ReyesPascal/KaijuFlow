@@ -244,6 +244,21 @@ class Refusals(unittest.TestCase):
         self.assertEqual(str(stop.exception), f'{old}: the run is archived (not like for like), so the page does not show it.')
         self.assertIn('No earlier run on this page to compare with.', bp.build([new]))
 
+    def test_a_run_marked_never_compared_with_builds_alone_under_its_label(self):
+        folder = copy_run(tempdir(self), label='Test 1', never_compared=True)
+        for page in (bp.build([folder]), bp.build_report([folder])):
+            self.assertIn('Test 1 run, 13 November 2026.', text(page))
+            self.assertNotIn('Baseline run', text(page))
+
+    def test_a_run_marked_never_compared_with_is_not_what_a_newer_run_is_compared_with(self):
+        root = tempdir(self)
+        marked = copy_run(root, label='Test 1', never_compared=True)
+        new = copy_run(root, '2026-11-20T000000Z-baseline')
+        index = bp.build([marked, new])
+        self.assertIn('No earlier run on this page to compare with.', index)
+        rows = [text(r) for r in re.findall(r'<tr class="[^"]*"><th scope="row">.*?</tr>', section(index, 'Every run so far'))]
+        self.assertTrue(rows[1].startswith('Test 1 run 2026-11-13'), rows)
+
     def test_a_recording_folder_alone_is_not_enough(self):
         with self.assertRaises(SystemExit):
             bp.build([make_record(tempdir(self))])

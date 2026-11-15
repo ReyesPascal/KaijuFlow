@@ -814,6 +814,11 @@ def is_archived(folder):
     return os.path.basename(os.path.dirname(os.path.abspath(folder).rstrip(os.sep))) == ARCHIVE
 
 
+def never_compared(meta):
+    """True when a run's meta.json marks it never compared with (#153): kept and shown under its "label", never a comparison."""
+    return bool(meta.get('never_compared'))
+
+
 def null_runs_between(root, since, exclude=None):
     """meta.json of every null run in the runs root that started after `since` (ISO time), oldest first."""
     found = []
@@ -1351,7 +1356,7 @@ def append_index_row(path, row):
 
 
 def previous_run(root, exclude=None, usable=None):
-    """meta.json of the newest earlier finished (non-null) run, or None. A short run is never it. `usable(run folder)`, when
+    """meta.json of the newest earlier finished (non-null) run, or None. A short run or one marked never compared with is never it. `usable(run folder)`, when
     given, must also say yes (a short run is compared with the last run usable as a baseline); the meta gets its `folder`. Its top picks are added from the folder's raw.json
     (`top_picks`), so the next run can be compared with them; a folder that holds none stays without."""
     for d in reversed(run_folders(root)):
@@ -1361,7 +1366,7 @@ def previous_run(root, exclude=None, usable=None):
             meta = json.loads(_slurp(os.path.join(root, d, 'meta.json')))
         except (OSError, ValueError):
             continue
-        if meta.get('status') == 'ok' and not meta.get('short') and (usable is None or usable(os.path.join(root, d))):
+        if meta.get('status') == 'ok' and not meta.get('short') and not never_compared(meta) and (usable is None or usable(os.path.join(root, d))):
             meta['folder'] = d
             try:
                 picks = top_picks(json.loads(_slurp(os.path.join(root, d, 'raw.json')))['visits'])
