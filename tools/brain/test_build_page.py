@@ -219,6 +219,12 @@ class Refusals(unittest.TestCase):
             bp.build([folder])
         self.assertIn('the run was stopped before its last play', str(e.exception))
 
+    def test_a_short_run_folder_is_refused_with_one_sentence_saying_why(self):
+        folder = copy_run(tempdir(self), short='KaijuFlow, 1 round, 2 titles')
+        with self.assertRaises(SystemExit) as stop:
+            bp.build([folder])
+        self.assertEqual(str(stop.exception), f'{folder}: a short run (KaijuFlow, 1 round, 2 titles) is not a baseline, so the page does not show it.')
+
     def test_a_recording_folder_alone_is_not_enough(self):
         with self.assertRaises(SystemExit):
             bp.build([make_record(tempdir(self))])

@@ -13,6 +13,10 @@
  * (segments, article ids, sizes, other files, <head>) is kept byte for byte.
  * Unscramble never throws for a Source: anything it can't finish returns the
  * original NZB with a reason, and the Backend decides (ADR 0004).
+ *
+ * At most one Unscramble reads first articles at a time, process-wide, first
+ * come first served (#119): auto-queue prepares several Sources at once, and
+ * sharing the connection cap made each one slower than its time limit.
  */
 
 import type * as net from 'net';
@@ -42,13 +46,21 @@ export interface UnscrambleResult {
   reason?: UnscrambleReason;
   /** Parts renamed when `changed`; else parts in number-named groups (0 when there is none). */
   parts: number;
-  /** Time taken, in ms. */
+  /** Time taken, in ms, the wait for the turn included. */
   ms: number;
+  /** Part of `ms` spent waiting for the turn (0 when there was no wait). */
+  waitMs: number;
 }
 
 export interface UnscrambleOptions {
   /** Most parallel reads (= connections). Default: the health-check connection cap default. */
   connections?: number;
+  /**
+   * Most time for the whole call, the wait for the turn included (the prepare
+   * budget). No limit when unset. If it runs out while waiting, the original
+   * comes back with reason `timeout` and nothing is read.
+   */
+  budgetMs?: number;
 }
 
 interface Part {
@@ -71,8 +83,10 @@ type ReadFailure = 'missing-article' | 'read-error' | 'not-rar5';
 const NUMBER_NAMED = /^(.+)\.(\d{2,3})$/;
 
 /**
- * Unscramble the NZB's Scrambled RAR set(s). `timeLimitMs` bounds the whole
- * call; on timeout reads stop, connections close and the original comes back.
+ * Unscramble the NZB's Scrambled RAR set(s). Waits for its turn first;
+ * `timeLimitMs` counts from the start of the turn, capped by what is left of
+ * `opts.budgetMs`. On timeout reads stop, connections close and the original
+ * comes back.
  */
 export async function unscrambleNzb(
   nzb: string,
@@ -81,7 +95,8 @@ export async function unscrambleNzb(
   opts: UnscrambleOptions = {},
 ): Promise<UnscrambleResult> {
   const started = Date.now();
-  const done = (r: Omit<UnscrambleResult, 'ms'>): UnscrambleResult => ({ ...r, ms: Date.now() - started });
+  let waitMs = 0;
+  const done = (r: Omit<UnscrambleResult, 'ms' | 'waitMs'>): UnscrambleResult => ({ ...r, ms: Date.now() - started, waitMs });
 
   const sets = findScrambledSets(nzb);
   const parts = sets.reduce((n, s) => n + s.parts.length, 0);
@@ -93,9 +108,14 @@ export async function unscrambleNzb(
   ];
   if (ordered.length === 0) return done({ nzb, changed: false, reason: 'no-provider', parts });
 
+  const asked = Date.now();
+  const release = await takeTurn(opts.budgetMs === undefined ? undefined : opts.budgetMs - (asked - started));
+  waitMs = Date.now() - asked;
+  if (!release) return done({ nzb, changed: false, reason: 'timeout', parts });
+  const limitMs = opts.budgetMs === undefined ? timeLimitMs : Math.min(timeLimitMs, opts.budgetMs - (Date.now() - started));
   const reader = new FirstArticleReader(ordered, opts.connections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   let timer: NodeJS.Timeout | undefined;
-  const timedOut = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), Math.max(0, timeLimitMs)); });
+  const timedOut = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), Math.max(0, limitMs)); });
   try {
     // Each number-named group is decided on its own: a non-RAR split next to
     // a Scrambled RAR set stays as it is, and the RAR set is still renamed.
@@ -112,7 +132,43 @@ export async function unscrambleNzb(
   } finally {
     clearTimeout(timer);
     reader.stop();
+    release();
   }
+}
+
+/** Unscrambles waiting for their turn, oldest first. */
+const waiting: Array<() => void> = [];
+let turnTaken = false;
+
+/**
+ * Wait for this Unscramble's turn to read first articles (one at a time,
+ * process-wide, first come first served). Resolves with the function that ends
+ * the turn, or null when `maxWaitMs` runs out first (no limit when unset).
+ */
+function takeTurn(maxWaitMs?: number): Promise<(() => void) | null> {
+  let ended = false;
+  const endTurn = () => {
+    if (ended) return;
+    ended = true;
+    const next = waiting.shift();
+    if (next) next(); else turnTaken = false;
+  };
+  if (!turnTaken) {
+    turnTaken = true;
+    return Promise.resolve(endTurn);
+  }
+  return new Promise(resolve => {
+    let timer: NodeJS.Timeout | undefined;
+    const start = () => { clearTimeout(timer); resolve(endTurn); };
+    waiting.push(start);
+    if (maxWaitMs !== undefined) {
+      timer = setTimeout(() => {
+        const at = waiting.indexOf(start);
+        if (at >= 0) waiting.splice(at, 1);
+        resolve(null);
+      }, Math.max(0, maxWaitMs));
+    }
+  });
 }
 
 /**

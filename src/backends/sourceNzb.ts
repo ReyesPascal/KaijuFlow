@@ -15,7 +15,7 @@ import { setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from
 import { logStep, timeStep } from '../utils/stepTiming.js';
 import type { BackendSource } from './types.js';
 
-/** Most time Unscramble may take out of the prepare budget. */
+/** Most time one Unscramble may read, from the start of its turn (#119); the prepare budget still caps it. */
 export const UNSCRAMBLE_TIME_LIMIT_MS = 15000;
 
 export interface SourceNzb {
@@ -49,7 +49,10 @@ export async function grabSourceNzb(
   return { nzb: upload, remainingMs };
 }
 
-/** Unscramble within min(15 s, budget) on the health-check providers. Never throws. */
+/**
+ * Unscramble on the health-check providers, one Source at a time (#119): up to
+ * 15 s from its turn, the wait and the reads both within the budget. Never throws.
+ */
 async function unscramble(nzb: string, budgetMs: number, logPrefix: string, source: BackendSource): Promise<string> {
   const t0 = Date.now();
   const step = { step: 'unscramble', source: source.indexerName, title: source.title } as const;
@@ -59,9 +62,8 @@ async function unscramble(nzb: string, budgetMs: number, logPrefix: string, sour
     const providers = hc?.providers ?? [];
     // Apply the owner's cap even if no health check has run since start (as Ultimate Fallback does).
     if (providers.some(p => p.enabled)) setHealthCheckConnectionCap(connections);
-    const limitMs = budgetMs > 0 ? Math.min(UNSCRAMBLE_TIME_LIMIT_MS, budgetMs) : UNSCRAMBLE_TIME_LIMIT_MS;
-    const r = await unscrambleNzb(nzb, providers, limitMs, { connections });
-    logStep({ ...step, ms: r.ms, result: r.changed ? 'unscrambled' : r.reason, parts: r.parts });
+    const r = await unscrambleNzb(nzb, providers, UNSCRAMBLE_TIME_LIMIT_MS, { connections, budgetMs: budgetMs > 0 ? budgetMs : undefined });
+    logStep({ ...step, ms: r.ms, wait_ms: r.waitMs, result: r.changed ? 'unscrambled' : r.reason, parts: r.parts });
     if (r.changed) console.log(`${logPrefix}  \u{1F9E9} Unscrambled RAR set: ${r.parts} parts renamed in volume order (${r.ms} ms)`);
     else if (r.reason !== 'not-scrambled') console.log(`${logPrefix}  \u{1F9E9} Unscramble skipped (${r.reason}, ${r.parts} parts, ${r.ms} ms): uploading the original NZB`);
     return r.nzb;

@@ -101,11 +101,23 @@ class Run:
         return out
 
 
+def refuse_short_run(folder):
+    """A short run (brainrun's --sides, --rounds, --quick or a titles subset) is not a baseline and has no place on the page."""
+    try:
+        with open(os.path.join(folder, 'meta.json')) as fh:
+            short = json.load(fh).get('short')
+    except (OSError, ValueError):
+        return
+    if short:
+        raise SystemExit(f'{folder}: a short run ({short}) is not a baseline, so the page does not show it.')
+
+
 def find_runs(folders):
     """The timed runs among the given folders (those with raw.json), newest first. A recording folder (meta mode
     'record') may be named beside its run; nothing on the page is read from it."""
     runs = []
     for f in folders:
+        refuse_short_run(f)
         if os.path.exists(os.path.join(f, 'raw.json')):
             runs.append(Run(f))
             continue

@@ -8,7 +8,7 @@
 
 import * as net from 'net';
 import * as tls from 'tls';
-import { downloadArchiveHeader, inspectArchive, hasVideoContent, download7zEndMetadata } from '../archive/index.js';
+import { downloadArchiveHeader, inspectArchive, hasVideoContent, download7zEndMetadata, isDiscImageName } from '../archive/index.js';
 import type { UsenetProvider } from '../types.js';
 import type { HealthCheckResult, HealthCheckOptions } from './types.js';
 import { downloadAndParseNzb, CircuitChangedError } from './nzbParser.js';
@@ -104,6 +104,16 @@ export async function performHealthCheck(
         const bSize = b.segments.reduce((s, seg) => s + seg.bytes, 0);
         return aSize > bSize ? a : b;
       });
+      // A bare disc image is not playable on the Backends; do not sample it.
+      if (isDiscImageName(extractFilename(largest.subject))) {
+        log(`→ Blocked: disc image (${extractFilename(largest.subject)})`);
+        return {
+          status: 'blocked',
+          message: 'Disc image',
+          playable: false,
+          password,
+        };
+      }
       fileToCheck = largest;
       fileType = 'unknown';
       log(`No recognized file types — checking largest file: ${extractFilename(fileToCheck.subject)}`);

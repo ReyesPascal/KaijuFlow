@@ -27,7 +27,7 @@ export { parse7Zip, download7zEndMetadata, parse7zEndHeader, parse7zHeaderProper
 export { parseZip } from './zipParser.js';
 
 // Re-export utilities
-export { readVInt, read7zNumber, checkFileContentType, hasVideoContent } from './utils.js';
+export { readVInt, read7zNumber, checkFileContentType, hasVideoContent, DISC_IMAGE_EXTENSIONS, isDiscImageName } from './utils.js';
 
 // Re-export LZMA decoders
 export { decompressLZMA1 } from './lzmaDecoder.js';

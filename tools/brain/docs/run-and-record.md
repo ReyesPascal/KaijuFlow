@@ -18,6 +18,12 @@ Run it in the background with a hard `timeout`, like the other tools; it prints 
 
 Code: `brainreport.py` (log parsing, medians, failure split, diff, report, run folder and INDEX.md; pure logic), `brainrun.py` (orchestration), tests `test_brainreport.py` and `test_brainrun.py` (fakes and fixture logs, run in CI).
 
+### Short runs (#111)
+
+`run` takes `--sides kaijuflow,uu,altmount-addon,kaijuflow-1page` (any of them, comma-separated; the plan's order is kept; naming `kaijuflow-1page` alone plays the one-page side alone), `--rounds 1|2` (1 = cold 1 and warm 1; 2 = the full plan, the default) and `--quick` (= `--sides kaijuflow --rounds 1`, which does not imply `--no-wait`). `--quick` cannot be combined with `--sides` or `--rounds`, nor `--one-page` with `--sides`; an unknown side or other rounds stop before anything runs, and `record`, `smoke` and the others refuse the flags. Without them a run is as before.
+
+A **short run** is any run that is not the full plan: the three main sides, 2 rounds and every title of the list (a `--titles-file` that leaves out titles of the built-in list counts). `meta.json` keeps `sides`, `rounds`, `titles` and `short` (the words, for example `KaijuFlow, 1 round, 10 titles`; null for a full run). The report's first line says `Short run, not a baseline: <what was played>.`, the INDEX.md result column says `short: <what was played>`, `check` prints `Not usable as a baseline: short run (<what was played>)` and exits 1 (its other lines stay), and `build_page.py` refuses the folder. A short run is compared with the last run usable as a baseline (`check` exits 0), limited to the sides and titles it played; it is never itself the earlier run of another run.
+
 ## Record, top-up and misses (spec #72, ticket #75)
 
 **The recipe, in order** (from the repo root; run the long ones in the background with a hard `timeout`):

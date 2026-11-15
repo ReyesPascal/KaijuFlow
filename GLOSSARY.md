@@ -44,6 +44,14 @@ _Avoid_: obfuscated release (obfuscated names can still be in order), broken RAR
 Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend.
 _Avoid_: reorder, repair, fix names
 
+**Auto-queue**:
+KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (setting `autoQueueMode`: the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
+_Avoid_: pre-warm, preload, prefetch
+
+**Disc image**:
+A Source whose content is a disc image file (`.iso`, `.img`) that the Backends cannot play; the health check blocks it.
+_Avoid_: ISO release, Blu-ray rip
+
 ### Measuring
 
 **Cold start**:
@@ -61,6 +69,10 @@ _Avoid_: variant, candidate, contestant
 **AltMount direct**:
 The side where the player gets its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it.
 _Avoid_: AltMount's own addon, addon, AltMount alone
+
+**Short run**:
+A timed run that is not the full plan: fewer than the three main sides, one round instead of two, or fewer titles than the list. Made with `--sides`, `--rounds`, `--quick` or a title subset, for a quick check while tuning. Its report, `meta.json`, INDEX.md row and `check` say what it played, and it is never a baseline.
+_Avoid_: partial run, quick run (`--quick` is one way to make one)
 
 **Pass**:
 The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of the three main sides and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
