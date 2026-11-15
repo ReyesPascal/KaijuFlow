@@ -55,8 +55,12 @@ A later play of a Source the Backend already holds, so the video starts from wha
 _Avoid_: cached play, repeat play
 
 **Side**:
-One setup that is played in a timed run: KaijuFlow, Usenet Ultimate, AltMount's own addon, or KaijuFlow with one page per indexer. Each side has its own test copy.
+One setup that is played in a timed run: KaijuFlow, Usenet Ultimate, AltMount direct, or KaijuFlow with one page per indexer. Each side has its own test copy.
 _Avoid_: variant, candidate, contestant
+
+**AltMount direct**:
+The side where the player gets its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it.
+_Avoid_: AltMount's own addon, addon, AltMount alone
 
 **Pass**:
 The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of the three main sides and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.

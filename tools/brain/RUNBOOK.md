@@ -56,9 +56,10 @@ The "KaijuFlow Speed Check" page is https://claude.ai/artifact/VUydiLAYH9gbJ63Ft
 
 1. Findings: write `story.html` into the run folder ([docs/formats.md](docs/formats.md), "The page"). Without it the run's section says "Numbers only".
 2. Build: `python3 -I tools/brain/build_page.py <run folder> <its recording folder> --out <folder>`. It writes `index.html` and `tables.json` into `<folder>` and publishes nothing. Name every run folder that should be on the page; the runs whose folders are gone (2026-11-10, 2026-11-09) come from `tools/brain/page-archive/` by themselves. The header's words (`HEADER_FOR`, `EYEBROW`, `LEDE` in `build_page.py`) were written for the 2026-11-13 run alone; with other runs the page gets a plain header until they are rewritten.
-3. Read what is published, with the Artifact tool: the page (`action: read` with the URL above), then its data file (the same with `path: tables.json`). A publish that replaces a file nobody read in this session is refused. Check that every section of the published page is in the new `index.html`.
-4. Publish over the same page: `index.html` as the page, `files: {"tables.json": "<folder>/tables.json"}`, and `url` set to the URL above. Without `url` a second page is made.
-5. Open the page: every "All numbers" block must show its table, not "Loading the table..." or "missing".
+3. Look before publishing: `cd ~/.local/share/kf-render && node <repo>/tools/brain/render.mjs <folder>/index.html <folder>/shots 1280 390`, fix anything it flags (TOO WIDE, CUT OFF, SQUEEZED), and open the screenshots.
+4. Read what is published, with the Artifact tool: the page (`action: read` with the URL above), then its data file (the same with `path: tables.json`). A publish that replaces a file nobody read in this session is refused. Check that every section of the published page is in the new `index.html`.
+5. Publish over the same page: `index.html` as the page, `files: {"tables.json": "<folder>/tables.json"}`, and `url` set to the URL above. Without `url` a second page is made.
+6. Open the page: every "All numbers" block must show its table, not "Loading the table..." or "missing".
 
 ## Measuring words
 
