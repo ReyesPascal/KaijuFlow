@@ -1338,5 +1338,44 @@ class SpeedTestTargetsTest(unittest.TestCase):
                                           'no slower (cold title to video 3.50 s against 4.00 s).')
 
 
+SLOWER = [video(s, x, 5.0) for s in ('uu', 'altmount-addon') for x in br.LISTS]  # KaijuFlow 3.5 s, the others 5.0 s
+
+
+class FinalBarTest(unittest.TestCase):
+    """#169 (was #141): "On both lists, KaijuFlow has the fewest fails, and the fastest title to video among setups with as
+    few fails." Judged on a tagged run beside the targets; a tie at zero fails counts as fewest."""
+
+    def bar(self, *changes):
+        bar = speed_judgement(self, *changes)['final_bar']
+        return bar['verdict']['result'], {x: r['result'] for x, r in bar['lists'].items()}
+
+    def test_the_targets_file_holds_the_final_bar_in_the_owners_words_beside_the_three_targets(self):
+        speed = br.load_speed_targets()
+        self.assertEqual(len(speed['targets']), 3)
+        self.assertEqual(speed['final_bar'], 'On both lists, KaijuFlow has the fewest fails, and the fastest title to video '
+                                             'among setups with as few fails.')
+
+    def test_the_bar_is_met_with_no_fails_anywhere_when_kaijuflow_is_the_fastest_on_both_lists(self):
+        self.assertEqual(self.bar(*SLOWER), (br.MET, {'easy': br.MET, 'hard': br.MET}))  # a tie at zero fails is fewest
+
+    def test_the_bar_is_not_met_on_a_list_where_a_setup_with_as_few_fails_is_as_fast(self):
+        self.assertEqual(self.bar(*SLOWER, video('altmount-addon', 'easy', 2.0)),
+                         (br.NOT_MET, {'easy': br.NOT_MET, 'hard': br.MET}))
+        self.assertEqual(self.bar(*SLOWER, video('uu', 'hard', 3.5)), (br.NOT_MET, {'easy': br.MET, 'hard': br.NOT_MET}))
+
+    def test_a_tie_above_zero_fails_is_not_the_fewest(self):
+        self.assertEqual(self.bar(*SLOWER, fail('kaijuflow', 'Old Film'), fail('uu', 'Rare Show S01E01'),
+                                  fail('altmount-addon', 'Old Film'), fail('altmount-addon', 'Old Film', 2)),
+                         (br.NOT_MET, {'easy': br.MET, 'hard': br.NOT_MET}))
+
+    def test_the_bar_is_not_met_on_a_list_where_another_setup_fails_fewer_whatever_the_speed(self):
+        self.assertEqual(self.bar(*SLOWER, fail('kaijuflow', 'Matrix'), video('kaijuflow', 'easy', 0.5)),
+                         (br.NOT_MET, {'easy': br.NOT_MET, 'hard': br.MET}))
+
+    def test_a_faster_setup_with_more_fails_does_not_cost_kaijuflow_the_bar(self):
+        self.assertEqual(self.bar(*SLOWER, fail('uu', 'Old Film'), video('uu', 'hard', 1.0)),
+                         (br.MET, {'easy': br.MET, 'hard': br.MET}))
+
+
 if __name__ == '__main__':
     unittest.main()

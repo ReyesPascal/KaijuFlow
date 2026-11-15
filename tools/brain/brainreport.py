@@ -1082,6 +1082,8 @@ def load_speed_targets(path=TARGETS_FILE):
         else:
             continue
         raise ValueError(f'{name}, speed test entry {i}: {why}')
+    if not isinstance(speed.get('final_bar'), str):
+        raise ValueError(f'{name}, speed test: the final bar has no text')
     return speed
 
 
@@ -1213,20 +1215,54 @@ def _outcome(visits, unlike):
                                       f"(cold title to video {_secs(a['video'])} against {_secs(b['video'])}).")}
 
 
+def _bar_on_list(visits, lst, pairs):
+    """{'result', 'why'}: the final bar on one list. Fewest fails: fewer than every other setup, or a tie at zero (as a
+    tie at the maximum plays counts as met); then strictly the fastest median cold title to video among the setups with
+    as few fails. A setup that fails more is not held against KaijuFlow's speed."""
+    me, mine = SHORT_NAMES[JUDGED], _pair(visits, JUDGED, lst, {})['mine']
+    if not mine['counted'] or not pairs:
+        return {'result': NOT_MEASURED, 'why': f'no {"figure" if pairs else "other setup"} to judge it on'}
+    for p in pairs:
+        a, b = p['mine'], p['theirs']
+        if not (a['fails'] < b['fails'] or a['fails'] == b['fails'] == 0):
+            return {'result': NOT_MET, 'why': f"{SHORT_NAMES[p['side']]} fails {'fewer' if b['fails'] < a['fails'] else 'as few'} "
+                                              f"titles ({_fails_text(b)} against {me}'s {_fails_text(a)})"}
+    for p in [p for p in pairs if p['theirs']['fails'] <= p['mine']['fails']]:  # ties at zero, after the loop above
+        a, b = p['mine'], p['theirs']
+        if a['video'] is None or (b['video'] is not None and b['video'] <= a['video']):
+            return {'result': NOT_MET, 'why': f"{SHORT_NAMES[p['side']]} fails as few titles and is as fast or faster "
+                                              f"(cold title to video {_secs(b['video'])} against {me}'s {_secs(a['video'])})"}
+    return {'result': MET, 'why': f"{me} fails {_fails_text(mine)}, the fewest, in {_secs(mine['video'])} cold title to "
+                                  'video, the fastest among setups with as few fails'}
+
+
+def _final_bar(visits, lists, text):
+    """{'target', 'lists': {list: {'result', 'why'}}, 'verdict'}: the final bar on each list and on both together. Met
+    when met on both lists; not measured when the run lacks a list or a list holds no figure for it."""
+    results = [r['result'] for r in lists.values()]
+    if set(run_lists(visits)) != set(LISTS) or NOT_MEASURED in results:
+        result = NOT_MEASURED
+    else:
+        result = MET if all(r == MET for r in results) else NOT_MET
+    return {'target': text, 'lists': lists, 'verdict': _verdict(result)}
+
+
 def speed_test_judgement(visits, path=TARGETS_FILE):
     """The judgement of a tagged run (#169), for the check, the report and the page: {'targets': [{'number', 'target',
-    'list', 'measured', 'verdict'}], 'outcome': {'outcome', 'text'}}: each target of the targets file's speed test part
-    judged on each list of the run, list by list, and the outcome of the hard list (_outcome). ValueError when the
-    targets file cannot be used."""
-    entries = load_speed_targets(path)['targets']
+    'list', 'measured', 'verdict'}], 'outcome': {'outcome', 'text'}, 'final_bar': {'target', 'lists', 'verdict'}}: each
+    target of the targets file's speed test part judged on each list of the run, list by list; the outcome of the hard
+    list (_outcome); and the owner's final bar (_final_bar), which is shown apart and never counted with the targets.
+    ValueError when the targets file cannot be used."""
+    speed = load_speed_targets(path)
     unlike = unlike_titles(visits)
-    rows = []
+    rows, bar = [], {}
     for lst in run_lists(visits):
         pairs = [_pair(visits, s, lst, unlike) for s in _others(visits)]
-        for n, t in enumerate(entries, 1):
+        for n, t in enumerate(speed['targets'], 1):
             measured, verdict = SPEED_JUDGES[t['measure']](visits, lst, pairs, t)
             rows.append({'number': n, 'target': t['target'], 'list': lst, 'measured': measured, 'verdict': verdict})
-    return {'targets': rows, 'outcome': _outcome(visits, unlike)}
+        bar[lst] = _bar_on_list(visits, lst, pairs)
+    return {'targets': rows, 'outcome': _outcome(visits, unlike), 'final_bar': _final_bar(visits, bar, speed['final_bar'])}
 
 
 def targets_not_judged(status):
