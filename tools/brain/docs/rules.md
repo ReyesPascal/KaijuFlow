@@ -120,3 +120,13 @@ The targets are read from `tools/brain/targets.json` ([format](formats.md#target
 - **Not measured**: the run holds no figure for it (the side compared with was not in the run, or no top pick played). The measured values then read "no figure".
 
 The targets do not decide whether a run can serve as a baseline: the exit code of `check` is the same with every target missed.
+
+### A speed test's targets, outcome and final bar (#169)
+
+A run on a tagged title list is judged on the three `speed_test` targets of `targets.json`, each on the easy list and the hard list on its own; an untagged run on the six as above. Against another setup, a title that is not like for like with it is left out on both sides, as above.
+
+- **Fails**: met on a list when KaijuFlow fails no more top picks than any other setup there (all four rounds together); on the easy list also only when it fails none.
+- **Cold title to video**: met on a list when KaijuFlow's median is no slower than that of every setup KaijuFlow has as many fails as or more. A setup that fails more titles than KaijuFlow is not held against it, however fast (no fails comes first). "Inside the noise" as above, on KaijuFlow's two cold rounds of the list.
+- **Warm title to video**: met on a list when KaijuFlow's median is under the limit (1.00 s is not under 1 s); the noise on its two warm rounds.
+- **Outcome**, named for the hard list, KaijuFlow against AltMount direct, decided before the first speed test (ADR 0007): KaijuFlow fails fewer, so tune its speed; the same fails and AltMount direct faster (cold title to video), so try KaijuFlow without its own pre-list check, behind AltMount; AltMount direct fails fewer, so KaijuFlow's checking has a bug to find first. The same fails with KaijuFlow no slower is none of the three, and says so.
+- **Final bar** (the owner's, spec #159): on each list, KaijuFlow fails fewer titles than every other setup, a tie at zero counting as fewest (as a tie at the maximum plays counts as met; any other tie does not), and its median cold title to video is strictly lower than that of each setup with as few fails. Met when met on both lists; not measured when the run lacks a list. It is shown apart from the targets, never counted with them, and judged on speed tests only, never on an untagged run.

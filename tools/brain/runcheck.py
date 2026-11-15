@@ -5,7 +5,8 @@
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
 (a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
 a recording folder, or a run folder that cannot be read). For a finished run it then prints one line per
-target of targets.json (the target, the measured values, met or not met); for any other run one line
+target of targets.json (the target, the measured values, met or not met; for a run on a tagged title list, one line per
+list and speed test target, the outcome line and the final bar apart, brainreport.speed_test_lines); for any other run one line
 says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
 The targets do not change the exit code.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.

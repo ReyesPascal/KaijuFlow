@@ -114,6 +114,10 @@ _Avoid_: speed test (when the titles are reused), rerun
 One of the goals KaijuFlow is measured against, kept in `tools/brain/targets.json` and judged on a finished run only: met, not met, or not measured when the run holds no figure for it. A time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by.
 _Avoid_: goal, KPI, threshold
 
+**Final bar**:
+The owner's goal for a speed test, kept beside its three targets in `tools/brain/targets.json`: on both lists, KaijuFlow has the fewest fails (a tie at zero counts as fewest), and the fastest title to video among setups with as few fails. Shown apart from the targets, never counted with them or towards "usable", and judged on speed tests only (#169).
+_Avoid_: final target, end goal
+
 **Expected settings**:
 The sort and filter rules every test copy must have, kept in `tools/brain/expected-settings.json`. The preflight fails when a copy differs.
 _Avoid_: baseline settings, golden config
