@@ -28,12 +28,8 @@ jobs:
       - run: npm run test:unit
       - name: Type-check the unit tests (tests/unit/*.ts)
         run: npm run typecheck:tests
-      - name: Brain tools compile and lint (tools/brain/*.py)
-        run: |
-          python3 -m py_compile tools/brain/*.py
-          pipx run ruff==0.6.9 check tools/brain
-      - name: Brain tools tests (tools/brain/test_*.py, loopback fakes only)
-        run: python3 -m unittest discover -s tools/brain -p 'test_*.py'
+      - name: Brain tools compile, lint and tests (tools/brain/check.sh, loopback fakes only)
+        run: npm run check:brain
       - name: Working tree is clean after build and tests
         run: |
           git status --porcelain

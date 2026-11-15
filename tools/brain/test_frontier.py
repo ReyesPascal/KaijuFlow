@@ -11,9 +11,9 @@ import unittest
 import frontier
 
 
-def sub_issue(number, state='open', assignees=(), labels=('ready-for-agent',), blocked_by=0, title=None):
+def sub_issue(number, state='open', assignees=(), labels=('ready-for-agent',), blocked_by=0, title=None, body=None):
     """One entry as `gh api repos/{owner}/{repo}/issues/<parent>/sub_issues` returns it (the fields the command reads)."""
-    return {'number': number, 'title': title or f'Ticket {number}', 'state': state,
+    return {'number': number, 'title': title or f'Ticket {number}', 'state': state, 'body': body,
             'assignees': [{'login': a} for a in assignees], 'labels': [{'name': n} for n in labels],
             'issue_dependencies_summary': {'blocked_by': blocked_by, 'blocking': 0, 'total_blocked_by': blocked_by,
                                            'total_blocking': 0}}
@@ -39,6 +39,13 @@ def run(argv, gh):
     with contextlib.redirect_stdout(out):
         code = frontier.main(argv, run_gh=gh)
     return code, out.getvalue()
+
+
+def run_with_stderr(argv, gh):
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        code, out = run(argv, gh)
+    return code, out, err.getvalue()
 
 
 def numbers(output):
@@ -112,6 +119,33 @@ class FrontierTest(unittest.TestCase):
             code, out = run(['abc'], FakeGh([sub_issue(119)]))
         self.assertEqual((code, out), (2, ''))
         self.assertEqual(err.getvalue().splitlines(), ["Usage: frontier.py [parent]: the parent is an issue number, not 'abc'."])
+
+
+class BlockedByInBodyTest(unittest.TestCase):
+    """The tracker's blocked-by links are the only source of blockers; a body that repeats them goes stale (#64 did)."""
+
+    def test_warns_about_an_open_sub_issue_whose_body_has_a_blocked_by_section(self):
+        body = '## What to build\n\nTune.\n\n## Blocked by\n\n- #63\n'
+        code, out, err = run_with_stderr([], FakeGh([sub_issue(64, blocked_by=2, body=body), sub_issue(119)]))
+        self.assertEqual((code, numbers(out)), (0, [119]))
+        self.assertEqual(err.splitlines(), [
+            'Warning: #64\'s body has a "Blocked by" section. The tracker\'s blocked-by links are the only source '
+            '(docs/agents/issue-tracker.md); remove the section.'])
+
+    def test_warns_about_a_blocked_by_line(self):
+        code, out, err = run_with_stderr([], FakeGh([sub_issue(65, body='Blocked by: #64\n\nMove Sources down.')]))
+        self.assertIn('#65', err)
+
+    def test_says_nothing_about_a_closed_sub_issue_or_a_body_that_only_mentions_blocking(self):
+        gh = FakeGh([sub_issue(63, state='closed', body='## Blocked by\n\n- #62\n'),
+                     sub_issue(119, body='The fix is not blocked by anything; see the blocked-by links.')])
+        code, out, err = run_with_stderr([], gh)
+        self.assertEqual((code, err), (0, ''))
+
+    def test_the_captured_gh_answer_has_no_bodies_and_no_warning(self):
+        with open(SAMPLE) as f:
+            code, out, err = run_with_stderr([], FakeGh(f.read()))
+        self.assertEqual((code, err), (0, ''))
 
 
 if __name__ == '__main__':
