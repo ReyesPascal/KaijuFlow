@@ -83,11 +83,11 @@ Every title played once, cold or warm, on every side of a pass. A timed run play
 _Avoid_: iteration, lap
 
 **Top pick**:
-The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. A top pick **plays** only on the first try, in speed tests and tuning tests alike: video that arrives after the top pick's own import failed is a **fallback**, counted as not played (#143); in a speed test a fallback is a fail.
+The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. A top pick **plays** only on its one try (see Like for like): video that arrives after the top pick's own import failed is a **fallback**, counted as not played (#143).
 _Avoid_: first result, winner
 
 **Fail**:
-In a speed test, a title whose top pick does not play on its one try: the viewer presses it once and gets an error, the failure video, a refusal, or video only after a fallback. No app gets a retry (ADR 0007). Speed never makes up for a fail; no fails comes first, then fast.
+In a speed test, a title whose top pick does not play: the viewer presses it and gets an error, the failure video, a refusal, or video only after a fallback. Speed never makes up for a fail; no fails comes first, then fast.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Title to video**:
@@ -103,7 +103,7 @@ A title list of the kinds where dead Sources are common (older releases, titles 
 _Avoid_: stress list, fail list
 
 **Speed test**:
-A timed run on an easy list and a hard list of titles no side has played before, new for every speed test, with every app getting one try per title (no retries for anyone). It says how KaijuFlow compares with the other setups. The first speed test that works is the baseline.
+A timed run on an easy list and a hard list of titles no side has played before, new for every speed test, played like for like. It says how KaijuFlow compares with the other setups. The first speed test that works is the baseline.
 _Avoid_: baseline, benchmark
 
 **Tuning test**:
@@ -119,7 +119,7 @@ The sort and filter rules every test copy must have, kept in `tools/brain/expect
 _Avoid_: baseline settings, golden config
 
 **Like for like**:
-The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, the same indexer and Backend connections, and one try per play with no fallback for every side, in speed tests and tuning tests alike. A comparison between sides counts only when the run was like for like. Per title, the report and `check` compare KaijuFlow's top pick with each setup's (#143): a different resolution, or a served file over the cap or a disc image, makes that title not like for like, and it is left out of the targets against that setup.
+The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, the same indexer and Backend connections, and one try per play with no fallback for every side, in every timed run (ADR 0007). A comparison between sides counts only when the run was like for like. Per title, the report and `check` compare KaijuFlow's top pick with each setup's (#143): a different resolution, or a served file over the cap or a disc image, makes that title not like for like, and it is left out of the targets against that setup.
 _Avoid_: fair run, same settings
 
 **Recording**:

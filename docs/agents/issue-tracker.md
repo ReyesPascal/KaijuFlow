@@ -13,6 +13,8 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Close**: `gh issue close <number> --comment "..."`
 - **Ticket first**: work that is not on a ticket gets one before it starts, as a sub-issue of the map (#58) with its blockers linked, so the frontier shows it and its place in the order is decided.
 - **Order in the tracker**: when the owner decides an order, record it as a blocked-by link (see **Blocking**). `tools/brain/frontier.py` reads only the tracker and lists tickets in map order, so an order agreed only in chat is lost.
+- **Owner's words**: an "Owner's decision" comment, a spec's decisions and an ADR quote the owner's own words, then say what follows from them. Before tickets are published (`/to-tickets`), list every rule change in plain words (what each side or setup will do differently), apart from the tickets, for the owner to confirm.
+- **One home per rule**: a measuring rule lives in `tools/brain/docs/rules.md` and its ADR; `GLOSSARY.md` defines the word and points there, so a changed rule is a one-place edit.
 - **Check before claiming**: before a behaviour change (who it affects, by how much) goes into a ticket or to the owner, check it in the code that uses the value, not just the line that sets it.
 - **Close when done**: close a ticket in the session its work is done, with the done comment. When a ticket's PR closes a parent's last open sub-issue, close the parent in the same session with a summary comment.
 
