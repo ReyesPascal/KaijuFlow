@@ -17,6 +17,7 @@ import unittest
 
 import brainreport as br
 import build_page as bp
+from test_brainreport import TAGGED_TITLES, tagged_visit
 from test_settings import tempdir
 
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13')
@@ -414,6 +415,208 @@ class Command(unittest.TestCase):
             with open(os.path.join(out, name)) as f:
                 self.assertIn('<h1>1 of 6 targets met</h1>', f.read())
             self.assertIn(name, said.getvalue())
+
+
+SPEED_SIDES = ('kaijuflow', 'uu', 'altmount-addon')
+FAILED = {('kaijuflow', 'cold', 1, 'Old Film'), ('altmount-addon', 'cold', 2, 'Matrix'), ('uu', 'cold', 1, 'Old Film'),
+          ('uu', 'cold', 2, 'Old Film')}
+FALLBACK = ('altmount-addon', 'cold', 1, 'Rare Show S01E01')  # video only after its top pick's own import failed
+
+
+def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
+    """A finished speed test (a run on the tagged title list) as a run folder under root: KaijuFlow, Usenet Ultimate and
+    AltMount direct, four rounds of Matrix and Dune (easy) and Old Film and Rare Show S01E01 (hard).
+
+    Every top pick plays with list 2.0 s and start 1.5 s (3.5 s title to video), except: KaijuFlow lists in 1.0 s on the
+    easy list (2.5 s) and plays warm in 0.4 + 0.2 s (0.6 s); AltMount direct lists in 0.5 s (2.0 s); the plays in FAILED
+    give no video and FALLBACK plays after a fallback. So the easy list has KaijuFlow 0 fails, Usenet Ultimate 0, AltMount
+    direct 1 (Matrix, Cold 2); the hard list KaijuFlow 1 (Old Film, Cold 1), Usenet Ultimate 2 (Old Film, both cold
+    rounds), AltMount direct 1 (Rare Show S01E01, Cold 1, after a fallback). Worked out by hand: 5 of 6 targets met (the
+    hard list's cold title to video is not: KaijuFlow 3.50 s, AltMount direct 2.00 s with as few fails), the outcome is
+    "try KaijuFlow without its own pre-list check", and the final bar is met on the easy list and not on the hard one."""
+    visits = [tagged_visit(side, phase, rnd, t[2]) for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in SPEED_SIDES]
+    for v in visits:
+        key = (v['side'], v['phase'], v['round'], v['title'])
+        if v['side'] == 'kaijuflow' and v['list'] == 'easy':
+            v['list_s'] = 1.0
+        if v['side'] == 'kaijuflow' and v['phase'] == 'warm':
+            v.update(list_s=0.4, start_s=0.2)
+        if v['side'] == 'altmount-addon':
+            v['list_s'] = 0.5
+        if key in FAILED:
+            v.update(ok=False, start_s=None, note='failure video', tries=[{'plays': False, 'size': None, 'title': v['title']}])
+        if key == FALLBACK:
+            v['imports'] = [{'name': 'Rare Show S01E01.2160p.WEB-DL-GRP', 'ok': False}, {'name': 'Rare.Show.S01E01.720p-OTHER', 'ok': True}]
+    folder = os.path.join(root, folder_name)
+    os.makedirs(folder)
+    m = dict(name='speed', label='Test 2', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z',
+             titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES}, sides=list(SPEED_SIDES),
+             rounds=2, short=None, changes=['First speed test.'])
+    m.update(meta)
+    with open(os.path.join(folder, 'meta.json'), 'w') as f:
+        json.dump(m, f)
+    with open(os.path.join(folder, 'raw.json'), 'w') as f:
+        json.dump({'status': 'ok', 'visits': visits}, f)
+    return folder
+
+
+class SpeedTest(unittest.TestCase):
+    """#171: a speed test (a tagged run) on the page and the one-page report: both lists, fails first, then title to video."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as root:
+            folder = speed_test_run(root)
+            cls.index, cls.report = bp.build([folder]), bp.build_report([folder])
+
+    def test_the_verdict_counts_the_three_targets_on_each_list(self):
+        self.assertIn('<h1>5 of 6 targets met</h1>', self.index)
+        groups = re.findall(r'<h3 class="sl-list">(.*?)</h3><ul>(.*?)</ul>', self.index)
+        self.assertEqual([g for g, _ in groups], ['Easy list', 'Hard list'])
+        easy, hard = ([text(re.sub(r'<small class="sl-meas">.*?</small>', '', r)) for r in re.findall(r'<li class="sl-trow">.*?</li>', rows)]
+                      for _, rows in groups)  # what was measured has its own test
+        self.assertEqual([re.match('Not met|Met', r).group(0) for r in easy], ['Met', 'Met', 'Met'])
+        self.assertEqual([re.match('Not met|Met', r).group(0) for r in hard], ['Met', 'Not met', 'Met'])
+        self.assertTrue(easy[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
+                                           'list KaijuFlow 0 fails Limit 0 fails'), easy[0])
+        self.assertTrue(hard[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
+                                           'list KaijuFlow 1 fail Limit 1 fail'), hard[0])
+        self.assertTrue(hard[1].startswith("Not met KaijuFlow's median cold title to video is no slower than any setup "
+                                           'with as many fails or more KaijuFlow 3.50 s Limit 2.00 s 1.50 s over'), hard[1])
+        self.assertTrue(easy[2].startswith('Met Warm title to video under about 1 s KaijuFlow 0.60 s Limit 1.00 s '
+                                           '0.40 s to spare'), easy[2])
+
+    def test_the_report_has_one_row_per_target_with_each_list_beside_it(self):
+        self.assertIn('<h1>5 of 6 targets met</h1>', self.report)
+        targets = section(self.report, 'still open')
+        self.assertEqual(re.findall(r'<th scope="col">([^<]*)</th>', targets), ['Target', 'Easy list', 'Hard list'])
+        self.assertEqual(self.table_rows(targets), [
+            'KaijuFlow fails no more titles than any other setup, and none on the easy list Met 0 fails, limit 0 fails None '
+            'Met 1 fail, limit 1 fail No more than any other setup',
+            "KaijuFlow's median cold title to video is no slower than any setup with as many fails or more "
+            'Met 2.50 s, limit 3.50 s 1.00 s to spare Not met 3.50 s, limit 2.00 s 1.50 s over',
+            'Warm title to video under about 1 s Met 0.60 s, limit 1.00 s 0.40 s to spare Met 0.60 s, limit 1.00 s 0.40 s to spare'])
+
+    def test_on_the_page_a_target_row_says_what_was_measured_on_every_setup(self):
+        row = text(re.findall(r'<li class="sl-trow">.*?</li>', self.index)[4])
+        self.assertIn('Measured: KaijuFlow 3.50 s with 1 fail, Usenet Ultimate 3.50 s with 2 fails (more fails: not held '
+                      'against it), AltMount direct 2.00 s with 1 fail.', row)
+        sub = text(re.search(r'<p class="sl-text sl-sub">Each list.*?</p>', self.index).group(0))
+        self.assertEqual(sub, 'Each list is judged on its own: fails first, then title to video. On the small rulers the '
+                              'yellow bar is KaijuFlow and the upright line is the limit.')
+
+    def test_the_lead_under_the_verdict_is_the_outcome_line(self):
+        for page in (self.index, self.report):
+            lead = text(re.search(r'<p class="sl-lead">.*?</p>', page).group(0))
+            self.assertEqual(lead, 'Outcome on the hard list: KaijuFlow and AltMount direct fail the same number of titles '
+                                   '(1 of 8 each) and AltMount direct is faster (cold title to video 2.00 s against 3.50 s), '
+                                   'so try KaijuFlow without its own pre-list check, behind AltMount.')
+
+    def test_the_final_bar_is_shown_apart_from_the_targets_and_not_counted_in_them(self):
+        self.assertEqual(len(re.findall(r'<li class="sl-trow">', self.index)), 6)
+        self.assertLess(self.index.rindex('<li class="sl-trow">'), self.index.index('<div class="sl-final">'))
+        self.assertLess(self.report.rindex('</table>', 0, self.report.index('<div class="sl-final">')),
+                        self.report.index('<div class="sl-final">'))
+        for page in (self.index, self.report):
+            bar = text(re.search(r'<div class="sl-final">.*?</div>', page).group(0))
+            self.assertEqual(bar, 'Final bar, not counted with the targets Not met On both lists, KaijuFlow has the fewest '
+                                  'fails, and the fastest title to video among setups with as few fails. Easy list: met, '
+                                  'KaijuFlow fails 0 of 8, the fewest, in 2.50 s cold title to video, the fastest among '
+                                  "setups with as few fails. Hard list: not met, AltMount direct fails as few titles (1 of 8 "
+                                  "against KaijuFlow's 1 of 8).")
+
+    def test_the_first_rulers_are_cold_title_to_video_on_each_list_fewest_fails_first(self):
+        for page in (self.index, self.report):
+            easy, hard = re.findall(r'<figure class="sl-fig".*?</figure>', page)[:2]
+            self.assertTrue(text(easy).startswith('Easy list: cold title to video.'), text(easy))
+            self.assertTrue(text(hard).startswith('Hard list: cold title to video.'), text(hard))
+            self.assertEqual(lanes(easy), [('KaijuFlow', '2.50 s'), ('Usenet Ultimate', '3.50 s'), ('AltMount direct', '2.00 s')])
+            self.assertEqual(lanes(hard), [('AltMount direct', '2.00 s'), ('KaijuFlow', '3.50 s'), ('Usenet Ultimate', '3.50 s')])
+            self.assertIn('<b>2.00 s</b><small>1 fail</small>', easy)
+            self.assertIn('<b>3.50 s</b><small>2 fails</small>', hard)
+            self.assertIn('Title asked for', easy)
+        self.assertNotIn('Cold start.', text(self.index))
+
+    def test_the_headline_numbers_are_kaijuflows_fails_then_its_title_to_video_on_each_list(self):
+        for page in (self.index, self.report):
+            heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', page).group(0))
+            self.assertEqual(heads, 'Fails, easy list 0 of 8 Fails, hard list 1 of 8 Title to video, easy list 2.50 s '
+                                    'Title to video, hard list 3.50 s KaijuFlow: fails in all four rounds; median cold '
+                                    'title to video.')
+
+    def table_rows(self, sec):
+        return [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', sec)]
+
+    def test_the_page_has_a_table_per_list_of_every_title_marking_each_setups_fails_and_fallbacks(self):
+        easy, hard = section(self.index, 'Easy list, title by title'), section(self.index, 'Hard list, title by title')
+        for sec in (easy, hard):
+            self.assertEqual(re.findall(r'<th scope="col" class="sl-r[^"]*"><span>([^<]*)</span>', sec),
+                             ['KaijuFlow', 'Usenet Ultimate', 'AltMount direct'])
+        self.assertEqual(self.table_rows(easy), ['Matrix 2.50 3.50 2.00 Failed: Cold 2', 'Dune 2.50 3.50 2.00'])
+        self.assertEqual(self.table_rows(hard), ['Old Film 3.50 Failed: Cold 1 – Failed: Cold 1, Cold 2 2.00',
+                                                 'Rare Show S01E01 3.50 3.50 2.00 Failed: Cold 1 after a fallback'])
+        self.assertEqual(lanes(hard), [('Old Film', '3.50 s'), ('Rare Show S01E01', '3.50 s')])
+        self.assertIn('<b>3.50 s</b><small>Failed: Cold 1</small>', hard)
+
+    def test_the_report_names_each_setups_fails_title_by_title_on_each_list(self):
+        fails = section(self.report, 'Fails, title by title')
+        self.assertEqual(self.table_rows(fails), ['KaijuFlow None Old Film (Cold 1)',
+                                                  'Usenet Ultimate None Old Film (Cold 1, Cold 2)',
+                                                  'AltMount direct Matrix (Cold 2) Rare Show S01E01 (Cold 1 after a fallback)'])
+        self.assertEqual(re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', fails), ['Setup', 'Easy list', 'Hard list'])
+        self.assertNotIn('List, warm', text(self.report))
+
+    def test_the_words_say_what_title_to_video_and_a_fail_are_and_name_the_setups_in_the_pages_words(self):
+        foot = text(re.search(r'<footer.*?</footer>', self.report).group(0))
+        self.assertIn('Title to video: seconds from asking for a title until its video starts, the list and the start on one clock.', foot)
+        self.assertIn('Fail: a title whose top pick does not play on its one try; video after a fallback is a fail too.', foot)
+        self.assertIn('Medians over the 2 titles of each list.', foot)
+        self.assertIn('Page 1 of 1', foot)
+        words = section(self.index, 'What the words mean')
+        for term in ('Fail', 'Title to video', 'Easy list', 'Hard list', 'Final bar'):
+            self.assertIn(f'<dt>{term}</dt>', words)
+        for page in (self.index, self.report):
+            self.assertIn('AltMount direct', text(page))
+            for avoid in ("AltMount's own addon", 'addon', 'altmount-addon', 'kaijuflow-1page'):
+                self.assertNotIn(avoid, text(page))
+
+    def test_start_and_list_stay_as_detail_with_no_target_and_each_setups_fails_beside_them(self):
+        four = section(self.index, 'Start and list, the two parts of title to video')
+        self.assertNotIn('No target: AltMount direct checks nothing', four)
+        self.assertNotIn('sl-lim', four)
+        plays = text(re.search(r'<div class="sl-plays">.*?</div>', four).group(0))
+        self.assertEqual(plays, 'Fails, both lists 1 of 16 KaijuFlow 2 of 16 Usenet Ultimate 2 of 16 AltMount direct')
+
+
+class SpeedTestAgainstEarlierRuns(unittest.TestCase):
+    def test_a_speed_test_is_never_compared_with_a_run_without_tags_and_both_are_in_every_run_so_far(self):
+        root = tempdir(self)
+        index = bp.build([copy_run(root), speed_test_run(root)])
+        self.assertIn('No earlier run on this page to compare with.', index)
+        rows = [text(r) for r in re.findall(r'<tr class="[^"]*"><th scope="row">.*?</tr>', section(index, 'Every run so far'))]
+        self.assertTrue(rows[0].startswith('Test 2 run 2026-11-16 First speed test. 5 of 6'), rows)
+        self.assertTrue(rows[1].startswith('Baseline run 2026-11-13'), rows)
+
+    def test_a_speed_test_is_compared_with_the_speed_test_before_it_fails_and_title_to_video_on_each_list(self):
+        root = tempdir(self)
+        earlier = speed_test_run(root, label='Test 1b')
+
+        def all_play(visits):  # the later run: KaijuFlow plays Old Film too, and Usenet Ultimate is as before
+            for v in visits:
+                if (v['side'], v['title']) == ('kaijuflow', 'Old Film'):
+                    v.update(ok=True, start_s=1.5, note=None)
+        later = speed_test_run(root, '2026-11-20T100000Z-speed', finished='2026-11-20T11:00:00Z')
+        path = os.path.join(later, 'raw.json')
+        with open(path) as f:
+            raw = json.load(f)
+        all_play(raw['visits'])
+        with open(path, 'w') as f:
+            json.dump(raw, f)
+        index = bp.build([earlier, later])
+        self.assertIn('Compared with the Test 1b run of 16 November 2026.', index)
+        heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', index).group(0))
+        self.assertTrue(heads.startswith('Fails, easy list 0 of 8 No change Fails, hard list 0 of 8 1 fewer '
+                                         'Title to video, easy list 2.50 s No change Title to video, hard list 3.50 s No change'), heads)
 
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline/')  # Test 1 (#127, #150); 3.46 s since #154 reads The Matrix as 1080p on both sides

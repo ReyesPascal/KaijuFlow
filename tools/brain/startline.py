@@ -4,7 +4,7 @@ is the one yellow lane.
 
 Pure rendering: every function takes plain numbers and words and returns HTML; nothing here reads a run folder or judges
 a target. build_page.py makes the page model from run folders (numbers through brainreport, verdicts from
-brainreport.target_results) and calls page(), and report() for the one-page Letter report (#133), drawn with the same pieces from the same
+brainreport.target_results, or speed_test_judgement for a speed test) and calls page(), and report() for the one-page Letter report (#133), drawn with the same pieces from the same
 model on a fixed 816 x 1056 px sheet.
 
 The mock-up is ~/kaijuflow-notes/designs/speed-check-2026-11-15/project/StartLine.dc.html; its wording rules are in
@@ -36,6 +36,11 @@ def secs(x):
 
 def plays_text(p):
     return '–' if p is None or not p[1] else f'{p[0]} of {p[1]}'
+
+
+def fails_text(n):
+    """'1 fail', '2 fails', '0 fails'."""
+    return f'{n} fail' + ('' if n == 1 else 's')
 
 
 def num(x):
@@ -136,7 +141,7 @@ def ruler(lanes, limits=(), end=None, hero=False, play_label=False):
     for i, t in enumerate(ticks):
         text = f'{num(t)} s' if i in (0, len(ticks) - 1) else num(t)
         labels.append(f'<span class="sl-tick{" sl-t0" if i == 0 else ""}" style="left:{pct(t, end)}%">{text}</span>')
-    play = '<span class="sl-play">Play pressed</span>' if play_label else ''
+    play = f'<span class="sl-play">{esc(play_label if isinstance(play_label, str) else "Play pressed")}</span>' if play_label else ''
     rows.append(f'<div class="sl-axis" style="grid-row:{k + 2}" aria-hidden="true">{play}{"".join(labels)}</div>')
     return f'<div class="sl-plot{" sl-hero" if hero else ""}">{"".join(rows)}</div>'
 
@@ -169,6 +174,12 @@ def target_figures(t):
     v, lim, result = t['value'], t['limit'], t['result']
     if result == 'not measured':
         return '–', '–', 'No figure in this run'
+    if t['measure'] == 'fails':  # a speed test's fails (#169): KaijuFlow's and the fewest it may have
+        over = v - lim
+        words = ('None' if not v else 'No more than any other setup') if over <= 0 else f'{fails_text(over)} too many'
+        return fails_text(v), fails_text(lim), words
+    if lim is None:  # cold title to video when every other setup fails more titles: none is held against KaijuFlow
+        return secs(v), '–', 'Every other setup fails more titles'
     if isinstance(v, tuple):  # plays: (played, counted)
         if t['measure'] == 'plays per round':
             short = lim[0] - v[0]
@@ -209,12 +220,22 @@ def target_rows(targets, report=False):
         noise = noise_short(t) if report else noise_words(t)
         if noise:
             margin += f'<small>{esc(noise)}</small>'
-        draw = ('' if report else mini(t['value'], t['limit']) if t['result'] != 'not measured' and not isinstance(t['value'], tuple)
-                else '<span class="sl-empty"></span>')
+        drawn = t['result'] != 'not measured' and t['measure'] != 'fails' and t['limit'] is not None and not isinstance(t['value'], tuple)
+        draw = '' if report else mini(t['value'], t['limit']) if drawn else '<span class="sl-empty"></span>'
+        measured = f'<small class="sl-meas">Measured: {esc(t["measured"])}.</small>' if t.get('measured') and not report else ''  # a speed test's (#169)
         rows.append(f'<li class="sl-trow"><span class="sl-ts">{status(t["result"])}</span><span class="sl-tt">{esc(t["text"])}</span>'
                     f'<span class="sl-num sl-r"><span class="sl-lab">KaijuFlow</span>{mine}</span>'
-                    f'<span class="sl-num sl-r"><span class="sl-lab">Limit</span>{lim}</span><span class="sl-tm">{margin}</span>{draw}</li>')
+                    f'<span class="sl-num sl-r"><span class="sl-lab">Limit</span>{lim}</span><span class="sl-tm">{margin}</span>{draw}{measured}</li>')
     return ''.join(rows)
+
+
+def target_lists(targets, report=False):
+    """The target rows in a list; a speed test's (#169) in one list per title list, each under its name."""
+    lists = list(dict.fromkeys(t['list'] for t in targets if t.get('list')))
+    if not lists:
+        return f'<ul>{target_rows(targets, report)}</ul>'
+    return ''.join(f'<h3 class="sl-list">{esc(x.capitalize())} list</h3><ul>{target_rows([t for t in targets if t.get("list") == x], report)}</ul>'
+                   for x in lists)
 
 
 def limit_label(t):
@@ -331,11 +352,18 @@ RULES = """.sl * { box-sizing: border-box }
 .sl .sl-thead .sl-r, .sl .sl-trow .sl-r { text-align: right }
 .sl .sl-trow .sl-lab { display: none }
 .sl .sl-trow .sl-tt { line-height: 1.35 }
+.sl .sl-trow .sl-meas { grid-column: 2 / -1; font-size: 14px; line-height: 1.35; color: var(--slate); margin-top: 4px }
 .sl .sl-tm small { display: block; font-size: 14px; line-height: 1.35; color: var(--slate); margin-top: 4px }
 .sl .sl-mtrack { position: relative; height: 32px; box-shadow: -3px 0 0 var(--ink) }
 .sl .sl-mlim { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); z-index: 2 }
 .sl .sl-mbar { position: absolute; top: 7px; bottom: 7px; left: 0; background: var(--yellow); box-shadow: inset 0 0 0 1.5px var(--edge); z-index: 1 }
 .sl .sl-mscale { display: flex; justify-content: space-between; font-size: 14px; line-height: 1; color: var(--slate); border-top: 1px solid var(--ink); padding-top: 5px; font-variant-numeric: tabular-nums }
+.sl .sl-list { font-size: 20px; margin: 24px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--ink) }
+.sl .sl-lists { display: grid; gap: 48px }
+.sl .sl-final { margin-top: 40px; padding: 16px 20px 18px; border: 2px solid var(--ink); max-width: 880px }
+.sl .sl-final h3 { display: inline-block; margin: 0 16px 0 0 }
+.sl .sl-final .sl-ftext { margin: 8px 0 6px; font-weight: 600 }
+.sl .sl-final li { font-size: 16px; line-height: 1.4; margin-top: 2px }
 .sl .sl-tnote { font-size: 16px; color: var(--slate); margin-top: 12px; max-width: 760px }
 .sl .sl-changes { display: grid; gap: 4px; margin-bottom: 24px; max-width: 760px }
 .sl .sl-changes li { padding-left: 16px; text-indent: -16px }
@@ -372,6 +400,7 @@ RULES = """.sl * { box-sizing: border-box }
 .sl tr.sl-new th, .sl tr.sl-new td { font-weight: 650 }
 .sl tr.sl-new small { font-weight: 400 }
 .sl .sl-titles { --nw: 216px; margin-bottom: 48px }
+.sl .sl-titles .sl-name { white-space: normal }
 .sl .sl-finds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px 48px; margin-top: 8px }
 .sl .sl-finds li { border-top: 1px solid var(--ink); padding-top: 16px }
 .sl .sl-next p { max-width: 660px }
@@ -410,6 +439,7 @@ NARROW = """@media (max-width: 860px) {
   .sl .sl-trow .sl-lab { display: inline; font-size: 16px; color: var(--slate); margin-right: 8px; font-weight: 400 }
   .sl .sl-trow .sl-mini { grid-column: 1 / -1; margin-left: 3px }
   .sl .sl-trow .sl-empty { display: none }
+  .sl .sl-trow .sl-meas { grid-column: 1 / -1; margin-top: 0 }
   .sl .sl-pair { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px }
   .sl .sl-pair .sl-plot, .sl .sl-pair .sl-pl { grid-column: 1 / -1; grid-row: 2 }
   .sl .sl-pair .sl-lane, .sl .sl-pair .sl-plot { grid-template-columns: 76px minmax(0, 1fr) var(--gut) }
@@ -445,6 +475,23 @@ WORDS = [('Setup', 'One way of searching and playing that the test times, such a
                               'done again could turn the result around.')]
 
 
+SPEED_WORDS = [  # a speed test's words (GLOSSARY.md, "Measuring"), after those of every run
+    ('Title to video', 'Seconds from asking for a title until its video starts: the list and the start on one clock. A fail '
+                       'has no time.'),
+    ('Fail', 'A title whose top pick does not play on its one try: an error, the failure video, or video only after a fallback.'),
+    ('Fallback', 'Video that came only after the top pick failed and the setup tried another Source. It counts as a fail.'),
+    ('Easy list', 'Popular, well kept titles, where most Sources still play.'),
+    ('Hard list', 'Older releases, titles prone to takedowns and less popular titles, where dead Sources are common.'),
+    ('Final bar', 'The goal beyond the targets: on both lists, KaijuFlow has the fewest fails, and the fastest title to video '
+                  'among setups with as few fails. Shown apart and never counted with the targets.')]
+
+
+def speed_words():
+    """The words of a speed test's page: a median is over one list's titles, and the speed test's own words follow."""
+    median = ('Median', 'The middle value over the titles of one list, so one slow title cannot drag the number.')
+    return [median if w == 'Median' else (w, d) for w, d in WORDS] + SPEED_WORDS
+
+
 def change_words(before, now, plays=False):
     """'0.59 s faster (11%)', '0.20 s slower (4%)', 'No change'; for plays (played, counted): '1 more', '2 fewer'."""
     if before is None or now is None:
@@ -476,7 +523,24 @@ def header(m):
 HEADLINES = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Warm list', 'warm_list'), ('Top pick plays', 'plays')]
 
 
+def speed_headlines(m):
+    """A speed test's headline numbers: KaijuFlow's fails on each list, then its cold title to video on each list."""
+    def kaijuflow(speed):
+        return {lst['list']: next(s for s in lst['setups'] if s['id'] == KAIJUFLOW) for lst in speed['lists']} if speed else {}
+    kf, before = kaijuflow(m['speed']), kaijuflow(m.get('prev_speed'))
+    items = [(f'Fails, {x} list', plays_text(s['fails']), change_words(before[x]['fails'], s['fails'], plays=True) if x in before else '')
+             for x, s in kf.items()]
+    items += [(f'Title to video, {x} list', secs(s['cold_video']), change_words(before[x]['cold_video'], s['cold_video']) if x in before else '')
+              for x, s in kf.items()]
+    li = ''.join(f'<li><span class="sl-k">{esc(label)}</span><span class="sl-v">{value}</span>'
+                 + (f'<span class="sl-c">{_arrow(words)} {esc(words)}</span>' if words else '') + '</li>' for label, value, words in items)
+    since = '; the change since the speed test it is compared with' if before else ''
+    return f'<ul class="sl-heads">{li}<li class="sl-headnote">KaijuFlow: fails in all four rounds; median cold title to video{since}.</li></ul>'
+
+
 def headline_numbers(m):
+    if m.get('speed'):
+        return speed_headlines(m)
     kf, before = m['kaijuflow'], m['prev_kaijuflow']
     items = []
     for label, key in HEADLINES:
@@ -496,7 +560,10 @@ def lead(m):
         d = m['met'] - m['prev_met']
         parts.append(f'<b>{abs(d)} {"more" if d > 0 else "fewer"} than the {esc(m["prev"]["label"])}.</b>' if d
                      else f'<b>As many as the {esc(m["prev"]["label"])}.</b>')
-    if not open_:
+    if m.get('speed'):  # a speed test: the outcome line of its hard list (#169)
+        head, _, rest = m['speed']['outcome'].partition(': ')
+        parts.append(f'<b>{esc(head)}:</b> {esc(rest)}')
+    elif not open_:
         parts.append('Every target is met.')
     else:
         misses = [t for t in open_ if t['result'] == 'not met']
@@ -513,7 +580,31 @@ def setup_lanes(m, key, sort=True):
     return sorted(lanes, key=lambda x: (x[1] is None, x[1] or 0)) if sort else lanes
 
 
+def speed_lanes(lst, key='cold_video'):
+    """The lanes of one list of a speed test: fewest fails first, then fastest; a lane's note is its fails."""
+    lanes = []
+    for s in sorted(lst['setups'], key=lambda s: (s['fails'][0], s[key] is None, s[key] or 0)):
+        fails = fails_text(s['fails'][0]) if s['fails'][0] else ''
+        note = fails if s[key] is not None else f'{fails}, no top pick played' if fails else 'no top pick played'
+        lanes.append((s['name'], s[key], s['id'] == KAIJUFLOW, note))
+    return lanes
+
+
+def speed_rulers(m, hero=False, report=False):
+    """A speed test's first rulers: cold title to video on each list, fewest fails first. The report's say less."""
+    figs = []
+    for lst in m['speed']['lists']:
+        cap = f'<b>{esc(lst["name"])}: cold title to video.</b> ' + ('Fewest fails first, then fastest.' if report else
+               'Seconds from asking for a title until its video starts, the first time it is played. Fewest fails first, then '
+               'fastest; a fail has no time.')
+        figs.append(figure(cap, speed_lanes(lst), hero=hero, play_label='Title asked for'))
+    return figs
+
+
 def verdict_section(m):
+    if m.get('speed'):
+        return (f'<section class="sl-sec sl-verdict"><div class="sl-vtop"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>'
+                f'{headline_numbers(m)}</div><div class="sl-lists">{"".join(speed_rulers(m, hero=True))}</div></section>')
     lanes = setup_lanes(m, 'cold_start')
     cap = ('<b>Cold start.</b> Seconds from pressing play until the video starts, the first time a title is played. '
            'Each bar ends where the video starts. Shorter is faster.')
@@ -533,10 +624,22 @@ def targets_heading(met, total):
 def targets_section(m):
     head = ('<div class="sl-trow sl-thead" aria-hidden="true"><span>Result</span><span>Target</span><span class="sl-r">KaijuFlow</span>'
             '<span class="sl-r">Limit</span><span>Margin</span><span>KaijuFlow against the limit</span></div>')
-    return (f'<section class="sl-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
-            '<p class="sl-text sl-sub">Each target compares KaijuFlow with a limit. On the small rulers the yellow bar is KaijuFlow '
-            'and the upright line is the limit. Every time is the median over the titles of both rounds of its kind.</p>'
-            f'<div class="sl-targets">{head}<ul>{target_rows(m["targets"])}</ul></div></section>')
+    sub = ('Each list is judged on its own: fails first, then title to video. On the small rulers the yellow bar is KaijuFlow '
+           'and the upright line is the limit.' if m.get('speed') else
+           'Each target compares KaijuFlow with a limit. On the small rulers the yellow bar is KaijuFlow and the upright line is '
+           'the limit. Every time is the median over the titles of both rounds of its kind.')
+    return (f'<section class="sl-sec"><h2>{targets_heading(m["met"], m["total"])}</h2><p class="sl-text sl-sub">{sub}</p>'
+            f'<div class="sl-targets">{head}{target_lists(m["targets"])}</div>{final_bar(m)}</section>')
+
+
+def final_bar(m):
+    """A speed test's final bar (#169), apart from its targets: its result and words, and why on each list."""
+    bar = m.get('speed') and m['speed']['final_bar']
+    if not bar:
+        return ''
+    why = ''.join(f'<li>{esc(name)}: {esc(result)}, {esc(words)}.</li>' for name, result, words in bar['lists'])
+    return (f'<div class="sl-final"><h3>Final bar, not counted with the targets</h3>{status(bar["result"])}'
+            f'<p class="sl-ftext">{esc(bar["text"])}</p><ul>{why}</ul></div>')
 
 
 PAIRS = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Cold list', 'cold_list'), ('Warm list', 'warm_list')]
@@ -587,6 +690,14 @@ def setups_heading(m):
 
 
 def setups_section(m):
+    if m.get('speed'):  # a speed test: start and list stay as detail, with no target on them, beside each setup's fails
+        figs = ''.join(figure(f'<b>{caption}</b>', setup_lanes(m, key)) for caption, key, _ in FOUR)
+        fails = ''.join(f'<p class="{"sl-pk" if s["id"] == KAIJUFLOW else ""}"><span class="sl-num sl-pv">{plays_text(s["fails"])}</span>'
+                        f'<span class="sl-pn">{esc(s["name"])}</span></p>' for s in m['setups'])
+        return ('<section class="sl-sec"><h2>Start and list, the two parts of title to video</h2>'
+                '<p class="sl-text sl-sub">Medians over every title of both lists and both rounds of each kind. Each ruler has its '
+                'own scale and is sorted fastest first. No target is set on these: the targets judge title to video.</p>'
+                f'<div class="sl-four">{figs}</div><div class="sl-plays"><h3>Fails, both lists</h3>{fails}</div></section>')
     figs = []
     for caption, key, measure in FOUR:
         limits = limits_on(m['targets'], measure)
@@ -620,10 +731,23 @@ def titles_heading(rows):
     return 'Cold start, title by title', False
 
 
-def titles_section(m):
-    rows = m['titles']
+def fails_note(cell):
+    """A speed test's note of a setup's title: the rounds whose top pick failed, 'Failed: Cold 1, Warm 2 after a fallback'."""
+    if cell is None:
+        return 'not played'
+    rounds = [f'{r} after a fallback' if fell_back else r for r, fell_back in cell['fails']]
+    return f'Failed: {", ".join(rounds)}' if rounds else ''
+
+
+def titles_section(m, lst=None):
+    """The title-by-title section: KaijuFlow's ruler of every title and a table of every setup. For a speed test, one per
+    list (lst): cold title to video, and each setup's fails in every round."""
+    rows = lst['titles'] if lst else m['titles']
+    note_of = fails_note if lst else title_note
     heading, outlier = titles_heading(rows)
-    lanes = [(r['title'], (r['cells'].get(KAIJUFLOW) or {}).get('value'), True, title_note(r['cells'].get(KAIJUFLOW))) for r in rows]
+    if lst:
+        heading = f'{lst["name"]}: {heading}' if outlier else f'{lst["name"]}, title by title'
+    lanes = [(r['title'], (r['cells'].get(KAIJUFLOW) or {}).get('value'), True, note_of(r['cells'].get(KAIJUFLOW))) for r in rows]
     end = scale(max([v for _, v, _, _ in lanes if v is not None], default=0))[0]
     sides = m['setups']
     head = ''.join(f'<th scope="col" class="sl-r{" sl-kfh" if s["id"] == KAIJUFLOW else ""}"><span>{esc(s["name"])}</span></th>' for s in sides)
@@ -633,16 +757,23 @@ def titles_section(m):
         for s in sides:
             c = r['cells'].get(s['id'])
             value = '–' if not c or c['value'] is None else f'{c["value"]:.2f}'
-            note = title_note(c)
+            note = note_of(c)
             cells.append(f'<td class="sl-r{" sl-kfc" if s["id"] == KAIJUFLOW else ""}">{value}{f"<small>{esc(note)}</small>" if note else ""}</td>')
         body.append(f'<tr><th scope="row">{esc(r["title"])}</th>{"".join(cells)}</tr>')
-    sub = (f'Cold start, title by title: the median of the cold rounds whose top pick played. This ruler runs from 0 to '
+    what = 'Cold title to video' if lst else 'Cold start'
+    sub = (f'{what}, title by title: the median of the cold rounds whose top pick played. This ruler runs from 0 to '
            f'{num(end)} s{" to fit the slow title" if outlier else ""}.')
+    caption = ('Every setup, in seconds, fastest KaijuFlow title first. A note names each round, of all four, whose top pick '
+               'failed.' if lst else 'Every setup, in seconds, fastest KaijuFlow title first. A note says when a top pick did not play.')
     return (f'<section class="sl-sec"><h2>{esc(heading)}</h2><p class="sl-text sl-sub">{sub}</p>'
-            f'<div class="sl-titles">{figure("<b>KaijuFlow, cold start for each title</b>", lanes)}</div>'
-            f'<div class="sl-scroll"><table><caption><span>Every setup, in seconds, fastest KaijuFlow title first. '
-            f'A note says when a top pick did not play.</span></caption>'
+            f'<div class="sl-titles">{figure(f"<b>KaijuFlow, {what.lower()} for each title</b>", lanes)}</div>'
+            f'<div class="sl-scroll"><table><caption><span>{caption}</span></caption>'
             f'<thead><tr><th scope="col">Title</th>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></section>')
+
+
+def title_sections(m):
+    """The title-by-title section, or a speed test's, one per list."""
+    return ''.join(titles_section(m, lst) for lst in m['speed']['lists']) if m.get('speed') else titles_section(m)
 
 
 def findings_section(m):
@@ -675,13 +806,14 @@ def next_section(m):
 
 
 def words_section(m):
-    items = ''.join(f'<div><dt>{w}</dt><dd>{esc(d.format(titles=m["run"]["titles"]))}</dd></div>' for w, d in WORDS)
+    words = speed_words() if m.get('speed') else WORDS
+    items = ''.join(f'<div><dt>{w}</dt><dd>{esc(d.format(titles=m["run"]["titles"]))}</dd></div>' for w, d in words)
     return f'<section class="sl-sec"><h2>What the words mean</h2><dl class="sl-words">{items}</dl></section>'
 
 
 def page(m):
     """The whole page (index.html) from the model build_page.page_model makes."""
-    body = ''.join([header(m), verdict_section(m), targets_section(m), change_section(m), setups_section(m), titles_section(m),
+    body = ''.join([header(m), verdict_section(m), targets_section(m), change_section(m), setups_section(m), title_sections(m),
                     findings_section(m), history_section(m), next_section(m), words_section(m)])
     return f'{HEAD}<style>\n{CSS}</style>\n<div class="sl"><main class="sl-wrap">\n{body}\n</main></div>\n'
 
@@ -740,6 +872,16 @@ html, body { margin: 0; background: #FFFFFF; color-scheme: light }
 .sl-rep .sl-trow { grid-template-columns: 80px minmax(0, 1fr) 54px 54px 200px; column-gap: 12px; padding: 2px 0; line-height: 1.25 }
 .sl-rep .sl-thead { font-size: 12px; padding: 1px 0 }
 .sl-rep .sl-tm small { font-size: 12px; margin-top: 0; line-height: 1.25 }
+.sl-rep .sl-list { font-size: 13px; margin: 4px 0 0; padding-bottom: 1px }
+.sl-rep .sl-final { margin-top: 6px; padding: 4px 8px 5px; border-width: 1.5px; max-width: none }
+.sl-rep .sl-final h3 { margin-right: 10px }
+.sl-rep .sl-final .sl-ftext { display: inline; margin: 0 0 0 10px }
+.sl-rep .sl-final li { font-size: 12px; line-height: 1.3; margin-top: 0 }
+.sl-rep .sl-r-targets { table-layout: fixed; border-top: 1px solid var(--ink) }
+.sl-rep .sl-r-targets th:first-child { width: 40% }
+.sl-rep .sl-r-targets td { padding: 3px 0 3px 12px }
+.sl-rep .sl-r-targets tbody th { padding: 3px 0 }
+.sl-rep .sl-r-targets td small { font-size: 12px }
 .sl-rep .sl-r-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start }
 .sl-rep .sl-r-two .sl-plot { --nw: 128px; --gut: 52px }
 .sl-rep .sl-changes { gap: 1px; margin: 0 0 4px }
@@ -754,6 +896,11 @@ html, body { margin: 0; background: #FFFFFF; color-scheme: light }
 .sl-rep .sl-r-next { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: baseline;
   border-top: 1px solid var(--ink); padding-top: 6px; margin-top: 10px }
 .sl-rep .sl-r-next h2 { margin: 0 }
+.sl-rep .sl-r-chg { border-top-color: var(--rule) }
+.sl-rep .sl-r-chg .sl-changes { margin: 0 }
+.sl-rep .sl-r-fails table { table-layout: fixed }
+.sl-rep .sl-r-fails th:first-child { width: 136px }
+.sl-rep .sl-r-fails thead th:nth-child(2) { width: 22% }
 .sl-rep .sl-r-foot { margin-top: auto; display: block;
   border-top: 1px solid var(--rule); padding-top: 6px; font-size: 12px; line-height: 1.3; color: var(--slate) }
 .sl-rep .sl-r-foot b { color: var(--ink); font-weight: 600 }
@@ -779,6 +926,48 @@ def report_change(m):
             f'<th scope="col" class="sl-r">This run</th><th scope="col">Change</th></tr></thead><tbody>{body}</tbody></table></div>')
 
 
+def report_speed_targets(m):
+    """A speed test's targets on the report: one row per target, its result on each list beside it."""
+    lists = m['speed']['lists']
+    rows = []
+    for words in dict.fromkeys(t['text'] for t in m['targets']):
+        cells = []
+        for lst in lists:
+            t = next((t for t in m['targets'] if t['text'] == words and t['list'] == lst['list']), None)
+            if t is None:
+                cells.append('<td>–</td>')
+                continue
+            mine, lim, margin = target_figures(t)
+            note = f'{margin}, inside the noise' if t.get('noise') else margin  # the footer says what that is
+            cells.append(f'<td>{status(t["result"])} <span class="sl-num">{mine},</span> limit {lim}<small>{esc(note)}</small></td>')
+        rows.append(f'<tr><th scope="row">{esc(words)}</th>{"".join(cells)}</tr>')
+    head = ''.join(f'<th scope="col">{esc(lst["name"])}</th>' for lst in lists)
+    return (f'<table class="sl-r-targets" aria-label="The targets on each list"><thead><tr><th scope="col">Target</th>{head}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>')
+
+
+def report_speed_changes(m):
+    """A speed test's changes on the report, on one row beside their heading; the headline numbers carry the change in figures."""
+    changes = ''.join(f'<li>{esc(c)}</li>' for c in m['changes'])
+    return (f'<section class="sl-r-next sl-r-chg"><h2>What changed</h2><ul class="sl-changes">{changes}</ul>'
+            '</section>') if changes else ''
+
+
+def report_fails(m):
+    """A speed test's fails on the report: per setup and list, each title it failed and in which rounds."""
+    lists = m['speed']['lists']
+    rows = []
+    for s in m['setups']:
+        cells = []
+        for lst in lists:
+            failed = [(r['title'], fails_note(r['cells'].get(s['id'])).removeprefix('Failed: ')) for r in lst['titles']]
+            cells.append(', '.join(f'{title} ({rounds})' for title, rounds in failed if rounds) or 'None')
+        rows.append(f'<tr><th scope="row">{esc(s["name"])}</th>' + ''.join(f'<td>{esc(c)}</td>' for c in cells) + '</tr>')
+    head = ''.join(f'<th scope="col">{esc(lst["name"])}</th>' for lst in lists)
+    return (f'<div class="sl-r-fails"><h2>Fails, title by title</h2><table aria-label="Each setup\'s fails on each list">'
+            f'<thead><tr><th scope="col">Setup</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+
+
 def report(m):
     """The one-page Letter report (report.html) from the same model as the page: the verdict and headline numbers, the cold
     start ruler, the targets, what changed, the warm list ruler, the findings and the next step, on one sheet."""
@@ -789,18 +978,29 @@ def report(m):
     head = ('<div class="sl-trow sl-thead" aria-hidden="true"><span>Result</span><span>Target</span><span class="sl-r">KaijuFlow</span>'
             '<span class="sl-r">Limit</span><span>Margin</span></div>')
     finds = ''.join(f'<li>{h}{p}</li>' for h, p in m['findings'])
+    report_targets = f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div>'
     parts = [header(m),
              f'<section class="sl-r-top"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>{headline_numbers(m)}</section>',
-             f'<section class="sl-r-sec">{cold}</section>',
+             f'<section class="sl-r-sec sl-r-two">{"".join(f"<div>{f}</div>" for f in speed_rulers(m, report=True))}</section>' if m.get('speed')
+             else f'<section class="sl-r-sec">{cold}</section>',
              f'<section class="sl-r-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
-             f'<div class="sl-targets">{head}<ul>{target_rows(m["targets"], report=True)}</ul></div></section>',
-             f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
+             f'{report_speed_targets(m) if m.get("speed") else report_targets}{final_bar(m)}</section>',
+             f'<section class="sl-r-sec">{report_fails(m)}</section>{report_speed_changes(m)}' if m.get('speed')
+             else f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
     if finds:
         parts.append(f'<section class="sl-r-sec"><h2>What the run found</h2><ul class="sl-finds">{finds}</ul></section>')
     if m['next']:
         parts.append(f'<section class="sl-r-next">{m["next"][0]}<div>{m["next"][1]}</div></section>')
-    parts.append(f'<footer class="sl-r-foot"><span>Page 1 of 1</span><p><b>Start:</b> seconds from pressing play on the top '
-                 f'pick until the first bytes of video arrive. <b>List:</b> seconds from asking for a title until the list of Sources '
-                 f'arrives. Medians over {m["run"]["titles"]} titles and both rounds of each kind. '
+    if m.get('speed'):
+        sizes = {len(lst['titles']) for lst in m['speed']['lists']}
+        over = f'the {sizes.pop()} titles' if len(sizes) == 1 else 'the titles'
+        words = ('<b>Title to video:</b> seconds from asking for a title until its video starts, the list and the start on one '
+                 'clock. <b>Fail:</b> a title whose top pick does not play on its one try; video after a fallback is a fail too. '
+                 f'Medians over {over} of each list.')
+    else:
+        words = (f'<b>Start:</b> seconds from pressing play on the top pick until the first bytes of video arrive. <b>List:</b> '
+                 f'seconds from asking for a title until the list of Sources arrives. Medians over {m["run"]["titles"]} titles and '
+                 'both rounds of each kind.')
+    parts.append(f'<footer class="sl-r-foot"><span>Page 1 of 1</span><p>{words} '
                  "<b>Inside the noise:</b> KaijuFlow's own two rounds differ by more than the target is met or missed by.</p></footer>")
     return f'{REPORT_HEAD}<style>\n{RULES}{REPORT_CSS}</style>\n<div class="sl sl-rep">\n{"".join(parts)}\n</div>\n'

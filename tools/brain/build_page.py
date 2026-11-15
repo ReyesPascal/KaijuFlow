@@ -14,7 +14,8 @@ under each headline number), and every timed run given gets a row in "Every run 
 Where things come from, never typed into the page by hand:
 
   numbers      raw.json of each run, through brainreport (the same medians the targets are judged on)
-  verdicts     brainreport.target_results and targets.json
+  verdicts     brainreport.target_results and targets.json; for a speed test (a tagged run, #171) brainreport.speed_test_judgement:
+               its three targets on each list, the outcome line and the final bar
   what changed meta.json "changes" of the newest run (brainrun's diff against the run before it)
   findings     findings.html in the newest run's folder, written by hand: the findings and the next step
                (docs/formats.md, "The page"). Without it the page has neither section.
@@ -79,7 +80,24 @@ class Run:
                 'warm_start': br.side_time(self.visits, side, 'warm', 'start'),
                 'cold_list': br.side_time(self.visits, side, 'cold', 'list'),
                 'warm_list': br.side_time(self.visits, side, 'warm', 'list'),
-                'plays': br.side_plays(self.visits, side)}
+                'plays': br.side_plays(self.visits, side),
+                'fails': (br.side_fails(self.visits, side), br.side_plays(self.visits, side)[1])}
+
+    def list_numbers(self, side, lst):
+        """A setup's figures on one list of a speed test: its fails (fails, top picks counted) over every round, and its
+        median title to video of both rounds of each kind."""
+        return {'fails': (br.side_fails(self.visits, side, lst=lst), br.side_plays(self.visits, side, lst=lst)[1]),
+                'cold_video': br.side_time(self.visits, side, 'cold', 'video', lst=lst),
+                'warm_video': br.side_time(self.visits, side, 'warm', 'video', lst=lst)}
+
+    def speed_cell(self, side, title):
+        """One setup's title in a speed test: the median cold title to video of the rounds whose top pick played, and its
+        fails in every round, as [(round, after a fallback)] in the order played. None when the setup never played it."""
+        vs = [v for v in self.visits if v['side'] == side and v['title'] == title]
+        if not vs:
+            return None
+        return {'value': br.side_time(vs, side, 'cold', 'video'),
+                'fails': [(f"{v['phase'].capitalize()} {v['round']}", br.fallbacks(v) > 0) for v in br.fail_visits(vs, side)]}
 
     def title_cell(self, side, title):
         """One setup's cold start of one title: the median of the cold rounds whose top pick played on the first try, and how
@@ -92,8 +110,22 @@ class Run:
         value = br.median(times)
         return {'value': value, 'played': len(times), 'rounds': len(counted)}
 
+    @property
+    def tagged(self):
+        """Whether the run is a speed test: its titles are on the easy and hard lists (#167)."""
+        return br.tagged(self.visits)
+
+    def judgement(self):
+        """A speed test's judgement (#169): its targets per list, the outcome line and the final bar."""
+        return br.speed_test_judgement(self.visits)
+
     def targets(self):
-        """The targets judged on this run: target_results with each entry's measure, side and margin beside its verdict."""
+        """The targets judged on this run: target_results with each entry's measure, side and margin beside its verdict;
+        for a speed test, its three targets on each list (never the final bar), each with its list and measured words."""
+        if self.tagged:
+            measures = [t['measure'] for t in br.load_speed_targets()['targets']]
+            return [{'text': r['target'], 'measure': measures[r['number'] - 1], 'list': r['list'], 'measured': r['measured'],
+                     'against': None, 'margin': 0, **r['verdict']} for r in self.judgement()['targets']]
         entries = br.load_targets()
         out = []
         for entry, (text, _, verdict) in zip(entries, br.target_results(self.visits)):
@@ -171,19 +203,39 @@ def history_row(run):
             'cold_start': kf['cold_start'], 'warm_start': kf['warm_start'], 'plays': kf['plays']}
 
 
+def by_kaijuflow(rows):
+    """Title rows sorted by KaijuFlow's time, fastest first; a title it has no time for last."""
+    def value(r):
+        return (r['cells'].get(startline.KAIJUFLOW) or {}).get('value')
+    return sorted(rows, key=lambda r: (value(r) is None, value(r) or 0))
+
+
+def speed_model(run):
+    """What the page shows of a speed test beside its targets: the outcome line and the final bar (#169)."""
+    j = run.judgement()
+    bar = j['final_bar']
+    lists = [{'list': x, 'name': f'{x.capitalize()} list',
+              'setups': [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.list_numbers(side, x)} for side in run.sides],
+              'titles': by_kaijuflow([{'title': t, 'cells': {side: run.speed_cell(side, t) for side in run.sides}}
+                                      for t in run.titles if any(v['title'] == t and v.get('list') == x for v in run.visits)])}
+             for x in br.run_lists(run.visits)]
+    return {'lists': lists, 'outcome': j['outcome']['text'],
+            'final_bar': {'result': bar['verdict']['result'], 'text': bar['target'],
+                          'lists': [(f'{x.capitalize()} list', r['result'], r['why']) for x, r in bar['lists'].items()]}}
+
+
 def page_model(runs):
     """Everything the page shows, as plain values, from runs (newest first). The newest must be finished."""
     run = runs[0]
     why = br.targets_not_judged(run.status)
     if why:
         raise SystemExit(f'{run.folder}: no page for this run: {why}.')
-    prev = next((r for r in runs[1:] if r.status == 'ok' and not br.never_compared(r.meta)), None)
+    # A speed test is compared with a speed test, a run without tags with one without: their titles are not alike.
+    prev = next((r for r in runs[1:] if r.status == 'ok' and not br.never_compared(r.meta) and r.tagged == run.tagged), None)
     targets = run.targets()
     findings, next_step = read_findings(run)
     setups = [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.numbers(side)} for side in run.sides]
-    rows = [{'title': t, 'cells': {side: run.title_cell(side, t) for side in run.sides}} for t in run.titles]
-    rows.sort(key=lambda r: ((r['cells'].get(startline.KAIJUFLOW) or {}).get('value') is None,
-                             (r['cells'].get(startline.KAIJUFLOW) or {}).get('value') or 0))
+    rows = by_kaijuflow([{'title': t, 'cells': {side: run.title_cell(side, t) for side in run.sides}} for t in run.titles])
     prev_targets = prev.targets() if prev else []
     return {
         'run': {'label': run.label, 'date_long': run.date_long(), 'titles': len(run.titles)},
@@ -196,6 +248,8 @@ def page_model(runs):
         'prev_kaijuflow': prev.numbers(startline.KAIJUFLOW) if prev else None,
         'changes': run.meta.get('changes') or [],
         'titles': rows,
+        'speed': speed_model(run) if run.tagged else None,
+        'prev_speed': speed_model(prev) if prev and run.tagged else None,
         'findings': findings, 'next': next_step,
         'history': [history_row(r) for r in runs],
     }
