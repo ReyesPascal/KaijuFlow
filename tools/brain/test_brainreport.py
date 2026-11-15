@@ -1399,6 +1399,33 @@ class FinalBarTest(unittest.TestCase):
             "against KaijuFlow's 3.50 s)."])
         self.assertFalse([x for x in lines if x.startswith('Target: ')], lines)  # not the six of before
 
+    def test_the_report_shows_the_targets_per_list_then_the_outcome_and_the_final_bar_apart(self):
+        folder = speed_run_folder(self, fail('kaijuflow', 'Old Film'), *SLOWER)
+        text = br.render_report(br.load_run(folder), ['First run.'])
+        rows = {(r['List'], r['Target']): r for r in per_title_rows(text, '## Targets')}
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows['hard', 'KaijuFlow fails no more titles than any other setup, and none on the easy list'],
+                         {'List': 'hard', 'Target': 'KaijuFlow fails no more titles than any other setup, and none on the '
+                          'easy list', 'This run': 'KaijuFlow 1 of 8, Usenet Ultimate 0 of 8, AltMount direct 0 of 8',
+                          'Result': 'Not met'})
+        section = text[text.index('## Targets'):]
+        self.assertIn('\n\n3 of 6 targets met. ', section)  # the easy list's fails, the cold title to video on both lists
+        self.assertIn('\n\nOutcome on the hard list: AltMount direct fails fewer titles than KaijuFlow (0 of 8 against 1 of 8), '
+                      "so KaijuFlow's checking has a bug to find first.\n", section)
+        self.assertIn('\n\n**Final bar** (shown apart from the targets, not counted towards usable): On both lists, KaijuFlow '
+                      'has the fewest fails, and the fastest title to video among setups with as few fails. Not met. Easy '
+                      'list: met, KaijuFlow fails 0 of 8, the fewest, in 3.50 s cold title to video, the fastest among setups '
+                      'with as few fails. Hard list: not met, Usenet Ultimate fails fewer titles (0 of 8 against KaijuFlow\'s '
+                      '1 of 8).\n', section)
+
+    def test_the_report_of_an_untagged_run_keeps_the_six_targets_and_has_no_final_bar(self):
+        text = br.render_report(br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures',
+                                                         'run-2026-11-15-test1')), ['x'])
+        self.assertEqual(len(per_title_rows(text, '## Targets')), 6)
+        self.assertIn('6 of 6 targets met.', text)
+        self.assertNotIn('Final bar', text)
+        self.assertNotIn('Outcome', text)
+
     def test_a_faster_setup_with_more_fails_does_not_cost_kaijuflow_the_bar(self):
         self.assertEqual(self.bar(*SLOWER, fail('uu', 'Old Film'), video('uu', 'hard', 1.0)),
                          (br.MET, {'easy': br.MET, 'hard': br.MET}))

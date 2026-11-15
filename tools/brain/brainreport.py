@@ -1291,7 +1291,8 @@ def target_lines(run, path=TARGETS_FILE):
 
 
 SPEED_TARGETS_HEAD = 'Speed test targets, judged per list (an untagged run is judged on the six of before):'
-FINAL_BAR_HEAD = 'Final bar (shown apart from the targets, not counted towards usable): '
+FINAL_BAR_NOTE = 'shown apart from the targets, not counted towards usable'
+FINAL_BAR_HEAD = f'Final bar ({FINAL_BAR_NOTE}): '
 
 
 def met_count(rows):
@@ -1329,12 +1330,32 @@ def targets_section(run, path=TARGETS_FILE):
     if why:
         return ['## Targets', '', f'Not judged: {why}.', '']
     try:  # a targets file that cannot be used must not cost a finished run its report
+        if tagged(run['visits']):
+            return speed_targets_section(speed_test_judgement(run['visits'], path))
         rows = target_results(run['visits'], path)
     except ValueError as e:
         return ['## Targets', '', f'Not judged ({e}).', '']
     met = sum(1 for _, _, verdict in rows if verdict['result'] == MET)
     return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], [(t, m, verdict_text(v)) for t, m, v in rows]) + [
         '', f"{met} of {len(rows)} targets met. {TARGETS_HELP}", '']
+
+
+SPEED_TARGETS_HELP = (
+    'Each target is judged on each list on its own. Fails = top picks that did not play on their one try, every round '
+    'together. Title to video = seconds from asking for the title until video arrived, the median over the top picks that '
+    'played in both cold (or both warm) rounds. A setup that fails more titles than KaijuFlow is not held against its '
+    'title to video. A title that is not like for like with a setup is left out of judging KaijuFlow against it. '
+    '"Inside the noise": KaijuFlow\'s own two rounds differ by more than the target is met or missed by.')
+
+
+def speed_targets_section(judgement):
+    """The report's Targets section of a tagged run (speed_test_judgement): one row per list and target, how many are
+    met, the outcome line, and the final bar in a paragraph of its own."""
+    rows = judgement['targets']
+    return ['## Targets', ''] + _table(['List', 'Target', 'This run', 'Result'], [
+        (r['list'], r['target'], r['measured'], verdict_text(r['verdict'])) for r in rows]) + [
+        '', f'{met_count(rows)} {SPEED_TARGETS_HELP}', '', judgement['outcome']['text'], '',
+        f"**Final bar** ({FINAL_BAR_NOTE}): {final_bar_text(judgement['final_bar'])}", '']
 
 
 # --------------------------------------------------------------------------- report
