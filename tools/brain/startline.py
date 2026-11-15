@@ -38,9 +38,15 @@ def plays_text(p):
     return '–' if p is None or not p[1] else f'{p[0]} of {p[1]}'
 
 
-def fails_text(n):
-    """'1 fail', '2 fails', '0 fails'."""
-    return f'{n} fail' + ('' if n == 1 else 's')
+def failed_plays(n):
+    """'1 failed play', '2 failed plays': a count of plays, never worded as titles."""
+    return f'{n} failed play' + ('' if n == 1 else 's')
+
+
+def fail_cell(f):
+    """A fail figure (the model's {'titles', 'fails', 'counted', 'words'}) on two lines, for a narrow cell: '2 titles failed',
+    then '4 of 40 plays'."""
+    return '<br>'.join(esc(x) for x in f['words'].split(' · '))
 
 
 def num(x):
@@ -174,12 +180,15 @@ def target_figures(t):
     v, lim, result = t['value'], t['limit'], t['result']
     if result == 'not measured':
         return '–', '–', 'No figure in this run'
-    if t['measure'] == 'fails':  # a speed test's fails (#169): KaijuFlow's and the fewest it may have
-        over = v - lim
-        words = ('None' if not v else 'No more than any other setup') if over <= 0 else f'{fails_text(over)} too many'
-        return fails_text(v), fails_text(lim), words
-    if lim is None:  # cold title to video when every other setup fails more titles: none is held against KaijuFlow
-        return secs(v), '–', 'Every other setup fails more titles'
+    if t['measure'] == 'fails':  # a speed test's fails (#169): KaijuFlow's failed plays and the most it may have
+        over, name = v['fails'] - lim['fails'], SETUP_NAMES.get(t.get('held_against'), t.get('held_against'))
+        if not name:  # the easy list's fixed limit: no fail
+            words = 'No fail' if over <= 0 else f'{failed_plays(over)} too many'
+        else:
+            words = f'No more than {name}' if over <= 0 else f'{failed_plays(over)} more than {name}'
+        return v['words'], lim['words'], words
+    if lim is None:  # cold title to video when every other setup fails more plays: none is held against KaijuFlow
+        return secs(v), '–', 'Every other setup fails more plays'
     if isinstance(v, tuple):  # plays: (played, counted)
         if t['measure'] == 'plays per round':
             short = lim[0] - v[0]
@@ -210,16 +219,27 @@ def noise_short(t):
     return f"Inside the noise ({n['rounds'][0]:.2f} and {n['rounds'][1]:.2f} s)" if n else ''
 
 
+def held_words(t):
+    """What a speed test's target was judged on, when not every title against a fixed limit (#169): 'Against AltMount
+    direct; 1 title left out: not like for like'. '' for a fixed limit on every title, and for every untagged target."""
+    against, n = t.get('held_against'), t.get('left_out') or 0
+    parts = [f'Against {SETUP_NAMES.get(against, against)}' if against and t['measure'] != 'fails' else '',
+             f'{n} title{"" if n == 1 else "s"} left out: not like for like' if n else '']
+    return '; '.join(x for x in parts if x)
+
+
 def target_rows(targets, report=False):
     """The target rows: result, target, KaijuFlow, limit, margin and, on the page, a small ruler. The report (#133) has no
     small rulers and a shorter noise note."""
     rows = []
     for t in targets:
         mine, lim, words = target_figures(t)
+        if t['measure'] == 'fails' and t['result'] != 'not measured':
+            mine, lim = fail_cell(t['value']), fail_cell(t['limit'])
         margin = f'<b>{esc(words)}</b>' if t['result'] == 'not met' else esc(words)
-        noise = noise_short(t) if report else noise_words(t)
-        if noise:
-            margin += f'<small>{esc(noise)}</small>'
+        for note in (held_words(t), noise_short(t) if report else noise_words(t)):
+            if note:
+                margin += f'<small>{esc(note)}</small>'
         drawn = t['result'] != 'not measured' and t['measure'] != 'fails' and t['limit'] is not None and not isinstance(t['value'], tuple)
         draw = '' if report else mini(t['value'], t['limit']) if drawn else '<span class="sl-empty"></span>'
         measured = f'<small class="sl-meas">Measured: {esc(t["measured"])}.</small>' if t.get('measured') and not report else ''  # a speed test's (#169)
@@ -478,18 +498,21 @@ WORDS = [('Setup', 'One way of searching and playing that the test times, such a
 SPEED_WORDS = [  # a speed test's words (GLOSSARY.md, "Measuring"), after those of every run
     ('Title to video', 'Seconds from asking for a title until its video starts: the list and the start on one clock. A fail '
                        'has no time.'),
-    ('Fail', 'A title whose top pick does not play on its one try: an error, the failure video, or video only after a fallback.'),
+    ('Fail', 'A play whose top pick does not play on its one try: an error, the failure video, or video only after a '
+             'fallback. Every count of fails names the titles that failed and the failed plays: a title failed in both cold '
+             'rounds is one title and two plays.'),
     ('Fallback', 'Video that came only after the top pick failed and the setup tried another Source. It counts as a fail.'),
     ('Easy list', 'Popular, well kept titles, where most Sources still play.'),
-    ('Hard list', 'Older releases, titles prone to takedowns and less popular titles, where dead Sources are common.'),
-    ('Final bar', 'The goal beyond the targets: on both lists, KaijuFlow has the fewest fails, and the fastest title to video '
-                  'among setups with as few fails. Shown apart and never counted with the targets.')]
+    ('Hard list', 'Older releases, titles prone to takedowns and less popular titles, where dead Sources are common.')]
 
 
-def speed_words():
-    """The words of a speed test's page: a median is over one list's titles, and the speed test's own words follow."""
+def speed_words(m):
+    """The words of a speed test's page: a median is over one list's titles, and the speed test's own words follow, the
+    final bar in the words of the targets file (the model's)."""
     median = ('Median', 'The middle value over the titles of one list, so one slow title cannot drag the number.')
-    return [median if w == 'Median' else (w, d) for w, d in WORDS] + SPEED_WORDS
+    bar = m['speed']['final_bar']['text']
+    final = ('Final bar', f'The goal beyond the targets: {bar[0].lower()}{bar[1:]} Shown apart and never counted with the targets.')
+    return [median if w == 'Median' else (w, d) for w, d in WORDS] + SPEED_WORDS + [final]
 
 
 def change_words(before, now, plays=False):
@@ -506,8 +529,16 @@ def change_words(before, now, plays=False):
     return f'{abs(d):.2f} s {"faster" if d > 0 else "slower"}{share}'
 
 
+def fail_change(before, now):
+    """'2 fewer failed plays', '1 more failed play', 'No change': a speed test's fails against the one before it."""
+    if before is None or now is None:
+        return ''
+    d = now['fails'] - before['fails']
+    return 'No change' if d == 0 else f'{abs(d)} {"more" if d > 0 else "fewer"} failed play{"" if abs(d) == 1 else "s"}'
+
+
 def _arrow(words):
-    if words.endswith('more') or 'slower' in words:
+    if words.endswith('more') or 'slower' in words or ' more ' in words:
         return ICON_UP
     return ICON_DOWN if words and words != 'No change' else ''
 
@@ -528,12 +559,15 @@ def speed_headlines(m):
     def kaijuflow(speed):
         return {lst['list']: next(s for s in lst['setups'] if s['id'] == KAIJUFLOW) for lst in speed['lists']} if speed else {}
     kf, before = kaijuflow(m['speed']), kaijuflow(m.get('prev_speed'))
-    items = [(f'Fails, {x} list', plays_text(s['fails']), change_words(before[x]['fails'], s['fails'], plays=True) if x in before else '')
+    items = [(f'Failed plays, {x} list', plays_text((s['fails']['fails'], s['fails']['counted'])),
+              fail_change(before[x]['fails'], s['fails']) if x in before else '', s['fails']['words'].split(' · ')[0])
              for x, s in kf.items()]
-    items += [(f'Title to video, {x} list', secs(s['cold_video']), change_words(before[x]['cold_video'], s['cold_video']) if x in before else '')
-              for x, s in kf.items()]
+    items += [(f'Title to video, {x} list', secs(s['cold_video']),
+               change_words(before[x]['cold_video'], s['cold_video']) if x in before else '', '') for x, s in kf.items()]
     li = ''.join(f'<li><span class="sl-k">{esc(label)}</span><span class="sl-v">{value}</span>'
-                 + (f'<span class="sl-c">{_arrow(words)} {esc(words)}</span>' if words else '') + '</li>' for label, value, words in items)
+                 + (f'<span class="sl-c">{_arrow(words)} {esc(words)}</span>' if words else '')
+                 + (f'<span class="sl-k sl-ft">{esc(titles)}</span>' if titles else '') + '</li>'
+                 for label, value, words, titles in items)
     since = '; the change since the speed test it is compared with' if before else ''
     return f'<ul class="sl-heads">{li}<li class="sl-headnote">KaijuFlow: fails in all four rounds; median cold title to video{since}.</li></ul>'
 
@@ -581,10 +615,10 @@ def setup_lanes(m, key, sort=True):
 
 
 def speed_lanes(lst, key='cold_video'):
-    """The lanes of one list of a speed test: fewest fails first, then fastest; a lane's note is its fails."""
+    """The lanes of one list of a speed test: fewest failed plays first, then fastest; a lane's note is its fails."""
     lanes = []
-    for s in sorted(lst['setups'], key=lambda s: (s['fails'][0], s[key] is None, s[key] or 0)):
-        fails = fails_text(s['fails'][0]) if s['fails'][0] else ''
+    for s in sorted(lst['setups'], key=lambda s: (s['fails']['fails'], s[key] is None, s[key] or 0)):
+        fails = s['fails']['words'] if s['fails']['fails'] else ''
         note = fails if s[key] is not None else f'{fails}, no top pick played' if fails else 'no top pick played'
         lanes.append((s['name'], s[key], s['id'] == KAIJUFLOW, note))
     return lanes
@@ -692,8 +726,9 @@ def setups_heading(m):
 def setups_section(m):
     if m.get('speed'):  # a speed test: start and list stay as detail, with no target on them, beside each setup's fails
         figs = ''.join(figure(f'<b>{caption}</b>', setup_lanes(m, key)) for caption, key, _ in FOUR)
-        fails = ''.join(f'<p class="{"sl-pk" if s["id"] == KAIJUFLOW else ""}"><span class="sl-num sl-pv">{plays_text(s["fails"])}</span>'
-                        f'<span class="sl-pn">{esc(s["name"])}</span></p>' for s in m['setups'])
+        fails = ''.join(f'<p class="{"sl-pk" if s["id"] == KAIJUFLOW else ""}"><span class="sl-num sl-pv">'
+                        f'{s["fails"]["fails"]} of {s["fails"]["counted"]} plays</span><span class="sl-pn">{esc(s["name"])}, '
+                        f'{esc(s["fails"]["words"].split(" · ")[0])}</span></p>' for s in m['setups'])
         return ('<section class="sl-sec"><h2>Start and list, the two parts of title to video</h2>'
                 '<p class="sl-text sl-sub">Medians over every title of both lists and both rounds of each kind. Each ruler has its '
                 'own scale and is sorted fastest first. No target is set on these: the targets judge title to video.</p>'
@@ -806,7 +841,7 @@ def next_section(m):
 
 
 def words_section(m):
-    words = speed_words() if m.get('speed') else WORDS
+    words = speed_words(m) if m.get('speed') else WORDS
     items = ''.join(f'<div><dt>{w}</dt><dd>{esc(d.format(titles=m["run"]["titles"]))}</dd></div>' for w, d in words)
     return f'<section class="sl-sec"><h2>What the words mean</h2><dl class="sl-words">{items}</dl></section>'
 
@@ -939,6 +974,12 @@ def report_speed_targets(m):
                 continue
             mine, lim, margin = target_figures(t)
             note = f'{margin}, inside the noise' if t.get('noise') else margin  # the footer says what that is
+            if t['measure'] == 'fails' and t['result'] != 'not measured':  # the figures it was judged on, and on what
+                held = f' ({lim})' if t.get('held_against') else ''
+                note = '; '.join(x for x in (note + held, held_words(t)) if x)
+                cells.append(f'<td>{status(t["result"])} <span class="sl-num">{esc(mine)}</span><small>{esc(note)}</small></td>')
+                continue
+            note = '; '.join(x for x in (note, held_words(t)) if x)
             cells.append(f'<td>{status(t["result"])} <span class="sl-num">{mine},</span> limit {lim}<small>{esc(note)}</small></td>')
         rows.append(f'<tr><th scope="row">{esc(words)}</th>{"".join(cells)}</tr>')
     head = ''.join(f'<th scope="col">{esc(lst["name"])}</th>' for lst in lists)
@@ -953,15 +994,23 @@ def report_speed_changes(m):
             '</section>') if changes else ''
 
 
+REPORT_FAILED_TITLES = 3  # a cell of the report's fails table names at most this many titles, then "+N more"
+
+
 def report_fails(m):
-    """A speed test's fails on the report: per setup and list, each title it failed and in which rounds."""
+    """A speed test's fails on the report: per setup and list, its fails in words, then each title it failed and in which
+    rounds, at most REPORT_FAILED_TITLES of them so the sheet stays one page."""
     lists = m['speed']['lists']
     rows = []
     for s in m['setups']:
         cells = []
         for lst in lists:
-            failed = [(r['title'], fails_note(r['cells'].get(s['id'])).removeprefix('Failed: ')) for r in lst['titles']]
-            cells.append(', '.join(f'{title} ({rounds})' for title, rounds in failed if rounds) or 'None')
+            failed = [f'{r["title"]} ({rounds})' for r in lst['titles']
+                      for rounds in [fails_note(r['cells'].get(s['id'])).removeprefix('Failed: ')] if rounds]
+            more = len(failed) - REPORT_FAILED_TITLES
+            named = ', '.join(failed[:REPORT_FAILED_TITLES]) + (f', +{more} more' if more > 0 else '')
+            f = next(x['fails'] for x in lst['setups'] if x['id'] == s['id'])
+            cells.append(f'{f["words"]}: {named}' if failed else 'None')
         rows.append(f'<tr><th scope="row">{esc(s["name"])}</th>' + ''.join(f'<td>{esc(c)}</td>' for c in cells) + '</tr>')
     head = ''.join(f'<th scope="col">{esc(lst["name"])}</th>' for lst in lists)
     return (f'<div class="sl-r-fails"><h2>Fails, title by title</h2><table aria-label="Each setup\'s fails on each list">'
@@ -995,7 +1044,8 @@ def report(m):
         sizes = {len(lst['titles']) for lst in m['speed']['lists']}
         over = f'the {sizes.pop()} titles' if len(sizes) == 1 else 'the titles'
         words = ('<b>Title to video:</b> seconds from asking for a title until its video starts, the list and the start on one '
-                 'clock. <b>Fail:</b> a title whose top pick does not play on its one try; video after a fallback is a fail too. '
+                 'clock. <b>Fail:</b> a play whose top pick does not play on its one try; video after a fallback is a fail too. '
+                 'A count names the titles and the plays. '
                  f'Medians over {over} of each list.')
     else:
         words = (f'<b>Start:</b> seconds from pressing play on the top pick until the first bytes of video arrive. <b>List:</b> '

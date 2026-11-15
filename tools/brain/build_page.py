@@ -39,6 +39,11 @@ SIDES = list(startline.SETUP_NAMES)  # the page's order of the setups
 FINDINGS_FILE = 'findings.html'
 
 
+def fails(f):
+    """A fail figure (brainreport.fail_figure) with its words, '2 titles failed · 4 of 40 plays', as every count shows it."""
+    return {**f, 'words': br.fails_words(f)}
+
+
 class Run:
     """One timed run folder: its meta.json and its visits."""
 
@@ -81,12 +86,12 @@ class Run:
                 'cold_list': br.side_time(self.visits, side, 'cold', 'list'),
                 'warm_list': br.side_time(self.visits, side, 'warm', 'list'),
                 'plays': br.side_plays(self.visits, side),
-                'fails': (br.side_fails(self.visits, side), br.side_plays(self.visits, side)[1])}
+                'fails': fails(br.fail_figure(self.visits, side))}
 
     def list_numbers(self, side, lst):
         """A setup's figures on one list of a speed test: its fails (fails, top picks counted) over every round, and its
         median title to video of both rounds of each kind."""
-        return {'fails': (br.side_fails(self.visits, side, lst=lst), br.side_plays(self.visits, side, lst=lst)[1]),
+        return {'fails': fails(br.fail_figure(self.visits, side, lst=lst)),
                 'cold_video': br.side_time(self.visits, side, 'cold', 'video', lst=lst),
                 'warm_video': br.side_time(self.visits, side, 'warm', 'video', lst=lst)}
 
@@ -124,8 +129,14 @@ class Run:
         for a speed test, its three targets on each list (never the final bar), each with its list and measured words."""
         if self.tagged:
             measures = [t['measure'] for t in br.load_speed_targets()['targets']]
-            return [{'text': r['target'], 'measure': measures[r['number'] - 1], 'list': r['list'], 'measured': r['measured'],
-                     'against': None, 'margin': 0, **r['verdict']} for r in self.judgement()['targets']]
+            out = []
+            for r in self.judgement()['targets']:
+                t = {'text': r['target'], 'measure': measures[r['number'] - 1], 'list': r['list'], 'measured': r['measured'],
+                     'against': None, 'margin': 0, **r['verdict']}
+                if t['measure'] == 'fails' and t['result'] != br.NOT_MEASURED:  # the two fail figures it was judged on
+                    t.update(value=fails(t['value']), limit=fails(t['limit']))
+                out.append(t)
+            return out
         entries = br.load_targets()
         out = []
         for entry, (text, _, verdict) in zip(entries, br.target_results(self.visits)):

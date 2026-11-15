@@ -1205,20 +1205,31 @@ class TaggedRunTest(unittest.TestCase):
     def test_a_title_with_no_video_or_with_video_only_after_a_fallback_is_a_fail_counted_per_side_round_and_list(self):
         text = tagged_report(self, self.FAILS)
         rows = self.list_rows(text)
-        self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
-        self.assertEqual(rows['KaijuFlow', 'hard', 'Warm']['Fails'], '0 of 2 in Warm 1, 0 of 2 in Warm 2')  # the warm play counts
-        self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 0 of 2 in Cold 2')
-        self.assertEqual(rows["AltMount direct", 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
-        self.assertEqual(rows["AltMount direct", 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 1 of 2 in Cold 2')
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Fails'],
+                         '1 title failed · 1 of 4 plays: 1 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Warm']['Fails'],
+                         '0 titles failed · 0 of 4 plays: 0 of 2 in Warm 1, 0 of 2 in Warm 2')  # the warm play counts
+        self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Fails'],
+                         '0 titles failed · 0 of 4 plays: 0 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows["AltMount direct", 'hard', 'Cold']['Fails'],
+                         '1 title failed · 1 of 4 plays: 1 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows["AltMount direct", 'easy', 'Cold']['Fails'],
+                         '1 title failed · 1 of 4 plays: 0 of 2 in Cold 1, 1 of 2 in Cold 2')
         fallback = self.row(text, 'Rare Show S01E01', "AltMount direct", 'Cold 1')
         self.assertEqual((fallback['Result'], fallback['Title to video']), ('played after 1 fallback', '-'))  # a fail has none
         self.assertEqual(self.row(text, 'Old Film', 'KaijuFlow', 'Warm 1')['Result'], 'plays')
 
     def test_the_check_names_the_fails_of_each_setup_per_list(self):
         usable, lines = runcheck.check_run(tagged_run_folder(self, self.FAILS))
-        self.assertIn('Fails, KaijuFlow: easy 0 of 8; hard 1 of 8 (Cold 1 Old Film).', lines)
-        self.assertIn("Fails, AltMount direct: easy 1 of 8 (Cold 2 Matrix); hard 1 of 8 "
-                      '(Cold 1 Rare Show S01E01, played after 1 fallback).', lines)
+        self.assertIn('Fails, KaijuFlow: easy 0 titles failed · 0 of 8 plays; hard 1 title failed · 1 of 8 plays '
+                      '(Cold 1 Old Film).', lines)
+        self.assertIn('Fails, AltMount direct: easy 1 title failed · 1 of 8 plays (Cold 2 Matrix); hard 1 title failed · '
+                      '1 of 8 plays (Cold 1 Rare Show S01E01, played after 1 fallback).', lines)
+
+    def test_a_title_that_fails_in_both_cold_rounds_is_one_title_and_two_plays(self):
+        usable, lines = runcheck.check_run(tagged_run_folder(self, {**fail('kaijuflow', 'Old Film'), **fail('kaijuflow', 'Old Film', 2)}))
+        self.assertIn('Fails, KaijuFlow: easy 0 titles failed · 0 of 8 plays; hard 1 title failed · 2 of 8 plays '
+                      '(Cold 1 Old Film; Cold 2 Old Film).', lines)
 
     def test_the_replayed_2026_11_13_run_read_untagged_still_gives_altmount_direct_36_of_40_and_no_lists(self):
         run = br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports'))
@@ -1313,37 +1324,47 @@ class SpeedTestTargetsTest(unittest.TestCase):
         outcome = self.outcome(fail('altmount-addon', 'Old Film'), video('altmount-addon', 'hard', 2.0),
                                fail('kaijuflow', 'Matrix'))  # the easy list does not decide the outcome
         self.assertEqual(outcome['outcome'], br.OUTCOME_TUNE)
-        self.assertEqual(outcome['text'], 'Outcome on the hard list: KaijuFlow fails fewer titles than AltMount direct '
-                                          '(0 of 8 against 1 of 8), so tune its speed.')
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: KaijuFlow fails fewer plays than AltMount direct '
+                                          '(KaijuFlow 0 titles failed · 0 of 8 plays against AltMount direct 1 title failed · '
+                                          '1 of 8 plays), so tune its speed.')
 
     def test_the_outcome_is_to_try_kaijuflow_without_its_pre_list_check_when_it_ties_and_altmount_direct_is_faster(self):
         outcome = self.outcome(fail('altmount-addon', 'Old Film'), fail('kaijuflow', 'Rare Show S01E01', 2),
                                video('altmount-addon', 'hard', 2.0))
         self.assertEqual(outcome['outcome'], br.OUTCOME_NO_PRE_LIST_CHECK)
-        self.assertEqual(outcome['text'], 'Outcome on the hard list: KaijuFlow and AltMount direct fail the same number of '
-                                          'titles (1 of 8 each) and AltMount direct is faster (cold title to video 2.00 s '
-                                          'against 3.50 s), so try KaijuFlow without its own pre-list check, behind AltMount.')
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: KaijuFlow and AltMount direct fail as many plays '
+                                          '(KaijuFlow 1 title failed · 1 of 8 plays against AltMount direct 1 title failed · '
+                                          '1 of 8 plays) and AltMount direct is faster (cold title to video 2.00 s against '
+                                          '3.50 s), so try KaijuFlow without its own pre-list check, behind AltMount.')
 
     def test_the_outcome_is_a_bug_in_kaijuflows_checking_when_altmount_direct_fails_fewer_hard_titles(self):
         outcome = self.outcome(fail('kaijuflow', 'Old Film'), video('kaijuflow', 'hard', 1.0))
         self.assertEqual(outcome['outcome'], br.OUTCOME_BUG)
-        self.assertEqual(outcome['text'], 'Outcome on the hard list: AltMount direct fails fewer titles than KaijuFlow '
-                                          "(0 of 8 against 1 of 8), so KaijuFlow's checking has a bug to find first.")
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: AltMount direct fails fewer plays than KaijuFlow '
+                                          '(KaijuFlow 1 title failed · 1 of 8 plays against AltMount direct 0 titles failed · '
+                                          "0 of 8 plays), so KaijuFlow's checking has a bug to find first.")
 
-    def test_a_tie_where_kaijuflow_is_no_slower_names_none_of_the_three_outcomes(self):
+    def test_a_tie_where_kaijuflow_is_no_slower_is_as_reliable_and_no_slower_so_tune_its_speed(self):
         outcome = self.outcome(video('altmount-addon', 'hard', 4.0))
-        self.assertIsNone(outcome['outcome'])
-        self.assertEqual(outcome['text'], 'Outcome on the hard list: none of the three decided in advance: KaijuFlow and '
-                                          'AltMount direct fail the same number of titles (0 of 8 each) and KaijuFlow is '
-                                          'no slower (cold title to video 3.50 s against 4.00 s).')
+        self.assertEqual(outcome['outcome'], br.OUTCOME_TUNE)
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: KaijuFlow is as reliable and no slower: tune its speed '
+                                          '(KaijuFlow 0 titles failed · 0 of 8 plays against AltMount direct 0 titles '
+                                          'failed · 0 of 8 plays; cold title to video 3.50 s against 4.00 s).')
+
+    def test_the_outcome_counts_failed_plays_so_a_title_failed_twice_weighs_two(self):
+        outcome = self.outcome(fail('kaijuflow', 'Old Film'), fail('kaijuflow', 'Old Film', 2),
+                               fail('altmount-addon', 'Old Film'), fail('altmount-addon', 'Rare Show S01E01'))
+        self.assertEqual(outcome['outcome'], br.OUTCOME_TUNE)  # 2 failed plays each, 1 title against 2: a tie, not fewer
+        self.assertIn('KaijuFlow 1 title failed · 2 of 8 plays against AltMount direct 2 titles failed · 2 of 8 plays', outcome['text'])
 
 
 SLOWER = [video(s, x, 5.0) for s in ('uu', 'altmount-addon') for x in br.LISTS]  # KaijuFlow 3.5 s, the others 5.0 s
 
 
 class FinalBarTest(unittest.TestCase):
-    """#169 (was #141): "On both lists, KaijuFlow has the fewest fails, and the fastest title to video among setups with as
-    few fails." Judged on a tagged run beside the targets; a tie at zero fails counts as fewest."""
+    """#169 (was #141): "On both lists, KaijuFlow has the fewest fails (a tie counts as fewest), and the fastest title to
+    video among setups with as few fails." Judged on a tagged run beside the targets, on failed plays; any tie on fails
+    counts as fewest (owner, 2026-11-15)."""
 
     def bar(self, *changes):
         bar = speed_judgement(self, *changes)['final_bar']
@@ -1352,8 +1373,12 @@ class FinalBarTest(unittest.TestCase):
     def test_the_targets_file_holds_the_final_bar_in_the_owners_words_beside_the_three_targets(self):
         speed = br.load_speed_targets()
         self.assertEqual(len(speed['targets']), 3)
-        self.assertEqual(speed['final_bar'], 'On both lists, KaijuFlow has the fewest fails, and the fastest title to video '
-                                             'among setups with as few fails.')
+        self.assertEqual(speed['final_bar'], 'On both lists, KaijuFlow has the fewest fails (a tie counts as fewest), and the '
+                                             'fastest title to video among setups with as few fails.')
+        self.assertEqual([t['target'] for t in speed['targets']], [
+            'KaijuFlow fails no more plays than any other setup, and none on the easy list',
+            "KaijuFlow's median cold title to video is no slower than any setup with as few fails or fewer",
+            'Warm title to video under about 1 s'])
 
     def test_the_bar_is_met_with_no_fails_anywhere_when_kaijuflow_is_the_fastest_on_both_lists(self):
         self.assertEqual(self.bar(*SLOWER), (br.MET, {'easy': br.MET, 'hard': br.MET}))  # a tie at zero fails is fewest
@@ -1363,9 +1388,13 @@ class FinalBarTest(unittest.TestCase):
                          (br.NOT_MET, {'easy': br.NOT_MET, 'hard': br.MET}))
         self.assertEqual(self.bar(*SLOWER, video('uu', 'hard', 3.5)), (br.NOT_MET, {'easy': br.MET, 'hard': br.NOT_MET}))
 
-    def test_a_tie_above_zero_fails_is_not_the_fewest(self):
+    def test_any_tie_on_fails_counts_as_fewest_when_kaijuflow_is_the_fastest_of_the_tied(self):
         self.assertEqual(self.bar(*SLOWER, fail('kaijuflow', 'Old Film'), fail('uu', 'Rare Show S01E01'),
                                   fail('altmount-addon', 'Old Film'), fail('altmount-addon', 'Old Film', 2)),
+                         (br.MET, {'easy': br.MET, 'hard': br.MET}))  # hard: 1 failed play against 1 and 2
+
+    def test_a_tie_on_fails_with_a_faster_setup_is_not_met(self):
+        self.assertEqual(self.bar(*SLOWER, fail('kaijuflow', 'Old Film'), fail('uu', 'Rare Show S01E01'), video('uu', 'hard', 2.0)),
                          (br.NOT_MET, {'easy': br.MET, 'hard': br.NOT_MET}))
 
     def test_the_bar_is_not_met_on_a_list_where_another_setup_fails_fewer_whatever_the_speed(self):
@@ -1378,25 +1407,28 @@ class FinalBarTest(unittest.TestCase):
         usable, lines = runcheck.check_run(folder)
         self.assertTrue(usable, lines)  # every target, the outcome and the final bar leave the baseline verdict alone
         start = lines.index('Speed test targets, judged per list (an untagged run is judged on the six of before):')
-        fails = 'KaijuFlow fails no more titles than any other setup, and none on the easy list'
-        cold = "KaijuFlow's median cold title to video is no slower than any setup with as many fails or more"
+        fails = 'KaijuFlow fails no more plays than any other setup, and none on the easy list'
+        cold = "KaijuFlow's median cold title to video is no slower than any setup with as few fails or fewer"
+        none = '0 titles failed · 0 of 8 plays'
+        one = '1 title failed · 1 of 8 plays'
         self.assertEqual(lines[start + 1:start + 10], [
-            f'Target, easy list: {fails}. Measured: KaijuFlow 0 of 8, Usenet Ultimate 0 of 8, AltMount direct 0 of 8. Met.',
-            f'Target, easy list: {cold}. Measured: KaijuFlow 3.50 s with 0 fails, Usenet Ultimate 3.50 s with 0 fails, '
-            'AltMount direct 3.50 s with 0 fails. Met.',
+            f'Target, easy list: {fails}. Measured: KaijuFlow {none}, Usenet Ultimate {none}, AltMount direct {none}. Met.',
+            f'Target, easy list: {cold}. Measured: KaijuFlow 3.50 s ({none}), Usenet Ultimate 3.50 s ({none}), '
+            f'AltMount direct 3.50 s ({none}). Met.',
             'Target, easy list: Warm title to video under about 1 s. Measured: KaijuFlow 0.80 s. Met.',
-            f'Target, hard list: {fails}. Measured: KaijuFlow 0 of 8, Usenet Ultimate 0 of 8, AltMount direct 1 of 8. Met.',
-            f'Target, hard list: {cold}. Measured: KaijuFlow 3.50 s with 0 fails, Usenet Ultimate 3.50 s with 0 fails, '
-            'AltMount direct 2.00 s with 1 fail (more fails: not held against it). Met.',
+            f'Target, hard list: {fails}. Measured: KaijuFlow {none}, Usenet Ultimate {none}, AltMount direct {one}. Met.',
+            f'Target, hard list: {cold}. Measured: KaijuFlow 3.50 s ({none}), Usenet Ultimate 3.50 s ({none}), '
+            f'AltMount direct 2.00 s ({one}; more failed plays: not held against it). Met.',
             'Target, hard list: Warm title to video under about 1 s. Measured: KaijuFlow 3.50 s. Not met (2.50 s slower).',
             '5 of 6 targets met.',
-            'Outcome on the hard list: KaijuFlow fails fewer titles than AltMount direct (0 of 8 against 1 of 8), '
-            'so tune its speed.',
+            f'Outcome on the hard list: KaijuFlow fails fewer plays than AltMount direct (KaijuFlow {none} against '
+            f'AltMount direct {one}), so tune its speed.',
             'Final bar (shown apart from the targets, not counted towards usable): On both lists, KaijuFlow has the fewest '
-            'fails, and the fastest title to video among setups with as few fails. Not met. Easy list: not met, Usenet '
-            "Ultimate fails as few titles and is as fast or faster (cold title to video 3.50 s against KaijuFlow's 3.50 s). "
-            "Hard list: not met, Usenet Ultimate fails as few titles and is as fast or faster (cold title to video 3.50 s "
-            "against KaijuFlow's 3.50 s)."])
+            'fails (a tie counts as fewest), and the fastest title to video among setups with as few fails. Not met. '
+            f'Easy list: not met, Usenet Ultimate fails as few plays (KaijuFlow {none} against Usenet Ultimate {none}) and '
+            "is as fast or faster (cold title to video 3.50 s against KaijuFlow's 3.50 s). "
+            f'Hard list: not met, Usenet Ultimate fails as few plays (KaijuFlow {none} against Usenet Ultimate {none}) and '
+            "is as fast or faster (cold title to video 3.50 s against KaijuFlow's 3.50 s)."])
         self.assertFalse([x for x in lines if x.startswith('Target: ')], lines)  # not the six of before
 
     def test_the_report_shows_the_targets_per_list_then_the_outcome_and_the_final_bar_apart(self):
@@ -1404,19 +1436,23 @@ class FinalBarTest(unittest.TestCase):
         text = br.render_report(br.load_run(folder), ['First run.'])
         rows = {(r['List'], r['Target']): r for r in per_title_rows(text, '## Targets')}
         self.assertEqual(len(rows), 6)
-        self.assertEqual(rows['hard', 'KaijuFlow fails no more titles than any other setup, and none on the easy list'],
-                         {'List': 'hard', 'Target': 'KaijuFlow fails no more titles than any other setup, and none on the '
-                          'easy list', 'This run': 'KaijuFlow 1 of 8, Usenet Ultimate 0 of 8, AltMount direct 0 of 8',
-                          'Result': 'Not met'})
+        self.assertEqual(rows['hard', 'KaijuFlow fails no more plays than any other setup, and none on the easy list'],
+                         {'List': 'hard', 'Target': 'KaijuFlow fails no more plays than any other setup, and none on the '
+                          'easy list', 'This run': 'KaijuFlow 1 title failed · 1 of 8 plays, Usenet Ultimate 0 titles failed · '
+                          '0 of 8 plays, AltMount direct 0 titles failed · 0 of 8 plays', 'Result': 'Not met'})
         section = text[text.index('## Targets'):]
         self.assertIn('\n\n3 of 6 targets met. ', section)  # the easy list's fails, the cold title to video on both lists
-        self.assertIn('\n\nOutcome on the hard list: AltMount direct fails fewer titles than KaijuFlow (0 of 8 against 1 of 8), '
-                      "so KaijuFlow's checking has a bug to find first.\n", section)
+        self.assertIn('\n\nOutcome on the hard list: AltMount direct fails fewer plays than KaijuFlow (KaijuFlow 1 title '
+                      'failed · 1 of 8 plays against AltMount direct 0 titles failed · 0 of 8 plays), so KaijuFlow\'s checking '
+                      'has a bug to find first.\n', section)
+        none = '0 titles failed · 0 of 8 plays'
         self.assertIn('\n\n**Final bar** (shown apart from the targets, not counted towards usable): On both lists, KaijuFlow '
-                      'has the fewest fails, and the fastest title to video among setups with as few fails. Not met. Easy '
-                      'list: met, KaijuFlow fails 0 of 8, the fewest, in 3.50 s cold title to video, the fastest among setups '
-                      'with as few fails. Hard list: not met, Usenet Ultimate fails fewer titles (0 of 8 against KaijuFlow\'s '
-                      '1 of 8).\n', section)
+                      'has the fewest fails (a tie counts as fewest), and the fastest title to video among setups with as few '
+                      f'fails. Not met. Easy list: met, KaijuFlow fails the fewest plays (KaijuFlow {none} against Usenet '
+                      f'Ultimate {none}; KaijuFlow {none} against AltMount direct {none}) and is the fastest among setups with '
+                      "as few (cold title to video 3.50 s against Usenet Ultimate's 5.00 s; cold title to video 3.50 s against "
+                      "AltMount direct's 5.00 s). Hard list: not met, Usenet Ultimate fails fewer plays (KaijuFlow 1 title "
+                      f'failed · 1 of 8 plays against Usenet Ultimate {none}).\n', section)
 
     def test_a_targets_file_whose_speed_test_part_cannot_be_used_gives_one_sentence_for_a_tagged_run(self):
         run = br.load_run(speed_run_folder(self))
