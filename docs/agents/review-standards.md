@@ -1,6 +1,6 @@
 # Review standards
 
-Three rules for reviewing a change. Each one comes from a mistake found on 2026-11-10.
+Four rules for reviewing a change. Each one comes from a real mistake (rules 1 to 3 on 2026-11-10, rule 4 on 2026-11-15).
 
 ## 1. A test double refuses what the real thing refuses
 
@@ -19,3 +19,9 @@ Example: the NzbDAV import reader was tested on invented lines. It should have b
 Why: two copies of the same setup drift apart, and one command then behaves differently from the other.
 
 Example: record and run started the one-page side differently. They should have called one shared step.
+
+## 4. A test reaches the code that uses the change
+
+Why: a test that pins only a new helper still passes when the caller never uses it.
+
+Example: #131's test checked `healthCheckWorkerCount` but not that the coordinator passes its value to the health-check workers. The test should have gone through the coordinator, or through the batch call it makes.

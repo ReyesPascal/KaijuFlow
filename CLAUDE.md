@@ -24,7 +24,7 @@ Before spawning subagents: `docs/agents/delegating.md` (three at a time, budget 
 
 ### Review standards
 
-Three written rules for reviewing tests and shared setup: `docs/agents/review-standards.md`.
+Four written rules for reviewing tests, shared setup and call sites: `docs/agents/review-standards.md`.
 
 ### Domain docs
 
