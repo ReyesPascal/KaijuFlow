@@ -11,6 +11,8 @@ import io
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 import unittest.mock
@@ -72,6 +74,24 @@ class CapturedPayloadTest(GuardCase):
             self.assertEqual(code, 2, (tool, value))
             self.assertIn('read-settings', err)
 
+    def test_the_hook_as_settings_run_it(self):
+        """`python3 -I guard.py`, as `.claude/settings.json` runs it, on the captured JSON."""
+        refused = copy.deepcopy(captured('Bash'))
+        refused['tool_input']['command'] = 'cat indexers.json'
+        refused['cwd'] = self.td
+        for payload, code in ((captured('Bash'), 0), (captured('Grep'), 0), (refused, 2)):
+            done = subprocess.run([sys.executable, '-I', os.path.join(HERE, 'guard.py')], input=json.dumps(payload),
+                                  capture_output=True, text=True, env={**os.environ}, timeout=30)
+            self.assertEqual(done.returncode, code, (payload['tool_input'], done.stderr))
+
+    def test_a_relative_path_is_judged_from_the_calls_cwd(self):
+        for cwd, code in ((self.td, 2), (os.path.join(self.td, 'uu'), 2), (os.path.join(self.td, 'store'), 0),
+                          (captured('Bash')['cwd'], 0)):
+            payload = copy.deepcopy(captured('Bash'))
+            payload['tool_input']['command'] = 'cat config/config.json'
+            payload['cwd'] = cwd
+            self.assertEqual(run_hook(payload)[0], code, cwd)
+
 
 class TestFolderTest(GuardCase):
     def test_the_test_folder_is_commons_default(self):
@@ -79,6 +99,8 @@ class TestFolderTest(GuardCase):
         with unittest.mock.patch.object(common, 'DEFAULT_TEST_DIR', elsewhere):
             self.assertIsNotNone(self.bash(f'cat {elsewhere}/limits.json'))
             self.assertIsNotNone(guard.refusal('Read', {'file_path': f'{elsewhere}/indexers.json'}))
+            self.assertIsNotNone(self.bash('cat ~/elsewhere/uu/notes.txt'))
+            self.assertIsNone(self.bash('cat ~/kaijuflow-test/uu/notes.txt'))
 
     def test_the_test_dir_follows_the_env(self):
         with unittest.mock.patch.dict(os.environ, {'TEST_DIR': '/tmp/fake-td'}):
@@ -116,6 +138,28 @@ class SecretCommandTest(GuardCase):
                     'grep -rn limits tools/brain', 'gh issue view 161 --json number,title,body,labels,comments', 'ls /tmp'):
             self.assertIsNone(self.bash(cmd), cmd)
 
+    def test_refuses_reads_inside_a_container(self):
+        for cmd in ('docker exec kaijuflow-test-uu-1 cat /config/config.json', 'docker exec -it uu sh -c "cat /config/config.json"',
+                    'docker compose -p kaijuflow-test exec nzbdav sqlite3 /config/db.sqlite .dump',
+                    'docker exec altmount-kf grep -r key /config', 'docker cp kaijuflow-test-uu-1:/config/config.json /tmp/x',
+                    'podman exec uu cat /app/indexers.json', 'sudo docker exec uu cat /config/config.json'):
+            self.assertIn('read-settings', self.bash(cmd) or '', cmd)
+
+    def test_refuses_a_search_from_a_folder_holding_the_test_folder(self):
+        for cmd in ('grep -r apikey ~', f'grep -rn apikey {self.home}', 'rg apikey $HOME', 'find ~ -name indexers.json',
+                    'find / -name limits.json', 'cat $(find ~ -name indexers.json)', 'cd ~ && grep -r apikey .',
+                    'cd && cat kaijuflow-test/indexers.json', 'cd ~ && cat kaijuflow-test/uu/config/config.json',
+                    'cd ~/kaijuflow-test; cd uu; cat config/config.json', 'cd ~/kaijuflow-test && grep -r key .'):
+            self.assertIn('read-settings', self.bash(cmd) or '', cmd)
+
+    def test_allows_commands_that_only_mention_a_key_file_or_config_folder(self):
+        for cmd in ('grep limits.json tools/brain/docs/formats.md', 'grep -rn uu/config tools/brain',
+                    "grep -n 'indexers.json\\|db.sqlite' tools/brain/RUNBOOK.md", 'git log --oneline -- tools/brain/limits.example.json',
+                    'git commit -m "guard: refuse cat limits.json in nzbdav/config"', 'ls ~', 'cd ~ && ls', 'du -sh ~',
+                    'git branch -a | cut -d / -f 2', "python3 - <<'EOF'\nratio = a / b\nEOF", 'echo a / b', 'docker ps', 'docker exec kaijuflow-test-uu-1 ls /data',
+                    'docker compose -f tools/brain/compose.test.yaml ps', 'cd ~/kaijuflow-test/store && ls'):
+            self.assertIsNone(self.bash(cmd), cmd)
+
     def test_a_brain_tool_does_not_excuse_a_chained_read(self):
         self.assertIsNotNone(self.bash(f'{READ_SETTINGS} && cat ~/kaijuflow-test/indexers.json'))
         self.assertIsNotNone(self.bash(f'{READ_SETTINGS}; jq . ~/kaijuflow-test/limits.json'))
@@ -129,12 +173,15 @@ class ToolInputTest(GuardCase):
                                    ('Read', 'file_path', f'{td}/altmount-addon/config/config.yaml'),
                                    ('Read', 'file_path', '~/kaijuflow-test/limits.json'),
                                    ('Grep', 'path', f'{td}/uu/config'), ('Grep', 'path', td), ('Grep', 'path', f'{td}/indexers.json'),
-                                   ('Grep', 'glob', f'{td}/**/config.json'), ('Read', 'file_path', f'{td}/../kaijuflow-test/indexers.json')):
+                                   ('Grep', 'glob', f'{td}/**/config.json'), ('Read', 'file_path', f'{td}/../kaijuflow-test/indexers.json'),
+                                   ('Grep', 'path', self.home), ('Grep', 'path', '~'), ('Grep', 'path', '/'),
+                                   ('Grep', 'path', os.path.dirname(self.home))):
             self.assertIn('read-settings', guard.refusal(tool, {field: value, 'pattern': 'x'}) or '', (tool, value))
 
     def test_allows_other_paths(self):
         for tool, field, value in (('Read', 'file_path', '/repo/tools/brain/frontier.py'), ('Grep', 'path', '/repo/tools/brain'),
-                                   ('Read', 'file_path', f'{self.td}/store/x/RECORDING.json'), ('Grep', 'path', None)):
+                                   ('Read', 'file_path', f'{self.td}/store/x/RECORDING.json'), ('Grep', 'path', None),
+                                   ('Grep', 'path', os.path.join(self.home, 'code')), ('Read', 'file_path', f'{self.home}/.bashrc')):
             self.assertIsNone(guard.refusal(tool, {field: value, 'pattern': 'x'}), (tool, value))
 
     def test_other_tools_pass(self):
