@@ -10,6 +10,7 @@ Every command runs from the repo root. Long ones: shell background mode with a h
 - Cap rule: if an indexer says "limit reached", the pass stops and its result is null; the work waits for NinjaCentral's reset, and DrunkenSlug is never switched on to finish it. The allowance is in `~/kaijuflow-test/limits.json` (step 1).
 - Each test Backend is capped at 25 connections, and the caps of all test copies add up to at most the provider limit (100); the preflight checks the sum.
 - Every run is recorded (its own run folder and an INDEX.md row; the run command does this), and its report opens with what changed since the last run.
+- Archived runs are never compared with (#144): every run from before the like-for-like rules (#142) sits in `~/kaijuflow-notes/brain-runs/archive/`, the 2026-11-13 baseline included. #127 is the first like-for-like baseline, so its report says "No earlier run to compare with: this is the first one." Recordings stay in the runs root: indexer answers do not depend on the setups' settings.
 - Rebuild the image only when the code in it changed (step 0).
 
 `<store>` is the folder of recordings, `<list>` the title list's name, `<name>` a label for the folder.

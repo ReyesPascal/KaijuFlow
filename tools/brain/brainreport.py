@@ -660,12 +660,26 @@ def diff_runs(prev, cur, nulls=None):
     return out
 
 
+ARCHIVE = 'archive'  # #144: runs from before the like-for-like rules, kept as a record; never the baseline, a comparison or on the page
+ARCHIVED_TEXT = 'archived (not like for like)'
+
+
+def run_folders(root):
+    """The names in the runs root that can be runs, oldest first: everything but the archive folder (#144)."""
+    if not os.path.isdir(root):
+        return []
+    return sorted(d for d in os.listdir(root) if d != ARCHIVE)
+
+
+def is_archived(folder):
+    """True when a run folder sits in a runs root's archive folder (#144)."""
+    return os.path.basename(os.path.dirname(os.path.abspath(folder).rstrip(os.sep))) == ARCHIVE
+
+
 def null_runs_between(root, since, exclude=None):
     """meta.json of every null run in the runs root that started after `since` (ISO time), oldest first."""
     found = []
-    if not os.path.isdir(root):
-        return found
-    for d in sorted(os.listdir(root)):
+    for d in run_folders(root):
         if d == exclude:
             continue
         try:
@@ -1189,9 +1203,7 @@ def previous_run(root, exclude=None, usable=None):
     """meta.json of the newest earlier finished (non-null) run, or None. A short run is never it. `usable(run folder)`, when
     given, must also say yes (a short run is compared with the last run usable as a baseline); the meta gets its `folder`. Its top picks are added from the folder's raw.json
     (`top_picks`), so the next run can be compared with them; a folder that holds none stays without."""
-    if not os.path.isdir(root):
-        return None
-    for d in sorted(os.listdir(root), reverse=True):
+    for d in reversed(run_folders(root)):
         if d == exclude:
             continue
         try:
