@@ -1279,8 +1279,9 @@ def _bar_on_list(visits, lst, pairs):
                                               f"faster (cold title to video {_secs(b['video'])} against {me}'s {_secs(a['video'])})"}
     speed = ('; '.join(f"cold title to video {_secs(p['mine']['video'])} against {SHORT_NAMES[p['side']]}'s "
                        f"{_secs(p['theirs']['video'])}" for p in tied) if tied else 'no other setup fails as few plays')
-    return {'result': MET, 'why': f"{me} fails the fewest plays ({'; '.join(_vs(p) for p in pairs)}) and is the fastest "
-                                  f'among setups with as few ({speed})'}
+    closest = min(pairs, key=lambda p: (p['theirs']['fails'] - p['mine']['fails'], p['left_out']))  # the next fewest
+    return {'result': MET, 'why': f"{me} fails the fewest plays ({_vs(closest)}) and is the fastest among setups with as "
+                                  f'few ({speed})'}
 
 
 def _final_bar(visits, lists, text):

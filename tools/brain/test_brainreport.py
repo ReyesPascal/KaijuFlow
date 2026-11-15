@@ -1461,7 +1461,7 @@ class FinalBarTest(unittest.TestCase):
         self.assertIn('\n\n**Final bar** (shown apart from the targets, not counted towards usable): On both lists, KaijuFlow '
                       'has the fewest fails (a tie counts as fewest), and the fastest title to video among setups with as few '
                       f'fails. Not met. Easy list: met, KaijuFlow fails the fewest plays (KaijuFlow {none} against Usenet '
-                      f'Ultimate {none}; KaijuFlow {none} against AltMount direct {none}) and is the fastest among setups with '
+                      f'Ultimate {none}) and is the fastest among setups with '
                       "as few (cold title to video 3.50 s against Usenet Ultimate's 5.00 s; cold title to video 3.50 s against "
                       "AltMount direct's 5.00 s). Hard list: not met, Usenet Ultimate fails fewer plays (KaijuFlow 1 title "
                       f'failed · 1 of 8 plays against Usenet Ultimate {none}).\n', section)

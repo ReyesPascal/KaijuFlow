@@ -109,10 +109,11 @@ def status(result, words=None):
 
 
 # ---------- the ruler ----------
-def ruler(lanes, limits=(), end=None, hero=False, play_label=False):
+def ruler(lanes, limits=(), end=None, hero=False, play_label=False, notes_below=False):
     """A time ruler. lanes: [(name, seconds or None, is KaijuFlow, note)] in the order drawn (fastest first); a lane
     without a time is drawn empty with its note. limits: [(seconds, label, status html)], each an upright line from its own
-    label row down through every lane. end: the ruler's end (default: from the longest mark)."""
+    label row down through every lane. end: the ruler's end (default: from the longest mark). notes_below: a lane's note
+    goes on a line of its own under its bar, for notes too long to sit beside the time (a speed test's fails)."""
     marks = [v for _, v, _, _ in lanes if v is not None] + [at for at, _, _ in limits]
     end, ticks = scale(max(marks, default=0)) if end is None else (end, scale(end)[1])
     # A label ends at its line when the line is right of the middle, else starts there. So that no line runs down
@@ -138,9 +139,11 @@ def ruler(lanes, limits=(), end=None, hero=False, play_label=False):
             track = f'<span class="sl-track"><span class="sl-none">{esc(note)}</span></span>'
         else:
             x = pct(value, end)
-            extra = f'<small>{esc(note)}</small>' if note else ''
+            extra = f'<small>{esc(note)}</small>' if note and not notes_below else ''
             track = (f'<span class="sl-track"><span class="sl-bar" style="width:{x}%"></span>'
                      f'<span class="sl-val" style="left:{x}%"><b>{secs(value)}</b>{extra}</span></span>')
+            if note and notes_below:
+                track += f'<small class="sl-lnote">{esc(note)}</small>'
         items.append(f'<li class="sl-lane{" sl-kf" if kf else ""}"><span class="sl-name">{esc(name)}</span>{track}</li>')
     rows.append(f'<ol class="sl-lanes" style="grid-row:{k + 1}">{"".join(items)}</ol>')
     labels = []
@@ -349,6 +352,7 @@ RULES = """.sl * { box-sizing: border-box }
 .sl .sl-val b { font-size: 16px; font-stretch: 84%; font-weight: 600; font-variant-numeric: tabular-nums }
 .sl .sl-val small { font-size: 14px; color: var(--slate); margin-left: 6px }
 .sl .sl-kf .sl-val b { font-weight: 700 }
+.sl .sl-lnote { grid-column: 2 / -1; font-size: 14px; line-height: 1.3; color: var(--slate); padding: 3px 0 0 4px }
 .sl .sl-none { position: absolute; top: 50%; transform: translateY(-50%); left: 8px; font-size: 15px; color: var(--slate); white-space: nowrap }
 .sl .sl-axis { grid-column: 2; position: relative; height: 36px; border-top: 1px solid var(--ink); font-size: 15px; line-height: 1; color: var(--slate); font-variant-numeric: tabular-nums }
 .sl .sl-tick { position: absolute; top: 14px; transform: translateX(-50%); white-space: nowrap }
@@ -445,6 +449,7 @@ NARROW = """@media (max-width: 860px) {
   .sl .sl-name, .sl .sl-hero .sl-name { grid-column: 1 / -1; justify-self: start; font-size: 16px; padding: 0 4px 3px; margin-left: 4px;
     background: var(--paper); position: relative; z-index: 3 }
   .sl .sl-plot { grid-template-columns: 0 minmax(0, 1fr) var(--gut); margin-left: 3px }
+  .sl .sl-lnote { grid-column: 1 / -1; padding-left: 4px }
   .sl .sl-hero .sl-track { height: 32px }
   .sl .sl-hero .sl-val b { font-size: 18px }
   .sl .sl-hero .sl-flag { font-size: 15px }
@@ -614,11 +619,12 @@ def setup_lanes(m, key, sort=True):
     return sorted(lanes, key=lambda x: (x[1] is None, x[1] or 0)) if sort else lanes
 
 
-def speed_lanes(lst, key='cold_video'):
-    """The lanes of one list of a speed test: fewest failed plays first, then fastest; a lane's note is its fails."""
+def speed_lanes(lst, key='cold_video', notes=True):
+    """The lanes of one list of a speed test: fewest failed plays first, then fastest; a lane's note is its fails (none
+    with notes=False: the report's fails table stands right under its rulers)."""
     lanes = []
     for s in sorted(lst['setups'], key=lambda s: (s['fails']['fails'], s[key] is None, s[key] or 0)):
-        fails = s['fails']['words'] if s['fails']['fails'] else ''
+        fails = s['fails']['words'] if s['fails']['fails'] and notes else ''
         note = fails if s[key] is not None else f'{fails}, no top pick played' if fails else 'no top pick played'
         lanes.append((s['name'], s[key], s['id'] == KAIJUFLOW, note))
     return lanes
@@ -628,10 +634,9 @@ def speed_rulers(m, hero=False, report=False):
     """A speed test's first rulers: cold title to video on each list, fewest fails first. The report's say less."""
     figs = []
     for lst in m['speed']['lists']:
-        cap = f'<b>{esc(lst["name"])}: cold title to video.</b> ' + ('Fewest fails first, then fastest.' if report else
-               'Seconds from asking for a title until its video starts, the first time it is played. Fewest fails first, then '
-               'fastest; a fail has no time.')
-        figs.append(figure(cap, speed_lanes(lst), hero=hero, play_label='Title asked for'))
+        cap = f'<b>{esc(lst["name"])}: cold title to video.</b> ' + ('Fewest fails first, then fastest.' if report else 'Seconds from asking for a title until its video starts, the first time '
+               'it is played. Fewest fails first, then fastest; a fail has no time.')
+        figs.append(figure(cap, speed_lanes(lst, notes=not report), hero=hero, play_label='Title asked for', notes_below=not report))
     return figs
 
 
@@ -933,9 +938,16 @@ html, body { margin: 0; background: #FFFFFF; color-scheme: light }
 .sl-rep .sl-r-next h2 { margin: 0 }
 .sl-rep .sl-r-chg { border-top-color: var(--rule) }
 .sl-rep .sl-r-chg .sl-changes { margin: 0 }
-.sl-rep .sl-r-fails table { table-layout: fixed }
-.sl-rep .sl-r-fails th:first-child { width: 136px }
-.sl-rep .sl-r-fails thead th:nth-child(2) { width: 22% }
+.sl-rep .sl-r-fails table { font-size: 12px }
+.sl-rep .sl-r-fails th:first-child { width: 120px; white-space: nowrap }
+.sl-speed .sl-r-sec { padding-top: 8px }
+.sl-speed .sl-lead { font-size: 13px; line-height: 1.35 }
+.sl-speed .sl-final .sl-ftext { font-size: 12px }
+.sl-speed h2 { margin-bottom: 2px }
+.sl-speed .sl-r-next { margin-top: 6px; padding-top: 4px }
+.sl-speed .sl-finds { gap: 4px 20px }
+.sl-speed .sl-finds h3, .sl-speed .sl-finds p { font-size: 12px; line-height: 1.25 }
+.sl-speed .sl-final li { font-size: 11.5px }
 .sl-rep .sl-r-foot { margin-top: auto; display: block;
   border-top: 1px solid var(--rule); padding-top: 6px; font-size: 12px; line-height: 1.3; color: var(--slate) }
 .sl-rep .sl-r-foot b { color: var(--ink); font-weight: 600 }
@@ -994,7 +1006,8 @@ def report_speed_changes(m):
             '</section>') if changes else ''
 
 
-REPORT_FAILED_TITLES = 3  # a cell of the report's fails table names at most this many titles, then "+N more"
+REPORT_FAILED_TITLES = 1  # a cell of the report's fails table names at most this many titles, then "+N more"
+EVERY_ROUND = 'Failed: Cold 1, Warm 1, Cold 2, Warm 2'
 
 
 def report_fails(m):
@@ -1005,8 +1018,8 @@ def report_fails(m):
     for s in m['setups']:
         cells = []
         for lst in lists:
-            failed = [f'{r["title"]} ({rounds})' for r in lst['titles']
-                      for rounds in [fails_note(r['cells'].get(s['id'])).removeprefix('Failed: ')] if rounds]
+            failed = [f'{r["title"]} ({"every round" if note == EVERY_ROUND else note.removeprefix("Failed: ")})'
+                      for r in lst['titles'] for note in [fails_note(r['cells'].get(s['id']))] if note]
             more = len(failed) - REPORT_FAILED_TITLES
             named = ', '.join(failed[:REPORT_FAILED_TITLES]) + (f', +{more} more' if more > 0 else '')
             f = next(x['fails'] for x in lst['setups'] if x['id'] == s['id'])
@@ -1053,4 +1066,5 @@ def report(m):
                  'both rounds of each kind.')
     parts.append(f'<footer class="sl-r-foot"><span>Page 1 of 1</span><p>{words} '
                  "<b>Inside the noise:</b> KaijuFlow's own two rounds differ by more than the target is met or missed by.</p></footer>")
-    return f'{REPORT_HEAD}<style>\n{RULES}{REPORT_CSS}</style>\n<div class="sl sl-rep">\n{"".join(parts)}\n</div>\n'
+    root = 'sl sl-rep sl-speed' if m.get('speed') else 'sl sl-rep'  # a speed test's sheet holds more, set a little tighter
+    return f'{REPORT_HEAD}<style>\n{RULES}{REPORT_CSS}</style>\n<div class="{root}">\n{"".join(parts)}\n</div>\n'

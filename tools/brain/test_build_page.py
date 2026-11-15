@@ -529,7 +529,7 @@ class SpeedTest(unittest.TestCase):
             self.assertEqual(bar, 'Final bar, not counted with the targets Not met On both lists, KaijuFlow has the fewest '
                                   'fails (a tie counts as fewest), and the fastest title to video among setups with as few '
                                   f'fails. Easy list: met, KaijuFlow fails the fewest plays (KaijuFlow {none} against Usenet '
-                                  f'Ultimate {none}; KaijuFlow {none} against AltMount direct {one}) and is the fastest '
+                                  f'Ultimate {none}) and is the fastest '
                                   "among setups with as few (cold title to video 2.50 s against Usenet Ultimate's 3.50 s). "
                                   f'Hard list: not met, AltMount direct fails as few plays (KaijuFlow {one} against AltMount '
                                   f"direct {one}) and is as fast or faster (cold title to video 2.00 s against KaijuFlow's 3.50 s).")
@@ -541,9 +541,12 @@ class SpeedTest(unittest.TestCase):
             self.assertTrue(text(hard).startswith('Hard list: cold title to video.'), text(hard))
             self.assertEqual(lanes(easy), [('KaijuFlow', '2.50 s'), ('Usenet Ultimate', '3.50 s'), ('AltMount direct', '2.00 s')])
             self.assertEqual(lanes(hard), [('AltMount direct', '2.00 s'), ('KaijuFlow', '3.50 s'), ('Usenet Ultimate', '3.50 s')])
-            self.assertIn('<b>2.00 s</b><small>1 title failed · 1 of 8 plays</small>', easy)
-            self.assertIn('<b>3.50 s</b><small>1 title failed · 2 of 8 plays</small>', hard)  # one title, both cold rounds
             self.assertIn('Title asked for', easy)
+            if page is self.report:  # the report's fails table right under its rulers holds the fails
+                self.assertNotIn('title failed', easy + hard)
+                continue
+            self.assertIn('<b>2.00 s</b></span></span><small class="sl-lnote">1 title failed · 1 of 8 plays</small>', easy)
+            self.assertIn('<b>3.50 s</b></span></span><small class="sl-lnote">1 title failed · 2 of 8 plays</small>', hard)
         self.assertNotIn('Cold start.', text(self.index))
 
     def test_the_headline_numbers_are_kaijuflows_fails_then_its_title_to_video_on_each_list(self):
@@ -601,6 +604,23 @@ class SpeedTest(unittest.TestCase):
         plays = text(re.search(r'<div class="sl-plays">.*?</div>', four).group(0))
         self.assertEqual(plays, 'Fails, both lists 1 of 16 plays KaijuFlow, 1 title failed 2 of 16 plays Usenet Ultimate, '
                                 '1 title failed 2 of 16 plays AltMount direct, 2 titles failed')
+
+
+class SpeedTestReportStaysOnePage(unittest.TestCase):
+    def test_a_fails_cell_names_one_title_then_how_many_more_and_a_title_failed_in_every_round_says_so(self):
+        root = tempdir(self)
+        folder = speed_test_run(root)
+        path = os.path.join(folder, 'raw.json')
+        with open(path) as f:
+            raw = json.load(f)
+        for v in raw['visits']:
+            if v['side'] == 'kaijuflow' and v['list'] == 'hard':  # both hard titles fail in every round
+                v.update(ok=False, start_s=None, note='failure video')
+        with open(path, 'w') as f:
+            json.dump(raw, f)
+        fails = section(bp.build_report([folder]), 'Fails, title by title')
+        row = [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', fails)][0]
+        self.assertEqual(row, 'KaijuFlow None 2 titles failed · 8 of 8 plays: Old Film (every round), +1 more')
 
 
 class SpeedTestWithATitleLeftOut(unittest.TestCase):
