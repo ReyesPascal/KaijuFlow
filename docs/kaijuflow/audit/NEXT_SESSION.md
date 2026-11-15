@@ -36,7 +36,7 @@ Nothing is being built.
 
 Waiting on the owner (from the retro):
 - #111 short runs by choosing sides, rounds and titles (a decision, not agreed work).
-- #114 back up the run records and test settings outside this machine.
+- #114 backup: the run records and recordings are pushed to the private repo `ReyesPascal/kaijuflow-notes` (runbook step 7, `tools/brain/backup.sh`). Still with the owner: the secrets in `~/kaijuflow-test/*.json` (and `~/.stash`) into a password manager.
 - #118 log out and in so Docker works without the wrapper.
 - #119 Unscramble hits its 15 s limit when three large Sources are prepared at once.
 - #120 KaijuFlow lists and verifies disc images (.iso) that the Backend cannot play.
@@ -48,7 +48,7 @@ Waiting on the owner (from the retro):
 4. InfiniDysk 1.x.
 
 ## Where things live
-- Run records: `~/kaijuflow-notes/brain-runs/` and its `INDEX.md`.
+- Run records: `~/kaijuflow-notes/brain-runs/` and its `INDEX.md`; backed up with the recordings to the private repo `ReyesPascal/kaijuflow-notes` (`tools/brain/backup.sh`).
 - Test folder (compose, configs, key files; outside the repo; secrets): `~/kaijuflow-test`.
 - Runbook: [tools/brain/RUNBOOK.md](../../../tools/brain/RUNBOOK.md). Tools index: [tools/brain/README.md](../../../tools/brain/README.md).
 - Speed-check page: https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD.

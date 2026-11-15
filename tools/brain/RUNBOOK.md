@@ -25,6 +25,7 @@ Every command runs from the repo root. Long ones: shell background mode with a h
 4. Preflight for the run: `... preflight --for run --store <store> --list <list>`.
 5. Run: `python3 -I tools/brain/brainrun.py run --name <name> --store <store> --list <list> [--one-page] [--no-wait]`. Four rounds per side (cold, warm, cold, warm) from the recording; no indexer is contacted. It ends by printing the check.
 6. Check: `python3 -I tools/brain/brainrun.py check --run <run folder>`. Says whether the run can serve as a baseline, then prints one line per target: the target, the measured values, met or not met.
+7. Back up: `tools/brain/backup.sh`, after every record (also a stopped or incomplete one) and every run. It copies `~/kaijuflow-test/store` into `~/kaijuflow-notes/recordings/`, commits `~/kaijuflow-notes` and pushes it to the private repo `ReyesPascal/kaijuflow-notes` (#114). It refuses to push if any value from the key files in `~/kaijuflow-test` turns up in the store or the run folders. The secrets themselves are never in either repository; they are backed up in the owner's password manager. On a new machine: `git clone https://github.com/ReyesPascal/kaijuflow-notes ~/kaijuflow-notes` and copy `recordings/` back to `~/kaijuflow-test/store`.
 
 Other commands: `smoke --store <EMPTY folder> --list smoke` (reachability only), `python3 -I tools/brain/testbed.py settings|status|stop`.
 
