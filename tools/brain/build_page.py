@@ -14,7 +14,8 @@ under each headline number), and every timed run given gets a row in "Every run 
 Where things come from, never typed into the page by hand:
 
   numbers      raw.json of each run, through brainreport (the same medians the targets are judged on)
-  verdicts     brainreport.target_results and targets.json
+  verdicts     brainreport.target_results and targets.json; for a speed test (a tagged run, #171) brainreport.speed_test_judgement:
+               its three targets on each list, the outcome line and the final bar
   what changed meta.json "changes" of the newest run (brainrun's diff against the run before it)
   findings     findings.html in the newest run's folder, written by hand: the findings and the next step
                (docs/formats.md, "The page"). Without it the page has neither section.

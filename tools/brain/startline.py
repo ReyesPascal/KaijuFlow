@@ -4,7 +4,7 @@ is the one yellow lane.
 
 Pure rendering: every function takes plain numbers and words and returns HTML; nothing here reads a run folder or judges
 a target. build_page.py makes the page model from run folders (numbers through brainreport, verdicts from
-brainreport.target_results) and calls page(), and report() for the one-page Letter report (#133), drawn with the same pieces from the same
+brainreport.target_results, or speed_test_judgement for a speed test) and calls page(), and report() for the one-page Letter report (#133), drawn with the same pieces from the same
 model on a fixed 816 x 1056 px sheet.
 
 The mock-up is ~/kaijuflow-notes/designs/speed-check-2026-11-15/project/StartLine.dc.html; its wording rules are in
