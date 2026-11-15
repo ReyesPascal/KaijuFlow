@@ -451,7 +451,8 @@ def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
     os.makedirs(folder)
     m = dict(name='speed', label='Test 2', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z',
              titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES}, sides=list(SPEED_SIDES),
-             rounds=2, short=None, changes=['First speed test.'], **meta)
+             rounds=2, short=None, changes=['First speed test.'])
+    m.update(meta)
     with open(os.path.join(folder, 'meta.json'), 'w') as f:
         json.dump(m, f)
     with open(os.path.join(folder, 'raw.json'), 'w') as f:
@@ -522,6 +523,37 @@ class SpeedTest(unittest.TestCase):
             self.assertEqual(heads, 'Fails, easy list 0 of 8 Fails, hard list 1 of 8 Title to video, easy list 2.50 s '
                                     'Title to video, hard list 3.50 s KaijuFlow in this run: its fails in all four rounds, '
                                     'and its median cold title to video.')
+
+
+class SpeedTestAgainstEarlierRuns(unittest.TestCase):
+    def test_a_speed_test_is_never_compared_with_a_run_without_tags_and_both_are_in_every_run_so_far(self):
+        root = tempdir(self)
+        index = bp.build([copy_run(root), speed_test_run(root)])
+        self.assertIn('No earlier run on this page to compare with.', index)
+        rows = [text(r) for r in re.findall(r'<tr class="[^"]*"><th scope="row">.*?</tr>', section(index, 'Every run so far'))]
+        self.assertTrue(rows[0].startswith('Test 2 run 2026-11-16 First speed test. 5 of 6'), rows)
+        self.assertTrue(rows[1].startswith('Baseline run 2026-11-13'), rows)
+
+    def test_a_speed_test_is_compared_with_the_speed_test_before_it_fails_and_title_to_video_on_each_list(self):
+        root = tempdir(self)
+        earlier = speed_test_run(root, label='Test 1b')
+
+        def all_play(visits):  # the later run: KaijuFlow plays Old Film too, and Usenet Ultimate is as before
+            for v in visits:
+                if (v['side'], v['title']) == ('kaijuflow', 'Old Film'):
+                    v.update(ok=True, start_s=1.5, note=None)
+        later = speed_test_run(root, '2026-11-20T100000Z-speed', finished='2026-11-20T11:00:00Z')
+        path = os.path.join(later, 'raw.json')
+        with open(path) as f:
+            raw = json.load(f)
+        all_play(raw['visits'])
+        with open(path, 'w') as f:
+            json.dump(raw, f)
+        index = bp.build([earlier, later])
+        self.assertIn('Compared with the Test 1b run of 16 November 2026.', index)
+        heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', index).group(0))
+        self.assertTrue(heads.startswith('Fails, easy list 0 of 8 No change Fails, hard list 0 of 8 1 fewer '
+                                         'Title to video, easy list 2.50 s No change Title to video, hard list 3.50 s No change'), heads)
 
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline/')  # Test 1 (#127, #150); 3.46 s since #154 reads The Matrix as 1080p on both sides

@@ -210,7 +210,8 @@ def page_model(runs):
     why = br.targets_not_judged(run.status)
     if why:
         raise SystemExit(f'{run.folder}: no page for this run: {why}.')
-    prev = next((r for r in runs[1:] if r.status == 'ok' and not br.never_compared(r.meta)), None)
+    # A speed test is compared with a speed test, a run without tags with one without: their titles are not alike.
+    prev = next((r for r in runs[1:] if r.status == 'ok' and not br.never_compared(r.meta) and r.tagged == run.tagged), None)
     targets = run.targets()
     findings, next_step = read_findings(run)
     setups = [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.numbers(side)} for side in run.sides]
@@ -230,6 +231,7 @@ def page_model(runs):
         'changes': run.meta.get('changes') or [],
         'titles': rows,
         'speed': speed_model(run) if run.tagged else None,
+        'prev_speed': speed_model(prev) if prev and run.tagged else None,
         'findings': findings, 'next': next_step,
         'history': [history_row(r) for r in runs],
     }

@@ -505,12 +505,18 @@ HEADLINES = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Warm 
 
 def speed_headlines(m):
     """A speed test's headline numbers: KaijuFlow's fails on each list, then its cold title to video on each list."""
-    kf = {lst['list']: next(s for s in lst['setups'] if s['id'] == KAIJUFLOW) for lst in m['speed']['lists']}
-    items = [(f'Fails, {x} list', plays_text(s['fails'])) for x, s in kf.items()]
-    items += [(f'Title to video, {x} list', secs(s['cold_video'])) for x, s in kf.items()]
-    li = ''.join(f'<li><span class="sl-k">{esc(label)}</span><span class="sl-v">{value}</span></li>' for label, value in items)
+    def kaijuflow(speed):
+        return {lst['list']: next(s for s in lst['setups'] if s['id'] == KAIJUFLOW) for lst in speed['lists']} if speed else {}
+    kf, before = kaijuflow(m['speed']), kaijuflow(m.get('prev_speed'))
+    items = [(f'Fails, {x} list', plays_text(s['fails']), change_words(before[x]['fails'], s['fails'], plays=True) if x in before else '')
+             for x, s in kf.items()]
+    items += [(f'Title to video, {x} list', secs(s['cold_video']), change_words(before[x]['cold_video'], s['cold_video']) if x in before else '')
+              for x, s in kf.items()]
+    li = ''.join(f'<li><span class="sl-k">{esc(label)}</span><span class="sl-v">{value}</span>'
+                 + (f'<span class="sl-c">{_arrow(words)} {esc(words)}</span>' if words else '') + '</li>' for label, value, words in items)
+    since = ', with the change since the speed test it is compared with' if before else ''
     return (f'<ul class="sl-heads">{li}<li class="sl-headnote">KaijuFlow in this run: its fails in all four rounds, and its '
-            'median cold title to video.</li></ul>')
+            f'median cold title to video{since}.</li></ul>')
 
 
 def headline_numbers(m):
