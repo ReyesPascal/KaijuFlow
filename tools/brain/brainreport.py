@@ -691,6 +691,17 @@ def _plays(visits, side, phase=None, rnd=None):
     return sum(1 for v in vs if v.get('ok')), len(vs)
 
 
+def side_time(visits, side, phase, what):
+    """The median start or list time of one side over both rounds of a phase: the figure the targets judge, for the
+    Speed Check page (build_page.py), so the page and the verdict show one number."""
+    return _time(visits, side, phase, what)
+
+
+def side_plays(visits, side):
+    """(top picks that played, top picks counted) of one side over every round, as the targets count them."""
+    return _plays(visits, side)
+
+
 MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
 
 

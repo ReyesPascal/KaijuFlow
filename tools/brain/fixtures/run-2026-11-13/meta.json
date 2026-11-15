@@ -1,4 +1,7 @@
 {
+ "changes": [
+  "No earlier run to compare with: this is the first one."
+ ],
  "commit": "750c2eba3f92725a5962dc67c13ded956a81beeb",
  "dirty": false,
  "error": null,
