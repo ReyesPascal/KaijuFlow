@@ -137,6 +137,7 @@ def check_run(run_dir):
         lines.append(f'Played after a fallback ({len(fell_back)}), not counted as played:')
         lines += [f'- {_visit_name(v)}: {br.failed_result(v, "fallback")}' for v in fell_back]
     lines += br.like_for_like_lines(visits)
+    lines += br.top_pick_table(visits)
     if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
         lines += br.target_lines({'status': status, 'visits': visits})
     if reasons:

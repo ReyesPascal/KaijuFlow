@@ -422,15 +422,23 @@ def top_picks_played(counts):
         for side, by in counts) + '.'
 
 
-RESOLUTIONS = [('2160p', '2160p|4k|uhd'), ('1080p', '1080p|fhd'), ('720p', '720p')]  # first match wins: "UHD" is no "HD"
+RESOLUTIONS = {'2160p': ('2160p', '4k|uhd'), '1080p': ('1080p', 'fhd'), '720p': ('720p', '')}  # (stated number, words)
+
+
+def _first_of(text, pick):
+    """The resolution whose pattern (pick: 0 the number, 1 the words) comes first in the text, or None."""
+    words = '|'.join(f'(?P<r{res}>{w[pick]})' for res, w in RESOLUTIONS.items() if w[pick])
+    m = re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', text)
+    return m and m.lastgroup[1:]
 
 
 def resolution(text):
-    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none."""
-    for res, words in RESOLUTIONS:
-        if re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', str(text or '').lower()):
-            return res
-    return None
+    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none (#154).
+    A stated number wins over the words 4K, UHD (2160p) and FHD (1080p), which count only when no number is stated: "1080p
+    UHD BluRay" is a 1080p encode from a 4K disc. A side's own label ("AltMount FHD - ... [1080p]", "4K BluRay") is read
+    with the release name as one text, so the first stated number wins (tools/brain/docs/rules.md, "Like for like")."""
+    text = str(text or '').lower()
+    return _first_of(text, 0) or _first_of(text, 1)
 
 
 def _rule_break(v, rules):
@@ -513,6 +521,24 @@ def _pick_cells(pick):
     if not pick:
         return ['-', '-']
     return [str(pick['name'] or '-').replace('|', '/'), _pick_size(pick)]
+
+
+def top_pick_table(visits):
+    """The check's per-title table (#154): per title and side, the resolution the like-for-like check reads from the top
+    pick (`resolution`) and its size (served, else listed), in the first round that holds top picks; [] when none does."""
+    picks = top_picks(visits)
+    held = {x for side in picks.values() for rounds in side.values() for x in rounds}
+    label = next((x for x in (_run_label(p, r) for p, r in RUN_ORDER) if x in held), None)
+    if not label:
+        return []
+    sides = [s for s in SIDE_NAMES if s in picks]
+
+    def cell(pick):
+        return f"{resolution(pick['name']) or '-'}, {_pick_size(pick)}" if pick else '-'
+    return ([f'Top picks per title, {label}: the resolution the like-for-like check reads, and the size served (else listed).',
+             '| Title | ' + ' | '.join(SIDE_NAMES[s] for s in sides) + ' |', '|---' * (len(sides) + 1) + '|'] +
+            [f'| {title} | ' + ' | '.join(cell(picks[s].get(title, {}).get(label)) for s in sides) + ' |'
+             for title in dict.fromkeys(v['title'] for v in visits)])
 
 
 def top_picks(visits):

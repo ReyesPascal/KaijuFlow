@@ -563,6 +563,29 @@ def picks_run(altmount_dune='Dune.2021.1080p.WEB-DL-GRP', altmount_dune_size=5_0
                 null=None, standin_misses=0)
 
 
+class ResolutionTest(unittest.TestCase):
+    """The resolution a top pick states (#154): a stated number wins over the words 4K, UHD and FHD, which count only when
+    no number is stated. Names from Test 1 (2026-11-15T115540Z-baseline)."""
+
+    def test_a_stated_number_wins_over_the_words(self):
+        for text, want in {
+                'AltMount FHD - Inception (2010) [1080p] Inception 2010 PROPER 1080p UHD BluRay DD+5.1 x264-LoRD': '1080p',
+                'The Matrix 1999 4K Remaster 1080p BluRay DTS x264-Geek': '1080p',
+                'The.Matrix.1999.1080p.UHD.BluRay.DD+7.1.DV.HDR.x265-HiDt': '1080p',
+                'Breaking.Bad.S01E01.POLISH.2160p.WEB.H265-FLAME': '2160p',
+                'Dune.2021.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HDR.AV1-CoSMiCSuRFeR': '2160p',
+                'Show.S01E02.720p.UHD.WEB': '720p'}.items():
+            self.assertEqual(br.resolution(text), want, text)
+
+    def test_the_words_count_when_no_number_is_stated(self):
+        for text, want in {'✅ 4K BluRay 🎬 Inception (2010) 💾 28.02 GB': '2160p', 'Film.2010.UHD.BluRay': '2160p',
+                           'Film FHD BluRay': '1080p', 'Inception.2010.BluRay.x265-4K4U': None, 'Film.2010.DVDRip': None}.items():
+            self.assertEqual(br.resolution(text), want, text)
+
+    def test_a_sides_own_label_is_read_with_the_release_name_the_first_stated_number_wins(self):
+        self.assertEqual(br.resolution('AltMount 4K - Film [2160p] Film.2010.1080p.WEB'), '2160p')
+
+
 class LikeForLikeTest(unittest.TestCase):
     """Each title's top picks are compared across the setups (#143): a title whose picks differ beyond the like-for-like
     rules (resolution, size cap, disc images) is named and left out of judging KaijuFlow against that setup."""
