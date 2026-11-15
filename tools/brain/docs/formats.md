@@ -85,11 +85,17 @@ The settings every test copy is expected to have are in `tools/brain/expected-se
  "expected": [
   {"copies": ["kaijuflow", "uu"],
    "settings": {"movieFilters": {"sortOrder": ["regexScore", "quality"], "maxFileSize": 32212254720},
-                "tvFilters": {"sortOrder": ["regexScore", "quality"], "maxFileSize": 10737418240}}}
+                "tvFilters": {"sortOrder": ["regexScore", "quality"], "maxFileSize": 10737418240}}},
+  {"copies": ["altmount-addon"],
+   "settings": {"stremio.max_fallback_releases": 0, "stremio.include_library_streams": false,
+                "stremio.scoring.custom_formats": [{"id": "kf-2160p", "name": "2160p", "pattern": "(?i)\\b(2160p?|4k|uhd)\\b",
+                                                    "pattern_type": "regex", "score": 400, "enabled": true, "is_custom": true}]}}
  ]}
 ```
 
 (The example is cut short; the file holds both sections in full.)
+
+A setting is named from the top of the copy's config down, with dots: a whole section (`movieFilters`) or one setting (`stremio.max_fallback_releases`). Only the named settings are compared, and a named section must match as a whole, with nothing missing and nothing extra. AltMount's `config.yaml` is read with every value as text and list entries by position, so the preflight turns an AltMount copy's expected values into that form first (`0` is read as `"0"`, `false` as `"false"`, a list entry by its position rather than its `name`). `key: ""` is left out on both sides, because the reader skips it.
 
 | Field | Meaning |
 |---|---|
