@@ -1280,7 +1280,7 @@ def speed_verdicts(case, *changes, sides=THREE):
 
 class SpeedTestTargetsTest(unittest.TestCase):
     """#169: a tagged run (a speed test) is judged per list on three targets: fails, cold title to video against the
-    setups KaijuFlow has as many fails as or more, and warm title to video under 1 s."""
+    setups with as few fails or fewer, and warm title to video under 1 s."""
 
     def test_the_fails_target_is_met_on_a_list_where_kaijuflow_fails_no_more_than_any_other_setup(self):
         verdicts = speed_verdicts(self, fail('kaijuflow', 'Old Film'), fail('uu', 'Old Film'),
@@ -1381,7 +1381,7 @@ class FinalBarTest(unittest.TestCase):
             'Warm title to video under about 1 s'])
 
     def test_the_bar_is_met_with_no_fails_anywhere_when_kaijuflow_is_the_fastest_on_both_lists(self):
-        self.assertEqual(self.bar(*SLOWER), (br.MET, {'easy': br.MET, 'hard': br.MET}))  # a tie at zero fails is fewest
+        self.assertEqual(self.bar(*SLOWER), (br.MET, {'easy': br.MET, 'hard': br.MET}))  # a tie on fails is fewest
 
     def test_the_bar_is_not_met_on_a_list_where_a_setup_with_as_few_fails_is_as_fast(self):
         self.assertEqual(self.bar(*SLOWER, video('altmount-addon', 'easy', 2.0)),
