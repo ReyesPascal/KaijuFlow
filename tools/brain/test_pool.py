@@ -108,6 +108,35 @@ class PoolTest(unittest.TestCase):
         self.assertEqual(self.read(self.pool), before)
         self.assertFalse(os.path.exists(self.out))
 
+    def refused(self, extra):
+        """(exit code, printed text) of a draw from an otherwise good pool with `extra` added; asserts nothing changed."""
+        self.write(make_pool(films=8, episodes=5, extra=extra))
+        before = self.read(self.pool)
+        code, out = self.draw('Test 2')
+        self.assertEqual(self.read(self.pool), before)
+        self.assertFalse(os.path.exists(self.out))
+        return code, out.strip()
+
+    def test_the_old_lists_ten_titles_are_refused(self):
+        for kind, tid, label in [('movie', 'tt1375666', 'Inception'), ('series', 'tt7366338:1:2', 'Chernobyl S01E02')]:
+            old = {'type': kind, 'id': tid, 'label': label, 'list': 'easy', 'reason': 'popular'}
+            self.assertEqual(self.refused([old]), (1, f"The pool holds {label} ({tid}), one of Test 1's ten titles, "
+                                                      'which a speed test never draws: take it out.'))
+
+    def test_a_title_without_its_fields_or_twice_in_the_pool_is_refused(self):
+        no_reason = dict(entry(60, 'movie', 'hard'), reason=' ')
+        self.assertEqual(self.refused([no_reason]),
+                         (1, 'The pool cannot be used: hard movie 60 (tt9000060) has no reason for its list.'))
+        wrong_list = dict(entry(61, 'movie', 'hard'), list='medium')
+        self.assertEqual(self.refused([wrong_list]),
+                         (1, "The pool cannot be used: hard movie 61 (tt9000061) has the list 'medium', not easy or hard."))
+        film_as_episode = dict(entry(62, 'movie', 'hard'), id='tt9000062:1:1')
+        self.assertEqual(self.refused([film_as_episode]),
+                         (1, "The pool cannot be used: hard movie 62 (tt9000062:1:1) has an ID that is not a film's "
+                             '(tt and digits) or an episode\'s (tt and digits:season:episode) for its type movie.'))
+        twice = entry(1, 'movie', 'hard')
+        self.assertEqual(self.refused([twice]), (1, 'The pool cannot be used: tt9000001 is in it twice.'))
+
 
 if __name__ == '__main__':
     unittest.main()

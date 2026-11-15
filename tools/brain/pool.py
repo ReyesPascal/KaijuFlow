@@ -9,9 +9,15 @@ The pool and the tagged title list are described in docs/formats.md, "The pool".
 import argparse
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import common  # noqa: E402
+
+OLD_LIST = common.TITLES  # Test 1's ten titles: a speed test never draws them (ADR 0007, new titles every speed test)
+ID_SHAPE = {'movie': re.compile(r'tt\d+'), 'series': re.compile(r'tt\d+:\d+:\d+')}
 DEFAULT_POOL = os.path.join(HERE, 'pool.json')
 LISTS = ('easy', 'hard')
 PER_LIST = {'movie': 6, 'series': 4}  # a speed test's films and episodes on each list
@@ -46,9 +52,32 @@ def unused(data, lst, kind):
     return [t for t in data['titles'] if t['list'] == lst and t['type'] == kind and not t.get('used_by')]
 
 
+def check_pool(data):
+    """Refused with one sentence when the pool cannot be drawn from: a title of the old list, a title twice,
+    or a title without its fields."""
+    old = {tid: label for _, tid, label in OLD_LIST}
+    seen = set()
+    for t in data['titles']:
+        tid, name = t.get('id'), f"{t.get('label')} ({t.get('id')})"
+        if tid in old:
+            raise Refused(f"The pool holds {old[tid]} ({tid}), one of Test 1's ten titles, which a speed test never "
+                          'draws: take it out.')
+        if tid in seen:
+            raise Refused(f'The pool cannot be used: {tid} is in it twice.')
+        seen.add(tid)
+        if t.get('list') not in LISTS:
+            raise Refused(f"The pool cannot be used: {name} has the list {t.get('list')!r}, not easy or hard.")
+        if t.get('type') not in ID_SHAPE or not ID_SHAPE[t['type']].fullmatch(tid or ''):
+            raise Refused(f"The pool cannot be used: {name} has an ID that is not a film's (tt and digits) or an "
+                          f"episode's (tt and digits:season:episode) for its type {t.get('type')}.")
+        if not str(t.get('reason') or '').strip():
+            raise Refused(f'The pool cannot be used: {name} has no reason for its list.')
+
+
 def draw(data, test):
     """The tagged title list for a speed test from the pool's unused titles; marks them used in `data`.
-    Refused, with nothing marked, when a list has too few unused films or episodes."""
+    Refused, with nothing marked, when the pool cannot be used or a list has too few unused films or episodes."""
+    check_pool(data)
     short = []
     for lst in LISTS:
         missing = [f'{len(unused(data, lst, kind))} unused {NOUN[kind]} of the {count}'
