@@ -416,18 +416,18 @@ class Command(unittest.TestCase):
             self.assertIn(name, said.getvalue())
 
 
-REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-13T053200Z-baseline/')
+REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline/')  # Test 1 (#127, #150)
 
 
 @unittest.skipUnless(os.path.exists(REAL + 'raw.json'), 'the real run folder is not on this machine')
 class RealBaseline(unittest.TestCase):
     def test_the_real_run_folder_gives_the_same_verdict_as_its_fixture(self):
         index = bp.build([REAL])
-        self.assertIn('<h1>1 of 6 targets met</h1>', index)
-        self.assertIn('Limit 5.51 s: Usenet Ultimate', index)
+        self.assertIn('<h1>6 of 6 targets met</h1>', index)
+        self.assertIn('Limit 3.15 s: Usenet Ultimate', index)
         report = bp.build_report([REAL])
-        self.assertIn('<h1>1 of 6 targets met</h1>', report)
-        self.assertIn('Limit 5.51 s: Usenet Ultimate', report)
+        self.assertIn('<h1>6 of 6 targets met</h1>', report)
+        self.assertIn('Limit 3.15 s: Usenet Ultimate', report)
 
 
 if __name__ == '__main__':
