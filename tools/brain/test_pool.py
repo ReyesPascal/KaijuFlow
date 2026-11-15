@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import tempfile
 import unittest
 import urllib.parse
@@ -117,6 +118,19 @@ class PoolTest(unittest.TestCase):
         self.assertEqual(self.read(self.pool), before)
         self.assertFalse(os.path.exists(self.out))
         return code, out.strip()
+
+    def test_the_filled_pool_gives_three_speed_tests_in_a_temporary_copy(self):
+        shutil.copyfile(pool.DEFAULT_POOL, self.pool)
+        drawn = []
+        for n in (2, 3, 4):
+            out = os.path.join(self.dir.name, f'test-{n}.json')
+            code, text = self.draw(f'Test {n}', out=out)
+            self.assertEqual(code, 0, text)
+            drawn += [t[1] for t in self.read(out)]
+        self.assertEqual(len(drawn), 60)
+        self.assertEqual(len(set(drawn)), 60)
+        self.assertFalse({tid for _, tid, _ in pool.OLD_LIST} & set(drawn))
+        self.assertNotEqual(self.read(pool.DEFAULT_POOL), self.read(self.pool))  # the copy was marked, not the pool
 
     def test_the_old_lists_ten_titles_are_refused(self):
         for kind, tid, label in [('movie', 'tt1375666', 'Inception'), ('series', 'tt7366338:1:2', 'Chernobyl S01E02')]:
