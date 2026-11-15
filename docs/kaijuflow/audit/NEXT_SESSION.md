@@ -11,7 +11,7 @@ Measure and optimize KaijuFlow with AltMount before InfiniDysk (spec #58). Infin
 ## The machine
 - New machine `brain` (user `brain`) since 2026-11-12. The old machine is gone, and everything that was only on it went with it: the run records up to 2026-11-10, the old test settings and templates, and the architecture review.
 - On this machine there are only the five test containers (`kaijuflow-test`, `uu-test`, `nzbdav-test`, `altmount-addon-test`, `altmount-kf-test`). No live stack (Usenet Ultimate, NzbDAV, AltMount) exists here.
-- Docker works only through the `sudo -n -u brain -g docker ...` wrapper until the owner logs out and in (#118).
+- Docker works directly for user `brain` (no wrapper; #118 closed 2026-11-14).
 
 ## The tracker
 The work order lives in the tracker, not here. Spec #58 is the map: its sub-issues are the tickets, in order, with native blocked-by links (#125). The next step is whatever this prints, first in map order wins:
@@ -35,9 +35,6 @@ It lists #58's open sub-issues with no open blocker and no assignee, with their 
 - `healthChecks.maxConnections` is saved but not read for the number of health-check workers (`src/addon/healthCheckCoordinator.ts` takes it from `smartBatchSize` or `nzbsToInspect`); fix it before tuning it in #64.
 - The retro's tool changes (PR #121) have not yet been exercised by a real run.
 - A run's tables on the speed-check page are keyed by its run folder, so the next publish renames the 2026-11-13 run's table slots.
-
-## Waiting on the owner
-- #118 log out and in so Docker works without the wrapper.
 
 ## Where things live
 - Run records: `~/kaijuflow-notes/brain-runs/` and its `INDEX.md`; backed up with the recordings to the private repo `ReyesPascal/kaijuflow-notes` (`tools/brain/backup.sh`).
