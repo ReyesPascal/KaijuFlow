@@ -6,7 +6,6 @@
     python3 -I tools/brain/testbed.py settings [--limit 100]   every test copy's settings and the connection budget, read from its config files
     python3 -I tools/brain/testbed.py apply <copy> [--expected FILE]   back up one copy's config, write the expected settings
         (tools/brain/expected-settings.json) into it and print each setting that changed (ticket #163; the owner's go)
-
     python3 -I tools/brain/testbed.py read-settings [side]   the settings reader's output as JSON, secrets as ***
 
 Sides: nzbdav, altmount-addon, altmount-kf (Backends), uu, kaijuflow (their health/dead caches).
