@@ -4,6 +4,8 @@
     python3 -I tools/brain/testbed.py reset [side ...]    cold reset, then the emptiness check
     python3 -I tools/brain/testbed.py check [side ...]    emptiness check only
     python3 -I tools/brain/testbed.py settings [--limit 100]   every test copy's settings and the connection budget, read from its config files
+    python3 -I tools/brain/testbed.py apply <copy> [--expected FILE]   back up one copy's config, write the expected settings
+        (tools/brain/expected-settings.json) into it and print each setting that changed (ticket #163; the owner's go)
 
 Sides: nzbdav, altmount-addon, altmount-kf (Backends), uu, kaijuflow (their health/dead caches).
 Config folders (with secrets) live in TEST_DIR (default ~/kaijuflow-test), never in the repo.
