@@ -82,7 +82,8 @@ class DesignPromises(unittest.TestCase):
         dark = re.search(r'@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\) \.sl\s*\{([^}]*)\}', sl.CSS).group(1)
         forced = re.search(r':root\[data-theme="dark"\] \.sl\s*\{([^}]*)\}', sl.CSS).group(1)
         self.assertEqual(self.tokens(dark), self.tokens(forced))
-        return {'light': self.tokens(light), 'dark': {**self.tokens(light), **self.tokens(dark)}}
+        report = re.search(r'\.sl\.sl-rep\s*\{([^}]*)\}', sl.REPORT_CSS).group(1)   # the one-page report's white sheet (#133)
+        return {'light': self.tokens(light), 'dark': {**self.tokens(light), **self.tokens(dark)}, 'report': self.tokens(report)}
 
     def test_grey_lanes_are_at_least_3_to_1_against_the_paper_in_both_themes(self):
         for name, t in self.themes().items():

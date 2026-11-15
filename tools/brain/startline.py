@@ -4,8 +4,8 @@ is the one yellow lane.
 
 Pure rendering: every function takes plain numbers and words and returns HTML; nothing here reads a run folder or judges
 a target. build_page.py makes the page model from run folders (numbers through brainreport, verdicts from
-brainreport.target_results) and calls page(). The one-page report (#133) is meant to reuse the same pieces: scale/pct,
-ruler, status, target_rows and CSS.
+brainreport.target_results) and calls page(), and report() for the one-page Letter report (#133), drawn with the same pieces from the same
+model on a fixed 816 x 1056 px sheet.
 
 The mock-up is ~/kaijuflow-notes/designs/speed-check-2026-11-15/project/StartLine.dc.html; its wording rules are in
 CONTENT.md beside it. Fixed over the mock-up: a limit line is drawn over the bars (it used to hide behind KaijuFlow's
@@ -193,15 +193,23 @@ def noise_words(t):
             f"({a:.2f} and {b:.2f} s), more than that.")
 
 
-def target_rows(targets):
+def noise_short(t):
+    """The report's shorter note, 'Inside the noise (8.59 and 6.73 s)'; the report's footer says what that means."""
+    n = t.get('noise')
+    return f"Inside the noise ({n['rounds'][0]:.2f} and {n['rounds'][1]:.2f} s)" if n else ''
+
+
+def target_rows(targets, report=False):
+    """The target rows: result, target, KaijuFlow, limit, margin and, on the page, a small ruler. The report (#133) has no
+    small rulers and a shorter noise note."""
     rows = []
     for t in targets:
         mine, lim, words = target_figures(t)
         margin = f'<b>{esc(words)}</b>' if t['result'] == 'not met' else esc(words)
-        noise = noise_words(t)
+        noise = noise_short(t) if report else noise_words(t)
         if noise:
             margin += f'<small>{esc(noise)}</small>'
-        draw = (mini(t['value'], t['limit']) if t['result'] != 'not measured' and not isinstance(t['value'], tuple)
+        draw = ('' if report else mini(t['value'], t['limit']) if t['result'] != 'not measured' and not isinstance(t['value'], tuple)
                 else '<span class="sl-empty"></span>')
         rows.append(f'<li class="sl-trow"><span class="sl-ts">{status(t["result"])}</span><span class="sl-tt">{esc(t["text"])}</span>'
                     f'<span class="sl-num sl-r"><span class="sl-lab">KaijuFlow</span>{mine}</span>'
@@ -229,7 +237,8 @@ def limits_on(targets, measure, with_status=False):
 
 
 # ---------- the page ----------
-CSS = """/* Starting line (#132). Colours are tokens; the lanes are at least 3:1 against the paper in both themes. */
+# The page's CSS in three parts, so the one-page report (#133) can take the rules without the page's themes and phone layout.
+THEME = """/* Starting line (#132). Colours are tokens; the lanes are at least 3:1 against the paper in both themes. */
 :root { color-scheme: light; }
 body { margin: 0; background: #F1F3F5; }
 .sl {
@@ -245,7 +254,9 @@ body { margin: 0; background: #F1F3F5; }
   --edge: #15191E }
 :root[data-theme="dark"] { color-scheme: dark; }
 :root[data-theme="dark"] body { background: #131619; }
-.sl * { box-sizing: border-box }
+"""
+
+RULES = """.sl * { box-sizing: border-box }
 .sl .sl-wrap { max-width: 1104px; margin: 0 auto; padding: 0 max(32px, env(safe-area-inset-right, 0px)) 96px max(32px, env(safe-area-inset-left, 0px)) }
 .sl p { margin: 0 }
 .sl ol, .sl ul, .sl dl, .sl dd, .sl figure { margin: 0; padding: 0; list-style: none }
@@ -367,7 +378,9 @@ body { margin: 0; background: #F1F3F5; }
 .sl .sl-words { display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px; margin-top: 8px }
 .sl .sl-words div { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 16px; padding: 12px 0; border-top: 1px solid var(--rule) }
 .sl .sl-words dt { font-weight: 650; font-stretch: 84%; font-size: 19px }
-@media (max-width: 860px) {
+"""
+
+NARROW = """@media (max-width: 860px) {
   .sl { --nw: 0px; --gut: 4.5rem; font-size: 17px }
   .sl .sl-wrap { padding: 0 max(16px, env(safe-area-inset-right, 0px)) 64px max(16px, env(safe-area-inset-left, 0px)) }
   .sl h1 { font-size: 50px }
@@ -413,6 +426,7 @@ body { margin: 0; background: #F1F3F5; }
   .sl caption span { display: block; position: sticky; left: 0; max-width: calc(100vw - 32px) }
 }
 """
+CSS = THEME + RULES + NARROW
 
 HEAD = ('<title>KaijuFlow Speed Check</title>\n'
         '<meta name="claude:viewport-fit-sides" content="cover">\n'
@@ -528,6 +542,16 @@ def targets_section(m):
 PAIRS = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Cold list', 'cold_list'), ('Warm list', 'warm_list')]
 
 
+def change_heading(m):
+    """'Every time got faster since the baseline run', from KaijuFlow's four times in both runs (an earlier run is given)."""
+    before, kf = m['prev_kaijuflow'], m['kaijuflow']
+    faster = sum(1 for _, k in PAIRS if before[k] is not None and kf[k] is not None and kf[k] < before[k])
+    measured = sum(1 for _, k in PAIRS if before[k] is not None and kf[k] is not None)
+    since = f'the {m["prev"]["label"]}'
+    return (f'Every time got faster since {since}' if faster == measured else f'No time got faster since {since}' if not faster
+            else f'{NUMBER_WORDS[faster]} of the {NUMBER_WORDS[measured].lower()} times got faster since {since}')
+
+
 def change_section(m):
     changes = ''.join(f'<li>{esc(c)}</li>' for c in m['changes'])
     before = m['prev_kaijuflow']
@@ -535,11 +559,7 @@ def change_section(m):
         return (f'<section class="sl-sec"><h2>What changed since the last run</h2>'
                 f'<ul class="sl-changes">{changes}</ul></section>') if changes else ''
     kf = m['kaijuflow']
-    faster = sum(1 for _, k in PAIRS if before[k] is not None and kf[k] is not None and kf[k] < before[k])
-    measured = sum(1 for _, k in PAIRS if before[k] is not None and kf[k] is not None)
-    since = f'the {m["prev"]["label"]}'
-    heading = (f'Every time got faster since {since}' if faster == measured else f'No time got faster since {since}' if not faster
-               else f'{NUMBER_WORDS[faster]} of the {NUMBER_WORDS[measured].lower()} times got faster since {since}')
+    heading = change_heading(m)
     rows = []
     for label, k in PAIRS:
         lanes = [('Before', before[k], False, ''), ('This run', kf[k], True, '')]
@@ -664,3 +684,123 @@ def page(m):
     body = ''.join([header(m), verdict_section(m), targets_section(m), change_section(m), setups_section(m), titles_section(m),
                     findings_section(m), history_section(m), next_section(m), words_section(m)])
     return f'{HEAD}<style>\n{CSS}</style>\n<div class="sl"><main class="sl-wrap">\n{body}\n</main></div>\n'
+
+
+# ---------- the one-page report (#133) ----------
+# A fixed Letter sheet, 816 x 1056 px (8.5 x 11 in at 96 px to the inch), so it prints on one page with no printer margin:
+# the page's RULES at print sizes, on white paper. No dark theme and no phone layout (NARROW would fire at 816 px): it is
+# a sheet of paper, and FORMAT.md of the mock-up asks for white paper that still reads in greyscale.
+REPORT_HEAD = ('<title>KaijuFlow Speed Check report</title>\n'
+               '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+               '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;display=swap">\n')
+
+REPORT_CSS = """@page { size: letter; margin: 0 }
+html, body { margin: 0; background: #FFFFFF; color-scheme: light }
+.sl.sl-rep {
+  --paper: #FFFFFF; --ink: #15191E; --slate: #4A525C; --lane: #7D8691; --rule: #C5CAD1; --yellow: #FFD400; --on-yellow: #15191E;
+  --edge: #15191E; --nw: 136px; --gut: 64px;
+  width: 816px; height: 1056px; box-sizing: border-box; overflow: hidden; padding: 48px; margin: 0 auto;
+  display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font-family: Archivo, system-ui, sans-serif;
+  font-size: 13px; line-height: 1.3; -webkit-font-smoothing: antialiased; -webkit-print-color-adjust: exact; print-color-adjust: exact }
+.sl-rep .sl-head { padding: 0 0 8px; gap: 4px 24px }
+.sl-rep .sl-brand { font-size: 16px }
+.sl-rep .sl-meta { font-size: 13px; flex: 1 1 300px }
+.sl-rep h1 { font-size: 40px; line-height: 1 }
+.sl-rep h2 { font-size: 17px; line-height: 1.2; margin-bottom: 4px }
+.sl-rep h3 { font-size: 13px; line-height: 1.25; margin-bottom: 1px }
+.sl-rep .sl-r-top { display: grid; grid-template-columns: minmax(0, 1fr) 408px; gap: 24px; padding-top: 12px; align-items: start }
+.sl-rep .sl-lead { font-size: 14px; line-height: 1.4; margin-top: 8px }
+.sl-rep .sl-heads { column-gap: 16px }
+.sl-rep .sl-heads li { padding: 1px 0 3px; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: baseline }
+.sl-rep .sl-heads .sl-k { grid-column: 1 / -1 }
+.sl-rep .sl-heads li.sl-headnote { display: block }
+.sl-rep .sl-heads .sl-k, .sl-rep .sl-heads .sl-c { font-size: 12px; line-height: 1.25 }
+.sl-rep .sl-heads .sl-v { font-size: 22px; line-height: 1.1 }
+.sl-rep .sl-heads .sl-c svg { width: 12px; height: 12px }
+.sl-rep .sl-headnote { font-size: 12px; line-height: 1.3; padding-top: 3px }
+.sl-rep .sl-r-sec { padding-top: 10px }
+.sl-rep .sl-cap { font-size: 13px; margin-bottom: 2px; max-width: none }
+.sl-rep .sl-cap b { font-size: 13px }
+.sl-rep .sl-flag { font-size: 12px; line-height: 1.25; padding: 1px 8px 2px }
+.sl-rep .sl-flag-l { padding-left: 0 }
+.sl-rep .sl-flag-r { padding-right: 0 }
+.sl-rep .sl-st { gap: 4px }
+.sl-rep .sl-st svg { width: 13px; height: 13px }
+.sl-rep .sl-st-no { padding: 0 5px 0 4px }
+.sl-rep .sl-lanes { padding: 2px 0 }
+.sl-rep .sl-lane { padding: 1px 0 }
+.sl-rep .sl-name { font-size: 13px; padding-right: 10px }
+.sl-rep .sl-track { height: 15px }
+.sl-rep .sl-val b { font-size: 13px }
+.sl-rep .sl-val small, .sl-rep .sl-none { font-size: 12px }
+.sl-rep .sl-axis { height: 21px; font-size: 12px }
+.sl-rep .sl-tick { top: 7px }
+.sl-rep .sl-tick::before { top: -7px; height: 5px }
+.sl-rep .sl-play { top: 7px; margin-right: 10px }
+.sl-rep .sl-trow { grid-template-columns: 80px minmax(0, 1fr) 54px 54px 200px; column-gap: 12px; padding: 2px 0; line-height: 1.25 }
+.sl-rep .sl-thead { font-size: 12px; padding: 1px 0 }
+.sl-rep .sl-tm small { font-size: 12px; margin-top: 0; line-height: 1.25 }
+.sl-rep .sl-r-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start }
+.sl-rep .sl-r-two .sl-plot { --nw: 128px; --gut: 52px }
+.sl-rep .sl-changes { gap: 1px; margin: 0 0 4px }
+.sl-rep .sl-changes li { padding-left: 12px; text-indent: -12px }
+.sl-rep table { font-size: 13px }
+.sl-rep th, .sl-rep td { padding: 1px 0 1px 12px; line-height: 1.25 }
+.sl-rep th:first-child { padding-left: 0 }
+.sl-rep thead th { font-size: 12px }
+.sl-rep .sl-finds { gap: 6px 24px; margin-top: 0 }
+.sl-rep .sl-finds li { padding-top: 3px }
+.sl-rep .sl-finds p { font-size: 13px }
+.sl-rep .sl-r-next { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: baseline;
+  border-top: 1px solid var(--ink); padding-top: 6px; margin-top: 10px }
+.sl-rep .sl-r-next h2 { margin: 0 }
+.sl-rep .sl-r-foot { margin-top: auto; display: block;
+  border-top: 1px solid var(--rule); padding-top: 6px; font-size: 12px; line-height: 1.3; color: var(--slate) }
+.sl-rep .sl-r-foot b { color: var(--ink); font-weight: 600 }
+.sl-rep .sl-r-foot span { float: right; margin-left: 24px; white-space: nowrap }
+"""
+
+
+def report_change(m):
+    """What changed: the run's own changes and, against an earlier run, KaijuFlow before and after as a small table."""
+    changes = ''.join(f'<li>{esc(c)}</li>' for c in m['changes'])
+    listed = f'<ul class="sl-changes">{changes}</ul>' if changes else ''
+    before = m['prev_kaijuflow']
+    if not before:
+        return f'<div><h2>What changed since the last run</h2>{listed}</div>' if listed else '<div></div>'
+    kf = m['kaijuflow']
+    rows = [(label, secs(before[k]), secs(kf[k]), change_words(before[k], kf[k])) for label, k in PAIRS]
+    rows.append(('Top pick plays', plays_text(before['plays']), plays_text(kf['plays']),
+                 change_words(before['plays'], kf['plays'], plays=True)))
+    body = ''.join(f'<tr><th scope="row">{a}</th><td class="sl-r">{b}</td><td class="sl-r">{c}</td><td>{esc(d)}</td></tr>'
+                   for a, b, c, d in rows)
+    return (f'<div><h2>{esc(change_heading(m))}</h2>{listed}<table aria-label="KaijuFlow before and after">'
+            f'<thead><tr><th scope="col">Measure</th><th scope="col" class="sl-r">Before</th>'
+            f'<th scope="col" class="sl-r">This run</th><th scope="col">Change</th></tr></thead><tbody>{body}</tbody></table></div>')
+
+
+def report(m):
+    """The one-page Letter report (report.html) from the same model as the page: the verdict and headline numbers, the cold
+    start ruler, the targets, what changed, the warm list ruler, the findings and the next step, on one sheet."""
+    cold = figure('<b>Start, cold.</b> Seconds from pressing play until the video starts. Shorter is faster.',
+                  setup_lanes(m, 'cold_start'), limits_on(m['targets'], 'cold start', with_status=True), play_label=True)
+    warm = figure('<b>List, warm.</b> Seconds until the list of Sources arrives, asked for again.',
+                  setup_lanes(m, 'warm_list'), limits_on(m['targets'], 'warm list', with_status=True))
+    head = ('<div class="sl-trow sl-thead" aria-hidden="true"><span>Result</span><span>Target</span><span class="sl-r">KaijuFlow</span>'
+            '<span class="sl-r">Limit</span><span>Margin</span></div>')
+    finds = ''.join(f'<li>{h}{p}</li>' for h, p in m['findings'])
+    parts = [header(m),
+             f'<section class="sl-r-top"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>{headline_numbers(m)}</section>',
+             f'<section class="sl-r-sec">{cold}</section>',
+             f'<section class="sl-r-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
+             f'<div class="sl-targets">{head}<ul>{target_rows(m["targets"], report=True)}</ul></div></section>',
+             f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
+    if finds:
+        parts.append(f'<section class="sl-r-sec"><h2>What the run found</h2><ul class="sl-finds">{finds}</ul></section>')
+    if m['next']:
+        parts.append(f'<section class="sl-r-next">{m["next"][0]}<div>{m["next"][1]}</div></section>')
+    parts.append(f'<footer class="sl-r-foot"><span>Page 1 of 1</span><p><b>Start:</b> seconds from pressing play on the top '
+                 f'pick until the first bytes of video arrive. <b>List:</b> seconds from asking for a title until the list of Sources '
+                 f'arrives. Medians over {m["run"]["titles"]} titles and both rounds of each kind. '
+                 "<b>Inside the noise:</b> KaijuFlow's own two rounds differ by more than the target is met or missed by.</p></footer>")
+    return f'{REPORT_HEAD}<style>\n{RULES}{REPORT_CSS}</style>\n<div class="sl sl-rep">\n{"".join(parts)}\n</div>\n'

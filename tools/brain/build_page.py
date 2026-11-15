@@ -1,10 +1,10 @@
-"""The one builder for the KaijuFlow Speed Check page (spec #77; tickets #89, #115 and #132, the Starting line design).
+"""The one builder for the KaijuFlow Speed Check page and its one-page report (spec #77; tickets #89, #115, #132 and #133, the Starting line design).
 
     python3 -I tools/brain/build_page.py RUN_DIR [RUN_DIR ...] [--out DIR]
 
 RUN_DIR is a run folder from brainrun.py (for example ~/kaijuflow-notes/brain-runs/<run>/). A timed run folder holds
 raw.json and meta.json. Its recording folder (only meta.json) may be named too; nothing is read from it.
-Nothing is published: the script writes index.html, the whole page, into the output folder (default
+Nothing is published: the script writes index.html, the whole page, and report.html, the one-page Letter report, into the output folder (default
 ~/kaijuflow-notes/brain-1338/page/). RUNBOOK.md, "Publish the page", has the steps from there.
 
 The page is about one run: the newest timed run given, which must be finished (status "ok"), because its targets are
@@ -19,7 +19,8 @@ Where things come from, never typed into the page by hand:
   findings     findings.html in the newest run's folder, written by hand: the findings and the next step
                (docs/formats.md, "The page"). Without it the page has neither section.
 
-startline.py draws the page from the model page_model() makes; the one-page report (#133) can reuse both.
+startline.py draws both from the one model page_model() makes: page() the page, report() the report, so they show the same
+numbers and verdicts.
 """
 import argparse
 import datetime
@@ -198,21 +199,30 @@ def build(folders):
     return startline.page(page_model(find_runs(folders)))
 
 
+def build_report(folders):
+    """The one-page Letter report (report.html) as a string, from the same run folders and model as the page."""
+    return startline.report(page_model(find_runs(folders)))
+
+
 def write(folders, out=DEFAULT_OUT):
-    index = build(folders)
+    """Write index.html and report.html into out, both from one model; return {file name: html}."""
+    m = page_model(find_runs(folders))
+    files = {'index.html': startline.page(m), 'report.html': startline.report(m)}
     os.makedirs(out, exist_ok=True)
-    with open(os.path.join(out, 'index.html'), 'w') as fh:
-        fh.write(index)
-    return index
+    for name, words in files.items():
+        with open(os.path.join(out, name), 'w') as fh:
+            fh.write(words)
+    return files
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description='Build the Speed Check page (index.html) from run folders. Does not publish.')
+    ap = argparse.ArgumentParser(description='Build the Speed Check page (index.html) and its one-page report (report.html) '
+                                             'from run folders. Does not publish.')
     ap.add_argument('runs', nargs='+', help='run folders, e.g. ~/kaijuflow-notes/brain-runs/<run>/')
     ap.add_argument('--out', default=DEFAULT_OUT, help='output folder (default %(default)s)')
     a = ap.parse_args(argv)
-    index = write(a.runs, a.out)
-    print(f'wrote {os.path.join(a.out, "index.html")} ({len(index)} bytes)')
+    for name, words in write(a.runs, a.out).items():
+        print(f'wrote {os.path.join(a.out, name)} ({len(words)} bytes)')
 
 
 if __name__ == '__main__':

@@ -211,6 +211,16 @@ class AgainstAnEarlierRun(unittest.TestCase):
         self.assertIn('Compared with the baseline run of 13 November 2026.', index)
         self.assertIn('<td class="sl-r">not judged</td>', section(index, 'Every run so far'))
 
+    def test_the_report_has_kaijuflow_before_and_after_in_a_table(self):
+        report = bp.build_report([self.earlier, self.later])
+        changed = section(report, 'got faster since')
+        self.assertIn('<h2>One of the four times got faster since the baseline run</h2>', changed)
+        self.assertIn('<li>Health-check connections: 12 -&gt; 20 (kaijuflow).</li>', changed)
+        rows = [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', changed)]
+        self.assertEqual(rows, ['Cold start 7.73 s 6.73 s 1.00 s faster (13%)', 'Warm start 0.18 s 0.18 s No change',
+                                'Cold list 9.73 s 9.73 s No change', 'Warm list 3.46 s 3.46 s No change',
+                                'Top pick plays 39 of 40 39 of 40 No change'])
+
 
 class Refusals(unittest.TestCase):
     def test_a_newest_run_that_did_not_finish_is_refused_with_the_reason(self):
@@ -240,11 +250,18 @@ FINDINGS = """<h3>Game of Thrones is the slow title.</h3>
 
 
 class Findings(unittest.TestCase):
-    def build(self, words):
+    def build(self, words, build=bp.build):
         folder = copy_run(tempdir(self))
         with open(os.path.join(folder, bp.FINDINGS_FILE), 'w') as f:
             f.write(words)
-        return bp.build([folder])
+        return build([folder])
+
+    def test_the_report_has_the_findings_and_the_next_step_too(self):
+        report = self.build(FINDINGS, bp.build_report)
+        found = section(report, 'What the run found')
+        self.assertEqual(re.findall(r'<li><h3>(.*?)</h3>', found), ['Game of Thrones is the slow title.', 'Inception is hit-and-miss.'])
+        nxt = section(report, 'Next: tuning run 1')
+        self.assertIn('<p>Health-check connections raised from 12 to 20.</p>', nxt)
 
     def test_findings_html_gives_the_findings_and_the_next_step(self):
         index = self.build(FINDINGS)
@@ -294,16 +311,85 @@ class PageRules(unittest.TestCase):
             self.assertEqual(len(re.findall(f'<{tag}[ >]', self.index)), self.index.count(f'</{tag}>'), tag)
 
 
+class Report(unittest.TestCase):
+    """The one-page Letter report (#133): the same run, numbers and verdicts as the page, on one sheet."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as root:
+            folders = [copy_run(root), make_record(root)]
+            cls.index, cls.report = bp.build(folders), bp.build_report(folders)
+
+    def verdicts(self, page):
+        """[(result, target)] of a page's target rows, in order."""
+        return [(text(st), text(tt)) for st, tt in
+                re.findall(r'<li class="sl-trow"><span class="sl-ts">(.*?)</span><span class="sl-tt">(.*?)</span>', page)]
+
+    def test_the_report_and_the_page_show_the_same_verdicts(self):
+        with open(os.path.join(BASELINE, 'raw.json')) as f:
+            results = br.target_results(json.load(f)['visits'])
+        expected = [(verdict['result'].capitalize(), target) for target, _, verdict in results]
+        self.assertEqual(self.verdicts(self.report), expected)
+        self.assertEqual(self.verdicts(self.report), self.verdicts(self.index))
+        self.assertIn('<h1>1 of 6 targets met</h1>', self.report)
+
+    def test_the_headline_numbers_are_the_pages(self):
+        heads = re.search(r'<ul class="sl-heads">.*?</ul>', self.report).group(0)
+        self.assertEqual(heads, re.search(r'<ul class="sl-heads">.*?</ul>', self.index).group(0))
+        self.assertIn('Cold start 6.73 s Warm start 0.18 s Warm list 3.46 s Top pick plays 39 of 40', text(heads))
+
+    def test_the_cold_start_and_warm_list_rulers_carry_every_setup_and_their_limits(self):
+        cold, warm = re.findall(r'<figure class="sl-fig".*?</figure>', self.report)
+        self.assertEqual(lanes(cold), [('AltMount direct', '3.70 s'), ('Usenet Ultimate', '5.51 s'),
+                                       ('KaijuFlow, one page', '5.53 s'), ('KaijuFlow', '6.73 s')])
+        self.assertEqual([text(f) for f in re.findall(r'<p class="sl-flag.*?</p>', cold)],
+                         ['Limit 5.51 s: Usenet Ultimate Not met, 1.22 s over',
+                          'Limit 4.70 s: AltMount direct + 1 s Not met, 2.03 s over'])
+        self.assertEqual(lanes(warm), [('AltMount direct', '0.79 s'), ('KaijuFlow, one page', '3.16 s'),
+                                       ('KaijuFlow', '3.46 s'), ('Usenet Ultimate', '4.08 s')])
+        self.assertEqual([text(f) for f in re.findall(r'<p class="sl-flag.*?</p>', warm)], ['Limit 4.70 s Met, 1.24 s to spare'])
+
+    def test_the_setups_are_named_in_the_pages_words(self):
+        words = text(self.report)
+        self.assertIn('AltMount direct', words)
+        for avoid in ("AltMount's own addon", 'addon', 'altmount-addon', 'kaijuflow-1page'):
+            self.assertNotIn(avoid, words)
+
+    def test_without_an_earlier_run_it_says_what_meta_json_says_changed(self):
+        self.assertIn('<li>No earlier run to compare with: this is the first one.</li>', self.report)
+
+    def test_the_footer_says_what_start_and_list_mean_and_that_it_is_one_page(self):
+        foot = text(re.search(r'<footer.*?</footer>', self.report).group(0))
+        self.assertIn('Start: seconds from pressing play on the top pick until the first bytes of video arrive.', foot)
+        self.assertIn('List: seconds from asking for a title until the list of Sources arrives.', foot)
+        self.assertIn('Medians over 10 titles and both rounds of each kind.', foot)
+        self.assertIn('Page 1 of 1', foot)
+        self.assertIn('Inside the noise: KaijuFlow\'s own two rounds differ by more than the target is met or missed by.', foot)
+
+    def test_a_target_inside_the_noise_says_so_with_both_rounds(self):
+        row = target_row(self.report, 'Cold start no slower than Usenet Ultimate')
+        self.assertEqual(row, 'Not met Cold start no slower than Usenet Ultimate KaijuFlow 6.73 s Limit 5.51 s 1.22 s over '
+                              'Inside the noise (8.59 and 6.73 s)')
+
+    def test_it_is_one_letter_sheet(self):
+        self.assertRegex(self.report, r'@page \{ size: letter; margin: 0 \}')
+        sheet = re.search(r'\.sl\.sl-rep \{([^}]*)\}', self.report).group(1)
+        for rule in ('width: 816px', 'height: 1056px', 'overflow: hidden', 'box-sizing: border-box'):
+            self.assertIn(rule, sheet)
+        self.assertNotIn('@media (max-width: 860px)', self.report)   # the page's phone layout would fire at 816 px
+
+
 class Command(unittest.TestCase):
-    def test_writes_index_html_into_the_output_folder(self):
+    def test_writes_the_page_and_the_report_into_the_output_folder(self):
         root = tempdir(self)
         out = os.path.join(root, 'page')
         with contextlib.redirect_stdout(io.StringIO()) as said:
             bp.main([copy_run(root), make_record(root), '--out', out])
-        self.assertEqual(os.listdir(out), ['index.html'])
-        with open(os.path.join(out, 'index.html')) as f:
-            self.assertIn('<h1>1 of 6 targets met</h1>', f.read())
-        self.assertIn('index.html', said.getvalue())
+        self.assertEqual(sorted(os.listdir(out)), ['index.html', 'report.html'])
+        for name in ('index.html', 'report.html'):
+            with open(os.path.join(out, name)) as f:
+                self.assertIn('<h1>1 of 6 targets met</h1>', f.read())
+            self.assertIn(name, said.getvalue())
 
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-13T053200Z-baseline/')
@@ -315,6 +401,9 @@ class RealBaseline(unittest.TestCase):
         index = bp.build([REAL])
         self.assertIn('<h1>1 of 6 targets met</h1>', index)
         self.assertIn('Limit 5.51 s: Usenet Ultimate', index)
+        report = bp.build_report([REAL])
+        self.assertIn('<h1>1 of 6 targets met</h1>', report)
+        self.assertIn('Limit 5.51 s: Usenet Ultimate', report)
 
 
 if __name__ == '__main__':
