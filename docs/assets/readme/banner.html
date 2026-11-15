@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<style>
+:root{--paper:#F1F3F5;--ink:#15191E;--slate:#4A525C;--rule:#C5CAD1;--yellow:#FFD400;--edge:#15191E}
+.dark{--paper:#131619;--ink:#E6E9EC;--slate:#A3ACB6;--rule:#353C44}
+html,body{margin:0}
+#b{width:1200px;height:380px;box-sizing:border-box;padding:52px 64px 0;background:var(--paper);color:var(--ink);font-family:Archivo,sans-serif;position:relative;overflow:hidden}
+h1{margin:0;font-size:104px;line-height:1;font-weight:800;font-stretch:125%;letter-spacing:-0.02em}
+p{margin:14px 0 0;font-size:27px;font-weight:500;color:var(--slate);font-stretch:100%}
+.ruler{position:absolute;left:64px;right:64px;bottom:44px;height:74px}
+.start{position:absolute;left:0;top:0;width:4px;height:46px;background:var(--ink)}
+.lane{position:absolute;left:4px;top:12px;height:22px;width:62%;background:var(--yellow);box-shadow:inset 0 0 0 2px var(--edge)}
+.play{position:absolute;left:calc(62% + 4px);top:0;width:4px;height:46px;background:var(--ink)}
+.tri{position:absolute;left:calc(62% + 20px);top:9px;width:0;height:0;border-top:14px solid transparent;border-bottom:14px solid transparent;border-left:22px solid var(--ink)}
+.lbl{position:absolute;left:calc(62% + 54px);top:6px;font-size:24px;font-weight:600;white-space:nowrap}
+.axis{position:absolute;left:0;right:0;top:58px;border-top:2px solid var(--ink)}
+.tick{position:absolute;top:-10px;width:2px;height:8px;background:var(--ink)}
+</style></head><body>
+<div id="b"><h1>KaijuFlow</h1><p>Usenet streaming, checked first: a working video on the first press.</p>
+<div class="ruler"><div class="start"></div><div class="lane"></div><div class="play"></div><div class="tri"></div><div class="lbl">video</div>
+<div class="axis"><div class="tick" style="left:0%"></div><div class="tick" style="left:10%"></div><div class="tick" style="left:20%"></div><div class="tick" style="left:30%"></div><div class="tick" style="left:40%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:60%"></div><div class="tick" style="left:70%"></div><div class="tick" style="left:80%"></div><div class="tick" style="left:90%"></div><div class="tick" style="left:100%"></div></div></div></div></body></html>
