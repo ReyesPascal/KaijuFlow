@@ -1372,6 +1372,33 @@ class FinalBarTest(unittest.TestCase):
         self.assertEqual(self.bar(*SLOWER, fail('kaijuflow', 'Matrix'), video('kaijuflow', 'easy', 0.5)),
                          (br.NOT_MET, {'easy': br.NOT_MET, 'hard': br.MET}))
 
+    def test_the_check_prints_the_targets_per_list_the_outcome_and_the_final_bar_apart_none_counted_towards_usable(self):
+        folder = speed_run_folder(self, fail('altmount-addon', 'Old Film'), video('altmount-addon', 'hard', 2.0),
+                                  video('kaijuflow', 'easy', 0.8, 'warm'))
+        usable, lines = runcheck.check_run(folder)
+        self.assertTrue(usable, lines)  # every target, the outcome and the final bar leave the baseline verdict alone
+        start = lines.index('Speed test targets, judged per list (an untagged run is judged on the six of before):')
+        fails = 'KaijuFlow fails no more titles than any other setup, and none on the easy list'
+        cold = "KaijuFlow's median cold title to video is no slower than any setup with as many fails or more"
+        self.assertEqual(lines[start + 1:start + 10], [
+            f'Target, easy list: {fails}. Measured: KaijuFlow 0 of 8, Usenet Ultimate 0 of 8, AltMount direct 0 of 8. Met.',
+            f'Target, easy list: {cold}. Measured: KaijuFlow 3.50 s with 0 fails, Usenet Ultimate 3.50 s with 0 fails, '
+            'AltMount direct 3.50 s with 0 fails. Met.',
+            'Target, easy list: Warm title to video under about 1 s. Measured: KaijuFlow 0.80 s. Met.',
+            f'Target, hard list: {fails}. Measured: KaijuFlow 0 of 8, Usenet Ultimate 0 of 8, AltMount direct 1 of 8. Met.',
+            f'Target, hard list: {cold}. Measured: KaijuFlow 3.50 s with 0 fails, Usenet Ultimate 3.50 s with 0 fails, '
+            'AltMount direct 2.00 s with 1 fail (more fails: not held against it). Met.',
+            'Target, hard list: Warm title to video under about 1 s. Measured: KaijuFlow 3.50 s. Not met (2.50 s slower).',
+            '5 of 6 targets met.',
+            'Outcome on the hard list: KaijuFlow fails fewer titles than AltMount direct (0 of 8 against 1 of 8), '
+            'so tune its speed.',
+            'Final bar (shown apart from the targets, not counted towards usable): On both lists, KaijuFlow has the fewest '
+            'fails, and the fastest title to video among setups with as few fails. Not met. Easy list: not met, Usenet '
+            "Ultimate fails as few titles and is as fast or faster (cold title to video 3.50 s against KaijuFlow's 3.50 s). "
+            "Hard list: not met, Usenet Ultimate fails as few titles and is as fast or faster (cold title to video 3.50 s "
+            "against KaijuFlow's 3.50 s)."])
+        self.assertFalse([x for x in lines if x.startswith('Target: ')], lines)  # not the six of before
+
     def test_a_faster_setup_with_more_fails_does_not_cost_kaijuflow_the_bar(self):
         self.assertEqual(self.bar(*SLOWER, fail('uu', 'Old Film'), video('uu', 'hard', 1.0)),
                          (br.MET, {'easy': br.MET, 'hard': br.MET}))

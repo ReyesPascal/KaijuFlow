@@ -1283,9 +1283,35 @@ def target_lines(run, path=TARGETS_FILE):
     if why:
         return [f'Targets: not judged: {why}.']
     try:
+        if tagged(run['visits']):
+            return speed_test_lines(speed_test_judgement(run['visits'], path))
         return [f'Target: {t}. Measured: {m}. {verdict_text(v)}.' for t, m, v in target_results(run['visits'], path)]
     except ValueError as e:
         return [f'Targets: not judged ({e}).']
+
+
+SPEED_TARGETS_HEAD = 'Speed test targets, judged per list (an untagged run is judged on the six of before):'
+FINAL_BAR_HEAD = 'Final bar (shown apart from the targets, not counted towards usable): '
+
+
+def met_count(rows):
+    """'5 of 6 targets met.' for a speed test's target rows (speed_test_judgement); the final bar is never one of them."""
+    return f"{sum(1 for r in rows if r['verdict']['result'] == MET)} of {len(rows)} targets met."
+
+
+def final_bar_text(bar):
+    """The final bar in one sentence after its text: its result, then each list's result and why."""
+    return (f"{bar['target']} {bar['verdict']['result'].capitalize()}. " +
+            ' '.join(f"{x.capitalize()} list: {r['result']}, {r['why']}." for x, r in bar['lists'].items()))
+
+
+def speed_test_lines(judgement):
+    """The check's lines of a tagged run's judgement (speed_test_judgement): one line per target and list, how many are
+    met, the outcome line, and the final bar on a line of its own."""
+    rows = judgement['targets']
+    return ([SPEED_TARGETS_HEAD] +
+            [f"Target, {r['list']} list: {r['target']}. Measured: {r['measured']}. {verdict_text(r['verdict'])}." for r in rows] +
+            [met_count(rows), judgement['outcome']['text'], FINAL_BAR_HEAD + final_bar_text(judgement['final_bar'])])
 
 
 TARGETS_HELP = (
