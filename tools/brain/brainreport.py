@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import common  # noqa: E402
+import indexer_standin  # noqa: E402
 
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
@@ -51,8 +52,10 @@ COLUMN_HELP = {
                 'indexer took when it was recorded; indexers are asked at the same time, so the slowest one counts). '
                 '"-" means no stand-in log line was matched to the visit; 0 means the replay wait was off.',
     "Side's own work": 'Search minus Indexers: what the side itself added to the list time (health checks, merging, its own requests).',
-    'Top pick plays': 'titles where the first Source in the list played, out of the titles in the round. A top pick that failed '
-                      'only because a request was not recorded is left out of both numbers (see Not recorded).',
+    'Top pick plays': 'titles where the first Source in the list played on the first try, out of the titles in the round. A '
+                      'top pick that failed only because a request was not recorded is left out of both numbers (see Not recorded).',
+    'Fallback': 'titles where video arrived only after the top pick\'s own import failed (the side fell back to another Source '
+                'or to a file it already held). They count as not played.',
     'Indexer limit': 'failures caused by an indexer saying its limit was reached (such a run is stopped, so this '
                      'should stay 0 in a finished run).',
     'Backend rejection': 'failures where the Backend (AltMount or NzbDAV) refused or could not import the NZB, or took the import '
@@ -68,11 +71,12 @@ COLUMN_HELP = {
             'did not play it is the size the side states in its list, marked "listed": the indexer\'s figure for the post, '
             'not the measured size of the file (KaijuFlow counts it in GB of 1024 x 1024 x 1024 bytes).',
     'Sources': 'how many Sources the side listed.',
-    'Result': '"plays" when the top pick delivered video, otherwise the failure kind and a short note.',
+    'Result': '"plays" when the top pick delivered video on the first try; "played after N fallbacks" when video arrived only '
+              'after N imports failed, the top pick\'s own among them; otherwise the failure kind and a short note.',
 }
 SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetch', 'Import', 'First byte']
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
-FAIL_COLS = ['Side', 'Run', 'Top pick plays'] + [c for _, c in CAUSES]
+FAIL_COLS = ['Side', 'Run', 'Top pick plays', 'Fallback'] + [c for _, c in CAUSES]
 TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Result']
 
 # --------------------------------------------------------------------------- parsing
@@ -362,9 +366,9 @@ def top_pick(v):
 
     name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
     Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
-    the failure video, whose size says nothing about the Source). listed: the size the list text states, or None. KaijuFlow,
-    Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05
-    GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
+    the failure video, and a fallback another file, whose size says nothing about the Source). listed: the size the list
+    text states, or None. KaijuFlow, Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01
+    GB 🔊 DTS-HD MA ...", "... 💾 4.05 GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
     from the 140 characters of text it kept.
     """
     tries = v.get('tries') or []
@@ -373,8 +377,119 @@ def top_pick(v):
     first = tries[0]
     text = str(first.get('title') or '')
     return {'name': v.get('played_source') or text or None,
-            'size': first.get('size') if first.get('plays') and first.get('size') else None,
+            'size': first.get('size') if first.get('plays') and first.get('size') and not fallbacks(v) else None,
             'listed': first.get('listed_size') or common.listed_size(text)}
+
+
+IMPORT_TAG = re.compile(r'-[0-9a-f]{16}$')  # AltMount names an import after the release, with 16 hex digits after it
+
+
+def _release(name):
+    """An import's name as a release name to match: without '.nzb' (NzbDAV) or AltMount's tag, run together (`_norm`)."""
+    return _norm(IMPORT_TAG.sub('', str(name or '').removesuffix('.nzb')))
+
+
+def pick_imports(v):
+    """The imports of a visit's top pick: those whose release name is in the top pick's name (KaijuFlow's own log) or in the
+    text its list showed. When none is, the visit's first import, unless KaijuFlow's log names the top pick: KaijuFlow and
+    Usenet Ultimate also queue the next Sources of the list, so another import of theirs is not the top pick's."""
+    imports = v.get('imports') or []
+    tries = v.get('tries') or []
+    names = [_norm(x) for x in (v.get('played_source'), tries[0].get('title') if tries else None) if x]
+    mine = [i for i in imports if (r := _release(i.get('name'))) and any(r in n for n in names)]
+    return mine if mine or v.get('played_source') else imports[:1]
+
+
+def fallbacks(v):
+    """How many imports failed in a visit that served video only after its top pick's own import failed (a fallback, such as
+    AltMount's max_fallback_releases); 0 for a first-try play and for a visit that served no video."""
+    if not v.get('ok') or not any(i.get('ok') is False for i in pick_imports(v)):
+        return 0
+    return sum(1 for i in v.get('imports') or [] if i.get('ok') is False)
+
+
+def plays(v):
+    """Whether a visit's top pick played on the first try: video arrived, and not after a fallback (#143)."""
+    return bool(v.get('ok')) and not fallbacks(v)
+
+
+RESOLUTIONS = [('2160p', '2160p|4k|uhd'), ('1080p', '1080p|fhd'), ('720p', '720p')]  # first match wins: "UHD" is no "HD"
+
+
+def resolution(text):
+    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none."""
+    for res, words in RESOLUTIONS:
+        if re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', str(text or '').lower()):
+            return res
+    return None
+
+
+def _rule_break(v, rules):
+    """Why a visit's top pick is outside the like-for-like rules (#142), or None: a disc image, or a served file over the size
+    cap of its kind. The served size is held to the cap the indexer's post size is held to; the file is never larger than
+    its post, so a file over the cap means its post was over it too. Season packs have no cap (indexer_standin.keep_post)."""
+    pick = top_pick(v)
+    kind = {'movie': 'film', 'series': 'episode'}.get(v.get('kind'))
+    if not pick or not rules or not kind or indexer_standin.keep_post(pick['name'], pick['size'], kind, rules):
+        return None
+    if rules['disc'].search(str(pick['name'] or '')):
+        return 'a disc image'
+    return f"{pick['size'] / 1e9:.1f} GB served, over the cap for {'a film' if kind == 'film' else 'an episode'} " \
+           f"({rules[kind] / 1e9:.1f} GB)"
+
+
+def unlike_titles(visits):
+    """{side: {title: why}}: the titles whose top picks are not like for like between KaijuFlow and another setup (not a
+    KaijuFlow variant such as one page per indexer, which no target is held against), with the first round that shows it.
+    Not like for like: in one round the two top picks state different resolutions, or either one breaks the like-for-like
+    rules (_rule_break). A title is left out of judging KaijuFlow against that side (#143)."""
+    try:
+        rules = indexer_standin.like_for_like_rules()
+    except ValueError:  # the expected settings file cannot be used: the preflight says so; resolutions are still compared
+        rules = None
+    by = {(v['side'], v['title'], _run_label(v['phase'], v['round'])): v for v in visits if v.get('tries')}
+    labels = [_run_label(phase, rnd) for phase, rnd in RUN_ORDER]
+    me = SIDE_NAMES[JUDGED]
+    out = {}
+    for side in [s for s in SIDE_NAMES if not s.startswith(JUDGED)]:
+        for title in dict.fromkeys(v['title'] for v in visits):
+            for label in labels:
+                mine, theirs = by.get((JUDGED, title, label)), by.get((side, title, label))
+                if not mine or not theirs:
+                    continue
+                a, b = (resolution((top_pick(x) or {}).get('name')) for x in (mine, theirs))
+                if a and b and a != b:
+                    why = f"{me}'s top pick is {a}, {SIDE_NAMES[side]}'s is {b} ({label})"
+                else:
+                    broken = [(x, r) for x in (mine, theirs) for r in [_rule_break(x, rules)] if r]
+                    why = broken and (f"{SIDE_NAMES[broken[0][0]['side']]}'s top pick breaks the like-for-like rules "
+                                      f"({label}): {broken[0][1]}")
+                if why:
+                    out.setdefault(side, {})[title] = why
+                    break
+    return out
+
+
+LIKE_FOR_LIKE_HELP = (
+    "Each title's top pick of every setup is compared with KaijuFlow's, round by round: the resolution its name or list "
+    'states, and whether its served file keeps the like-for-like rules (the size cap of its kind, no disc images; '
+    'tools/brain/docs/rules.md, "Like for like"). Two files of one resolution inside the cap count as like for like, '
+    'whatever their sizes. A title that is not is left out of the targets held against that setup.')
+
+
+def like_for_like_lines(visits):
+    """The like-for-like lines the report and the check both show: one line that every title is like for like, or a head
+    line and one line per setup and title that is not; one line instead when no round holds top picks of KaijuFlow and
+    another setup (a run of KaijuFlow alone, or a record that kept no tries)."""
+    def rounds(keep):
+        return {(v['title'], v['phase'], v['round']) for v in visits if keep(v['side']) and v.get('tries')}
+    if not rounds(lambda s: s == JUDGED) & rounds(lambda s: not s.startswith(JUDGED)):
+        return [f'No title has top picks of {SIDE_NAMES[JUDGED]} and another setup to compare, so like for like is not judged.']
+    unlike = unlike_titles(visits)
+    if not unlike:
+        return ["Every title's top picks are like for like: the same resolution, inside the size caps, no disc images."]
+    return [f'Not like for like with {SIDE_NAMES[JUDGED]}, so left out of the targets against that setup:'] + [
+        f'- {SIDE_NAMES[side]}, {title}: {why}.' for side, titles in unlike.items() for title, why in titles.items()]
 
 
 def _pick_size(pick):
@@ -500,8 +615,10 @@ def attribute_steps(visit, steps, end=None):
 
 
 def classify_failure(v):
-    if v.get('ok'):
+    if plays(v):
         return None
+    if v.get('ok'):
+        return 'fallback'
     if v.get('limit'):
         return 'indexer_limit'
     if v.get('not_recorded'):  # a miss that can be the cause (see assign_standin): not a verdict on the side or the Source
@@ -734,13 +851,13 @@ def _plays_text(plays):
 def _time(visits, side, phase, what, rnd=None):
     """Median start (top picks that played) or list time (every visit) of one side: both rounds of a phase, or one round."""
     vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])]
-    return median([v.get('start_s') for v in vs if v.get('ok')] if what == 'start' else [v.get('list_s') for v in vs])
+    return median([v.get('start_s') for v in vs if plays(v)] if what == 'start' else [v.get('list_s') for v in vs])
 
 
 def _plays(visits, side, phase=None, rnd=None):
     """(top picks that played, top picks counted) of one side: every round, or one round."""
     vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])])
-    return sum(1 for v in vs if v.get('ok')), len(vs)
+    return sum(1 for v in vs if plays(v)), len(vs)
 
 
 def side_time(visits, side, phase, what):
@@ -780,8 +897,15 @@ def verdict_text(verdict):
     return text
 
 
-def _measure_target(visits, t):
-    """(measured values, verdict) of one entry of the targets file."""
+def _measure_target(visits, t, unlike=None):
+    """(measured values, verdict) of one entry of the targets file. A target held against a side leaves out the titles that
+    are not like for like between KaijuFlow and that side (`unlike`, as unlike_titles gives it), and says how many."""
+    left_out = (unlike or {}).get(t.get('against'), {})
+    if left_out:
+        visits = [v for v in visits if v['title'] not in left_out]
+        n = len(left_out)
+        measured, verdict = _measure_target(visits, t)
+        return f"{measured} ({n} title{'' if n == 1 else 's'} left out: not like for like)", verdict
     me, margin = SIDE_NAMES[JUDGED], t['margin']
     if t['measure'] == 'plays per round':  # every round the run holds, cold and warm
         rounds = {phase: [x for p, r in RUN_ORDER if p == phase for x in [_plays(visits, JUDGED, phase, r)] if x[1]]
@@ -855,7 +979,8 @@ def load_targets(path=TARGETS_FILE):
 
 def target_results(visits, path=TARGETS_FILE):
     """[(target, measured values, verdict)] for every entry of the targets file, in its order."""
-    return [(t['target'],) + _measure_target(visits, t) for t in load_targets(path)]
+    unlike = unlike_titles(visits)
+    return [(t['target'],) + _measure_target(visits, t, unlike) for t in load_targets(path)]
 
 
 def targets_not_judged(status):
@@ -963,6 +1088,7 @@ def render_report(run, changes, opening=None):
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
              "\"-\" means that side does not show the step from outside.", ''] + targets_section(run) + [
+             '## Like for like', ''] + like_for_like_lines(run['visits']) + ['', LIKE_FOR_LIKE_HELP, '',
              '## What changed since the last run', ''] + [f'- {c}' for c in changes] + ['']
     if run.get('standin_misses'):
         lines += [f"Warning: the indexer stand-in had {run['standin_misses']} requests it had not recorded (a side asked "
@@ -979,14 +1105,14 @@ def render_report(run, changes, opening=None):
             ms = [visit_metrics(v) for v in vs]
             lab = _run_label(phase, rnd)
             md = lambda k: _cell(median([m[k] for m, v in zip(ms, vs)  # noqa: E731
-                                         if v.get('ok') or k in ('search_s', 'indexer_s', 'own_s')]))
+                                         if plays(v) or k in ('search_s', 'indexer_s', 'own_s')]))
             shared.append([SIDE_NAMES[s], lab, md('search_s'), md('indexer_s'), md('own_s'), md('nzb_fetch_s'), md('import_s'),
                            md('start_s')])
             extra.append([SIDE_NAMES[s], lab, md('indexer_wait_s'), md('health_s'), md('unscramble_s'), md('probe_s')])
             causes = [classify_failure(v) for v in vs]
             counted = _counted(vs)
-            fail.append([SIDE_NAMES[s], lab, f"{sum(1 for v in counted if v.get('ok'))} of {len(counted)}"]
-                        + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
+            fail.append([SIDE_NAMES[s], lab, f"{sum(1 for v in counted if plays(v))} of {len(counted)}",
+                         sum(1 for c in causes if c == 'fallback')] + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
     lines += ['## Steps every side shares', ''] + _table(SHARED_COLS, shared) + [''] + _defs(SHARED_COLS) + ['']
     lines += ['## Extras (steps only some sides have)', ''] + _table(EXTRA_COLS, extra) + [''] + _defs(EXTRA_COLS[2:]) + ['']
     lines += ['## Failures', ''] + _table(FAIL_COLS, fail) + [''] + _defs(FAIL_COLS[2:]) + ['']
@@ -999,7 +1125,7 @@ def render_report(run, changes, opening=None):
                         continue
                     m = visit_metrics(v)
                     cause = classify_failure(v)
-                    res = 'plays' if v.get('ok') else failed_result(v, cause)
+                    res = 'plays' if plays(v) else failed_result(v, cause)
                     rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
                                 + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
     lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
@@ -1050,7 +1176,11 @@ def visit_wall_s(v):
 
 
 def failed_result(v, cause):
-    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took."""
+    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took.
+    A fallback says how many imports failed before the video arrived."""
+    if cause == 'fallback':
+        n = fallbacks(v)
+        return f"played after {n} fallback{'' if n == 1 else 's'}"
     text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
     took = visit_wall_s(v)
     return text if took is None else f'{text} (the whole visit took {took:.1f} s)'

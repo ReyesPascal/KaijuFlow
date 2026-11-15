@@ -81,12 +81,12 @@ def check_run(run_dir):
     absent = [s for s in sides if s not in seen]
     if absent and status == 'ok':
         reasons.append('planned side absent: ' + ', '.join(_side(s) for s in absent))
-    # top picks played per side, cold and warm (a top pick "played" when its visit is ok)
+    # top picks played per side, cold and warm (a top pick "played" when its visit served video on the first try, br.plays)
     for s in sides:
         parts = []
         for phase in ('cold', 'warm'):
             vs = [v for v in visits if v['side'] == s and v['phase'] == phase]
-            parts.append(f"{phase} {sum(1 for v in vs if v.get('ok'))} of {len(vs)}")
+            parts.append(f"{phase} {sum(1 for v in vs if br.plays(v))} of {len(vs)}")
         lines.append(f"Top picks played, {_side(s)}: " + ', '.join(parts) + '.')
     # missed requests: requests the indexer stand-in did not hold, per round and side
     missed = [v for v in visits if v.get('misses')]
@@ -130,6 +130,11 @@ def check_run(run_dir):
             lines.append(f"- {_visit_name(v)}: {cause}" + (' (a missed request can be the cause)' if v.get('not_recorded') else ''))
     else:
         lines.append('Failures: none.')
+    fell_back = [v for v in visits if br.fallbacks(v)]
+    if fell_back:
+        lines.append(f'Played after a fallback ({len(fell_back)}), not counted as played:')
+        lines += [f'- {_visit_name(v)}: {br.failed_result(v, "fallback")}' for v in fell_back]
+    lines += br.like_for_like_lines(visits)
     if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
         lines += br.target_lines({'status': status, 'visits': visits})
     if reasons:
