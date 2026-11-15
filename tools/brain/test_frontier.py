@@ -25,7 +25,7 @@ SAMPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2
 class FakeGh:
     """Answers `gh api` for one parent's sub-issues and refuses anything else, as gh does (a 404 for another issue)."""
 
-    def __init__(self, issues, parent=58):
+    def __init__(self, issues, parent=frontier.DEFAULT_PARENT):
         self.issues, self.parent = issues, parent  # a list of entries, or the raw text gh printed
 
     def __call__(self, args):
@@ -54,7 +54,7 @@ def numbers(output):
 
 class FrontierTest(unittest.TestCase):
     def test_reads_a_captured_gh_answer(self):
-        """#58's sub-issues as gh printed them on 2026-11-14 (bodies, repository and reactions removed)."""
+        """The old map #58's sub-issues as gh printed them on 2026-11-14 (bodies, repository and reactions removed), served as the default parent's."""
         with open(SAMPLE) as f:
             code, out = run([], FakeGh(f.read()))
         self.assertEqual(code, 0)
@@ -96,7 +96,7 @@ class FrontierTest(unittest.TestCase):
 
     def test_says_so_when_nothing_can_start(self):
         code, out = run([], FakeGh([sub_issue(64, blocked_by=2), sub_issue(63, state='closed')]))
-        self.assertEqual((code, out), (0, 'Nothing can start: #58 has no open sub-issue without a blocker or an assignee.\n'))
+        self.assertEqual((code, out), (0, f'Nothing can start: #{frontier.DEFAULT_PARENT} has no open sub-issue without a blocker or an assignee.\n'))
 
     def test_exits_1_with_gh_message_when_gh_fails(self):
         err = io.StringIO()
