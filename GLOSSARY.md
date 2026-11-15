@@ -48,6 +48,10 @@ _Avoid_: reorder, repair, fix names
 KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (setting `autoQueueMode`: the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
 _Avoid_: pre-warm, preload, prefetch
 
+**Disc image**:
+A Source whose content is a disc image file (`.iso`, `.img`) that the Backends cannot play; the health check blocks it.
+_Avoid_: ISO release, Blu-ray rip
+
 ### Measuring
 
 **Cold start**:
