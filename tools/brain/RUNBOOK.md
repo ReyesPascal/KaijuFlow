@@ -29,6 +29,8 @@ Every command runs from the repo root. Long ones: shell background mode with a h
 
 Other commands: `smoke --store <EMPTY folder> --list smoke` (reachability only), `python3 -I tools/brain/testbed.py settings|status|stop`.
 
+What to work on next: `python3 -I tools/brain/frontier.py` prints the tickets that can start now, the open sub-issues of the map #58 with no open blocker and no assignee, in map order, each with all its labels. It reads the tracker only.
+
 ## Flags that matter
 
 - `--for run|record` (preflight): which setup to check. `--rebuild-image`: build `kaijuflow:test` from the current commit when the code in the image has changed since it was built (otherwise the image is left alone).
