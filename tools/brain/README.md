@@ -24,7 +24,7 @@ Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, i
 
 Start with **[RUNBOOK.md](RUNBOOK.md)**: the one-page recipe for a timed run (preflight, record, run, check). The reference pages hold the rest:
 
-- [docs/run-and-record.md](docs/run-and-record.md): how `brainrun.py run`, `record`, `smoke` and the record recipe work, and the record command's exit codes.
+- [docs/run-and-record.md](docs/run-and-record.md): how `brainrun.py run`, `record`, `smoke` and the record recipe work, the short-run flags of `run` (`--sides`, `--rounds`, `--quick`; a short run is never a baseline), and the record command's exit codes.
 - [docs/rules.md](docs/rules.md): the cap rule, the settings table and preflight, the expected settings the preflight holds the test copies to, the replay wait, the indexer allowance (`limits.json`, `usage`), how the targets are judged.
 - [docs/formats.md](docs/formats.md): run folder, top picks, the targets file (`targets.json`), the expected settings file (`expected-settings.json`), recording state, misses, the page's `story.html` and archive, and the `[KF-STEP]` step lines.
 - [docs/testbed.md](docs/testbed.md): the test copies of every side (`compose.test.yaml`, `testbed.py`) and the 1338 test container.

@@ -113,6 +113,15 @@ class BuildFixture(unittest.TestCase):
         self.assertIn('<th scope="row">Alpha</th>', tables['fixture-run-start'])
         self.assertNotIn('<th scope="row">Alpha</th>', index)
 
+    def test_a_short_run_folder_is_refused_with_one_sentence_saying_why(self):
+        folder = make_run(tempdir(self))
+        meta = json.load(open(folder + '/meta.json'))
+        meta['short'] = 'KaijuFlow, 1 round, 2 titles'
+        json.dump(meta, open(folder + '/meta.json', 'w'))
+        with self.assertRaises(SystemExit) as stop:
+            bp.build([folder], archive=None)
+        self.assertEqual(str(stop.exception), f'{folder}: a short run (KaijuFlow, 1 round, 2 titles) is not a baseline, so the page does not show it.')
+
     def test_every_slot_has_a_table_and_the_page_loads_them_with_fetch(self):
         d = tempdir(self)
         index, tables = bp.build([make_run(d)], archive=None)

@@ -1,7 +1,7 @@
 """The one command that runs every side cold, then warm, twice, and writes the run record (spec #58, ticket #62).
 
     python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list>
-           [--runs-root DIR] [--one-page] [--titles-file titles.json] [--user-id ID] [--tries 1]
+           [--runs-root DIR] [--one-page | --quick | --sides LIST --rounds 1|2] [--titles-file titles.json] [--user-id ID] [--tries 1]
            [--rebuild-image] [--provider-limit 100] [--no-wait]
     python3 -I tools/brain/brainrun.py record --name baseline --store <standin-store> --list <title-list> [--key-file PATH]
            [--runs-root DIR] [--one-page] [--titles-file titles.json] [--tries 1] [--rebuild-image]   (record, or top up)
@@ -145,6 +145,29 @@ def _read_text(path):
 def snapshot_settings(test_dir):
     """Settings of every side with secrets removed: {side: {dotted key: value}}; the settings command's reader (testbed.py)."""
     return testbed.read_settings(test_dir)
+
+
+ALL_SIDES = MAIN_SIDES + ['kaijuflow-1page']
+
+
+def run_sides(cfg):
+    """The sides a run plays: the ones `--sides` names (in the plan's order), else the planned sides."""
+    named = cfg.get('sides')
+    return planned_sides(cfg) if named is None else [s for s in ALL_SIDES if s in named]
+
+
+def run_plan(cfg):
+    """The rounds a run plays: PLAN, or its first pairs of cold and warm rounds when `--rounds 1`."""
+    return PLAN[:2 * cfg.get('rounds', 2)]
+
+
+def short_run(cfg):
+    """What a short run played (see brainreport.short_run_text), or None when the run is the full plan: the three main sides,
+    two rounds and every title of the list."""
+    sides, rounds = run_sides(cfg), cfg.get('rounds', 2)
+    if all(s in sides for s in MAIN_SIDES) and rounds == 2 and not cfg.get('partial_titles'):
+        return None
+    return br.short_run_text(sides, rounds, cfg['titles'])
 
 
 def planned_sides(cfg):
@@ -793,7 +816,7 @@ def _check_cap(io, visit=None, since=None):
 
 def planned_plays(cfg, rounds):
     """How many plays a command makes when nothing stops it: every title on every planned side in every round."""
-    return len(rounds) * len(cfg['titles']) * len(planned_sides(cfg))
+    return len(rounds) * len(cfg['titles']) * len(run_sides(cfg))
 
 
 def line_prefix(io, done, planned, proof=False):
@@ -829,10 +852,10 @@ def do_pass(cfg, io, run, logbuf, name, sides, reset_sides, first_reset=None):
     timing = run['timing']
     run['stage'] = f'the pass of the {name}'
     with clocked(io, timing['passes'], name=name, sides=list(sides)):
-        for n, (phase, rnd) in enumerate(PLAN):
+        for n, (phase, rnd) in enumerate(run_plan(cfg)):
             round_key = {'pass': name, 'phase': phase, 'round': rnd}
             if phase == 'cold':
-                log = progress_log(io, len(run['visits']), planned_plays(cfg, PLAN))
+                log = progress_log(io, len(run['visits']), planned_plays(cfg, run_plan(cfg)))
                 with clocked(io, timing['resets'], **round_key):
                     if first_reset and n == 0:
                         first_reset(io, log)
@@ -854,7 +877,7 @@ def do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row):
             run['visits'].append(v)
             run['playing'] = None
             round_row['plays'] += 1
-            print(f"{line_prefix(io, len(run['visits']), planned_plays(cfg, PLAN))} {side} {phase} {rnd} {title[2]}: "
+            print(f"{line_prefix(io, len(run['visits']), planned_plays(cfg, run_plan(cfg)))} {side} {phase} {rnd} {title[2]}: "
                   f"{'plays' if v['ok'] else 'FAILS'} list {v['list_s']} s start {v['start_s']} s", flush=True)
             _check_cap(io, v, since=run['started_at'])
             paused = io.now()
@@ -880,11 +903,11 @@ def run_all(cfg, io):
     os.makedirs(logs_dir)
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
-           'sides': planned_sides(cfg), 'standin_misses': 0,
+           'sides': run_sides(cfg), 'rounds': cfg.get('rounds', 2), 'short': short_run(cfg), 'standin_misses': 0,
            'settings': {}, 'commit': None, 'head': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
-                     'one-page side': 'yes' if cfg['one_page'] else 'no'},
+                     'one-page side': 'yes' if 'kaijuflow-1page' in run_sides(cfg) else 'no'},
            'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []}}
     wait = cfg.get('wait', True)
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
@@ -896,8 +919,10 @@ def run_all(cfg, io):
         try:
             _check_cap(io, since=started)
             handle = io.start_standin(os.path.join(logs_dir, 'standin.log'), mode='replay', wait=wait)
-            do_pass(cfg, io, run, logbuf, 'main sides', list(MAIN_SIDES), ALL_TESTBED)
-            if cfg['one_page']:
+            main_sides = [s for s in run_sides(cfg) if s in MAIN_SIDES]
+            if main_sides:
+                do_pass(cfg, io, run, logbuf, 'main sides', main_sides, ALL_TESTBED)
+            if 'kaijuflow-1page' in run_sides(cfg):
                 do_pass(cfg, io, run, logbuf, 'one-page side', ['kaijuflow-1page'], ONE_PAGE_TESTBED,
                         first_reset=switch_to_one_page)
         except CapReached as e:
@@ -905,7 +930,7 @@ def run_all(cfg, io):
             run['null'] = {'indexer': e.indexer, 'time': e.time, 'where': e.where}
         except KeyboardInterrupt as e:  # Ctrl-C or SIGTERM: the pass stops, the plays that finished are kept, the ending is the normal one (#110)
             run['status'] = 'stopped'
-            run['stopped'] = stop_note(io, e, run.get('stage'), len(run['visits']), planned_plays(cfg, PLAN), run.get('playing'))
+            run['stopped'] = stop_note(io, e, run.get('stage'), len(run['visits']), planned_plays(cfg, run_plan(cfg)), run.get('playing'))
             restore_signals = finish_after_stop(run['stopped'], 'run', 'report.md, raw.json, meta.json and the INDEX.md row')
         finally:
             try:
@@ -942,9 +967,13 @@ def write_run_ending(cfg, io, run, started, logbuf):
         run['standin_misses'] = sum(1 for line in _read_text(sl).splitlines() if line.startswith('MISS '))
     for c, parts in logbuf.items():
         _write(os.path.join(logs_dir, c + '.log'), '\n'.join(parts) + '\n')
-    prev = br.previous_run(root, exclude=os.path.basename(run_dir))
+    prev = br.previous_run(root, exclude=os.path.basename(run_dir), usable=(lambda d: runcheck.check_run(d)[0]) if run['short'] else None)
     nulls = br.null_runs_between(root, prev['started'], exclude=os.path.basename(run_dir)) if prev and prev.get('started') else None
-    run['changes'] = br.diff_runs(prev, run, nulls)
+    if prev and run['short']:  # a short run is held against the last baseline, as far as it played
+        run['changes'] = [f"Short run: compared with the last baseline, {prev['folder']}, limited to {run['short']}."] + \
+            br.diff_runs(br.limit_to_played(prev, run), run, nulls)
+    else:
+        run['changes'] = br.diff_runs(prev, run, nulls)
     if run['status'] == 'ok':
         report, result, headline = br.render_report(run, run['changes']), 'ok', br.headline(run)
     elif run['status'] == 'null':
@@ -954,10 +983,13 @@ def write_run_ending(cfg, io, run, started, logbuf):
         report, result, headline = br.render_stopped_report(run, run['changes']), 'stopped', br.stopped_text(run['stopped'])
     else:
         report, result, headline = f"This run failed before it finished: {run['error']}\n", 'failed', f"failed: {run['error']}"
+    if run['short']:
+        report = f"Short run, not a baseline: {run['short']}.\n\n{report}"
+        result = f"short: {run['short']}" if result == 'ok' else f"{result} (short: {run['short']})"
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
-                                    'sides', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
+                                    'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
                                     'standin_misses', 'changes', 'timing')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
@@ -1272,6 +1304,9 @@ def build_parser():
     ap.add_argument('--test-dir', default=os.environ.get('TEST_DIR', DEFAULT_TEST_DIR))
     ap.add_argument('--user-id')
     ap.add_argument('--one-page', action='store_true', help='add the fourth side: KaijuFlow, one page per indexer')
+    ap.add_argument('--sides', help='run only: play only these sides, comma-separated: ' + ', '.join(ALL_SIDES) + ' (a short run)')
+    ap.add_argument('--rounds', type=int, help='run only: 1 plays cold 1 and warm 1 only, 2 (the default) the full plan (a short run)')
+    ap.add_argument('--quick', action='store_true', help='run only: shorthand for --sides kaijuflow --rounds 1 (a short run; does not imply --no-wait)')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
     ap.add_argument('--settle', type=float, default=3, help='seconds to pause after every play (default 3)')
@@ -1290,9 +1325,35 @@ def topup_command(a):
     return ' '.join(shlex.quote(x) for x in parts)
 
 
+def run_selection(a):
+    """(sides or None, rounds) from the run's selectors, or a sentence that says what is wrong with them."""
+    if a.cmd != 'run':
+        if a.sides is not None or a.rounds is not None or a.quick:
+            return None, 2, '--sides, --rounds and --quick are only for run'
+        return None, 2, None
+    if a.quick and (a.sides is not None or a.rounds is not None):
+        return None, 2, '--quick is --sides kaijuflow --rounds 1 and cannot be combined with --sides or --rounds'
+    if a.quick:
+        return ['kaijuflow'], 1, None
+    if a.one_page and a.sides is not None:
+        return None, 2, '--one-page cannot be combined with --sides (name kaijuflow-1page in --sides instead)'
+    if a.rounds not in (None, 1, 2):
+        return None, 2, f'--rounds must be 1 or 2, not {a.rounds}'
+    sides = None
+    if a.sides is not None:
+        sides = [x.strip() for x in a.sides.split(',') if x.strip()]
+        unknown = [x for x in sides if x not in ALL_SIDES]
+        if unknown or not sides:
+            return None, 2, (f"unknown side {', '.join(unknown)} in --sides (use {', '.join(ALL_SIDES)})" if unknown else '--sides names no side')
+    return sides, a.rounds or 2, None
+
+
 def main(argv):
     ap = build_parser()
     a = ap.parse_args(argv)
+    sides, rounds, problem = run_selection(a)
+    if problem:
+        ap.error(problem)
     if a.cmd == 'check':
         if not a.run_dir:
             ap.error('--run is needed')
@@ -1307,7 +1368,8 @@ def main(argv):
     listdir = os.path.join(a.store or '', a.listname or '')
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
-               one_page=a.one_page, titles=pool, tries=a.tries, settle=a.settle,
+               one_page=a.one_page, sides=sides, rounds=rounds, titles=pool,
+               partial_titles=bool(a.titles_file) and not {t[2] for t in common.TITLES} <= {t[2] for t in pool}, tries=a.tries, settle=a.settle,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))

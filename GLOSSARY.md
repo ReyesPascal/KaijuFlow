@@ -66,6 +66,10 @@ _Avoid_: variant, candidate, contestant
 The side where the player gets its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it.
 _Avoid_: AltMount's own addon, addon, AltMount alone
 
+**Short run**:
+A timed run that is not the full plan: fewer than the three main sides, one round instead of two, or fewer titles than the list. Made with `--sides`, `--rounds`, `--quick` or a title subset, for a quick check while tuning. Its report, `meta.json`, INDEX.md row and `check` say what it played, and it is never a baseline.
+_Avoid_: partial run, quick run (`--quick` is one way to make one)
+
 **Pass**:
 The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of the three main sides and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
 _Avoid_: batch, phase (cold or warm is the phase)

@@ -20,6 +20,8 @@ SIDE_NAMES = {
     'altmount-addon': "AltMount's own addon",
     'kaijuflow-1page': 'KaijuFlow, one page per indexer',
 }
+SHORT_NAMES = {'kaijuflow': 'KaijuFlow', 'uu': 'Usenet Ultimate', 'altmount-addon': 'AltMount direct',
+               'kaijuflow-1page': 'KaijuFlow with one page per indexer'}  # the sides as a short run's text names them (GLOSSARY)
 RUN_ORDER = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 CAUSES = [('indexer_limit', 'Indexer limit'), ('backend_rejection', 'Backend rejection'),
           ('failure_video', 'Failure video'), ('other', 'Other'), ('not_recorded', 'Not recorded')]
@@ -582,6 +584,21 @@ def flatten_yaml(text):
     return out
 
 
+def short_run_text(sides, rounds, titles):
+    """What a short run played, in the words its report, its INDEX.md row and `check` use: `KaijuFlow, 1 round, 10 titles`."""
+    names = [SHORT_NAMES[s] for s in SHORT_NAMES if s in sides]
+    return f"{', '.join(names)}, {rounds} round{'' if rounds == 1 else 's'}, {len(titles)} title{'' if len(titles) == 1 else 's'}"
+
+
+def limit_to_played(baseline, cur):
+    """The baseline as far as a short run compares with it: its sides and titles cut down to the ones `cur` played, so what
+    the short run left out does not show as removed. Rounds need no cut: the top picks are compared in the rounds both hold."""
+    limited = dict(baseline)
+    for key in ('sides', 'titles'):
+        limited[key] = [x for x in baseline.get(key, []) if x in cur.get(key, [])]
+    return limited
+
+
 def _stamp(d):
     return f'{d:%Y-%m-%d %H:%M} UTC'
 
@@ -864,7 +881,7 @@ def answer_sentence(run):
         return ', '.join(f"{SIDE_NAMES[s]} {_cell(_time(vs, s, phase, 'start'))} s "
                          f"({' of '.join(str(x) for x in _plays(vs, s, phase))} top picks played)" for s in _sides(run))
     n = len(run.get('titles', []))
-    return (f"Across {n} title{'' if n == 1 else 's'}, each round done twice, the median time from pressing play to the first byte was, "
+    return (f"Across {n} title{'' if n == 1 else 's'}, each round done {'once' if run.get('rounds') == 1 else 'twice'}, the median time from pressing play to the first byte was, "
             f"cold: {fmt('cold')}; warm: {fmt('warm')}.")
 
 
@@ -1147,8 +1164,9 @@ def append_index_row(path, row):
         f.write(line)
 
 
-def previous_run(root, exclude=None):
-    """meta.json of the newest earlier finished (non-null) run, or None. Its top picks are added from the folder's raw.json
+def previous_run(root, exclude=None, usable=None):
+    """meta.json of the newest earlier finished (non-null) run, or None. A short run is never it. `usable(run folder)`, when
+    given, must also say yes (a short run is compared with the last run usable as a baseline); the meta gets its `folder`. Its top picks are added from the folder's raw.json
     (`top_picks`), so the next run can be compared with them; a folder that holds none stays without."""
     if not os.path.isdir(root):
         return None
@@ -1159,7 +1177,8 @@ def previous_run(root, exclude=None):
             meta = json.loads(_slurp(os.path.join(root, d, 'meta.json')))
         except (OSError, ValueError):
             continue
-        if meta.get('status') == 'ok':
+        if meta.get('status') == 'ok' and not meta.get('short') and (usable is None or usable(os.path.join(root, d))):
+            meta['folder'] = d
             try:
                 picks = top_picks(json.loads(_slurp(os.path.join(root, d, 'raw.json')))['visits'])
             except (OSError, ValueError, KeyError, TypeError):

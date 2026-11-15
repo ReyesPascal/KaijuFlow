@@ -34,6 +34,7 @@ What to work on next: `python3 -I tools/brain/frontier.py` prints the tickets th
 ## Flags that matter
 
 - `--for run|record` (preflight): which setup to check. `--rebuild-image`: build `kaijuflow:test` from the current commit when the code in the image has changed since it was built (otherwise the image is left alone).
+- `--sides LIST`, `--rounds 1|2`, `--quick` (run only): a short run. `--sides` takes `kaijuflow`, `uu`, `altmount-addon` (AltMount direct) and `kaijuflow-1page`, comma-separated; `--rounds 1` plays cold 1 and warm 1 only; `--quick` is `--sides kaijuflow --rounds 1` (about 5 minutes; it does not turn on `--no-wait`). A short run is never a baseline: its report's first line, `meta.json`, its INDEX.md row and `check` (exit 1, "short run") say what it played, and its "What changed" compares it with the last baseline, as far as it played. So does a `--titles-file` that leaves out titles of the list. `record` has no such flags. Wrong values stop before anything runs.
 - `--one-page`: add the fourth side (KaijuFlow, one page per indexer). `--titles-file`: another title list (JSON). `--no-wait` (run): replay answers at once, for tuning runs only.
 - `--runs-root DIR`: where run folders go (default `~/kaijuflow-notes/brain-runs`; use a temporary one for trials). `--provider-limit N`: connection cap, default 100.
 - `--settle S`: the pause after every play, in seconds (default 3). With 160 plays that is 8 minutes of a run; the report's "Where the time went" shows it as its own part.

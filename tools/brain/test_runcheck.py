@@ -72,6 +72,17 @@ class CheckTests(unittest.TestCase):
         self.assertIn('KaijuFlow warm 1: 1', out)
         self.assertIn('Missed in warm rounds (side, title, round): KaijuFlow Beta (1).', out)
 
+    def test_a_short_run_exits_nonzero_with_its_reason_and_still_prints_the_other_lines(self):
+        for what in ('KaijuFlow, 1 round, 2 titles', 'KaijuFlow, Usenet Ultimate, AltMount direct, 2 rounds, 1 title'):
+            with tempdir() as tmp:
+                run = copy_run(tmp)
+                edit(run, 'meta.json', lambda m: m.update(short=what))
+                code, out = run_check(run)
+            self.assertEqual(code, 1, out)
+            self.assertEqual(out.splitlines()[0], f'Not usable as a baseline: short run ({what}).')
+            self.assertIn('Missed requests: none.', out)
+            self.assertIn('Failures: none.', out)
+
     def test_absent_planned_side_exits_nonzero(self):
         with tempdir() as tmp:
             run = copy_run(tmp)
