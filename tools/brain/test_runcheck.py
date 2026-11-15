@@ -212,5 +212,57 @@ class TargetTests(unittest.TestCase):
                                                "Measured: KaijuFlow 4 of 4, AltMount's own addon no figure. Not measured.")
 
 
+FULL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports')
+
+
+class FirstTryTests(unittest.TestCase):
+    """First-try plays and like for like in the check (#143). fixtures/run-2026-11-13-imports is the same baseline run with
+    each visit's first try and imports, as raw.json kept them; it was run before like for like. Figures worked out by hand."""
+
+    def test_the_targets_are_judged_on_like_for_like_titles_only(self):
+        code, out = run_check(FULL)
+        self.assertEqual(code, 0, out)  # the targets do not decide whether a run can serve as a baseline
+        # From before like for like: against Usenet Ultimate only Breaking Bad S01E01 is left (the same 7.0 GB 4K file;
+        # KaijuFlow 0.80 and 0.82 s, Usenet Ultimate 1.47 and 0.70 s), against AltMount direct no title.
+        self.assertEqual(target_lines(out), [
+            'Target: Top pick plays on 10 of 10 titles, cold and warm. '
+            'Measured: cold 10 of 10 and 9 of 10, warm 10 of 10 and 10 of 10. Not met.',
+            'Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 0.81 s, Usenet Ultimate 1.08 s '
+            '(9 titles left out: not like for like). Met.',
+            'Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 3.46 s. Met.',
+            'Target: Top pick plays at least as often as AltMount direct, and more often unless both play every time. '
+            "Measured: KaijuFlow no figure, AltMount's own addon no figure (10 titles left out: not like for like). Not measured.",
+            "Target: Warm start within 0.05 s of AltMount direct. Measured: KaijuFlow no figure, AltMount's own addon no figure "
+            '(10 titles left out: not like for like). Not measured.',
+            "Target: Cold start within 1 s of AltMount direct. Measured: KaijuFlow no figure, AltMount's own addon no figure "
+            '(10 titles left out: not like for like). Not measured.'])
+
+    def test_the_check_counts_first_try_plays_and_lists_the_fallbacks_apart(self):
+        _, out = run_check(FULL)
+        lines = out.splitlines()
+        self.assertIn("Top picks played, AltMount's own addon: cold 18 of 20, warm 18 of 20.", lines)
+        start = lines.index('Played after a fallback (4), not counted as played:')
+        self.assertEqual(lines[start + 1:start + 5], [
+            "- AltMount's own addon, cold 1, Chernobyl S01E02: played after 3 fallbacks",
+            "- AltMount's own addon, warm 1, Chernobyl S01E02: played after 3 fallbacks",
+            "- AltMount's own addon, cold 2, Chernobyl S01E02: played after 3 fallbacks",
+            "- AltMount's own addon, warm 2, Chernobyl S01E02: played after 3 fallbacks"])
+
+    def test_the_check_names_the_titles_that_are_not_like_for_like(self):
+        _, out = run_check(FULL)  # from before like for like: AltMount direct picked 1080p, KaijuFlow 4K over the caps
+        lines = out.splitlines()
+        start = lines.index('Not like for like with KaijuFlow, so left out of the targets against that setup:')
+        self.assertEqual(lines[start + 1], "- Usenet Ultimate, Inception: KaijuFlow's top pick breaks the like-for-like rules "
+                                           '(Cold 1): 85.4 GB served, over the cap for a film (32.2 GB).')
+        self.assertIn("- AltMount's own addon, Dune: KaijuFlow's top pick is 2160p, AltMount's own addon's is 1080p (Cold 1).",
+                      lines)
+        self.assertFalse([x for x in lines if x.startswith('- KaijuFlow, one page per indexer, Dune')])
+
+    def test_a_like_for_like_run_says_so_in_one_line(self):
+        _, out = run_check(FIXTURE)
+        self.assertIn("Every title's top picks are like for like: the same resolution, inside the size caps, no disc images.",
+                      out.splitlines())
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -83,7 +83,7 @@ Every title played once, cold or warm, on every side of a pass. A timed run play
 _Avoid_: iteration, lap
 
 **Top pick**:
-The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match.
+The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. A top pick **plays** only on the first try: video that arrives after the top pick's own import failed is a **fallback**, counted as not played (#143).
 _Avoid_: first result, winner
 
 **Target**:
@@ -95,7 +95,7 @@ The sort and filter rules every test copy must have, kept in `tools/brain/expect
 _Avoid_: baseline settings, golden config
 
 **Like for like**:
-The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, one try per play with no hidden fallback, and the same indexer and Backend connections. A comparison between sides counts only when the run was like for like.
+The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, one try per play with no hidden fallback, and the same indexer and Backend connections. A comparison between sides counts only when the run was like for like. Per title, the report and `check` compare KaijuFlow's top pick with each setup's (#143): a different resolution, or a served file over the cap or a disc image, makes that title not like for like, and it is left out of the targets against that setup.
 _Avoid_: fair run, same settings
 
 **Recording**:

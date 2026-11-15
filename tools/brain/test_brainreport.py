@@ -499,6 +499,102 @@ class TopPickTest(unittest.TestCase):
             self.assertEqual(out[0], 'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.', name)
 
 
+def baseline_run():
+    """The real 2026-11-13 baseline (fixtures/run-2026-11-13-imports): every visit with its first try and its imports, as
+    raw.json kept them. It was run before like for like (#142): AltMount direct's hidden fallback was on."""
+    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports')
+    with open(os.path.join(folder, 'meta.json')) as f:
+        run = json.load(f)
+    with open(os.path.join(folder, 'raw.json'), encoding='utf-8') as f:
+        run['visits'] = json.load(f)['visits']
+    return run
+
+
+def played_visit(imports, **kw):
+    """One AltMount direct visit that served video, with the imports its Backend logged."""
+    v = dict(side='altmount-addon', phase='cold', round=1, title='Chernobyl S01E02', kind='series', ok=True, list_s=1.0,
+             start_s=9.0, note=None, misses=[], played_source=None, imports=imports,
+             tries=[{'plays': True, 'size': 8090794799,
+                     'title': 'FHD - Chernobyl [1080p] Chernobyl.S01E02.Please.Remain.Calm.1080p-onlyfaffs.mkv 💾 0.78 GB'}])
+    v.update(kw)
+    return v
+
+
+class FirstTryTest(unittest.TestCase):
+    """A top pick plays only when its own import is the one that played: video served after the top pick's import failed is
+    a fallback, counted as not played and shown apart (#143)."""
+
+    def test_video_after_the_top_picks_import_failed_is_not_a_play(self):
+        top = 'Chernobyl.S01E02.Please.Remain.Calm.1080p-onlyfaffs.mkv-6632d89ee069de68'
+        fallback = played_visit([{'name': top, 'ok': False}, {'name': 'Chernobyl - S01E02 - Bluray-2160p-fcecc767e7065bed', 'ok': True}])
+        first_try = played_visit([{'name': top, 'ok': True}])
+        self.assertEqual(br.side_plays([fallback, first_try], 'altmount-addon'), (1, 2))
+
+    def test_the_2026_11_13_baseline_gives_altmount_direct_36_of_40(self):
+        visits = baseline_run()['visits']
+        self.assertEqual(br.side_plays(visits, 'altmount-addon'), (36, 40))  # Chernobyl S01E02 fell back in all four rounds
+        # KaijuFlow and Usenet Ultimate queue their next Sources too; a failed one of those is no fallback
+        self.assertEqual(br.side_plays(visits, 'kaijuflow'), (39, 40))
+        self.assertEqual(br.side_plays(visits, 'uu'), (38, 40))
+
+    def test_the_report_shows_a_fallback_apart_from_the_plays(self):
+        text = br.render_report(baseline_run(), ['x'])
+        self.assertIn('| Side | Run | Top pick plays | Fallback | Indexer limit |', text)
+        self.assertIn("| AltMount's own addon | Cold 1 | 9 of 10 | 1 | 0 | 0 | 0 | 0 | 0 |", text)
+        self.assertIn("| KaijuFlow | Cold 1 | 10 of 10 | 0 | 0 | 0 | 0 | 0 | 0 |", text)
+        [row] = [r for r in per_title_rows(text)
+                 if (r['Title'], r['Side'], r['Run']) == ('Chernobyl S01E02', "AltMount's own addon", 'Cold 1')]
+        self.assertEqual(row['Result'], 'played after 3 fallbacks')
+
+
+def picks_run(altmount_dune='Dune.2021.1080p.WEB-DL-GRP', altmount_dune_size=5_000_000_000):
+    """KaijuFlow and AltMount direct on two films, every round. Matrix: both play a 2160p file inside the 30 GB cap, so the
+    title is like for like. Dune: AltMount direct's top pick is the one given (by default a 1080p file); KaijuFlow is slow on it."""
+    picks = {('kaijuflow', 'Matrix'): ('The.Matrix.1999.2160p.UHD.BluRay-GRP', 20_000_000_000, 2.0),
+             ('altmount-addon', 'Matrix'): ('4K - The Matrix [2160p] The.Matrix.1999.2160p.WEB-DL-GRP', 18_000_000_000, 1.0),
+             ('kaijuflow', 'Dune'): ('Dune.2021.2160p.UHD.BluRay-GRP', 25_000_000_000, 9.0),
+             ('altmount-addon', 'Dune'): (altmount_dune, altmount_dune_size, 0.5)}
+    visits = [dict(side=side, phase=phase, round=rnd, title=title, kind='movie', ok=True, list_s=1.0, start_s=start,
+                   note=None, misses=[], steps=[], imports=[], played_source=None,
+                   tries=[{'plays': True, 'size': size, 'title': name}])
+              for phase, rnd in br.RUN_ORDER for (side, title), (name, size, start) in picks.items()]
+    return dict(name='t', status='ok', visits=visits, titles=['Matrix', 'Dune'], sides=['kaijuflow', 'altmount-addon'],
+                commit='abc', dirty=False, indexers=['ninjacentral'], started='2026-11-16T10:00:00Z', settings={},
+                null=None, standin_misses=0)
+
+
+class LikeForLikeTest(unittest.TestCase):
+    """Each title's top picks are compared across the setups (#143): a title whose picks differ beyond the like-for-like
+    rules (resolution, size cap, disc images) is named and left out of judging KaijuFlow against that setup."""
+
+    def test_a_title_with_unequal_picks_is_named_and_left_out_of_the_targets_against_that_setup(self):
+        run = picks_run()
+        text = br.render_report(run, ['x'])
+        self.assertIn("## Like for like\n\nNot like for like with KaijuFlow, so left out of the targets against that setup:\n"
+                      "- AltMount's own addon, Dune: KaijuFlow's top pick is 2160p, AltMount's own addon's is 1080p (Cold 1).\n\n",
+                      text)
+        rows = {t: (m, v) for t, m, v in br.target_results(run['visits'])}
+        measured, verdict = rows['Cold start within 1 s of AltMount direct']
+        self.assertEqual(measured, "KaijuFlow 2.00 s, AltMount's own addon 1.00 s (1 title left out: not like for like)")
+        self.assertEqual(verdict['result'], br.MET)  # with Dune, KaijuFlow's median would be 5.50 s
+
+    def test_a_target_held_to_a_fixed_limit_keeps_every_title(self):
+        rows = {t: (m, v) for t, m, v in br.target_results(picks_run()['visits'])}
+        self.assertEqual(rows['Top pick plays on 10 of 10 titles, cold and warm'][0],
+                         'cold 2 of 2 and 2 of 2, warm 2 of 2 and 2 of 2')
+
+    def test_a_top_pick_over_the_size_cap_is_not_like_for_like(self):
+        run = picks_run(altmount_dune='Dune.2021.2160p.UHD.BluRay.REMUX-GRP', altmount_dune_size=70_000_000_000)
+        self.assertIn("- AltMount's own addon, Dune: AltMount's own addon's top pick breaks the like-for-like rules (Cold 1): "
+                      '70.0 GB served, over the cap for a film (32.2 GB).', br.render_report(run, ['x']))
+
+    def test_equal_picks_say_so(self):
+        run = picks_run(altmount_dune='Dune.2021.2160p.WEB-DL-GRP')
+        text = br.render_report(run, ['x'])
+        self.assertIn('## Like for like', text)
+        self.assertIn("Every title's top picks are like for like: the same resolution, inside the size caps, no disc images.", text)
+
+
 def targets_run(**figures):
     """runs_fixture() with some figures replaced, named '<side> <phase> <round> <field>': targets_run(**{'uu cold 1 start_s': 2.5})."""
     run = runs_fixture()

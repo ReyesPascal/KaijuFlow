@@ -82,13 +82,13 @@ class Run:
                 'plays': br.side_plays(self.visits, side)}
 
     def title_cell(self, side, title):
-        """One setup's cold start of one title: the median of the cold rounds whose top pick played, and how many of the
+        """One setup's cold start of one title: the median of the cold rounds whose top pick played on the first try, and how many of the
         counted cold rounds played. None when the setup never played the title cold."""
         vs = [v for v in self.visits if v['side'] == side and v['title'] == title and v['phase'] == 'cold']
         counted = [v for v in vs if br.classify_failure(v) != 'not_recorded']
         if not counted:
             return None
-        times = [v['start_s'] for v in counted if v.get('ok') and v.get('start_s') is not None]
+        times = [v['start_s'] for v in counted if br.plays(v) and v.get('start_s') is not None]
         value = br.median(times)
         return {'value': value, 'played': len(times), 'rounds': len(counted)}
 
