@@ -13,3 +13,11 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
+
+## Other labels
+
+| Label  | Meaning                                |
+| ------ | -------------------------------------- |
+| `spec` | A spec: its sub-issues are the tickets |
+
+A `spec` issue is never a ticket itself, so it carries no triage label. Its open sub-issues with no open blocker are what can start now (frontier query in `docs/agents/issue-tracker.md`).
