@@ -2,7 +2,7 @@
 
     python3 -I tools/brain/frontier.py [parent]
 
-Prints the open sub-issues of the parent (default #58, the map) that have no open blocker and no assignee,
+Prints the open sub-issues of the parent (default #159, the map) that have no open blocker and no assignee,
 in the parent's sub-issue order, one line each: number, all its labels (e.g. `[bug, ready-for-agent]`), title.
 When none qualifies it prints one line saying so. An open sub-issue whose body repeats its blockers (a "Blocked by"
 heading or line) gets a warning on stderr: the tracker's blocked-by links are the only source. Exits 0; 1 when gh fails or prints something that is not JSON;
@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 
-DEFAULT_PARENT = 58  # the map
+DEFAULT_PARENT = 159  # the map (spec #159; #58 was closed on 2026-11-15)
 # One page is the whole list: GitHub allows at most 100 sub-issues per parent.
 BLOCKED_BY_IN_BODY = re.compile(r'^\s*(#+\s*Blocked by\s*$|Blocked by\s*:)', re.IGNORECASE | re.MULTILINE)
 
