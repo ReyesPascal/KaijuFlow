@@ -20,6 +20,10 @@
   {"type": "movie", "id": "tt9362722", "label": "Spider-Man: Across the Spider-Verse", "list": "easy", "reason": "2023 blockbuster, very popular"},
   {"type": "movie", "id": "tt1825683", "label": "Black Panther", "list": "easy", "reason": "2018 blockbuster, very popular"},
   {"type": "movie", "id": "tt5433140", "label": "Fast X", "list": "easy", "reason": "2023 blockbuster, popular"},
+  {"type": "movie", "id": "tt6166392", "label": "Wonka", "list": "easy", "reason": "2023 hit, very popular"},
+  {"type": "movie", "id": "tt1262426", "label": "Wicked", "list": "easy", "reason": "2024 hit, very popular"},
+  {"type": "movie", "id": "tt29623480", "label": "The Wild Robot", "list": "easy", "reason": "2024 animated hit, very popular"},
+  {"type": "movie", "id": "tt9218128", "label": "Gladiator II", "list": "easy", "reason": "2024 blockbuster, very popular"},
   {"type": "series", "id": "tt4574334:4:1", "label": "Stranger Things S04E01", "list": "easy", "reason": "very popular streaming show, 2022 season", "used_by": "Test 2"},
   {"type": "series", "id": "tt13443470:1:4", "label": "Wednesday S01E04", "list": "easy", "reason": "very popular streaming show, 2022", "used_by": "Test 2"},
   {"type": "series", "id": "tt1190634:1:1", "label": "The Boys S01E01", "list": "easy", "reason": "very popular streaming show, 2019", "used_by": "Test 2"},
@@ -34,6 +38,8 @@
   {"type": "series", "id": "tt5875444:1:1", "label": "Slow Horses S01E01", "list": "easy", "reason": "popular streaming show, 2022"},
   {"type": "series", "id": "tt2442560:1:1", "label": "Peaky Blinders S01E01", "list": "easy", "reason": "popular show, 2013"},
   {"type": "series", "id": "tt5071412:1:1", "label": "Ozark S01E01", "list": "easy", "reason": "popular streaming show, 2017"},
+  {"type": "series", "id": "tt3581920:1:1", "label": "The Last of Us S01E01", "list": "easy", "reason": "very popular streaming show, 2023"},
+  {"type": "series", "id": "tt11198330:1:1", "label": "House of the Dragon S01E01", "list": "easy", "reason": "very popular streaming show, 2022"},
   {"type": "movie", "id": "tt0071360", "label": "The Conversation", "list": "hard", "reason": "1974 film, older release", "used_by": "Test 2"},
   {"type": "movie", "id": "tt2866360", "label": "Coherence", "list": "hard", "reason": "2014 low-budget film, little known", "used_by": "Test 2"},
   {"type": "movie", "id": "tt0156887", "label": "Perfect Blue", "list": "hard", "reason": "1998 anime film, takedown-prone", "used_by": "Test 2"},
@@ -54,6 +60,10 @@
   {"type": "movie", "id": "tt0091209", "label": "The Hitcher", "list": "hard", "reason": "1986 film, older release"},
   {"type": "movie", "id": "tt0080516", "label": "The Changeling", "list": "hard", "reason": "1980 film, older and less popular"},
   {"type": "movie", "id": "tt0069945", "label": "Dark Star", "list": "hard", "reason": "1974 low-budget film, older and little known"},
+  {"type": "movie", "id": "tt0063663", "label": "The Swimmer", "list": "hard", "reason": "1968 film, older release"},
+  {"type": "movie", "id": "tt0087799", "label": "Night of the Comet", "list": "hard", "reason": "1984 film, older and less popular"},
+  {"type": "movie", "id": "tt0851578", "label": "Paprika", "list": "hard", "reason": "2006 anime film, takedown-prone"},
+  {"type": "movie", "id": "tt0480669", "label": "Timecrimes", "list": "hard", "reason": "2007 low-budget Spanish film, little known"},
   {"type": "series", "id": "tt0098936:1:2", "label": "Twin Peaks S01E02", "list": "hard", "reason": "1990 show, older release", "used_by": "Test 2"},
   {"type": "series", "id": "tt2560140:1:1", "label": "Attack on Titan S01E01", "list": "hard", "reason": "anime series, takedown-prone", "used_by": "Test 2"},
   {"type": "series", "id": "tt0319969:1:1", "label": "Carnivàle S01E01", "list": "hard", "reason": "2003 show, cancelled early, less popular", "used_by": "Test 2"},
@@ -68,5 +78,6 @@
   {"type": "series", "id": "tt0925266:1:1", "label": "Pushing Daisies S01E01", "list": "hard", "reason": "2007 show, cancelled early, less popular"},
   {"type": "series", "id": "tt0106028:3:5", "label": "Homicide: Life on the Street S03E05", "list": "hard", "reason": "1994 episode, older release"},
   {"type": "series", "id": "tt0193676:1:1", "label": "Freaks and Geeks S01E01", "list": "hard", "reason": "1999 show, older release"},
-  {"type": "series", "id": "tt0348914:2:3", "label": "Deadwood S02E03", "list": "hard", "reason": "2005 episode, older and less popular"}
+  {"type": "series", "id": "tt0348914:2:3", "label": "Deadwood S02E03", "list": "hard", "reason": "2005 episode, older and less popular"},
+  {"type": "series", "id": "tt0500092:1:1", "label": "Serial Experiments Lain S01E01", "list": "hard", "reason": "1998 anime series, takedown-prone"}
 ]}
