@@ -88,6 +88,15 @@ class Run:
                 'cold_video': br.side_time(self.visits, side, 'cold', 'video', lst=lst),
                 'warm_video': br.side_time(self.visits, side, 'warm', 'video', lst=lst)}
 
+    def speed_cell(self, side, title):
+        """One setup's title in a speed test: the median cold title to video of the rounds whose top pick played, and its
+        fails in every round, as [(round, after a fallback)] in the order played. None when the setup never played it."""
+        vs = [v for v in self.visits if v['side'] == side and v['title'] == title]
+        if not vs:
+            return None
+        return {'value': br.side_time(vs, side, 'cold', 'video'),
+                'fails': [(f"{v['phase'].capitalize()} {v['round']}", br.fallbacks(v) > 0) for v in br.fail_visits(vs, side)]}
+
     def title_cell(self, side, title):
         """One setup's cold start of one title: the median of the cold rounds whose top pick played on the first try, and how
         many of the counted cold rounds played. None when the setup never played the title cold."""
@@ -192,12 +201,21 @@ def history_row(run):
             'cold_start': kf['cold_start'], 'warm_start': kf['warm_start'], 'plays': kf['plays']}
 
 
+def by_kaijuflow(rows):
+    """Title rows sorted by KaijuFlow's time, fastest first; a title it has no time for last."""
+    def value(r):
+        return (r['cells'].get(startline.KAIJUFLOW) or {}).get('value')
+    return sorted(rows, key=lambda r: (value(r) is None, value(r) or 0))
+
+
 def speed_model(run):
     """What the page shows of a speed test beside its targets: the outcome line and the final bar (#169)."""
     j = run.judgement()
     bar = j['final_bar']
     lists = [{'list': x, 'name': f'{x.capitalize()} list',
-              'setups': [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.list_numbers(side, x)} for side in run.sides]}
+              'setups': [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.list_numbers(side, x)} for side in run.sides],
+              'titles': by_kaijuflow([{'title': t, 'cells': {side: run.speed_cell(side, t) for side in run.sides}}
+                                      for t in run.titles if any(v['title'] == t and v.get('list') == x for v in run.visits)])}
              for x in br.run_lists(run.visits)]
     return {'lists': lists, 'outcome': j['outcome']['text'],
             'final_bar': {'result': bar['verdict']['result'], 'text': bar['target'],
@@ -215,9 +233,7 @@ def page_model(runs):
     targets = run.targets()
     findings, next_step = read_findings(run)
     setups = [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.numbers(side)} for side in run.sides]
-    rows = [{'title': t, 'cells': {side: run.title_cell(side, t) for side in run.sides}} for t in run.titles]
-    rows.sort(key=lambda r: ((r['cells'].get(startline.KAIJUFLOW) or {}).get('value') is None,
-                             (r['cells'].get(startline.KAIJUFLOW) or {}).get('value') or 0))
+    rows = by_kaijuflow([{'title': t, 'cells': {side: run.title_cell(side, t) for side in run.sides}} for t in run.titles])
     prev_targets = prev.targets() if prev else []
     return {
         'run': {'label': run.label, 'date_long': run.date_long(), 'titles': len(run.titles)},

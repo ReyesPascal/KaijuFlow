@@ -524,6 +524,28 @@ class SpeedTest(unittest.TestCase):
                                     'Title to video, hard list 3.50 s KaijuFlow in this run: its fails in all four rounds, '
                                     'and its median cold title to video.')
 
+    def table_rows(self, sec):
+        return [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', sec)]
+
+    def test_the_page_has_a_table_per_list_of_every_title_marking_each_setups_fails_and_fallbacks(self):
+        easy, hard = section(self.index, 'Easy list, title by title'), section(self.index, 'Hard list, title by title')
+        for sec in (easy, hard):
+            self.assertEqual(re.findall(r'<th scope="col" class="sl-r[^"]*"><span>([^<]*)</span>', sec),
+                             ['KaijuFlow', 'Usenet Ultimate', 'AltMount direct'])
+        self.assertEqual(self.table_rows(easy), ['Matrix 2.50 3.50 2.00 Failed: Cold 2', 'Dune 2.50 3.50 2.00'])
+        self.assertEqual(self.table_rows(hard), ['Old Film 3.50 Failed: Cold 1 – Failed: Cold 1, Cold 2 2.00',
+                                                 'Rare Show S01E01 3.50 3.50 2.00 Failed: Cold 1 after a fallback'])
+        self.assertEqual(lanes(hard), [('Old Film', '3.50 s'), ('Rare Show S01E01', '3.50 s')])
+        self.assertIn('<b>3.50 s</b><small>Failed: Cold 1</small>', hard)
+
+    def test_the_report_names_each_setups_fails_title_by_title_on_each_list(self):
+        fails = section(self.report, 'Fails, title by title')
+        self.assertEqual(self.table_rows(fails), ['KaijuFlow None Old Film (Cold 1)',
+                                                  'Usenet Ultimate None Old Film (Cold 1, Cold 2)',
+                                                  'AltMount direct Matrix (Cold 2) Rare Show S01E01 (Cold 1 after a fallback)'])
+        self.assertEqual(re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', fails), ['Setup', 'Easy list', 'Hard list'])
+        self.assertNotIn('List, warm', text(self.report))
+
 
 class SpeedTestAgainstEarlierRuns(unittest.TestCase):
     def test_a_speed_test_is_never_compared_with_a_run_without_tags_and_both_are_in_every_run_so_far(self):

@@ -701,10 +701,23 @@ def titles_heading(rows):
     return 'Cold start, title by title', False
 
 
-def titles_section(m):
-    rows = m['titles']
+def fails_note(cell):
+    """A speed test's note of a setup's title: the rounds whose top pick failed, 'Failed: Cold 1, Warm 2 after a fallback'."""
+    if cell is None:
+        return 'not played'
+    rounds = [f'{r} after a fallback' if fell_back else r for r, fell_back in cell['fails']]
+    return f'Failed: {", ".join(rounds)}' if rounds else ''
+
+
+def titles_section(m, lst=None):
+    """The title-by-title section: KaijuFlow's ruler of every title and a table of every setup. For a speed test, one per
+    list (lst): cold title to video, and each setup's fails in every round."""
+    rows = lst['titles'] if lst else m['titles']
+    note_of = fails_note if lst else title_note
     heading, outlier = titles_heading(rows)
-    lanes = [(r['title'], (r['cells'].get(KAIJUFLOW) or {}).get('value'), True, title_note(r['cells'].get(KAIJUFLOW))) for r in rows]
+    if lst:
+        heading = f'{lst["name"]}: {heading}' if outlier else f'{lst["name"]}, title by title'
+    lanes = [(r['title'], (r['cells'].get(KAIJUFLOW) or {}).get('value'), True, note_of(r['cells'].get(KAIJUFLOW))) for r in rows]
     end = scale(max([v for _, v, _, _ in lanes if v is not None], default=0))[0]
     sides = m['setups']
     head = ''.join(f'<th scope="col" class="sl-r{" sl-kfh" if s["id"] == KAIJUFLOW else ""}"><span>{esc(s["name"])}</span></th>' for s in sides)
@@ -714,16 +727,23 @@ def titles_section(m):
         for s in sides:
             c = r['cells'].get(s['id'])
             value = '–' if not c or c['value'] is None else f'{c["value"]:.2f}'
-            note = title_note(c)
+            note = note_of(c)
             cells.append(f'<td class="sl-r{" sl-kfc" if s["id"] == KAIJUFLOW else ""}">{value}{f"<small>{esc(note)}</small>" if note else ""}</td>')
         body.append(f'<tr><th scope="row">{esc(r["title"])}</th>{"".join(cells)}</tr>')
-    sub = (f'Cold start, title by title: the median of the cold rounds whose top pick played. This ruler runs from 0 to '
+    what = 'Cold title to video' if lst else 'Cold start'
+    sub = (f'{what}, title by title: the median of the cold rounds whose top pick played. This ruler runs from 0 to '
            f'{num(end)} s{" to fit the slow title" if outlier else ""}.')
+    caption = ('Every setup, in seconds, fastest KaijuFlow title first. A note names each round, of all four, whose top pick '
+               'failed.' if lst else 'Every setup, in seconds, fastest KaijuFlow title first. A note says when a top pick did not play.')
     return (f'<section class="sl-sec"><h2>{esc(heading)}</h2><p class="sl-text sl-sub">{sub}</p>'
-            f'<div class="sl-titles">{figure("<b>KaijuFlow, cold start for each title</b>", lanes)}</div>'
-            f'<div class="sl-scroll"><table><caption><span>Every setup, in seconds, fastest KaijuFlow title first. '
-            f'A note says when a top pick did not play.</span></caption>'
+            f'<div class="sl-titles">{figure(f"<b>KaijuFlow, {what.lower()} for each title</b>", lanes)}</div>'
+            f'<div class="sl-scroll"><table><caption><span>{caption}</span></caption>'
             f'<thead><tr><th scope="col">Title</th>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div></section>')
+
+
+def title_sections(m):
+    """The title-by-title section, or a speed test's, one per list."""
+    return ''.join(titles_section(m, lst) for lst in m['speed']['lists']) if m.get('speed') else titles_section(m)
 
 
 def findings_section(m):
@@ -762,7 +782,7 @@ def words_section(m):
 
 def page(m):
     """The whole page (index.html) from the model build_page.page_model makes."""
-    body = ''.join([header(m), verdict_section(m), targets_section(m), change_section(m), setups_section(m), titles_section(m),
+    body = ''.join([header(m), verdict_section(m), targets_section(m), change_section(m), setups_section(m), title_sections(m),
                     findings_section(m), history_section(m), next_section(m), words_section(m)])
     return f'{HEAD}<style>\n{CSS}</style>\n<div class="sl"><main class="sl-wrap">\n{body}\n</main></div>\n'
 
@@ -865,6 +885,21 @@ def report_change(m):
             f'<th scope="col" class="sl-r">This run</th><th scope="col">Change</th></tr></thead><tbody>{body}</tbody></table></div>')
 
 
+def report_fails(m):
+    """A speed test's fails on the report: per setup and list, each title it failed and in which rounds."""
+    lists = m['speed']['lists']
+    rows = []
+    for s in m['setups']:
+        cells = []
+        for lst in lists:
+            failed = [(r['title'], fails_note(r['cells'].get(s['id'])).removeprefix('Failed: ')) for r in lst['titles']]
+            cells.append(', '.join(f'{title} ({rounds})' for title, rounds in failed if rounds) or 'None')
+        rows.append(f'<tr><th scope="row">{esc(s["name"])}</th>' + ''.join(f'<td>{esc(c)}</td>' for c in cells) + '</tr>')
+    head = ''.join(f'<th scope="col">{esc(lst["name"])}</th>' for lst in lists)
+    return (f'<div class="sl-r-fails"><h2>Fails, title by title</h2><table aria-label="Each setup\'s fails on each list">'
+            f'<thead><tr><th scope="col">Setup</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+
+
 def report(m):
     """The one-page Letter report (report.html) from the same model as the page: the verdict and headline numbers, the cold
     start ruler, the targets, what changed, the warm list ruler, the findings and the next step, on one sheet."""
@@ -881,7 +916,8 @@ def report(m):
              else f'<section class="sl-r-sec">{cold}</section>',
              f'<section class="sl-r-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
              f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div>{final_bar(m)}</section>',
-             f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
+             f'<section class="sl-r-sec sl-r-two">{report_fails(m)}{report_change(m)}</section>' if m.get('speed')
+             else f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
     if finds:
         parts.append(f'<section class="sl-r-sec"><h2>What the run found</h2><ul class="sl-finds">{finds}</ul></section>')
     if m['next']:
