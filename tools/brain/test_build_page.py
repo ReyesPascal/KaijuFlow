@@ -470,25 +470,35 @@ class SpeedTest(unittest.TestCase):
             cls.index, cls.report = bp.build([folder]), bp.build_report([folder])
 
     def test_the_verdict_counts_the_three_targets_on_each_list(self):
-        for page in (self.index, self.report):
-            self.assertIn('<h1>5 of 6 targets met</h1>', page)
-            groups = re.findall(r'<h3 class="sl-list">(.*?)</h3><ul>(.*?)</ul>', page)
-            self.assertEqual([g for g, _ in groups], ['Easy list', 'Hard list'])
-            easy, hard = ([text(re.sub(r'<small>Measured:.*?</small>', '', r)) for r in re.findall(r'<li class="sl-trow">.*?</li>', rows)]
-                          for _, rows in groups)  # what was measured, on the page alone, has its own test
-            self.assertEqual([re.match('Not met|Met', r).group(0) for r in easy], ['Met', 'Met', 'Met'])
-            self.assertEqual([re.match('Not met|Met', r).group(0) for r in hard], ['Met', 'Not met', 'Met'])
-            self.assertTrue(easy[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
-                                               'list KaijuFlow 0 fails Limit 0 fails'), easy[0])
-            self.assertTrue(hard[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
-                                               'list KaijuFlow 1 fail Limit 1 fail'), hard[0])
-            self.assertTrue(hard[1].startswith("Not met KaijuFlow's median cold title to video is no slower than any setup "
-                                               'with as many fails or more KaijuFlow 3.50 s Limit 2.00 s 1.50 s over'), hard[1])
-            self.assertTrue(easy[2].startswith('Met Warm title to video under about 1 s KaijuFlow 0.60 s Limit 1.00 s '
-                                               '0.40 s to spare'), easy[2])
+        self.assertIn('<h1>5 of 6 targets met</h1>', self.index)
+        groups = re.findall(r'<h3 class="sl-list">(.*?)</h3><ul>(.*?)</ul>', self.index)
+        self.assertEqual([g for g, _ in groups], ['Easy list', 'Hard list'])
+        easy, hard = ([text(re.sub(r'<small class="sl-meas">.*?</small>', '', r)) for r in re.findall(r'<li class="sl-trow">.*?</li>', rows)]
+                      for _, rows in groups)  # what was measured has its own test
+        self.assertEqual([re.match('Not met|Met', r).group(0) for r in easy], ['Met', 'Met', 'Met'])
+        self.assertEqual([re.match('Not met|Met', r).group(0) for r in hard], ['Met', 'Not met', 'Met'])
+        self.assertTrue(easy[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
+                                           'list KaijuFlow 0 fails Limit 0 fails'), easy[0])
+        self.assertTrue(hard[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
+                                           'list KaijuFlow 1 fail Limit 1 fail'), hard[0])
+        self.assertTrue(hard[1].startswith("Not met KaijuFlow's median cold title to video is no slower than any setup "
+                                           'with as many fails or more KaijuFlow 3.50 s Limit 2.00 s 1.50 s over'), hard[1])
+        self.assertTrue(easy[2].startswith('Met Warm title to video under about 1 s KaijuFlow 0.60 s Limit 1.00 s '
+                                           '0.40 s to spare'), easy[2])
+
+    def test_the_report_has_one_row_per_target_with_each_list_beside_it(self):
+        self.assertIn('<h1>5 of 6 targets met</h1>', self.report)
+        targets = section(self.report, 'still open')
+        self.assertEqual(re.findall(r'<th scope="col">([^<]*)</th>', targets), ['Target', 'Easy list', 'Hard list'])
+        self.assertEqual(self.table_rows(targets), [
+            'KaijuFlow fails no more titles than any other setup, and none on the easy list Met 0 fails, limit 0 fails None '
+            'Met 1 fail, limit 1 fail No more than any other setup',
+            "KaijuFlow's median cold title to video is no slower than any setup with as many fails or more "
+            'Met 2.50 s, limit 3.50 s 1.00 s to spare Not met 3.50 s, limit 2.00 s 1.50 s over',
+            'Warm title to video under about 1 s Met 0.60 s, limit 1.00 s 0.40 s to spare Met 0.60 s, limit 1.00 s 0.40 s to spare'])
 
     def test_on_the_page_a_target_row_says_what_was_measured_on_every_setup(self):
-        row = [text(r) for r in re.findall(r'<li class="sl-trow">.*?</li>', self.index)][4]
+        row = text(re.findall(r'<li class="sl-trow">.*?</li>', self.index)[4])
         self.assertIn('Measured: KaijuFlow 3.50 s with 1 fail, Usenet Ultimate 3.50 s with 2 fails (more fails: not held '
                       'against it), AltMount direct 2.00 s with 1 fail.', row)
         sub = text(re.search(r'<p class="sl-text sl-sub">Each list.*?</p>', self.index).group(0))
@@ -503,16 +513,17 @@ class SpeedTest(unittest.TestCase):
                                    'so try KaijuFlow without its own pre-list check, behind AltMount.')
 
     def test_the_final_bar_is_shown_apart_from_the_targets_and_not_counted_in_them(self):
+        self.assertEqual(len(re.findall(r'<li class="sl-trow">', self.index)), 6)
+        self.assertLess(self.index.rindex('<li class="sl-trow">'), self.index.index('<div class="sl-final">'))
+        self.assertLess(self.report.rindex('</table>', 0, self.report.index('<div class="sl-final">')),
+                        self.report.index('<div class="sl-final">'))
         for page in (self.index, self.report):
-            self.assertLess(page.rindex('<li class="sl-trow">'), page.index('<div class="sl-final">'))
-            self.assertEqual(len(re.findall(r'<li class="sl-trow">', page)), 6)
             bar = text(re.search(r'<div class="sl-final">.*?</div>', page).group(0))
-            self.assertEqual(bar, 'Final bar Not met On both lists, KaijuFlow has the fewest fails, and the fastest title to '
-                                  'video among setups with as few fails. Easy list: met, KaijuFlow fails 0 of 8, the fewest, '
-                                  'in 2.50 s cold title to video, the fastest among setups with as few fails. Hard list: not '
-                                  "met, AltMount direct fails as few titles (1 of 8 against KaijuFlow's 1 of 8). "
-                                  'Shown apart from the targets and not counted in them.')
-            self.assertLess(page.index('<div class="sl-targets">'), page.index('<div class="sl-final">'))
+            self.assertEqual(bar, 'Final bar, not counted with the targets Not met On both lists, KaijuFlow has the fewest '
+                                  'fails, and the fastest title to video among setups with as few fails. Easy list: met, '
+                                  'KaijuFlow fails 0 of 8, the fewest, in 2.50 s cold title to video, the fastest among '
+                                  "setups with as few fails. Hard list: not met, AltMount direct fails as few titles (1 of 8 "
+                                  "against KaijuFlow's 1 of 8).")
 
     def test_the_first_rulers_are_cold_title_to_video_on_each_list_fewest_fails_first(self):
         for page in (self.index, self.report):
@@ -530,8 +541,8 @@ class SpeedTest(unittest.TestCase):
         for page in (self.index, self.report):
             heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', page).group(0))
             self.assertEqual(heads, 'Fails, easy list 0 of 8 Fails, hard list 1 of 8 Title to video, easy list 2.50 s '
-                                    'Title to video, hard list 3.50 s KaijuFlow in this run: its fails in all four rounds, '
-                                    'and its median cold title to video.')
+                                    'Title to video, hard list 3.50 s KaijuFlow: fails in all four rounds; median cold '
+                                    'title to video.')
 
     def table_rows(self, sec):
         return [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', sec)]

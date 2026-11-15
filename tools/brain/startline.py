@@ -222,10 +222,10 @@ def target_rows(targets, report=False):
             margin += f'<small>{esc(noise)}</small>'
         drawn = t['result'] != 'not measured' and t['measure'] != 'fails' and t['limit'] is not None and not isinstance(t['value'], tuple)
         draw = '' if report else mini(t['value'], t['limit']) if drawn else '<span class="sl-empty"></span>'
-        measured = f'<small>Measured: {esc(t["measured"])}.</small>' if t.get('measured') and not report else ''  # a speed test's (#169)
-        rows.append(f'<li class="sl-trow"><span class="sl-ts">{status(t["result"])}</span><span class="sl-tt">{esc(t["text"])}{measured}</span>'
+        measured = f'<small class="sl-meas">Measured: {esc(t["measured"])}.</small>' if t.get('measured') and not report else ''  # a speed test's (#169)
+        rows.append(f'<li class="sl-trow"><span class="sl-ts">{status(t["result"])}</span><span class="sl-tt">{esc(t["text"])}</span>'
                     f'<span class="sl-num sl-r"><span class="sl-lab">KaijuFlow</span>{mine}</span>'
-                    f'<span class="sl-num sl-r"><span class="sl-lab">Limit</span>{lim}</span><span class="sl-tm">{margin}</span>{draw}</li>')
+                    f'<span class="sl-num sl-r"><span class="sl-lab">Limit</span>{lim}</span><span class="sl-tm">{margin}</span>{draw}{measured}</li>')
     return ''.join(rows)
 
 
@@ -352,7 +352,7 @@ RULES = """.sl * { box-sizing: border-box }
 .sl .sl-thead .sl-r, .sl .sl-trow .sl-r { text-align: right }
 .sl .sl-trow .sl-lab { display: none }
 .sl .sl-trow .sl-tt { line-height: 1.35 }
-.sl .sl-trow .sl-tt small { display: block; font-size: 14px; line-height: 1.35; color: var(--slate); margin-top: 4px }
+.sl .sl-trow .sl-meas { grid-column: 2 / -1; font-size: 14px; line-height: 1.35; color: var(--slate); margin-top: 4px }
 .sl .sl-tm small { display: block; font-size: 14px; line-height: 1.35; color: var(--slate); margin-top: 4px }
 .sl .sl-mtrack { position: relative; height: 32px; box-shadow: -3px 0 0 var(--ink) }
 .sl .sl-mlim { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); z-index: 2 }
@@ -364,7 +364,6 @@ RULES = """.sl * { box-sizing: border-box }
 .sl .sl-final h3 { display: inline-block; margin: 0 16px 0 0 }
 .sl .sl-final .sl-ftext { margin: 8px 0 6px; font-weight: 600 }
 .sl .sl-final li { font-size: 16px; line-height: 1.4; margin-top: 2px }
-.sl .sl-final .sl-quiet { font-size: 16px; margin-top: 8px }
 .sl .sl-tnote { font-size: 16px; color: var(--slate); margin-top: 12px; max-width: 760px }
 .sl .sl-changes { display: grid; gap: 4px; margin-bottom: 24px; max-width: 760px }
 .sl .sl-changes li { padding-left: 16px; text-indent: -16px }
@@ -401,6 +400,7 @@ RULES = """.sl * { box-sizing: border-box }
 .sl tr.sl-new th, .sl tr.sl-new td { font-weight: 650 }
 .sl tr.sl-new small { font-weight: 400 }
 .sl .sl-titles { --nw: 216px; margin-bottom: 48px }
+.sl .sl-titles .sl-name { white-space: normal }
 .sl .sl-finds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px 48px; margin-top: 8px }
 .sl .sl-finds li { border-top: 1px solid var(--ink); padding-top: 16px }
 .sl .sl-next p { max-width: 660px }
@@ -439,6 +439,7 @@ NARROW = """@media (max-width: 860px) {
   .sl .sl-trow .sl-lab { display: inline; font-size: 16px; color: var(--slate); margin-right: 8px; font-weight: 400 }
   .sl .sl-trow .sl-mini { grid-column: 1 / -1; margin-left: 3px }
   .sl .sl-trow .sl-empty { display: none }
+  .sl .sl-trow .sl-meas { grid-column: 1 / -1; margin-top: 0 }
   .sl .sl-pair { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px }
   .sl .sl-pair .sl-plot, .sl .sl-pair .sl-pl { grid-column: 1 / -1; grid-row: 2 }
   .sl .sl-pair .sl-lane, .sl .sl-pair .sl-plot { grid-template-columns: 76px minmax(0, 1fr) var(--gut) }
@@ -533,9 +534,8 @@ def speed_headlines(m):
               for x, s in kf.items()]
     li = ''.join(f'<li><span class="sl-k">{esc(label)}</span><span class="sl-v">{value}</span>'
                  + (f'<span class="sl-c">{_arrow(words)} {esc(words)}</span>' if words else '') + '</li>' for label, value, words in items)
-    since = ', with the change since the speed test it is compared with' if before else ''
-    return (f'<ul class="sl-heads">{li}<li class="sl-headnote">KaijuFlow in this run: its fails in all four rounds, and its '
-            f'median cold title to video{since}.</li></ul>')
+    since = '; the change since the speed test it is compared with' if before else ''
+    return f'<ul class="sl-heads">{li}<li class="sl-headnote">KaijuFlow: fails in all four rounds; median cold title to video{since}.</li></ul>'
 
 
 def headline_numbers(m):
@@ -590,12 +590,13 @@ def speed_lanes(lst, key='cold_video'):
     return lanes
 
 
-def speed_rulers(m, hero=False):
-    """A speed test's first rulers: cold title to video on each list, fewest fails first."""
+def speed_rulers(m, hero=False, report=False):
+    """A speed test's first rulers: cold title to video on each list, fewest fails first. The report's say less."""
     figs = []
     for lst in m['speed']['lists']:
-        cap = (f'<b>{esc(lst["name"])}: cold title to video.</b> Seconds from asking for a title until its video starts, the '
-               'first time it is played. Fewest fails first, then fastest; a fail has no time.')
+        cap = f'<b>{esc(lst["name"])}: cold title to video.</b> ' + ('Fewest fails first, then fastest.' if report else
+               'Seconds from asking for a title until its video starts, the first time it is played. Fewest fails first, then '
+               'fastest; a fail has no time.')
         figs.append(figure(cap, speed_lanes(lst), hero=hero, play_label='Title asked for'))
     return figs
 
@@ -637,8 +638,8 @@ def final_bar(m):
     if not bar:
         return ''
     why = ''.join(f'<li>{esc(name)}: {esc(result)}, {esc(words)}.</li>' for name, result, words in bar['lists'])
-    return (f'<div class="sl-final"><h3>Final bar</h3>{status(bar["result"])}<p class="sl-ftext">{esc(bar["text"])}</p>'
-            f'<ul>{why}</ul><p class="sl-quiet">Shown apart from the targets and not counted in them.</p></div>')
+    return (f'<div class="sl-final"><h3>Final bar, not counted with the targets</h3>{status(bar["result"])}'
+            f'<p class="sl-ftext">{esc(bar["text"])}</p><ul>{why}</ul></div>')
 
 
 PAIRS = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Cold list', 'cold_list'), ('Warm list', 'warm_list')]
@@ -875,7 +876,12 @@ html, body { margin: 0; background: #FFFFFF; color-scheme: light }
 .sl-rep .sl-final { margin-top: 6px; padding: 4px 8px 5px; border-width: 1.5px; max-width: none }
 .sl-rep .sl-final h3 { margin-right: 10px }
 .sl-rep .sl-final .sl-ftext { display: inline; margin: 0 0 0 10px }
-.sl-rep .sl-final li, .sl-rep .sl-final .sl-quiet { font-size: 12px; line-height: 1.3; margin-top: 0 }
+.sl-rep .sl-final li { font-size: 12px; line-height: 1.3; margin-top: 0 }
+.sl-rep .sl-r-targets { table-layout: fixed; border-top: 1px solid var(--ink) }
+.sl-rep .sl-r-targets th:first-child { width: 40% }
+.sl-rep .sl-r-targets td { padding: 3px 0 3px 12px }
+.sl-rep .sl-r-targets tbody th { padding: 3px 0 }
+.sl-rep .sl-r-targets td small { font-size: 12px }
 .sl-rep .sl-r-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start }
 .sl-rep .sl-r-two .sl-plot { --nw: 128px; --gut: 52px }
 .sl-rep .sl-changes { gap: 1px; margin: 0 0 4px }
@@ -890,6 +896,11 @@ html, body { margin: 0; background: #FFFFFF; color-scheme: light }
 .sl-rep .sl-r-next { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: baseline;
   border-top: 1px solid var(--ink); padding-top: 6px; margin-top: 10px }
 .sl-rep .sl-r-next h2 { margin: 0 }
+.sl-rep .sl-r-chg { border-top-color: var(--rule) }
+.sl-rep .sl-r-chg .sl-changes { margin: 0 }
+.sl-rep .sl-r-fails table { table-layout: fixed }
+.sl-rep .sl-r-fails th:first-child { width: 136px }
+.sl-rep .sl-r-fails thead th:nth-child(2) { width: 22% }
 .sl-rep .sl-r-foot { margin-top: auto; display: block;
   border-top: 1px solid var(--rule); padding-top: 6px; font-size: 12px; line-height: 1.3; color: var(--slate) }
 .sl-rep .sl-r-foot b { color: var(--ink); font-weight: 600 }
@@ -913,6 +924,33 @@ def report_change(m):
     return (f'<div><h2>{esc(change_heading(m))}</h2>{listed}<table aria-label="KaijuFlow before and after">'
             f'<thead><tr><th scope="col">Measure</th><th scope="col" class="sl-r">Before</th>'
             f'<th scope="col" class="sl-r">This run</th><th scope="col">Change</th></tr></thead><tbody>{body}</tbody></table></div>')
+
+
+def report_speed_targets(m):
+    """A speed test's targets on the report: one row per target, its result on each list beside it."""
+    lists = m['speed']['lists']
+    rows = []
+    for words in dict.fromkeys(t['text'] for t in m['targets']):
+        cells = []
+        for lst in lists:
+            t = next((t for t in m['targets'] if t['text'] == words and t['list'] == lst['list']), None)
+            if t is None:
+                cells.append('<td>–</td>')
+                continue
+            mine, lim, margin = target_figures(t)
+            note = f'{margin}, inside the noise' if t.get('noise') else margin  # the footer says what that is
+            cells.append(f'<td>{status(t["result"])} <span class="sl-num">{mine},</span> limit {lim}<small>{esc(note)}</small></td>')
+        rows.append(f'<tr><th scope="row">{esc(words)}</th>{"".join(cells)}</tr>')
+    head = ''.join(f'<th scope="col">{esc(lst["name"])}</th>' for lst in lists)
+    return (f'<table class="sl-r-targets" aria-label="The targets on each list"><thead><tr><th scope="col">Target</th>{head}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>')
+
+
+def report_speed_changes(m):
+    """A speed test's changes on the report, on one row beside their heading; the headline numbers carry the change in figures."""
+    changes = ''.join(f'<li>{esc(c)}</li>' for c in m['changes'])
+    return (f'<section class="sl-r-next sl-r-chg"><h2>What changed</h2><ul class="sl-changes">{changes}</ul>'
+            '</section>') if changes else ''
 
 
 def report_fails(m):
@@ -940,13 +978,14 @@ def report(m):
     head = ('<div class="sl-trow sl-thead" aria-hidden="true"><span>Result</span><span>Target</span><span class="sl-r">KaijuFlow</span>'
             '<span class="sl-r">Limit</span><span>Margin</span></div>')
     finds = ''.join(f'<li>{h}{p}</li>' for h, p in m['findings'])
+    report_targets = f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div>'
     parts = [header(m),
              f'<section class="sl-r-top"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>{headline_numbers(m)}</section>',
-             f'<section class="sl-r-sec sl-r-two">{"".join(f"<div>{f}</div>" for f in speed_rulers(m))}</section>' if m.get('speed')
+             f'<section class="sl-r-sec sl-r-two">{"".join(f"<div>{f}</div>" for f in speed_rulers(m, report=True))}</section>' if m.get('speed')
              else f'<section class="sl-r-sec">{cold}</section>',
              f'<section class="sl-r-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
-             f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div>{final_bar(m)}</section>',
-             f'<section class="sl-r-sec sl-r-two">{report_fails(m)}{report_change(m)}</section>' if m.get('speed')
+             f'{report_speed_targets(m) if m.get("speed") else report_targets}{final_bar(m)}</section>',
+             f'<section class="sl-r-sec">{report_fails(m)}</section>{report_speed_changes(m)}' if m.get('speed')
              else f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
     if finds:
         parts.append(f'<section class="sl-r-sec"><h2>What the run found</h2><ul class="sl-finds">{finds}</ul></section>')
