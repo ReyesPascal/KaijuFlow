@@ -11,4 +11,5 @@ The owner runs `/mattpocock-skills:implement-spec <spec>`: implementer agents in
 - **Three at a time**, as above.
 - **Model and effort per agent** come from the spec's table. An agent with no entry inherits the session's.
 - **No live checks**: nothing that touches the test containers, the indexers or Usenet (`brainrun.py record/run/preflight/smoke`, `testbed.py`, `nntp.py`). They need the owner's go (`tools/brain/RUNBOOK.md`). Tests with fakes are fine, `npm run check:brain` included.
+- **Merging:** when an implementer's branch already contains the integration branch's tip, the orchestrator fast-forwards it. A merger agent is only for a real conflict, and it counts toward the three.
 - **Keep every `GLOSSARY.md` entry** when merges conflict: tickets add entries side by side.
