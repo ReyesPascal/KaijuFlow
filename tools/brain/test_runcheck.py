@@ -264,5 +264,24 @@ class FirstTryTests(unittest.TestCase):
                       out.splitlines())
 
 
+
+TEST_1 = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-15-test1')
+
+
+class Test1Tests(unittest.TestCase):
+    """Test 1 (#154). fixtures/run-2026-11-15-test1 is the real 2026-11-15T115540Z-baseline run: raw.json as the run kept
+    it, meta.json cut down to the fields the check reads. AltMount direct played "1080p UHD" releases (1080p encodes from
+    4K discs) where KaijuFlow played 4K; the check read them as 4K. Expected lines worked out by hand from raw.json."""
+
+    def test_the_check_names_altmount_directs_1080p_titles_as_not_like_for_like(self):
+        _, out = run_check(TEST_1)
+        lines = out.splitlines()
+        start = lines.index('Not like for like with KaijuFlow, so left out of the targets against that setup:')
+        self.assertEqual(lines[start + 1:start + 8], [
+            f"- AltMount's own addon, {t}: KaijuFlow's top pick is 2160p, AltMount's own addon's is 1080p (Cold 1)."
+            for t in ('Inception', 'Interstellar', 'Oppenheimer', 'Dune', 'The Dark Knight', 'Pulp Fiction', 'Chernobyl S01E02')])
+        self.assertTrue(lines[start + 8].startswith('Target: '), lines[start + 8])  # The Matrix is 1080p on all three sides
+
+
 if __name__ == '__main__':
     unittest.main()
