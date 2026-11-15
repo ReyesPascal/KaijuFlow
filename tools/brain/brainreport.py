@@ -20,6 +20,8 @@ SIDE_NAMES = {
     'altmount-addon': "AltMount's own addon",
     'kaijuflow-1page': 'KaijuFlow, one page per indexer',
 }
+SHORT_NAMES = {'kaijuflow': 'KaijuFlow', 'uu': 'Usenet Ultimate', 'altmount-addon': 'AltMount direct',
+               'kaijuflow-1page': 'KaijuFlow with one page per indexer'}  # the sides as a short run's text names them (GLOSSARY)
 RUN_ORDER = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 CAUSES = [('indexer_limit', 'Indexer limit'), ('backend_rejection', 'Backend rejection'),
           ('failure_video', 'Failure video'), ('other', 'Other'), ('not_recorded', 'Not recorded')]
@@ -582,6 +584,21 @@ def flatten_yaml(text):
     return out
 
 
+def short_run_text(sides, rounds, titles):
+    """What a short run played, in the words its report, its INDEX.md row and `check` use: `KaijuFlow, 1 round, 10 titles`."""
+    names = [SHORT_NAMES[s] for s in SHORT_NAMES if s in sides]
+    return f"{', '.join(names)}, {rounds} round{'' if rounds == 1 else 's'}, {len(titles)} title{'' if len(titles) == 1 else 's'}"
+
+
+def limit_to_played(baseline, cur):
+    """The baseline as far as a short run compares with it: its sides and titles cut down to the ones `cur` played, so what
+    the short run left out does not show as removed. Rounds need no cut: the top picks are compared in the rounds both hold."""
+    limited = dict(baseline)
+    for key in ('sides', 'titles'):
+        limited[key] = [x for x in baseline.get(key, []) if x in cur.get(key, [])]
+    return limited
+
+
 def _stamp(d):
     return f'{d:%Y-%m-%d %H:%M} UTC'
 
@@ -691,14 +708,27 @@ def _plays(visits, side, phase=None, rnd=None):
     return sum(1 for v in vs if v.get('ok')), len(vs)
 
 
+def side_time(visits, side, phase, what):
+    """The median start or list time of one side over both rounds of a phase: the figure the targets judge, for the
+    Speed Check page (build_page.py), so the page and the verdict show one number."""
+    return _time(visits, side, phase, what)
+
+
+def side_plays(visits, side):
+    """(top picks that played, top picks counted) of one side over every round, as the targets count them."""
+    return _plays(visits, side)
+
+
 MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
 
 
-def _verdict(result, slower_s=None, noise=None):
+def _verdict(result, slower_s=None, noise=None, value=None, limit=None):
     """A target's verdict as a value: the result (MET, NOT_MET or NOT_MEASURED); for a time target that is not met, how many
-    seconds KaijuFlow is slower than what it is held against; and the noise: None, or KaijuFlow's two rounds of the phase
-    with how far the target is met or missed by, when those two rounds differ by more than that."""
-    return {'result': result, 'slower_s': slower_s, 'noise': noise}
+    seconds KaijuFlow is slower than what it is held against; the noise: None, or KaijuFlow's two rounds of the phase
+    with how far the target is met or missed by, when those two rounds differ by more than that; and the two figures the
+    result compares (None when not measured): KaijuFlow's value and the limit it is held to, both in seconds for a time
+    target (the limit includes the margin), both (top picks that played, top picks counted) for a plays target."""
+    return {'result': result, 'slower_s': slower_s, 'noise': noise, 'value': value, 'limit': limit}
 
 
 def verdict_text(verdict):
@@ -725,13 +755,20 @@ def _measure_target(visits, t):
         if not all(rounds.values()):
             return measured, _verdict(NOT_MEASURED)
         met = all(p >= t['limit'] - margin and n - p <= margin for rs in rounds.values() for p, n in rs)
-        return measured, _verdict(MET if met else NOT_MET)
+        every = [x for rs in rounds.values() for x in rs]
+        value = (sum(p for p, _ in every), sum(n for _, n in every))
+        limit = (sum(t['limit'] - margin for _ in every), value[1])
+        return measured, _verdict(MET if met else NOT_MET, value=value, limit=limit)
     if t['measure'] == 'plays':  # the share of top picks that played, every round together
         (p, n), (q, m) = _plays(visits, JUDGED), _plays(visits, t['against'])
         measured = f"{me} {_plays_text((p, n))}, {SIDE_NAMES[t['against']]} {_plays_text((q, m))}"
         if not n or not m:
             return measured, _verdict(NOT_MEASURED)
-        return measured, _verdict(MET if p * m > (q - margin * m) * n else NOT_MET)
+        # At least as often, and more often unless both play every time (spec #58; owner, 2026-11-15): a tie at the
+        # maximum is met, any other tie is not.
+        more_often = p * m > (q - margin * m) * n
+        both_every_time = p == n and q == m
+        return measured, _verdict(MET if more_often or both_every_time else NOT_MET, value=(p, n), limit=(q, m))
     phase, what = t['measure'].split()
     mine = _time(visits, JUDGED, phase, what)
     ref = t['limit'] if 'limit' in t else _time(visits, t['against'], phase, what)
@@ -742,7 +779,8 @@ def _measure_target(visits, t):
     a, b = (_time(visits, JUDGED, phase, what, r) for r in (1, 2))
     noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
              if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
-    return measured, _verdict(MET, noise=noise) if over <= 0 else _verdict(NOT_MET, mine - ref, noise)
+    figures = {'value': mine, 'limit': round(ref + margin, 2)}
+    return measured, _verdict(MET, noise=noise, **figures) if over <= 0 else _verdict(NOT_MET, mine - ref, noise, **figures)
 
 
 def _is_number(x):
@@ -864,7 +902,7 @@ def answer_sentence(run):
         return ', '.join(f"{SIDE_NAMES[s]} {_cell(_time(vs, s, phase, 'start'))} s "
                          f"({' of '.join(str(x) for x in _plays(vs, s, phase))} top picks played)" for s in _sides(run))
     n = len(run.get('titles', []))
-    return (f"Across {n} title{'' if n == 1 else 's'}, each round done twice, the median time from pressing play to the first byte was, "
+    return (f"Across {n} title{'' if n == 1 else 's'}, each round done {'once' if run.get('rounds') == 1 else 'twice'}, the median time from pressing play to the first byte was, "
             f"cold: {fmt('cold')}; warm: {fmt('warm')}.")
 
 
@@ -1147,8 +1185,9 @@ def append_index_row(path, row):
         f.write(line)
 
 
-def previous_run(root, exclude=None):
-    """meta.json of the newest earlier finished (non-null) run, or None. Its top picks are added from the folder's raw.json
+def previous_run(root, exclude=None, usable=None):
+    """meta.json of the newest earlier finished (non-null) run, or None. A short run is never it. `usable(run folder)`, when
+    given, must also say yes (a short run is compared with the last run usable as a baseline); the meta gets its `folder`. Its top picks are added from the folder's raw.json
     (`top_picks`), so the next run can be compared with them; a folder that holds none stays without."""
     if not os.path.isdir(root):
         return None
@@ -1159,7 +1198,8 @@ def previous_run(root, exclude=None):
             meta = json.loads(_slurp(os.path.join(root, d, 'meta.json')))
         except (OSError, ValueError):
             continue
-        if meta.get('status') == 'ok':
+        if meta.get('status') == 'ok' and not meta.get('short') and (usable is None or usable(os.path.join(root, d))):
+            meta['folder'] = d
             try:
                 picks = top_picks(json.loads(_slurp(os.path.join(root, d, 'raw.json')))['visits'])
             except (OSError, ValueError, KeyError, TypeError):

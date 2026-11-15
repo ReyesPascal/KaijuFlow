@@ -75,6 +75,14 @@ export function read7zNumber(data: Buffer, offset: number): { value: number; len
   return { value, length: totalBytes };
 }
 
+/** Disc image file extensions the Backends cannot play (shared by archive inspection and the health check). */
+export const DISC_IMAGE_EXTENSIONS = ['.iso', '.img'];
+
+export function isDiscImageName(filename: string): boolean {
+  const lowerName = filename.toLowerCase();
+  return DISC_IMAGE_EXTENSIONS.some(ext => lowerName.endsWith(ext));
+}
+
 /**
  * Check a filename for nested archive indicators and update info accordingly.
  */
@@ -88,7 +96,7 @@ export function checkFileContentType(filename: string, info: ArchiveInfo): void 
   }
 
   // Check for ISO files
-  if (lowerName.endsWith('.iso') || lowerName.endsWith('.img')) {
+  if (isDiscImageName(filename)) {
     info.hasISO = true;
   }
 }

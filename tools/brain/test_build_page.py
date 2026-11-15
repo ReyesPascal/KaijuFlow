@@ -1,365 +1,409 @@
-"""Tests for build_page.py over a small fixture run folder. No Docker, no network.
+"""Tests for build_page.py: the Speed Check page built from run folders. No Docker, no network.
+
+fixtures/run-2026-11-13 is the real 2026-11-13 baseline run (meta.json and raw.json, every visit cut down to the fields
+the targets read). Its figures were worked out by hand for the published page (test_runcheck.TargetTests).
 
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
 """
 import contextlib
+import html
 import io
 import json
 import os
 import re
+import shutil
+import tempfile
 import unittest
 
+import brainreport as br
 import build_page as bp
 from test_settings import tempdir
 
-TITLES = ['Alpha', 'Beta']
+BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13')
+FOLDER = '2026-11-13T053200Z-baseline'
 
 
-def visit(side, phase, rnd, title, start=1.5, plays=True, list_s=2.0, **extra):
-    v = {'side': side, 'phase': phase, 'round': rnd, 'title': title, 'start_s': start if plays else None, 'list_s': list_s,
-         'misses': [], 'steps': [], 'tries': [{'plays': plays, 'ready_s': start}]}
-    v.update(extra)
-    return v
+def copy_run(root, folder_name=FOLDER, edit_visits=None, **meta):
+    """The 2026-11-13 baseline as a run folder named folder_name under root, its visits changed by edit_visits(visits)
+    and its meta.json fields by meta."""
+    folder = os.path.join(root, folder_name)
+    shutil.copytree(BASELINE, folder)
+    if edit_visits:
+        path = os.path.join(folder, 'raw.json')
+        with open(path) as f:
+            raw = json.load(f)
+        edit_visits(raw['visits'])
+        with open(path, 'w') as f:
+            json.dump(raw, f)
+    if meta:
+        path = os.path.join(folder, 'meta.json')
+        with open(path) as f:
+            m = json.load(f)
+        m.update(meta)
+        with open(path, 'w') as f:
+            json.dump(m, f)
+    return folder
 
 
-def make_run(root, name='fixture-run', fail=('uu', 'Beta'), sides=('kaijuflow', 'uu')):
+def make_record(root, name='2026-11-13T035846Z-baseline-record'):
     folder = os.path.join(root, name)
     os.makedirs(folder)
-    visits = []
-    for side in sides:
-        for phase, rnd in bp.ROUNDS:
-            for t in TITLES:
-                visits.append(visit(side, phase, rnd, t, start=1.0 if side == 'kaijuflow' else 2.0, plays=(side, t) != fail))
-    json.dump({'status': 'ok', 'visits': visits}, open(os.path.join(folder, 'raw.json'), 'w'))
-    json.dump({'name': name, 'finished': '2026-11-11T10:00:00.000Z', 'indexers': ['ninjacentral'], 'error': None}, open(os.path.join(folder, 'meta.json'), 'w'))
+    with open(os.path.join(folder, 'meta.json'), 'w') as f:
+        json.dump({'name': 'baseline', 'mode': 'record', 'started': '2026-11-13T03:58:46.000Z'}, f)
     return folder
 
 
-def make_record(root, name='fixture-run'):
-    folder = os.path.join(root, name + '-record')
-    os.makedirs(folder)
-    json.dump({'name': name, 'mode': 'record', 'started': '2026-11-11T09:00:00.000Z', 'finished': '2026-11-11T09:05:00.000Z'}, open(os.path.join(folder, 'meta.json'), 'w'))
-    return folder
+def text(page):
+    """The page's words without tags, spaces folded."""
+    return re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', ' ', page))).strip()
 
 
-STORY = """<h2>Fixture findings</h2>
-<p>Beta is the slow one on Usenet Ultimate.</p>
-<div class="answer">
-  __SUMMARY_TABLE__
-  __ROUND_TABLE__
-</div>
-__DETAILS__
-<p class="note">Written by hand.</p>
+def section(index, heading):
+    """The <section> holding the given heading text."""
+    for s in re.findall(r'<section.*?</section>', index, re.S):
+        if heading in s:
+            return s
+    raise AssertionError(f'no section with {heading!r}')
+
+
+def target_row(index, target):
+    [row] = [r for r in re.findall(r'<li class="sl-trow">.*?</li>', index) if target in r]
+    return text(row)
+
+
+def lanes(fig_html):
+    """[(lane name, time)] of a ruler, in the order drawn."""
+    return re.findall(r'<span class="sl-name">([^<]*)</span><span class="sl-track">(?:<span class="sl-bar"[^>]*></span>'
+                      r'<span class="sl-val"[^>]*><b>([^<]*)</b>)?', fig_html)
+
+
+class Baseline(unittest.TestCase):
+    """The page of the 2026-11-13 baseline: every number from its run folder, every verdict from target_results."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as root:
+            cls.index = bp.build([copy_run(root), make_record(root)])
+
+    def test_the_verdict_counts_the_targets_target_results_meets(self):
+        self.assertIn('<h1>1 of 6 targets met</h1>', self.index)
+        self.assertIn('<h2>One target met, five still open</h2>', self.index)
+
+    def test_every_target_row_shows_the_verdict_and_figures_of_target_results(self):
+        with open(os.path.join(BASELINE, 'raw.json')) as f:
+            results = br.target_results(json.load(f)['visits'])
+        rows = [text(r) for r in re.findall(r'<li class="sl-trow">.*?</li>', self.index)]
+        self.assertEqual(len(rows), len(results))
+        for row, (target, _, verdict) in zip(rows, results):
+            self.assertTrue(row.startswith(verdict['result'].capitalize() + ' ' + target), row)
+        # the figures, as worked out by hand for the published page
+        self.assertEqual(rows[1], 'Not met Cold start no slower than Usenet Ultimate KaijuFlow 6.73 s Limit 5.51 s 1.22 s over '
+                                  "Inside the noise: KaijuFlow's two cold rounds differ by 1.86 s (8.59 and 6.73 s), more than that. "
+                                  '0 s 7 s')
+        self.assertEqual(rows[2], 'Met Warm list no slower than 4.7 s KaijuFlow 3.46 s Limit 4.70 s 1.24 s to spare 0 s 5 s')
+        self.assertIn('KaijuFlow 39 of 40 Limit 40 of 40 Less often', rows[3])
+        self.assertIn('KaijuFlow 0.18 s Limit 0.12 s 0.06 s over', rows[4])
+        self.assertIn('KaijuFlow 6.73 s Limit 4.70 s 2.03 s over', rows[5])
+        self.assertIn('KaijuFlow 39 of 40 Limit 40 of 40 1 top pick did not play', rows[0])
+
+    def test_headline_numbers_are_kaijuflows_medians(self):
+        heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', self.index).group(0))
+        self.assertEqual(heads, 'Cold start 6.73 s Warm start 0.18 s Warm list 3.46 s Top pick plays 39 of 40 KaijuFlow in this run.')
+
+    def test_the_cold_start_ruler_has_every_setup_fastest_first_and_both_cold_start_limits(self):
+        hero = re.search(r'<div class="sl-plot sl-hero">.*?</ol>', self.index).group(0)
+        self.assertEqual(lanes(hero), [('AltMount direct', '3.70 s'), ('Usenet Ultimate', '5.51 s'),
+                                       ('KaijuFlow, one page', '5.53 s'), ('KaijuFlow', '6.73 s')])
+        flags = [text(f) for f in re.findall(r'<p class="sl-flag.*?</p>', hero)]
+        self.assertEqual(flags, ['Limit 5.51 s: Usenet Ultimate Not met, 1.22 s over',
+                                 'Limit 4.70 s: AltMount direct + 1 s Not met, 2.03 s over'])
+        # on a ruler of 0 to 7 s
+        self.assertEqual(re.findall(r'class="sl-lim" style="[^"]*left:([\d.]+)%', hero), ['78.71', '67.14'])
+        self.assertIn('<span class="sl-tick" style="left:100%">7 s</span>', self.index)
+
+    def test_the_setups_are_named_in_the_pages_words(self):
+        words = text(self.index)
+        self.assertIn('AltMount direct', words)
+        for avoid in ("AltMount's own addon", 'addon', 'altmount-addon', 'kaijuflow-1page'):
+            self.assertNotIn(avoid, words)
+
+    def test_the_four_setup_rulers_carry_the_limits_of_their_measure(self):
+        four = section(self.index, 'Top pick plays</h3>')
+        self.assertIn('<h2>KaijuFlow starts slower than Usenet Ultimate</h2>', four)
+        caps = re.findall(r'<figcaption class="sl-cap"><b>([^<]*)</b>', four)
+        self.assertEqual(caps, ['Start, cold', 'Start, warm', 'List, cold', 'List, warm'])
+        flags = [text(f) for f in re.findall(r'<p class="sl-flag.*?</p>', four)]
+        self.assertEqual(flags, ['Limit 5.51 s: Usenet Ultimate', 'Limit 4.70 s: AltMount direct + 1 s',
+                                 'Limit 0.12 s: AltMount direct + 0.05 s', 'Limit 4.70 s'])
+        self.assertIn('No target: AltMount direct checks nothing before it lists', four)
+        self.assertIn('<span class="sl-num sl-pv">40 of 40</span><span class="sl-pn">AltMount direct</span>', four)
+
+    def test_the_title_ruler_names_the_slow_title_and_marks_a_failed_round(self):
+        titles = section(self.index, 'cold start for each title')
+        self.assertIn('<h2>Game of Thrones S02E03 is far slower than the rest</h2>', titles)
+        drawn = lanes(titles)
+        self.assertEqual(drawn[-1], ('Game of Thrones S02E03', '50.48 s'))   # 44.19 and 56.78 s, rounded as brainreport does
+        self.assertIn(('Inception', '21.94 s'), drawn)                         # the second cold round failed
+        self.assertIn('<b>21.94 s</b><small>1 of 2 failed</small>', titles)
+        # the table's columns: the setups in the page's order; the one-page side failed The Matrix in both cold rounds
+        self.assertEqual(re.findall(r'<th scope="col" class="sl-r[^"]*"><span>([^<]*)</span>', titles),
+                         ['KaijuFlow', 'Usenet Ultimate', 'AltMount direct', 'KaijuFlow, one page'])
+        [matrix] = [text(r) for r in re.findall(r'<tr><th scope="row">The Matrix</th>.*?</tr>', titles)]
+        self.assertTrue(matrix.startswith('The Matrix 11.43 '), matrix)
+        self.assertTrue(matrix.endswith(' – did not play'), matrix)
+
+    def test_without_an_earlier_run_the_page_shows_what_meta_json_says_changed(self):
+        self.assertIn('No earlier run on this page to compare with.', self.index)
+        self.assertIn('<li>No earlier run to compare with: this is the first one.</li>', self.index)
+        self.assertNotIn('Every run so far', self.index)
+
+    def test_without_findings_html_there_is_no_findings_section(self):
+        self.assertNotIn('What the run found', self.index)
+
+
+class TieAtTheMaximum(unittest.TestCase):
+    def test_both_setups_playing_every_top_pick_is_met_on_the_page(self):
+        def every_kaijuflow_pick_plays(visits):
+            for v in visits:
+                if v['side'] == 'kaijuflow':
+                    v.update(ok=True, start_s=v['start_s'] or 5.0)
+        index = bp.build([copy_run(tempdir(self), edit_visits=every_kaijuflow_pick_plays)])
+        row = target_row(index, 'at least as often as AltMount direct')
+        self.assertEqual(row, 'Met Top pick plays at least as often as AltMount direct, and more often unless both play every '
+                              'time KaijuFlow 40 of 40 Limit 40 of 40 Both played every top pick')
+        self.assertIn('<h1>3 of 6 targets met</h1>', index)
+
+
+class AgainstAnEarlierRun(unittest.TestCase):
+    def setUp(self):
+        root = tempdir(self)
+
+        def slower(visits):  # KaijuFlow's cold starts 1 s slower in the earlier run
+            for v in visits:
+                if v['side'] == 'kaijuflow' and v['phase'] == 'cold' and v['start_s'] is not None:
+                    v['start_s'] = round(v['start_s'] + 1, 2)
+        self.earlier = copy_run(root, edit_visits=slower)
+        self.later = copy_run(root, '2026-11-16T050000Z-tuning-1', name='tuning-1', finished='2026-11-16T06:00:00.000Z',
+                              changes=['Health-check connections: 12 -> 20 (kaijuflow).'])
+        self.index = bp.build([self.earlier, self.later])
+
+    def test_the_newest_run_is_judged_and_compared_with_the_one_before(self):
+        self.assertIn('<b>Tuning 1 run, 16 November 2026.</b> Compared with the baseline run of 13 November 2026.', self.index)
+        heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', self.index).group(0))
+        self.assertEqual(heads, 'Cold start 6.73 s 1.00 s faster (13%) Warm start 0.18 s No change Warm list 3.46 s No change '
+                                'Top pick plays 39 of 40 No change KaijuFlow in this run, with the change since the run it is compared with.')
+        self.assertIn('<b>As many as the baseline run.</b>', self.index)
+
+    def test_what_changed_lists_the_runs_own_changes_and_pairs_kaijuflow_before_and_after(self):
+        changed = section(self.index, 'got faster since')
+        self.assertIn('<h2>One of the four times got faster since the baseline run</h2>', changed)   # the cold start; the rest are the same
+        self.assertIn('<li>Health-check connections: 12 -&gt; 20 (kaijuflow).</li>', changed)
+        self.assertEqual(lanes(changed)[:2], [('Before', '7.73 s'), ('This run', '6.73 s')])
+
+    def test_every_run_so_far_lists_both_runs_newest_first(self):
+        rows = [text(r) for r in re.findall(r'<tr class="[^"]*"><th scope="row">.*?</tr>', section(self.index, 'Every run so far'))]
+        self.assertEqual(rows, ['Tuning 1 run 2026-11-16 Health-check connections: 12 -> 20 (kaijuflow). 1 of 6 6.73 s 0.18 s 39 of 40',
+                                'Baseline run 2026-11-13 No earlier run to compare with: this is the first one. 1 of 6 7.73 s 0.18 s 39 of 40'])
+
+    def test_a_stopped_run_is_never_the_one_compared_with(self):
+        stopped = copy_run(tempdir(self), '2026-11-15T000000Z-stopped', name='stopped', status='stopped')
+        index = bp.build([self.earlier, stopped, self.later])
+        self.assertIn('Compared with the baseline run of 13 November 2026.', index)
+        self.assertIn('<td class="sl-r">not judged</td>', section(index, 'Every run so far'))
+
+    def test_the_report_has_kaijuflow_before_and_after_in_a_table(self):
+        report = bp.build_report([self.earlier, self.later])
+        changed = section(report, 'got faster since')
+        self.assertIn('<h2>One of the four times got faster since the baseline run</h2>', changed)
+        self.assertIn('<li>Health-check connections: 12 -&gt; 20 (kaijuflow).</li>', changed)
+        rows = [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', changed)]
+        self.assertEqual(rows, ['Cold start 7.73 s 6.73 s 1.00 s faster (13%)', 'Warm start 0.18 s 0.18 s No change',
+                                'Cold list 9.73 s 9.73 s No change', 'Warm list 3.46 s 3.46 s No change',
+                                'Top pick plays 39 of 40 39 of 40 No change'])
+
+
+class Refusals(unittest.TestCase):
+    def test_a_newest_run_that_did_not_finish_is_refused_with_the_reason(self):
+        folder = copy_run(tempdir(self), status='stopped')
+        with self.assertRaises(SystemExit) as e:
+            bp.build([folder])
+        self.assertIn('the run was stopped before its last play', str(e.exception))
+
+    def test_a_short_run_folder_is_refused_with_one_sentence_saying_why(self):
+        folder = copy_run(tempdir(self), short='KaijuFlow, 1 round, 2 titles')
+        with self.assertRaises(SystemExit) as stop:
+            bp.build([folder])
+        self.assertEqual(str(stop.exception), f'{folder}: a short run (KaijuFlow, 1 round, 2 titles) is not a baseline, so the page does not show it.')
+
+    def test_a_recording_folder_alone_is_not_enough(self):
+        with self.assertRaises(SystemExit):
+            bp.build([make_record(tempdir(self))])
+
+
+FINDINGS = """<h3>Game of Thrones is the slow title.</h3>
+<p>Its top pick is a 26.5 GB 4K release.</p>
+<h3>Inception is hit-and-miss.</h3>
+<p>It played in the first cold round only.</p>
+<h2>Next: tuning run 1</h2>
+<p>Health-check connections raised from 12 to 20.</p>
 """
 
 
-def frozen_table(title):
-    return f'<div class="scroll"><table class="grid"><tbody><tr><th scope="row">{title}</th></tr></tbody></table></div>'
+class Findings(unittest.TestCase):
+    def build(self, words, build=bp.build):
+        folder = copy_run(tempdir(self))
+        with open(os.path.join(folder, bp.FINDINGS_FILE), 'w') as f:
+            f.write(words)
+        return build([folder])
 
+    def test_the_report_has_the_findings_and_the_next_step_too(self):
+        report = self.build(FINDINGS, bp.build_report)
+        found = section(report, 'What the run found')
+        self.assertEqual(re.findall(r'<li><h3>(.*?)</h3>', found), ['Game of Thrones is the slow title.', 'Inception is hit-and-miss.'])
+        nxt = section(report, 'Next: tuning run 1')
+        self.assertIn('<p>Health-check connections raised from 12 to 20.</p>', nxt)
 
-def make_entry(archive, name, files):
-    """One archived run in the archive folder: files maps a file name to its text (tables.json to a dict)."""
-    entry = os.path.join(archive, name)
-    os.makedirs(entry)
-    for fname, content in files.items():
-        with open(os.path.join(entry, fname), 'w') as fh:
-            fh.write(content if isinstance(content, str) else json.dumps(content))
-    return archive
+    def test_findings_html_gives_the_findings_and_the_next_step(self):
+        index = self.build(FINDINGS)
+        found = section(index, 'What the run found')
+        self.assertEqual(re.findall(r'<li><h3>(.*?)</h3>', found), ['Game of Thrones is the slow title.', 'Inception is hit-and-miss.'])
+        nxt = section(index, 'Next: tuning run 1')
+        self.assertIn('<p>Health-check connections raised from 12 to 20.</p>', nxt)
+        self.assertLess(index.index('What the run found'), index.index('Next: tuning run 1'))
 
-
-def lost_run(archive):
-    """An archive entry with every part: a section, blocks for below the word list, a footer line and the tables."""
-    return make_entry(archive, '2026-11-01-lost', {
-        'section.html': '<section>\n  <h2>Lost run, 2026-11-01</h2>\n  <div data-table="lost-start" class="slot">Loading the table...</div>\n</section>\n',
-        'appendix.html': '<section>\n  <h2>Lost run, all numbers</h2>\n  <div data-table="lost-all" class="slot">Loading the table...</div>\n</section>\n',
-        'footer.html': '  <div>The raw data of the lost run is gone.</div>\n',
-        'tables.json': {'lost-start': frozen_table('Gamma'), 'lost-all': frozen_table('Delta')}})
-
-
-class RunNumbers(unittest.TestCase):
-    def test_medians_counts_and_failures(self):
-        d = tempdir(self)
-        run = bp.Run(make_run(d))
-        self.assertEqual(run.titles, TITLES)
-        self.assertEqual(run.plays('kaijuflow', 'cold', 1), (2, 2))
-        self.assertEqual(run.plays('uu', 'cold', 1), (1, 2))
-        self.assertEqual(run.start('uu', 'cold'), 2.0)
-        self.assertEqual(run.listtime('kaijuflow', 'warm'), 2.0)
-        self.assertEqual(run.failed_titles('uu'), ['Beta'])
-        self.assertEqual(run.failed_titles('kaijuflow'), [])
-
-    def test_not_recorded_visits_do_not_count_as_failures(self):
-        d = tempdir(self)
-        folder = make_run(d)
-        raw = json.load(open(folder + '/raw.json'))
-        raw['visits'][0].update(not_recorded=True, tries=[], start_s=None)
-        json.dump(raw, open(folder + '/raw.json', 'w'))
-        run = bp.Run(folder)
-        self.assertEqual(run.failed_titles('kaijuflow'), [])
-        self.assertEqual(run.plays('kaijuflow', 'cold', 1), (1, 1))
-
-
-class BuildFixture(unittest.TestCase):
-    def test_writes_small_index_and_tables_json_beside_it(self):
-        d = tempdir(self)
-        out = os.path.join(d, 'page')
-        run, rec = make_run(d), make_record(d)
-        index, tables = bp.write([rec, run], out, archive=None)
-        self.assertEqual(sorted(os.listdir(out)), ['index.html', 'tables.json'])
-        self.assertEqual(open(os.path.join(out, 'index.html')).read(), index)
-        self.assertEqual(json.load(open(os.path.join(out, 'tables.json'))), tables)
-        self.assertEqual(sorted(tables), ['fixture-run-list', 'fixture-run-start'])
-        # per-title rows are in the data file, not in the page
-        self.assertIn('<th scope="row">Alpha</th>', tables['fixture-run-start'])
-        self.assertNotIn('<th scope="row">Alpha</th>', index)
-
-    def test_every_slot_has_a_table_and_the_page_loads_them_with_fetch(self):
-        d = tempdir(self)
-        index, tables = bp.build([make_run(d)], archive=None)
-        slots = re.findall(r'data-table="([^"]+)"', index)
-        self.assertEqual(sorted(slots), sorted(tables))
-        self.assertIn("fetch('tables.json')", index)
-
-    def test_failed_pick_and_round_numbers_show(self):
-        d = tempdir(self)
-        index, tables = bp.build([make_run(d)], archive=None)
-        self.assertIn('Run fixture-run, 2026-11-11 (ninjacentral)', index)
-        self.assertIn('the top pick did not play for Beta', index)
-        self.assertIn('<td class="bad">1 of 2</td>', index)   # uu round table: Beta fails every round
-        self.assertIn('<td class="bad">fails</td>', tables['fixture-run-start'])
-        self.assertIn('<th scope="col">Cold 1</th>', tables['fixture-run-start'])
-
-    def test_the_one_page_side_is_named_in_words_everywhere(self):
-        d = tempdir(self)
-        index, tables = bp.build([make_run(d, sides=('kaijuflow', 'uu', 'kaijuflow-1page'))], archive=None)
-        everything = index + ''.join(tables.values())
-        self.assertNotIn('kaijuflow-1page', everything)
-        self.assertIn('<th scope="row">KaijuFlow, one page per indexer</th>', index)   # summary and round tables
-        self.assertIn('class="side">KaijuFlow, one page per indexer</th>', tables['fixture-run-start'])
-        self.assertIn('<dt>KaijuFlow, one page per indexer</dt>', index)   # Who's who
-
-    def test_a_run_without_story_html_gets_the_numbers_only_section(self):
-        d = tempdir(self)
-        index, _ = bp.build([make_run(d)], archive=None)
-        self.assertIn('Numbers only; no written story for this run yet.', index)
-        self.assertIn('<h3>Summary</h3>', index)
-
-    def test_story_html_in_the_run_folder_is_the_runs_section_with_the_run_tables_put_in(self):
-        d = tempdir(self)
-        run = make_run(d)
-        with open(os.path.join(run, 'story.html'), 'w') as fh:
-            fh.write(STORY)
-        index, tables = bp.build([run], archive=None)
-        self.assertIn('<h2>Fixture findings</h2>', index)
-        self.assertIn('<p>Beta is the slow one on Usenet Ultimate.</p>', index)
-        self.assertNotIn('Numbers only', index)
-        self.assertNotIn('Run fixture-run, 2026-11-11', index)   # the story brings its own heading
-        for name in ('__SUMMARY_TABLE__', '__ROUND_TABLE__', '__DETAILS__'):
-            self.assertNotIn(name, index)
-        section = index[index.index('<h2>Fixture findings</h2>'):index.index('<p class="note">Written by hand.</p>')]
-        self.assertIn('<th scope="col">Start, cold</th>', section)   # the summary table
-        self.assertIn('<td class="bad">1 of 2</td>', section)   # the round table: Beta fails on uu every round
-        self.assertEqual(re.findall(r'data-table="([^"]+)"', section), ['fixture-run-start', 'fixture-run-list'])
-        self.assertEqual(sorted(tables), ['fixture-run-list', 'fixture-run-start'])
-        self.assertEqual(index.count('<section>'), index.count('</section>'))
-
-    def test_two_runs_with_the_same_name_share_a_page_each_with_its_own_tables(self):
-        d = tempdir(self)
-        old = make_run(d, '2026-11-13T053200Z-baseline', fail=('uu', 'Beta'))
-        new = make_run(d, '2026-11-20T090000Z-baseline', fail=('kaijuflow', 'Alpha'))
-        for folder in (old, new):
-            json.dump({'name': 'baseline', 'finished': '2026-11-11T10:00:00.000Z', 'indexers': ['ninjacentral']},
-                      open(os.path.join(folder, 'meta.json'), 'w'))
-        index, tables = bp.build([old, new], archive=None)
-        self.assertEqual(re.findall(r'data-table="([^"]+)"', index), [
-            '2026-11-20T090000Z-baseline-start', '2026-11-20T090000Z-baseline-list',
-            '2026-11-13T053200Z-baseline-start', '2026-11-13T053200Z-baseline-list'])
-        self.assertEqual(sorted(tables), sorted(re.findall(r'data-table="([^"]+)"', index)))
-        self.assertNotIn('<td class="bad">fails</td>', tables['2026-11-13T053200Z-baseline-start'].split('Alpha')[1].split('</tr>')[0])
-        self.assertIn('<td class="bad">fails</td>', tables['2026-11-20T090000Z-baseline-start'].split('Alpha')[1].split('</tr>')[0])
-
-    def test_recording_folder_alone_is_not_enough(self):
-        d = tempdir(self)
-        with self.assertRaises(SystemExit):
-            bp.build([make_record(d)], archive=None)
-
-    def test_newest_run_first(self):
-        d = tempdir(self)
-        old = make_run(d, '2026-11-10T000000Z-a')
-        new = make_run(d, '2026-11-11T000000Z-b')
-        index, _ = bp.build([old, new], archive=None)
-        self.assertLess(index.index('Run 2026-11-11T000000Z-b'), index.index('Run 2026-11-10T000000Z-a'))
-
-
-class ArchivedSections(unittest.TestCase):
-    """Runs whose folders are gone: their frozen sections and tables come from the archive folder."""
-
-    def test_an_archived_section_sits_below_the_runs_with_its_tables_as_frozen(self):
-        d = tempdir(self)
-        index, tables = bp.build([make_run(d)], archive=lost_run(os.path.join(d, 'archive')))
-        self.assertLess(index.index('Run fixture-run'), index.index('<h2>Lost run, 2026-11-01</h2>'))
-        self.assertLess(index.index('<h2>Lost run, 2026-11-01</h2>'), index.index('<h2>What the words mean</h2>'))
-        self.assertEqual(tables['lost-start'], frozen_table('Gamma'))
-        self.assertEqual(sorted(tables), ['fixture-run-list', 'fixture-run-start', 'lost-all', 'lost-start'])
-        self.assertEqual(sorted(re.findall(r'data-table="([^"]+)"', index)), sorted(tables))
-
-    def test_an_entrys_appendix_goes_below_the_word_list_and_its_footer_line_into_the_footer(self):
-        d = tempdir(self)
-        index, _ = bp.build([make_run(d)], archive=lost_run(os.path.join(d, 'archive')))
-        self.assertLess(index.index('<h2>What the words mean</h2>'), index.index('<h2>Lost run, all numbers</h2>'))
-        self.assertLess(index.index('<h2>Lost run, all numbers</h2>'), index.index('<footer>'))
-        footer = index[index.index('<footer>'):index.index('</footer>')]
-        self.assertIn('<div>The raw data of the lost run is gone.</div>', footer)
-
-    def test_archived_runs_are_newest_first_and_an_entry_may_be_a_section_alone(self):
-        d = tempdir(self)
-        archive = lost_run(os.path.join(d, 'archive'))
-        make_entry(archive, '2026-10-20-older', {'section.html': '<section>\n  <h2>Older lost run, 2026-10-20</h2>\n</section>\n'})
-        index, tables = bp.build([make_run(d)], archive=archive)
-        self.assertLess(index.index('<h2>Lost run, 2026-11-01</h2>'), index.index('<h2>Older lost run, 2026-10-20</h2>'))
-        self.assertLess(index.index('<h2>Older lost run, 2026-10-20</h2>'), index.index('<h2>What the words mean</h2>'))
-        self.assertEqual(index.count('<section>'), index.count('</section>'))
-        self.assertEqual(sorted(tables), ['fixture-run-list', 'fixture-run-start', 'lost-all', 'lost-start'])
-
-    def test_without_an_archive_the_page_holds_the_given_runs_only(self):
-        d = tempdir(self)
-        index, _ = bp.build([make_run(d)], archive=None)
-        self.assertNotIn('<footer>', index)
-        self.assertNotIn('Earlier answers', index)
-        self.assertIn('<p class="lede">Newest first: the timed runs on the test copies.</p>', index)
-
-    def test_a_table_name_used_twice_is_refused(self):
-        d = tempdir(self)
-        archive = make_entry(os.path.join(d, 'archive'), '2026-11-01-lost', {
-            'section.html': '<section>\n  <div data-table="fixture-run-start" class="slot">Loading the table...</div>\n</section>\n',
-            'tables.json': {'fixture-run-start': frozen_table('Gamma')}})
-        with self.assertRaises(SystemExit) as stop:
-            bp.build([make_run(d)], archive=archive)
-        self.assertIn('fixture-run-start', str(stop.exception))
-
-    def test_a_place_for_a_table_that_nobody_supplies_is_refused(self):
-        d = tempdir(self)
-        archive = make_entry(os.path.join(d, 'archive'), '2026-11-01-lost', {
-            'section.html': '<section>\n  <div data-table="lost-start" class="slot">Loading the table...</div>\n</section>\n'})
-        with self.assertRaises(SystemExit) as stop:
-            bp.build([make_run(d)], archive=archive)
-        self.assertIn('lost-start', str(stop.exception))
-
-
-class RepoArchive(unittest.TestCase):
-    """The archive in the repo: the 2026-11-10 and 2026-11-09 sections as published. It is what a normal build uses."""
-
-    def setUp(self):
-        d = tempdir(self)
-        self.out = os.path.join(d, 'page')
-        with contextlib.redirect_stdout(io.StringIO()):
-            bp.main([make_run(d), make_record(d), '--out', self.out])
-        self.index = open(os.path.join(self.out, 'index.html')).read()
-        self.tables = json.load(open(os.path.join(self.out, 'tables.json')))
-
-    def test_one_command_with_run_and_recording_folder_keeps_the_lost_runs(self):
-        order = ['Run fixture-run, 2026-11-11', '<h2>First baseline, 2026-11-10 (old machine, NinjaCentral only)</h2>',
-                 '<h2>Earlier answers, 2026-11-09 (live services)</h2>', '<h2>What the words mean</h2>',
-                 'All numbers: evening cold run, search side by side', '<h2>Worth knowing</h2>', '<footer>']
-        places = [self.index.index(text) for text in order]
-        self.assertEqual(places, sorted(places))
-        self.assertIn('Its run record was lost with that machine.', self.index)
-        self.assertIn('Whiplash and Band of Brothers S01E02', self.index)   # hand-corrected sentence, kept word for word
-        self.assertIn('The raw data of 2026-11-09 and 2026-11-10 was lost with the old machine.', self.index)
-
-    def test_the_lost_runs_tables_are_in_the_data_file(self):
-        self.assertEqual(sorted(self.tables), ['afternoon-parity', 'afternoon-search', 'baseline-nc-list', 'baseline-nc-start',
-                                               'evening-cold', 'evening-parity', 'evening-warm', 'fixture-run-list', 'fixture-run-start'])
-        self.assertIn('Same video bytes', self.tables['evening-parity'])
-        self.assertIn('HTTP 503', self.tables['evening-cold'])
-        self.assertIn('<th scope="row">Oppenheimer</th>', self.tables['baseline-nc-start'])
-        self.assertEqual(sorted(re.findall(r'data-table="([^"]+)"', self.index)), sorted(self.tables))
-
-    def test_the_page_is_balanced(self):
-        for tag in ('section', 'details', 'footer', 'main', 'dl', 'ul', 'table'):
-            self.assertEqual(self.index.count('<' + tag), self.index.count('</' + tag + '>'), tag)
-
-
-class HeaderWords(unittest.TestCase):
-    def test_the_written_header_is_only_for_the_page_it_was_written_for(self):
-        d = tempdir(self)
-        written, _ = bp.build([make_run(d, bp.HEADER_FOR)])
-        self.assertIn('<div class="eyebrow">Brain · 2026-11-13 baseline run · 2026-11-10 first baseline · 2026-11-09 live runs</div>', written)
-        self.assertIn('the baseline run of 2026-11-13 on the new machine, four setups', written)
-        other, _ = bp.build([make_run(d)])
-        self.assertIn('<div class="eyebrow">Brain · timed runs</div>', other)
-        self.assertNotIn('the baseline run of 2026-11-13', other)
-        both, _ = bp.build([os.path.join(d, bp.HEADER_FOR), make_run(d, '2026-11-14T000000Z-later')])
-        self.assertNotIn('the baseline run of 2026-11-13', both)
+    def test_words_before_the_first_finding_are_refused(self):
+        with self.assertRaises(SystemExit) as e:
+            self.build('<p>Stray words.</p>\n' + FINDINGS)
+        self.assertIn(bp.FINDINGS_FILE, str(e.exception))
 
 
 class PageRules(unittest.TestCase):
-    def setUp(self):
-        root = tempdir(self)
-        self.index, self.tables = bp.build([make_run(root)])
+    """The artifact page contract and the design's table rules."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as root:
+            cls.index = bp.build([copy_run(root)])
 
     def test_title_is_two_to_four_words(self):
         title = re.search(r'<title>(.*?)</title>', self.index).group(1)
         self.assertTrue(2 <= len(title.split()) <= 4, title)
 
-    def test_colors_are_tokens_with_both_dark_mode_forms_and_body_background(self):
-        self.assertRegex(self.index, r':root\s*\{[^}]*--bg:')
-        self.assertIn('@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {', self.index)
-        self.assertIn(':root[data-theme="dark"] {', self.index)
-        self.assertRegex(self.index, r'body \{ background: var\(--bg\)')
+    def test_dark_mode_in_both_forms_and_a_body_background(self):
+        self.assertIn('@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sl {', self.index)
+        self.assertIn(':root[data-theme="dark"] .sl {', self.index)
+        self.assertRegex(self.index, r'body \{[^}]*background:')
 
-    def test_no_external_scripts_and_phone_gutter(self):
-        self.assertNotRegex(self.index, r'<script[^>]*src=')
+    def test_no_scripts_and_a_phone_gutter(self):
+        self.assertNotIn('<script', self.index)
         self.assertIn('max(16px, env(safe-area-inset-left', self.index)
-        self.assertIn('@media (max-width: 640px)', self.index)
 
-    def test_page_is_small_next_to_its_tables(self):
-        self.assertLess(len(self.index), 60000)
+    def test_every_table_has_a_caption_and_its_own_scroll_box(self):
+        tables = re.findall(r'(.{30})<table>(.{9})', self.index)
+        self.assertTrue(tables)
+        for before, after in tables:
+            self.assertTrue(before.endswith('<div class="sl-scroll">'), before)
+            self.assertEqual(after, '<caption>')
+        self.assertNotRegex(self.index, r'<th[^>]*></th>')
 
-    def test_every_table_is_balanced_html(self):
-        for tid, t in self.tables.items():
-            for tag in ('table', 'tr', 'tbody', 'thead', 'div'):
-                self.assertEqual(t.count('<' + tag), t.count('</' + tag + '>'), (tid, tag))
+    def test_the_page_is_balanced(self):
+        for tag in ('section', 'div', 'ul', 'ol', 'li', 'table', 'tr', 'figure', 'p', 'span', 'dl'):
+            self.assertEqual(len(re.findall(f'<{tag}[ >]', self.index)), self.index.count(f'</{tag}>'), tag)
+
+
+class Report(unittest.TestCase):
+    """The one-page Letter report (#133): the same run, numbers and verdicts as the page, on one sheet."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as root:
+            folders = [copy_run(root), make_record(root)]
+            cls.index, cls.report = bp.build(folders), bp.build_report(folders)
+
+    def verdicts(self, page):
+        """[(result, target)] of a page's target rows, in order."""
+        return [(text(st), text(tt)) for st, tt in
+                re.findall(r'<li class="sl-trow"><span class="sl-ts">(.*?)</span><span class="sl-tt">(.*?)</span>', page)]
+
+    def test_the_report_and_the_page_show_the_same_verdicts(self):
+        with open(os.path.join(BASELINE, 'raw.json')) as f:
+            results = br.target_results(json.load(f)['visits'])
+        expected = [(verdict['result'].capitalize(), target) for target, _, verdict in results]
+        self.assertEqual(self.verdicts(self.report), expected)
+        self.assertEqual(self.verdicts(self.report), self.verdicts(self.index))
+        self.assertIn('<h1>1 of 6 targets met</h1>', self.report)
+
+    def test_the_headline_numbers_are_the_pages(self):
+        heads = re.search(r'<ul class="sl-heads">.*?</ul>', self.report).group(0)
+        self.assertEqual(heads, re.search(r'<ul class="sl-heads">.*?</ul>', self.index).group(0))
+        self.assertIn('Cold start 6.73 s Warm start 0.18 s Warm list 3.46 s Top pick plays 39 of 40', text(heads))
+
+    def test_the_cold_start_and_warm_list_rulers_carry_every_setup_and_their_limits(self):
+        cold, warm = re.findall(r'<figure class="sl-fig".*?</figure>', self.report)
+        self.assertEqual(lanes(cold), [('AltMount direct', '3.70 s'), ('Usenet Ultimate', '5.51 s'),
+                                       ('KaijuFlow, one page', '5.53 s'), ('KaijuFlow', '6.73 s')])
+        self.assertEqual([text(f) for f in re.findall(r'<p class="sl-flag.*?</p>', cold)],
+                         ['Limit 5.51 s: Usenet Ultimate Not met, 1.22 s over',
+                          'Limit 4.70 s: AltMount direct + 1 s Not met, 2.03 s over'])
+        self.assertEqual(lanes(warm), [('AltMount direct', '0.79 s'), ('KaijuFlow, one page', '3.16 s'),
+                                       ('KaijuFlow', '3.46 s'), ('Usenet Ultimate', '4.08 s')])
+        self.assertEqual([text(f) for f in re.findall(r'<p class="sl-flag.*?</p>', warm)], ['Limit 4.70 s Met, 1.24 s to spare'])
+
+    def test_the_setups_are_named_in_the_pages_words(self):
+        words = text(self.report)
+        self.assertIn('AltMount direct', words)
+        for avoid in ("AltMount's own addon", 'addon', 'altmount-addon', 'kaijuflow-1page'):
+            self.assertNotIn(avoid, words)
+
+    def test_without_an_earlier_run_it_says_what_meta_json_says_changed(self):
+        self.assertIn('<li>No earlier run to compare with: this is the first one.</li>', self.report)
+
+    def test_the_footer_says_what_start_and_list_mean_and_that_it_is_one_page(self):
+        foot = text(re.search(r'<footer.*?</footer>', self.report).group(0))
+        self.assertIn('Start: seconds from pressing play on the top pick until the first bytes of video arrive.', foot)
+        self.assertIn('List: seconds from asking for a title until the list of Sources arrives.', foot)
+        self.assertIn('Medians over 10 titles and both rounds of each kind.', foot)
+        self.assertIn('Page 1 of 1', foot)
+        self.assertIn('Inside the noise: KaijuFlow\'s own two rounds differ by more than the target is met or missed by.', foot)
+
+    def test_a_target_inside_the_noise_says_so_with_both_rounds(self):
+        row = target_row(self.report, 'Cold start no slower than Usenet Ultimate')
+        self.assertEqual(row, 'Not met Cold start no slower than Usenet Ultimate KaijuFlow 6.73 s Limit 5.51 s 1.22 s over '
+                              'Inside the noise (8.59 and 6.73 s)')
+
+    def test_it_is_one_letter_sheet(self):
+        self.assertRegex(self.report, r'@page \{ size: letter; margin: 0 \}')
+        sheet = re.search(r'\.sl\.sl-rep \{([^}]*)\}', self.report).group(1)
+        for rule in ('width: 816px', 'height: 1056px', 'overflow: hidden', 'box-sizing: border-box'):
+            self.assertIn(rule, sheet)
+        self.assertNotIn('@media (max-width: 860px)', self.report)   # the page's phone layout would fire at 816 px
+
+
+class Command(unittest.TestCase):
+    def test_writes_the_page_and_the_report_into_the_output_folder(self):
+        root = tempdir(self)
+        out = os.path.join(root, 'page')
+        with contextlib.redirect_stdout(io.StringIO()) as said:
+            bp.main([copy_run(root), make_record(root), '--out', out])
+        self.assertEqual(sorted(os.listdir(out)), ['index.html', 'report.html'])
+        for name in ('index.html', 'report.html'):
+            with open(os.path.join(out, name)) as f:
+                self.assertIn('<h1>1 of 6 targets met</h1>', f.read())
+            self.assertIn(name, said.getvalue())
 
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-13T053200Z-baseline/')
-REC = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-13T035846Z-baseline-record/')
-V7 = os.path.expanduser('~/kaijuflow-notes/retro-2026-11-13-build/page-v7/')  # the page as published on 2026-11-13
 
 
-@unittest.skipUnless(os.path.exists(REAL + 'story.html') and os.path.exists(REC + 'meta.json'), 'the real run folders are not on this machine')
+@unittest.skipUnless(os.path.exists(REAL + 'raw.json'), 'the real run folder is not on this machine')
 class RealBaseline(unittest.TestCase):
-    def test_the_2026_11_13_baseline_gets_its_story_with_its_numbers(self):
-        index, tables = bp.build([REAL, REC])
-        section = index[index.index('<!-- baseline 2026-11-13 start -->'):index.index('<!-- baseline 2026-11-13 end -->')]
-        self.assertIn('<h2>Baseline run, 2026-11-13 (new machine, NinjaCentral only)</h2>', section)
-        self.assertIn('<strong>Inception is hit-and-miss on KaijuFlow.</strong>', section)   # a written finding
-        self.assertNotIn('Numbers only', index)
-        # numbers the builder puts into the story: the one-page side's row of the summary table, as published
-        self.assertIn('<tr><th scope="row">KaijuFlow, one page per indexer</th><td class="num">5.53 s</td>', section)
-        self.assertEqual(re.findall(r'data-table="([^"]+)"', section),
-                         ['2026-11-13T053200Z-baseline-start', '2026-11-13T053200Z-baseline-list'])
-        self.assertIn('2026-11-13 baseline run · 2026-11-10 first baseline', index)
-        self.assertEqual(len(tables), 9)
-        self.assertIn('<td class="bad">fails</td>', tables['2026-11-13T053200Z-baseline-start'])
-
-    @unittest.skipUnless(os.path.exists(V7 + 'index.html'), 'the published version 7 is not on this machine')
-    def test_the_build_is_the_published_version_7_with_the_runs_tables_named_after_its_folder(self):
-        """Version 7 named the run's two tables after the run (baseline-start, baseline-list); a build names them after
-        the run folder, in the slots and in tables.json alike. Nothing else differs but a blank line."""
-        index, tables = bp.build([REAL, REC])
-        with open(V7 + 'index.html') as fh:
-            published = fh.read()
-        with open(V7 + 'tables.json') as fh:
-            published_tables = json.load(fh)
-        renamed = {'baseline-start': '2026-11-13T053200Z-baseline-start', 'baseline-list': '2026-11-13T053200Z-baseline-list'}
-        self.assertEqual(tables, {renamed.get(k, k): v for k, v in published_tables.items()})
-        for old, new in renamed.items():
-            published = published.replace(f'data-table="{old}"', f'data-table="{new}"')
-
-        def blank_lines_as_one(text):
-            return re.sub(r'\n{3,}', '\n\n', text)
-        self.assertEqual(blank_lines_as_one(index), blank_lines_as_one(published))
+    def test_the_real_run_folder_gives_the_same_verdict_as_its_fixture(self):
+        index = bp.build([REAL])
+        self.assertIn('<h1>1 of 6 targets met</h1>', index)
+        self.assertIn('Limit 5.51 s: Usenet Ultimate', index)
+        report = bp.build_report([REAL])
+        self.assertIn('<h1>1 of 6 targets met</h1>', report)
+        self.assertIn('Limit 5.51 s: Usenet Ultimate', report)
 
 
 if __name__ == '__main__':

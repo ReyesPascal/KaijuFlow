@@ -1,6 +1,6 @@
 # Brain tools: formats
 
-What the files and lines look like: run folder, top picks, targets, expected settings, recording state, misses, the page's `story.html` and archive, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+What the files and lines look like: run folder, top picks, targets, expected settings, recording state, misses, the page's `findings.html`, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Run folder
 
@@ -47,7 +47,7 @@ Usenet Ultimate's Import column is NzbDAV's own job time (#82): after each Usene
 The targets KaijuFlow is measured against are in `tools/brain/targets.json`, one entry per target under `targets`. Change a target there and nowhere else.
 
 ```json
-{"target": "Cold start within 1 s of the addon", "measure": "cold start", "against": "altmount-addon", "margin": 1}
+{"target": "Cold start within 1 s of AltMount direct", "measure": "cold start", "against": "altmount-addon", "margin": 1}
 ```
 
 | Field | Meaning |
@@ -117,28 +117,26 @@ Today the file holds the standard sort and filter rules of KaijuFlow and Usenet 
 - the misses: every one is counted per side and title in the "Not recorded" table. A failed top pick is the failure cause "Not recorded", and left out of the plays-out-of-ten figure, only when the miss can be the cause: the list came back empty and that side had a search miss for that visit, or that side had an NZB miss while the top pick played (after the list arrived, until the visit ended). Otherwise the pick keeps its real cause (indexer limit, Backend rejection, failure video, other) and stays in the figure.
 - the indexer time: the time that side spent waiting on replayed indexer answers while the list was loading, that is the union of the intervals `[t - wait_ms, t]` of its search answers between the visit's start and the list's arrival (parallel indexers and parallel pages are not added up; NZB files and play-time requests are left out). "Side's own work" is the list time minus that. With the wait off, both read as before (0 and the list time).
 
-## The page: `story.html` and the page archive
+## The page: `findings.html`
 
-`build_page.py` builds the speed-check page (`index.html` and `tables.json`) from run folders; the runbook's "Publish the page" has the steps. The words of a section come from one of two places, never from a built page.
+`build_page.py` builds the Speed Check page, one `index.html`, in the owner's "Starting line" design (#132; drawn by `startline.py`) from run folders; the runbook's "Publish the page" has the steps. The page is about the newest timed run given, which must be finished (status `ok`); the newest finished run before it, when one is given, is what it is compared with, and every timed run given gets a row in "Every run so far". Every number comes from the runs' `raw.json` through `brainreport` (the medians the targets are judged on), every verdict from `brainreport.target_results`, and "What changed" from the newest run's `meta.json` `changes`. The headings that state a finding (for example "KaijuFlow starts slower than Usenet Ultimate") are worked out from the same numbers.
 
-**`story.html`, a run's written findings.** An optional file in a timed run's folder, written by hand: the run's section as HTML, from its `<h2>` heading down, without the `<section>` frame. The builder puts the run's tables in where the story names them:
+**`report.html`, the one-page report (#133).** The same build writes it beside `index.html`, from the same page model, so its numbers and verdicts are the page's. It is a fixed Letter sheet (816 x 1056 px, `@page` Letter with no margin, white paper, no dark theme) in the same design: the header, the verdict with KaijuFlow's four headline numbers, the cold start ruler with its limits, the targets (result, target, KaijuFlow, limit, margin; a target inside the noise says so with both rounds), what changed (the run's own changes and, against an earlier run, KaijuFlow before and after as a table), the warm list ruler, the findings and the next step from `findings.html`, and a footer that says what Start, List and "inside the noise" mean and "Page 1 of 1". Long findings can push it past one sheet; the render check (816 px) then flags CUT OFF.
 
-| Name in the story | What goes there |
-|---|---|
-| `__SUMMARY_TABLE__` | one row per side: start and list medians, cold and warm, and how often the top pick played |
-| `__ROUND_TABLE__` | one row per side with the four rounds side by side |
-| `__DETAILS__` | the two "All numbers" blocks; their per-title tables go to `tables.json` as `<run folder>-start` and `<run folder>-list` (the run folder's name, for example `2026-11-13T053200Z-baseline-start`, so two runs with the same name can share the page) |
+**`findings.html`, the words nobody can compute.** An optional file in the newest run's folder, written by hand: the findings, then the next step. Each finding is an `<h3>` heading that states it, then its paragraphs; the next step, if there is one, is an `<h2>` heading and its paragraphs, after the last finding:
 
-A part the story does not name is not shown. Numbers written into the story's sentences are not checked against the run. A run without `story.html` gets a "Numbers only" section made of the same three parts.
+```html
+<h3>Game of Thrones is the slow title.</h3>
+<p>Its top pick is a 26.5 GB 4K release.</p>
+<h3>Inception is hit-and-miss on KaijuFlow.</h3>
+<p>It played in the first cold round and was rejected in the second.</p>
+<h2>Next: tuning run 1</h2>
+<p>Health-check connections raised from 12 to 20 on KaijuFlow.</p>
+```
 
-**The page archive, for runs whose folders are gone.** `tools/brain/page-archive/<date>-<name>/` holds one lost run as it was published; nothing rebuilds it. An entry has the files it needs out of:
+The build stops with one sentence when the file does not start with an `<h3>`. Without the file the page has no findings and no next step. Numbers written into its sentences are not checked against the run.
 
-- `section.html`: the run's section. It goes below the sections of the timed runs, newest entry first (by folder name).
-- `appendix.html`: blocks that go below "What the words mean".
-- `footer.html`: `<div>` lines for the page's footer.
-- `tables.json`: the tables for the `data-table` places in those files.
-
-The build stops with one sentence when two tables share a name (an archive entry whose tables carry a run folder's name) or a place has no table. Version 7 of the page, published on 2026-11-13, named the 2026-11-13 run's tables `baseline-start` and `baseline-list`; a build of that run names them after its folder, in the slots and in `tables.json` alike, and is otherwise that page. To keep a run whose folder is about to go: copy its section out of a built `index.html` (from its `<!-- <name> <date> start -->` line to the matching `end` line) into a new entry's `section.html`, and its two tables into the entry's `tables.json`.
+**`story.html` and the page archive (before #132).** The earlier page took a run's section from `story.html` in its folder and kept the runs whose folders are gone in `tools/brain/page-archive/` (2026-11-10 and 2026-11-09, as published in version 7 on 2026-11-13). The Starting line page reads neither; both stay as the record of what was published.
 
 ## Step lines (`[KF-STEP]`)
 
@@ -154,6 +152,6 @@ KaijuFlow writes one line per timed step to stdout (`src/utils/stepTiming.ts`): 
 | `ref` | Stremio id (`tt0133093`, `tt1234567:1:2`), on the search-side steps `indexer_page` and `health_batch` only |
 | `title` | release title of the Source, on the prepare-side steps (`nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte`) |
 | `job` | Backend job id on `upload`, `import_wait`, `first_byte` |
-| extras | `page` (`indexer_page`, 1 = first page); `count`, `checked`, `indexers` (`health_batch`); `result`, `parts` (`unscramble`); `includes_upload` (`import_wait` on AltMount: one request uploads and waits, so there is no `upload` line) |
+| extras | `page` (`indexer_page`, 1 = first page); `count`, `checked`, `indexers` (`health_batch`); `result`, `parts`, `wait_ms` (`unscramble`; `wait_ms` is the part of `ms` spent waiting for its turn, #119); `includes_upload` (`import_wait` on AltMount: one request uploads and waits, so there is no `upload` line) |
 
 `brainrun.py` ties lines to a title like this: search-side lines by `ref`, for that side's visit until the next visit that used the same KaijuFlow container starts (a late `health_batch` is kept); prepare-side lines to the Source that was played (its release title appears in the played Stream's text; otherwise the work that began after the visit began), so background work of the previous title cannot land in the next one. This runs once at the end of the run (`finalize_steps`).

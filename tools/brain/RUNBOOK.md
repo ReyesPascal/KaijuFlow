@@ -34,6 +34,7 @@ What to work on next: `python3 -I tools/brain/frontier.py` prints the tickets th
 ## Flags that matter
 
 - `--for run|record` (preflight): which setup to check. `--rebuild-image`: build `kaijuflow:test` from the current commit when the code in the image has changed since it was built (otherwise the image is left alone).
+- `--sides LIST`, `--rounds 1|2`, `--quick` (run only): a short run. `--sides` takes `kaijuflow`, `uu`, `altmount-addon` (AltMount direct) and `kaijuflow-1page`, comma-separated; `--rounds 1` plays cold 1 and warm 1 only; `--quick` is `--sides kaijuflow --rounds 1` (about 5 minutes; it does not turn on `--no-wait`). A short run is never a baseline: its report's first line, `meta.json`, its INDEX.md row and `check` (exit 1, "short run") say what it played, and its "What changed" compares it with the last baseline, as far as it played. So does a `--titles-file` that leaves out titles of the list. `record` has no such flags. Wrong values stop before anything runs.
 - `--one-page`: add the fourth side (KaijuFlow, one page per indexer). `--titles-file`: another title list (JSON). `--no-wait` (run): replay answers at once, for tuning runs only.
 - `--runs-root DIR`: where run folders go (default `~/kaijuflow-notes/brain-runs`; use a temporary one for trials). `--provider-limit N`: connection cap, default 100.
 - `--settle S`: the pause after every play, in seconds (default 3). With 160 plays that is 8 minutes of a run; the report's "Where the time went" shows it as its own part.
@@ -54,12 +55,12 @@ Only `record` and a top-up of it. The proof, `run`, `check`, `usage`, `smoke` an
 
 The "KaijuFlow Speed Check" page is https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD. Publish only when the owner asks for it.
 
-1. Findings: write `story.html` into the run folder ([docs/formats.md](docs/formats.md), "The page"). Without it the run's section says "Numbers only".
-2. Build: `python3 -I tools/brain/build_page.py <run folder> <its recording folder> --out <folder>`. It writes `index.html` and `tables.json` into `<folder>` and publishes nothing. Name every run folder that should be on the page; the runs whose folders are gone (2026-11-10, 2026-11-09) come from `tools/brain/page-archive/` by themselves. The header's words (`HEADER_FOR`, `EYEBROW`, `LEDE` in `build_page.py`) were written for the 2026-11-13 run alone; with other runs the page gets a plain header until they are rewritten.
-3. Look before publishing: `cd ~/.local/share/kf-render && node <repo>/tools/brain/render.mjs <folder>/index.html <folder>/shots 1280 390`, fix anything it flags (TOO WIDE, CUT OFF, SQUEEZED), and open the screenshots.
-4. Read what is published, with the Artifact tool: the page (`action: read` with the URL above), then its data file (the same with `path: tables.json`). A publish that replaces a file nobody read in this session is refused. Check that every section of the published page is in the new `index.html`.
-5. Publish over the same page: `index.html` as the page, `files: {"tables.json": "<folder>/tables.json"}`, and `url` set to the URL above. Without `url` a second page is made.
-6. Open the page: every "All numbers" block must show its table, not "Loading the table..." or "missing".
+1. Findings: write `findings.html` into the run folder: the findings and the next step ([docs/formats.md](docs/formats.md), "The page"). Without it the page has neither; every number and verdict comes from the run by itself.
+2. Build: `python3 -I tools/brain/build_page.py <run folder> [<the run it is compared with>] [<recording folder>] --out <folder>`. It writes `index.html` (the page) and `report.html` (the one-page Letter report, #133) into `<folder>` and publishes nothing. The newest run given is the page's run and must be finished; the newest finished run before it is what it is compared with; every run given gets a row in "Every run so far". Both files come from the same numbers and verdicts.
+3. Look before publishing: `cd ~/.local/share/kf-render && node <repo>/tools/brain/render.mjs <folder>/index.html <folder>/shots 1280 390` and `node <repo>/tools/brain/render.mjs <folder>/report.html <folder>/shots 816`, fix anything it flags (TOO WIDE, CUT OFF, SQUEEZED), and open the screenshots. The report is a fixed Letter sheet, so CUT OFF on it means the run's words do not fit on one page: shorten `findings.html` (one line under each finding heading) and build again. Printed or saved as PDF from a browser, `report.html` is one Letter page with no margin of the printer's own.
+4. Read what is published, with the Artifact tool (`action: read` with the URL above). A publish that replaces a page nobody read in this session is refused. Version 7 and earlier also had a `tables.json` beside the page; the Starting line page needs none, and an unused one may stay.
+5. Publish over the same page: `index.html` as the page and `url` set to the URL above. Without `url` a second page is made.
+6. Open the page and look at it at phone width and in dark mode.
 
 ## Measuring words
 
@@ -67,4 +68,4 @@ Side, Pass, Round, Top pick, Target, Expected settings, Recording, Stand-in, Cap
 
 ## Reference
 
-[docs/run-and-record.md](docs/run-and-record.md) (how run, record and smoke work), [docs/rules.md](docs/rules.md) (cap rule, preflight, settings, expected settings, allowance, how targets are judged), [docs/formats.md](docs/formats.md) (run folder, top picks, targets file, expected settings file, recording, step lines, the page's `story.html` and archive), [docs/testbed.md](docs/testbed.md) (test copies). Index: [README.md](README.md).
+[docs/run-and-record.md](docs/run-and-record.md) (how run, record and smoke work), [docs/rules.md](docs/rules.md) (cap rule, preflight, settings, expected settings, allowance, how targets are judged), [docs/formats.md](docs/formats.md) (run folder, top picks, targets file, expected settings file, recording, step lines, the page's `findings.html`), [docs/testbed.md](docs/testbed.md) (test copies). Index: [README.md](README.md).

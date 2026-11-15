@@ -12,6 +12,7 @@ Measure and optimize KaijuFlow with AltMount before InfiniDysk (spec #58). Infin
 - New machine `brain` (user `brain`) since 2026-11-12. The old machine is gone, and everything that was only on it went with it: the run records up to 2026-11-10, the old test settings and templates, and the architecture review.
 - On this machine there are only the five test containers (`kaijuflow-test`, `uu-test`, `nzbdav-test`, `altmount-addon-test`, `altmount-kf-test`). No live stack (Usenet Ultimate, NzbDAV, AltMount) exists here.
 - Docker works directly for user `brain` (no wrapper; #118 closed 2026-11-14).
+- The isolated test suites run node as `nobody`: a root-owned copy sits at `/opt/node-20`, linked as `/usr/local/bin/node` (`docs/agents/testing.md`). The integration suite runs locally again (10 of 10 on 2026-11-15).
 
 ## The tracker
 The work order lives in the tracker, not here. Spec #58 is the map: its sub-issues are the tickets, in order, with native blocked-by links (#125). The next step is whatever this prints, first in map order wins:
@@ -23,19 +24,21 @@ It lists #58's open sub-issues with no open blocker and no assignee, each with a
 ## Runs and recordings on this machine
 - 2026-11-10 baseline (#63, old machine): its run record is lost; its section of the speed-check page is kept in `tools/brain/page-archive/2026-11-10-baseline-nc/`.
 - Recording `~/kaijuflow-notes/brain-runs/2026-11-13T035846Z-baseline-record`: complete (no misses, 174 stored answers). #127 tops it up; later runs replay it.
-- Baseline run `~/kaijuflow-notes/brain-runs/2026-11-13T053200Z-baseline`: usable as a baseline (CHECK.txt), 39 min, 160 plays; results in its `story.html` and the speed-check page, version 7. It predates the standard filter rules, so its top picks were the largest 4K remuxes (#109).
-- The image was built from 750c2eb. #131 (merged 2026-11-15) changed `src`, so the image is now stale. The owner chose one rebuild (runbook, step 0) after #131, #120 and #119 are all merged, before the #127 baseline.
+- Baseline run `~/kaijuflow-notes/brain-runs/2026-11-13T053200Z-baseline`: not like for like (AltMount direct played smaller files, and its hidden fallback covered four failed top picks: 36 of 40 on first tries, not 40). The owner archives it with every older run (#144); it is never compared with again.
+- **#127 is the first baseline**, compared with nothing (owner, 2026-11-15). It waits for the like-for-like work (#142 rules, #143 first-try plays, #144 archive), then: `--rebuild-image` on its first preflight (the image is from 750c2eb; #131, #119 and #120 changed `src`), the #142 settings applied to the test copies, the run, and the page published in the new design from that run. Each live step needs the owner's go.
 
 ## Owner's decisions
 - Standard filter rules (#109): applied to both test copies; what they are and how `preflight` holds the copies to them is in `tools/brain/docs/rules.md`, "Expected settings (#109)".
 - Secrets are kept outside both repos (#114, closed): the run records and recordings are pushed to the private repo `ReyesPascal/kaijuflow-notes` (runbook step 7, `tools/brain/backup.sh`).
 - 2026-11-15: every frontier ticket is done in its simplest form, one ticket per session, one PR each, merged on green CI. The cuts are on each ticket as "Owner's decision (2026-11-15)" comments (#119, #120, #111, #132, #127; #133 split from #132). The third side is called **AltMount direct** in text people read; its code ID stays `altmount-addon`.
+- 2026-11-15, spec #135 is in (PR #139): Unscramble one at a time (#119), the health check blocks a bare disc image (#120), short runs `--sides/--rounds/--quick` (#111), the Speed Check page and one-page Letter report in the Starting line design (`tools/brain/startline.py`, #132, #133). A tie at the maximum plays counts as met (spec #58, `targets.json`).
+- 2026-11-15, like for like: every setup gets the same Sources (the stand-in filters size caps and disc images and serves the same first 100 results), 4K first, one try (#142). The final bar is #141: KaijuFlow strictly faster than every setup, every top pick playing.
 - Not confirmed by the owner: the architecture candidates proposed on the old machine (the review itself is lost): Source marks + stream-list pipeline before #65; Usenet reader + Backend slot with #66.
 
 ## Gotchas
 - Fix `healthChecks.maxConnections` before tuning it: see #64's comments.
 - The retro's tool changes (PR #121) have not yet been exercised by a real run.
-- A run's tables on the speed-check page are keyed by its run folder, so the next publish renames the 2026-11-13 run's table slots.
+- The page no longer shows `tools/brain/page-archive/`; readable side names live in three tables (`brainreport.SIDE_NAMES`, `SHORT_NAMES`, `startline.SETUP_NAMES`), not yet one.
 
 ## Where things live
 - Run records: `~/kaijuflow-notes/brain-runs/` and its `INDEX.md`; backed up with the recordings to the private repo `ReyesPascal/kaijuflow-notes` (`tools/brain/backup.sh`).

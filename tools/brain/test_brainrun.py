@@ -650,8 +650,8 @@ class SigtermTest(SignalGuard):
         meta = json.loads(read(os.path.join(folder, 'meta.json')))
         self.assertEqual((meta['status'], meta['stopped']['signal'], meta['stopped']['plays_done']), ('stopped', 'SIGTERM', 4))
         self.assertEqual(len(json.loads(read(os.path.join(folder, 'raw.json')))['visits']), 4)
-        self.assertTrue(read(os.path.join(folder, 'report.md')).startswith('This run was stopped by SIGTERM at '))
-        self.assertIn('| trial | stopped |', read(os.path.join(os.path.dirname(folder), 'INDEX.md')))
+        self.assertIn('This run was stopped by SIGTERM at ', read(os.path.join(folder, 'report.md')))  # after the short-run line: the test's titles are a subset
+        self.assertIn('| trial | stopped', read(os.path.join(os.path.dirname(folder), 'INDEX.md')))  # the test's titles are a subset: also short
         self.assertTrue(lines[lines.index(f'stopped: {folder}') + 1].startswith(
             'Not usable as a baseline: the run was stopped by SIGTERM at '), lines)
         self.assertIs(signal.getsignal(signal.SIGTERM), self.unhandled)  # the command's handler is gone again
@@ -1577,6 +1577,133 @@ class SettingsTest(unittest.TestCase):
         self.assertFalse(out['searchConfig']['seriesPackPagination'])
         self.assertTrue(out['searchConfig']['junkFilter'])
         self.assertTrue(cfg['indexers'][0]['pagination'])  # input untouched
+
+
+class CleanIO(FakeIO):
+    """A world whose stand-in misses nothing, so its runs can serve as baselines."""
+
+    def start_standin(self, logpath, mode='replay', wait=True):
+        handle = super().start_standin(logpath, mode, wait)
+        self.standin_log = ['HIT ninjacentral api t=search wait_ms=0']
+        with open(logpath, 'w') as f:
+            f.write('\n'.join(self.standin_log) + '\n')
+        return handle
+
+
+class ShortRunTest(SignalGuard):
+    """#111: `run` can play a part of the plan; such a short run says what it played and is never a baseline."""
+
+    def meta(self, run):
+        return json.loads(read(os.path.join(run['dir'], 'meta.json')))
+
+    def played(self, run):
+        return sorted({(v['side'], v['phase'], v['round']) for v in json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits']})
+
+    def test_sides_and_rounds_play_only_what_they_name(self):
+        io = CleanIO()
+        run = brainrun.run_all(make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), io)
+        self.assertEqual(self.played(run), [('kaijuflow', 'cold', 1), ('kaijuflow', 'warm', 1)])
+        self.assertEqual(len(run['visits']), 4)  # two titles, cold and warm
+        self.assertEqual([c for c in io.calls if c[0] == 'reset'], [('reset', tuple(brainrun.ALL_TESTBED))])
+        meta = self.meta(run)
+        self.assertEqual((meta['sides'], meta['rounds'], meta['titles']), (['kaijuflow'], 1, ['Matrix', 'Show S01E01']))
+        self.assertEqual(meta['short'], 'KaijuFlow, 1 round, 2 titles')
+
+    def test_quick_plays_the_same_as_sides_kaijuflow_rounds_1(self):
+        def played_by(argv):
+            self.tmp = tempdir(self)
+            code, _, folder = self.command(argv, lambda cfg: CleanIO())
+            self.assertEqual(code, 0)
+            raw = json.loads(read(os.path.join(folder, 'raw.json')))['visits']
+            return [(v['side'], v['phase'], v['round'], v['title']) for v in raw], json.loads(read(os.path.join(folder, 'meta.json')))
+        quick, qmeta = played_by(['run', '--quick'])
+        named, nmeta = played_by(['run', '--sides', 'kaijuflow', '--rounds', '1'])
+        self.assertEqual(quick, named)
+        self.assertEqual(len(quick), 4)
+        self.assertEqual((qmeta['sides'], qmeta['rounds'], qmeta['short']), (nmeta['sides'], nmeta['rounds'], nmeta['short']))
+        self.assertEqual(qmeta['sides'], ['kaijuflow'])
+
+    def test_the_one_page_side_can_be_played_alone(self):
+        io = CleanIO()
+        run = brainrun.run_all(make_cfg(self.tmp, sides=['kaijuflow-1page']), io)
+        self.assertEqual({v['side'] for v in run['visits']}, {'kaijuflow-1page'})
+        self.assertEqual(len(run['visits']), 8)  # two titles, four rounds
+        self.assertEqual(self.meta(run)['sides'], ['kaijuflow-1page'])
+        self.assertIn(('patch-one-page',), io.calls)
+        self.assertNotIn(('reset', tuple(brainrun.ALL_TESTBED)), io.calls)  # no pass of the main sides
+
+    def test_no_selectors_play_the_full_plan_as_before(self):
+        run = brainrun.run_all(make_cfg(self.tmp), CleanIO())
+        self.assertEqual(len(run['visits']), 24)
+        meta = self.meta(run)
+        self.assertEqual((meta['sides'], meta['rounds'], meta['short']), (list(brainrun.MAIN_SIDES), 2, None))
+        self.assertFalse(read(os.path.join(run['dir'], 'report.md')).startswith('Short run'))
+        self.assertIn('| trial | ok |', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+        self.assertTrue(runcheck.check_run(run['dir'])[0])
+
+    def test_all_four_sides_named_are_the_one_page_run(self):
+        run = brainrun.run_all(make_cfg(self.tmp, sides=['kaijuflow-1page', 'uu', 'altmount-addon', 'kaijuflow']), CleanIO())
+        self.assertEqual(self.meta(run)['sides'], ['kaijuflow', 'uu', 'altmount-addon', 'kaijuflow-1page'])
+        self.assertIsNone(self.meta(run)['short'])
+
+    def test_the_progress_count_is_the_short_runs_own(self):
+        _, lines = printed(brainrun.run_all, make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), CleanIO())
+        self.assertTrue(all('/4]' in x for x in lines), lines)
+
+    def test_a_short_run_says_so_in_its_report_its_index_row_and_check(self):
+        run = brainrun.run_all(make_cfg(self.tmp, sides=['uu', 'altmount-addon'], rounds=1), CleanIO())
+        text = 'Usenet Ultimate, AltMount direct, 1 round, 2 titles'
+        self.assertEqual(read(os.path.join(run['dir'], 'report.md')).splitlines()[0], f'Short run, not a baseline: {text}.')
+        self.assertIn(f'| trial | short: {text} |', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
+        usable, lines = runcheck.check_run(run['dir'])
+        self.assertFalse(usable)
+        self.assertEqual(lines[0], f'Not usable as a baseline: short run ({text}).')
+        self.assertTrue(any(x.startswith('Top picks played, Usenet Ultimate') for x in lines))  # the other lines are still there
+
+    def test_a_titles_subset_is_a_short_run(self):
+        run = brainrun.run_all(make_cfg(self.tmp, partial_titles=True), CleanIO())
+        self.assertEqual(self.meta(run)['short'], 'KaijuFlow, Usenet Ultimate, AltMount direct, 2 rounds, 2 titles')
+        self.assertFalse(runcheck.check_run(run['dir'])[0])
+
+    def test_a_short_run_is_compared_with_the_last_baseline_limited_to_what_it_played(self):
+        brainrun.run_all(make_cfg(self.tmp, name='base'), CleanIO(commit='c1'))
+        base = sorted(d for d in os.listdir(os.path.join(self.tmp, 'runs')) if d != 'INDEX.md')[0]
+        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO(commit='c2'))
+        changes = short['changes']
+        self.assertEqual(changes[0], f'Short run: compared with the last baseline, {base}, limited to KaijuFlow, 1 round, 2 titles.')
+        self.assertIn('KaijuFlow code: c1 -> c2', changes)
+        self.assertFalse([c for c in changes if 'removed' in c], changes)  # the sides it did not play are not "removed"
+        # a short run is never the baseline of the next one, nor the previous run of a full one
+        short2 = brainrun.run_all(make_cfg(self.tmp, name='quick2', sides=['kaijuflow'], rounds=1), CleanIO(commit='c3'))
+        self.assertIn(f'compared with the last baseline, {base},', short2['changes'][0])
+        self.assertIn('KaijuFlow code: c1 -> c3', short2['changes'])
+        full = brainrun.run_all(make_cfg(self.tmp, name='full'), CleanIO(commit='c4'))
+        self.assertIn('KaijuFlow code: c1 -> c4', full['changes'])
+
+    def test_a_run_that_cannot_be_a_baseline_is_not_the_one_a_short_run_is_compared_with(self):
+        brainrun.run_all(make_cfg(self.tmp, name='missed'), FakeIO(commit='c1'))  # its stand-in logged a miss
+        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
+        self.assertEqual(short['changes'], ['No earlier run to compare with: this is the first one.'])
+
+    def bad(self, argv):
+        err = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', side_effect=AssertionError('nothing may start')), \
+                contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as stop:
+            brainrun.main(argv + ['--name', 't', '--store', self.tmp, '--list', 'l', '--runs-root', os.path.join(self.tmp, 'runs')])
+        self.assertEqual(stop.exception.code, 2)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'runs')))
+        message = err.getvalue().strip().splitlines()[-1]
+        self.assertEqual(message.count('. '), 0, message)  # one sentence
+        return message
+
+    def test_wrong_selector_values_stop_with_one_sentence_before_anything_runs(self):
+        self.assertIn('unknown side', self.bad(['run', '--sides', 'kaijuflow,nzbdav']))
+        self.assertIn('--rounds', self.bad(['run', '--rounds', '3']))
+        self.assertIn('--quick', self.bad(['run', '--quick', '--sides', 'uu']))
+        self.assertIn('--quick', self.bad(['run', '--quick', '--rounds', '1']))
+        self.assertIn('--one-page', self.bad(['run', '--one-page', '--sides', 'uu']))
+        self.assertIn('only for run', self.bad(['record', '--quick']))
+        self.assertIn('only for run', self.bad(['smoke', '--rounds', '1']))
 
 
 if __name__ == '__main__':
