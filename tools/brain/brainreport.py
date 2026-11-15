@@ -82,7 +82,8 @@ TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', '
 LIST_COLUMN_HELP = {
     'List': 'the title list the title is on: easy (popular, well kept) or hard (older releases, takedown-prone shows, less '
             'popular titles).',
-    'Title to video': 'seconds from asking for the title until video arrived: Search plus First byte. "-" when no video arrived.',
+    'Title to video': 'seconds from asking for the title until video arrived: Search plus First byte. "-" for a fail: no '
+                      'video, or video only after a fallback.',
 }
 TAGGED_TITLE_COLS = ['Title', 'List', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Title to video',
                      'Result']
@@ -422,9 +423,9 @@ def plays(v):
 
 
 def title_to_video(v):
-    """Seconds from asking for the title until video arrived (#167): the list time plus the start time. None for a visit
-    with no video, or without both times."""
-    if not v.get('ok') or v.get('list_s') is None or v.get('start_s') is None:
+    """Seconds from asking for the title until video arrived (#167): the list time plus the start time. None for a fail
+    (no video, or video only after a fallback: GLOSSARY.md, "a fail has no title-to-video time") and without both times."""
+    if not plays(v) or v.get('list_s') is None or v.get('start_s') is None:
         return None
     return round(v['list_s'] + v['start_s'], 3)
 
@@ -876,7 +877,7 @@ def _time(visits, side, phase, what, rnd=None, lst=None):
           and lst in (None, v.get('list'))]
     if what == 'list':
         return median([v.get('list_s') for v in vs])
-    return median([v.get('start_s') if what == 'start' else title_to_video(v) for v in vs if plays(v)])
+    return median([v.get('start_s') if what == 'start' else title_to_video(v) for v in vs if plays(v)])  # a fail has neither
 
 
 def _plays(visits, side, phase=None, rnd=None, lst=None):

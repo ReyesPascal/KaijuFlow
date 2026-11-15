@@ -1187,7 +1187,8 @@ class TaggedRunTest(unittest.TestCase):
         self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 0 of 2 in Cold 2')
         self.assertEqual(rows["AltMount's own addon", 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
         self.assertEqual(rows["AltMount's own addon", 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 1 of 2 in Cold 2')
-        self.assertEqual(self.row(text, 'Rare Show S01E01', "AltMount's own addon", 'Cold 1')['Result'], 'played after 1 fallback')
+        fallback = self.row(text, 'Rare Show S01E01', "AltMount's own addon", 'Cold 1')
+        self.assertEqual((fallback['Result'], fallback['Title to video']), ('played after 1 fallback', '-'))  # a fail has none
         self.assertEqual(self.row(text, 'Old Film', 'KaijuFlow', 'Warm 1')['Result'], 'plays')
 
     def test_the_check_names_the_fails_of_each_setup_per_list(self):
@@ -1195,6 +1196,14 @@ class TaggedRunTest(unittest.TestCase):
         self.assertIn('Fails, KaijuFlow: easy 0 of 8; hard 1 of 8 (Cold 1 Old Film).', lines)
         self.assertIn("Fails, AltMount's own addon: easy 1 of 8 (Cold 2 Matrix); hard 1 of 8 "
                       '(Cold 1 Rare Show S01E01, played after 1 fallback).', lines)
+
+    def test_the_replayed_2026_11_13_run_read_untagged_still_gives_altmount_direct_36_of_40_and_no_lists(self):
+        run = br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports'))
+        self.assertEqual(br.side_plays(run['visits'], 'altmount-addon'), (36, 40))
+        self.assertEqual(br.run_lists(run['visits']), [])
+        text = br.render_report(run, ['x'])
+        self.assertNotIn(br.LIST_SECTION, text)
+        self.assertEqual(list(per_title_rows(text)[0]), br.TITLE_COLS)
 
     def test_an_untagged_run_has_no_list_section_and_its_per_title_table_as_before(self):
         text = br.render_report(runs_fixture(), [])
