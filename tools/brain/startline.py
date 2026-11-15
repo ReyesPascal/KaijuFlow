@@ -356,6 +356,12 @@ RULES = """.sl * { box-sizing: border-box }
 .sl .sl-mlim { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); z-index: 2 }
 .sl .sl-mbar { position: absolute; top: 7px; bottom: 7px; left: 0; background: var(--yellow); box-shadow: inset 0 0 0 1.5px var(--edge); z-index: 1 }
 .sl .sl-mscale { display: flex; justify-content: space-between; font-size: 14px; line-height: 1; color: var(--slate); border-top: 1px solid var(--ink); padding-top: 5px; font-variant-numeric: tabular-nums }
+.sl .sl-list { font-size: 20px; margin: 24px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--ink) }
+.sl .sl-final { margin-top: 40px; padding: 16px 20px 18px; border: 2px solid var(--ink); max-width: 880px }
+.sl .sl-final h3 { display: inline-block; margin: 0 16px 0 0 }
+.sl .sl-final .sl-ftext { margin: 8px 0 6px; font-weight: 600 }
+.sl .sl-final li { font-size: 16px; line-height: 1.4; margin-top: 2px }
+.sl .sl-final .sl-quiet { font-size: 16px; margin-top: 8px }
 .sl .sl-tnote { font-size: 16px; color: var(--slate); margin-top: 12px; max-width: 760px }
 .sl .sl-changes { display: grid; gap: 4px; margin-bottom: 24px; max-width: 760px }
 .sl .sl-changes li { padding-left: 16px; text-indent: -16px }
@@ -516,7 +522,10 @@ def lead(m):
         d = m['met'] - m['prev_met']
         parts.append(f'<b>{abs(d)} {"more" if d > 0 else "fewer"} than the {esc(m["prev"]["label"])}.</b>' if d
                      else f'<b>As many as the {esc(m["prev"]["label"])}.</b>')
-    if not open_:
+    if m.get('speed'):  # a speed test: the outcome line of its hard list (#169)
+        head, _, rest = m['speed']['outcome'].partition(': ')
+        parts.append(f'<b>{esc(head)}:</b> {esc(rest)}')
+    elif not open_:
         parts.append('Every target is met.')
     else:
         misses = [t for t in open_ if t['result'] == 'not met']
@@ -556,7 +565,17 @@ def targets_section(m):
     return (f'<section class="sl-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
             '<p class="sl-text sl-sub">Each target compares KaijuFlow with a limit. On the small rulers the yellow bar is KaijuFlow '
             'and the upright line is the limit. Every time is the median over the titles of both rounds of its kind.</p>'
-            f'<div class="sl-targets">{head}{target_lists(m["targets"])}</div></section>')
+            f'<div class="sl-targets">{head}{target_lists(m["targets"])}</div>{final_bar(m)}</section>')
+
+
+def final_bar(m):
+    """A speed test's final bar (#169), apart from its targets: its result and words, and why on each list."""
+    bar = m.get('speed') and m['speed']['final_bar']
+    if not bar:
+        return ''
+    why = ''.join(f'<li>{esc(name)}: {esc(result)}, {esc(words)}.</li>' for name, result, words in bar['lists'])
+    return (f'<div class="sl-final"><h3>Final bar</h3>{status(bar["result"])}<p class="sl-ftext">{esc(bar["text"])}</p>'
+            f'<ul>{why}</ul><p class="sl-quiet">Shown apart from the targets and not counted in them.</p></div>')
 
 
 PAIRS = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Cold list', 'cold_list'), ('Warm list', 'warm_list')]
@@ -760,6 +779,11 @@ html, body { margin: 0; background: #FFFFFF; color-scheme: light }
 .sl-rep .sl-trow { grid-template-columns: 80px minmax(0, 1fr) 54px 54px 200px; column-gap: 12px; padding: 2px 0; line-height: 1.25 }
 .sl-rep .sl-thead { font-size: 12px; padding: 1px 0 }
 .sl-rep .sl-tm small { font-size: 12px; margin-top: 0; line-height: 1.25 }
+.sl-rep .sl-list { font-size: 13px; margin: 4px 0 0; padding-bottom: 1px }
+.sl-rep .sl-final { margin-top: 6px; padding: 4px 8px 5px; border-width: 1.5px; max-width: none }
+.sl-rep .sl-final h3 { margin-right: 10px }
+.sl-rep .sl-final .sl-ftext { display: inline; margin: 0 0 0 10px }
+.sl-rep .sl-final li, .sl-rep .sl-final .sl-quiet { font-size: 12px; line-height: 1.3; margin-top: 0 }
 .sl-rep .sl-r-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start }
 .sl-rep .sl-r-two .sl-plot { --nw: 128px; --gut: 52px }
 .sl-rep .sl-changes { gap: 1px; margin: 0 0 4px }
@@ -813,7 +837,7 @@ def report(m):
              f'<section class="sl-r-top"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>{headline_numbers(m)}</section>',
              f'<section class="sl-r-sec">{cold}</section>',
              f'<section class="sl-r-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
-             f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div></section>',
+             f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div>{final_bar(m)}</section>',
              f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
     if finds:
         parts.append(f'<section class="sl-r-sec"><h2>What the run found</h2><ul class="sl-finds">{finds}</ul></section>')

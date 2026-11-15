@@ -185,6 +185,15 @@ def history_row(run):
             'cold_start': kf['cold_start'], 'warm_start': kf['warm_start'], 'plays': kf['plays']}
 
 
+def speed_model(run):
+    """What the page shows of a speed test beside its targets: the outcome line and the final bar (#169)."""
+    j = run.judgement()
+    bar = j['final_bar']
+    return {'outcome': j['outcome']['text'],
+            'final_bar': {'result': bar['verdict']['result'], 'text': bar['target'],
+                          'lists': [(f'{x.capitalize()} list', r['result'], r['why']) for x, r in bar['lists'].items()]}}
+
+
 def page_model(runs):
     """Everything the page shows, as plain values, from runs (newest first). The newest must be finished."""
     run = runs[0]
@@ -210,6 +219,7 @@ def page_model(runs):
         'prev_kaijuflow': prev.numbers(startline.KAIJUFLOW) if prev else None,
         'changes': run.meta.get('changes') or [],
         'titles': rows,
+        'speed': speed_model(run) if run.tagged else None,
         'findings': findings, 'next': next_step,
         'history': [history_row(r) for r in runs],
     }

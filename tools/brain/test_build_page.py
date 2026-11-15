@@ -485,6 +485,25 @@ class SpeedTest(unittest.TestCase):
             self.assertTrue(easy[2].startswith('Met Warm title to video under about 1 s KaijuFlow 0.60 s Limit 1.00 s '
                                                '0.40 s to spare'), easy[2])
 
+    def test_the_lead_under_the_verdict_is_the_outcome_line(self):
+        for page in (self.index, self.report):
+            lead = text(re.search(r'<p class="sl-lead">.*?</p>', page).group(0))
+            self.assertEqual(lead, 'Outcome on the hard list: KaijuFlow and AltMount direct fail the same number of titles '
+                                   '(1 of 8 each) and AltMount direct is faster (cold title to video 2.00 s against 3.50 s), '
+                                   'so try KaijuFlow without its own pre-list check, behind AltMount.')
+
+    def test_the_final_bar_is_shown_apart_from_the_targets_and_not_counted_in_them(self):
+        for page in (self.index, self.report):
+            self.assertLess(page.rindex('<li class="sl-trow">'), page.index('<div class="sl-final">'))
+            self.assertEqual(len(re.findall(r'<li class="sl-trow">', page)), 6)
+            bar = text(re.search(r'<div class="sl-final">.*?</div>', page).group(0))
+            self.assertEqual(bar, 'Final bar Not met On both lists, KaijuFlow has the fewest fails, and the fastest title to '
+                                  'video among setups with as few fails. Easy list: met, KaijuFlow fails 0 of 8, the fewest, '
+                                  'in 2.50 s cold title to video, the fastest among setups with as few fails. Hard list: not '
+                                  "met, AltMount direct fails as few titles (1 of 8 against KaijuFlow's 1 of 8). "
+                                  'Shown apart from the targets and not counted in them.')
+            self.assertLess(page.index('<div class="sl-targets">'), page.index('<div class="sl-final">'))
+
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline/')  # Test 1 (#127, #150); 3.46 s since #154 reads The Matrix as 1080p on both sides
 
