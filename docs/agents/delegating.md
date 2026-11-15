@@ -13,4 +13,4 @@ When several agents build tickets at once (a spec run with a workflow):
 - **One file, one agent at a time.** Two tickets that edit the same code file don't run together; the second starts from a `main` that has the first, or rebases onto it.
 - **Rebase before merging** onto `origin/main`. `GLOSSARY.md` conflicts are expected when tickets add entries: keep every entry.
 - **No Brain checks.** Builders don't touch the test containers or the real indexers (`brainrun record/run/preflight`, `testbed.py`): every Brain check needs the owner's go (`tools/brain/RUNBOOK.md`).
-- **Merge on green CI**, then close the ticket with its done comment.
+- **Review before merge.** A builder opens its PR and stops. A reviewer agent that did not build it checks the diff against the ticket ("Done when", as changed by the owner's comments) and `docs/agents/review-standards.md`, and returns `merge` or `fix`. The coordinating session merges only on `merge` with green CI, then closes the ticket with its done comment.
