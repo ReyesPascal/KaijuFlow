@@ -78,6 +78,14 @@ SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetc
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
 FAIL_COLS = ['Side', 'Run', 'Top pick plays', 'Fallback'] + [c for _, c in CAUSES]
 TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Result']
+# A run on a tagged title list (#167) shows each title's list and its title to video too; a run without tags shows neither.
+LIST_COLUMN_HELP = {
+    'List': 'the title list the title is on: easy (popular, well kept) or hard (older releases, takedown-prone shows, less '
+            'popular titles).',
+    'Title to video': 'seconds from asking for the title until video arrived: Search plus First byte. "-" when no video arrived.',
+}
+TAGGED_TITLE_COLS = ['Title', 'List', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Title to video',
+                     'Result']
 
 # --------------------------------------------------------------------------- parsing
 
@@ -411,6 +419,14 @@ def fallbacks(v):
 def plays(v):
     """Whether a visit's top pick played on the first try: video arrived, and not after a fallback (#143)."""
     return bool(v.get('ok')) and not fallbacks(v)
+
+
+def title_to_video(v):
+    """Seconds from asking for the title until video arrived (#167): the list time plus the start time. None for a visit
+    with no video, or without both times."""
+    if not v.get('ok') or v.get('list_s') is None or v.get('start_s') is None:
+        return None
+    return round(v['list_s'] + v['start_s'], 3)
 
 
 RESOLUTIONS = [('2160p', '2160p|4k|uhd'), ('1080p', '1080p|fhd'), ('720p', '720p')]  # first match wins: "UHD" is no "HD"
@@ -1084,11 +1100,26 @@ def _table(cols, rows):
 
 
 def _defs(cols):
-    return [f'- **{c}**: {COLUMN_HELP[c]}' for c in cols]
+    return [f'- **{c}**: {COLUMN_HELP.get(c) or LIST_COLUMN_HELP[c]}' for c in cols]
+
+
+def load_run(folder):
+    """A run folder as the report reads a run: its meta.json, with the visits of its raw.json under 'visits'."""
+    with open(os.path.join(folder, 'meta.json')) as f:
+        run = json.load(f)
+    with open(os.path.join(folder, 'raw.json'), encoding='utf-8') as f:
+        run['visits'] = json.load(f).get('visits') or []
+    return run
+
+
+def tagged(visits):
+    """Whether a run's visits were played on a tagged title list (#167): any visit keeps its title's list."""
+    return any(v.get('list') for v in visits)
 
 
 def render_report(run, changes, opening=None):
     g = _groups(run)
+    lists = tagged(run['visits'])
     lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
@@ -1131,9 +1162,15 @@ def render_report(run, changes, opening=None):
                     m = visit_metrics(v)
                     cause = classify_failure(v)
                     res = 'plays' if plays(v) else failed_result(v, cause)
-                    rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
-                                + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
-    lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
+                    if lists:
+                        rows.append([t, v.get('list') or '-', SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                    + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']),
+                                       _cell(title_to_video(v)), res])
+                    else:
+                        rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                    + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
+    cols = TAGGED_TITLE_COLS if lists else TITLE_COLS
+    lines += ['## Per title', ''] + _table(cols, rows) + [''] + _defs(cols) + ['']
     lines += not_recorded_section(run)
     lines += time_section(run)
     return '\n'.join(lines)

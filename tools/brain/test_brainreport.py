@@ -1103,5 +1103,60 @@ class RunRecordTest(unittest.TestCase):
         self.assertIsNone(br.previous_run(self.root + '/none'))
 
 
+TAGGED_TITLES = [('movie', 'tt1', 'Matrix', 'easy'), ('movie', 'tt2', 'Dune', 'easy'),
+                 ('movie', 'tt3', 'Old Film', 'hard'), ('series', 'tt4:1:1', 'Rare Show S01E01', 'hard')]
+
+
+def tagged_visit(side, phase, rnd, title, **kw):
+    """One visit of a run on the tagged title list: its top pick plays on the first try in 2.0 s list and 1.5 s start time,
+    unless kw says otherwise (ok=False: no video)."""
+    kind, vid, label, lst = next(t for t in TAGGED_TITLES if t[2] == title)
+    ok = kw.pop('ok', True)
+    v = dict(side=side, phase=phase, round=rnd, title=label, id=vid, kind=kind, list=lst, ok=ok, list_s=2.0,
+             start_s=1.5 if ok else None, sources=5, note=None if ok else 'failure video', misses=[], steps=[], imports=[],
+             played_source=None, limit=None, t_start='2026-11-16T10:00:00Z', t_end='2026-11-16T10:00:04Z',
+             tries=[{'plays': ok, 'size': 10_000_000_000 if ok else None, 'title': f'{label}.2160p.WEB-DL-GRP'}])
+    v.update(kw)
+    return v
+
+
+def tagged_run_folder(case, changed=None):
+    """A finished run folder on the tagged title list, KaijuFlow and AltMount direct, four rounds: every visit as
+    tagged_visit makes it, except those named in `changed` ({(side, phase, round, title): {field: value}})."""
+    changed = changed or {}
+    visits = [tagged_visit(side, phase, rnd, t[2], **changed.get((side, phase, rnd, t[2]), {}))
+              for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in ('kaijuflow', 'altmount-addon')]
+    folder = os.path.join(tempdir(case), '2026-11-16T100000Z-speed')
+    os.makedirs(folder)
+    meta = dict(name='speed', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z', commit='abc',
+                dirty=False, titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES},
+                indexers=['ninjacentral'], sides=['kaijuflow', 'altmount-addon'], rounds=2, short=None, settings={},
+                null=None, standin_misses=0, changes=['First run.'])
+    with open(os.path.join(folder, 'meta.json'), 'w') as f:
+        json.dump(meta, f)
+    with open(os.path.join(folder, 'raw.json'), 'w') as f:
+        json.dump({'status': 'ok', 'visits': visits}, f)
+    return folder
+
+
+def tagged_report(case, changed=None):
+    return br.render_report(br.load_run(tagged_run_folder(case, changed)), ['First run.'])
+
+
+class TaggedRunTest(unittest.TestCase):
+    """#167: a run on a tagged title list (easy and hard) is judged on title to video and fails, per list."""
+
+    def row(self, report, title, side, run):
+        [r] = [r for r in per_title_rows(report) if (r['Title'], r['Side'], r['Run']) == (title, side, run)]
+        return r
+
+    def test_a_visits_title_to_video_is_its_list_time_plus_its_start_time_and_a_visit_with_no_video_has_none(self):
+        text = tagged_report(self, {('kaijuflow', 'cold', 1, 'Dune'): dict(list_s=3.25, start_s=4.5),
+                                    ('kaijuflow', 'cold', 1, 'Old Film'): dict(ok=False)})
+        dune, old = self.row(text, 'Dune', 'KaijuFlow', 'Cold 1'), self.row(text, 'Old Film', 'KaijuFlow', 'Cold 1')
+        self.assertEqual((dune['List'], dune['Title to video']), ('easy', '7.75'))
+        self.assertEqual((old['List'], old['Title to video']), ('hard', '-'))
+
+
 if __name__ == '__main__':
     unittest.main()
