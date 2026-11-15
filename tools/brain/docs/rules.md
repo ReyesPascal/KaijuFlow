@@ -1,6 +1,6 @@
 # Brain tools: rules and settings
 
-The cap rule, the preflight, the settings table, the expected settings, the replay wait, the indexer allowance and how the targets are judged. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+The cap rule, the preflight, the settings table, the expected settings, like for like, the replay wait, the indexer allowance and how the targets are judged. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Cap rule
 
@@ -28,7 +28,7 @@ Indexers are compared by the slug in the indexer stand-in's address, because eac
 
 **Why.** The 2026-11-13 baseline ran on test copies that had lost their sort and filter rules, and nothing noticed: on KaijuFlow and Usenet Ultimate every film's top pick was a 66 to 91 GB file. The old rules could not be recovered, so the owner defined standard ones in issue #109, and the preflight now holds every copy to them.
 
-**The file.** `tools/brain/expected-settings.json` ([format](formats.md#expected-settings-expected-settingsjson)) holds, for KaijuFlow and Usenet Ultimate alike, the whole `movieFilters` and `tvFilters`: KaijuFlow's default sort and filter object, plus the largest single file (`maxFileSize`: 30 GB for films, 10 GB for episodes, written in bytes) and the drop rule "No disc images". AltMount's own addon keeps its own scoring and NzbDAV has no such rules, so the file names neither. The file is in the repository, so it holds no host, address, login or key; an entry with a secret name is refused. To change the standard, change the file and both test copies together.
+**The file.** `tools/brain/expected-settings.json` ([format](formats.md#expected-settings-expected-settingsjson)) holds, for KaijuFlow and Usenet Ultimate alike, the whole `movieFilters` and `tvFilters`: KaijuFlow's default sort and filter object, plus the largest single file (`maxFileSize`: 30 GB for films, 10 GB for episodes, written in bytes) and the drop rule "No disc images". AltMount direct has no such rules; the file holds it to its own like-for-like settings instead (one try, 4K first: see [Like for like](#like-for-like-142)). NzbDAV and AltMount under KaijuFlow have no ranking of their own, so the file does not name them. The file is in the repository, so it holds no host, address, login or key; an entry with a secret name is refused. To change the standard, change the file and both test copies together.
 
 **The comparison.** Both sides are read the same way (`testbed.read_settings`, the reader behind the settings table and `settings.json`), so no secret can reach a sentence. For every setting the file names, the copy must hold exactly the file's value. A setting given as a whole section (`movieFilters`) is compared as a whole, both ways: a value that differs, a value the copy lacks, and a value the copy has and the file does not are each a difference. KaijuFlow uses `movieFilters` and `tvFilters` in place of its default rules as a whole, so an extra or a missing value there changes the ranking. One sentence per difference:
 
@@ -45,6 +45,31 @@ KaijuFlow has movieFilters.sortOrder entry 2 set to "size", but the expected set
 - A copy whose config cannot be read is left to the checks that say so. A file that cannot be used costs one sentence (`The expected settings file cannot be used (expected-settings.json, entry 1: ...): fix the file.`) and the preflight fails.
 
 **The size cap and the report's Size column are two figures.** `maxFileSize` is compared with the size the indexer gives for the post, the figure a Stream shows after the disk sign, which KaijuFlow counts in GB of 1024 x 1024 x 1024 bytes (`src/addon/filters.ts`, `src/parsers/metadataParsers.ts`). The Size column of the per-title table is the size of the served file in GB of 1000 x 1000 x 1000 bytes. So a top pick of 31 GB in the report can be inside the 30 GB cap.
+
+## Like for like (#142)
+
+**Why.** The 2026-11-13 baseline compared different things. AltMount direct had no scoring, so it sorted every list by newest post and picked 1080p files of 3.5 to 15 GB, while the other two picked 4K remuxes of 65 to 90 GB. And it ran with `stremio.max_fallback_releases = 2`, so a failed top pick quietly fell back to the next release (36 of 40 on first tries, not 40). The owner decided (2026-11-15) that every side plays by one rule set.
+
+**What every side shares, and where each rule is held:**
+
+| Rule | KaijuFlow, Usenet Ultimate | AltMount direct | Held by |
+|---|---|---|---|
+| The same Sources: no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later page | the stand-in, and their own `maxFileSize` and "No disc images" rule as before | the stand-in | `indexer_standin.py` when it serves an answer |
+| 4K first: 2160p, then 1080p, then 720p | `resolutionPriority` (KaijuFlow's default sort) | `stremio.scoring.custom_formats`: 2160p 400, 1080p 300, 720p 200 | the preflight, against `expected-settings.json` |
+| One try per play: no hidden fallback | `ultimateFallback.enabled = false` (already so) | `stremio.max_fallback_releases = 0` and `stremio.include_library_streams = false` | the preflight, against `expected-settings.json` |
+| The same indexer and Backend connections | one indexer (NinjaCentral); 25 connections per Backend | the same | the preflight's address and connection checks |
+
+**The stand-in's list.** Every search answer (`t=search`, `movie`, `tvsearch`) goes out filtered, in record and replay mode alike. The answers stored on disk stay as the indexer sent them, so a later change to the rules needs no new recording.
+
+- *Kind.* A search with `t=tvsearch`, or with TV categories only (`cat=5000`, ...), is an episode search; any other search is a film search.
+- *Size cap.* A post over the cap of its kind is dropped: `maxFileSize` of `movieFilters` (films) or `tvFilters` (episodes) in the KaijuFlow entry of `expected-settings.json`, the one source of both figures. The size is the post's newznab `size`, else its enclosure length, in bytes, as KaijuFlow compares it. In an episode search a post whose title names no episode (no `S01E02` or `1x02`) is a season pack and has no cap, because KaijuFlow's `maxFileSize` leaves season packs alone too (`src/addon/filters.ts`).
+- *Disc images.* A post whose title matches the "No disc images" rule of that same entry is dropped. The pattern is read from the file, not copied.
+- *The first 100.* Each answer is filtered on its own, and the first 100 posts left in the indexer's order are kept. A search for a later page (`offset` above 0) gets an empty answer at once, in the format asked for (XML, or JSON for `o=json`). It is not stored, not sent to the indexer, never a miss, and logged `EMPTY <slug> <request>`. So KaijuFlow's paged search and AltMount direct's single `limit=100` request both choose from the indexer's first page, filtered the same way. KaijuFlow stops paging when a page comes back empty, so it loses pages 2 to 4 in the test.
+- *Not equal yet.* Each side still sends its own query (KaijuFlow searches by title text, AltMount direct by IMDb or TVDB ID), so the indexer can answer them with different posts. This ticket makes the rules equal, not the queries.
+
+**AltMount direct's settings.** AltMount matches on release titles only, so it cannot cap a file size; the stand-in does that for it. The rest is in its `config.yaml` under `stremio`, and the expected settings file holds the values: `max_fallback_releases: 0` (one import per play), `include_library_streams: false` (no redirect to a file already imported), and `scoring.custom_formats` for 2160p, 1080p and 720p (400, 300 and 200) plus "No disc images" with a score of -1500 or less, which drops a matching release. Its settings are read like the other copies' (`testbed.read_settings`), one sentence per difference. Sources for each AltMount setting (v0.4.0): `~/kaijuflow-notes/research/altmount-scoring-v0.4.0.md`. `stremio.fallback_timeout_ms` is the indexer search timeout, not a fallback, and `stremio.max_retries` is read by nothing, so neither is held.
+
+**Applying it.** Applying the settings to the test copies is a live change and the owner's go (at the start of #127). It is listed in the [runbook](../RUNBOOK.md), step 2.
 
 ## Recording and the cap rule
 

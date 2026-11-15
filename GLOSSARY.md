@@ -94,6 +94,10 @@ _Avoid_: goal, KPI, threshold
 The sort and filter rules every test copy must have, kept in `tools/brain/expected-settings.json`. The preflight fails when a copy differs.
 _Avoid_: baseline settings, golden config
 
+**Like for like**:
+The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, one try per play with no hidden fallback, and the same indexer and Backend connections. A comparison between sides counts only when the run was like for like.
+_Avoid_: fair run, same settings
+
 **Recording**:
 The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing.
 _Avoid_: cache, snapshot
