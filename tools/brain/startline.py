@@ -503,7 +503,19 @@ def header(m):
 HEADLINES = [('Cold start', 'cold_start'), ('Warm start', 'warm_start'), ('Warm list', 'warm_list'), ('Top pick plays', 'plays')]
 
 
+def speed_headlines(m):
+    """A speed test's headline numbers: KaijuFlow's fails on each list, then its cold title to video on each list."""
+    kf = {lst['list']: next(s for s in lst['setups'] if s['id'] == KAIJUFLOW) for lst in m['speed']['lists']}
+    items = [(f'Fails, {x} list', plays_text(s['fails'])) for x, s in kf.items()]
+    items += [(f'Title to video, {x} list', secs(s['cold_video'])) for x, s in kf.items()]
+    li = ''.join(f'<li><span class="sl-k">{esc(label)}</span><span class="sl-v">{value}</span></li>' for label, value in items)
+    return (f'<ul class="sl-heads">{li}<li class="sl-headnote">KaijuFlow in this run: its fails in all four rounds, and its '
+            'median cold title to video.</li></ul>')
+
+
 def headline_numbers(m):
+    if m.get('speed'):
+        return speed_headlines(m)
     kf, before = m['kaijuflow'], m['prev_kaijuflow']
     items = []
     for label, key in HEADLINES:

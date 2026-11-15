@@ -516,6 +516,13 @@ class SpeedTest(unittest.TestCase):
             self.assertIn('Title asked for', easy)
         self.assertNotIn('Cold start.', text(self.index))
 
+    def test_the_headline_numbers_are_kaijuflows_fails_then_its_title_to_video_on_each_list(self):
+        for page in (self.index, self.report):
+            heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', page).group(0))
+            self.assertEqual(heads, 'Fails, easy list 0 of 8 Fails, hard list 1 of 8 Title to video, easy list 2.50 s '
+                                    'Title to video, hard list 3.50 s KaijuFlow in this run: its fails in all four rounds, '
+                                    'and its median cold title to video.')
+
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline/')  # Test 1 (#127, #150); 3.46 s since #154 reads The Matrix as 1080p on both sides
 
