@@ -4,13 +4,11 @@
 - **Budget in the brief.** State the time budget and the quality bar ("workable" or "finished") in the first brief. A deadline sent after launch yields half-read sources and a second round.
 - **Save as you go.** Tell each subagent to write its output file early and keep adding to it, to a durable folder (`~/kaijuflow-notes/` for off-repo work), never only to a temporary one.
 
-## Parallel builders
+## Building a spec in parallel
 
-When several agents build tickets at once (a spec run with a workflow):
+The owner runs `/mattpocock-skills:implement-spec <spec>`: implementer agents in their own worktrees, one integration branch, one `/code-review` at the end. KaijuFlow adds these limits:
 
-- **One worktree, one branch, one PR per ticket.** Each agent runs with `isolation: "worktree"` and claims its ticket before its first edit.
-- **Model and effort per agent** come from the spec's table, passed in each agent's options. With no table, the agent inherits the session's.
-- **One file, one agent at a time.** Two tickets that edit the same code file don't run together; the second starts from a `main` that has the first, or rebases onto it.
-- **Rebase before merging** onto `origin/main`. `GLOSSARY.md` conflicts are expected when tickets add entries: keep every entry.
-- **No Brain checks.** Builders don't touch the test containers or the real indexers (`brainrun record/run/preflight`, `testbed.py`): every Brain check needs the owner's go (`tools/brain/RUNBOOK.md`).
-- **Review before merge.** A builder opens its PR and stops. A reviewer agent that did not build it checks the diff against the ticket ("Done when", as changed by the owner's comments) and `docs/agents/review-standards.md`, and returns `merge` or `fix`. The coordinating session merges only on `merge` with green CI, then closes the ticket with its done comment.
+- **Three at a time**, as above.
+- **Model and effort per agent** come from the spec's table. An agent with no entry inherits the session's.
+- **No live checks**: nothing that touches the test containers, the indexers or Usenet (`brainrun.py record/run/preflight/smoke`, `testbed.py`, `nntp.py`). They need the owner's go (`tools/brain/RUNBOOK.md`). Tests with fakes are fine, `npm run check:brain` included.
+- **Keep every `GLOSSARY.md` entry** when merges conflict: tickets add entries side by side.
