@@ -413,15 +413,23 @@ def plays(v):
     return bool(v.get('ok')) and not fallbacks(v)
 
 
-RESOLUTIONS = [('2160p', '2160p|4k|uhd'), ('1080p', '1080p|fhd'), ('720p', '720p')]  # first match wins: "UHD" is no "HD"
+RESOLUTIONS = {'2160p': ('2160p', '4k|uhd'), '1080p': ('1080p', 'fhd'), '720p': ('720p', '')}  # (stated number, words)
+
+
+def _first_of(text, pick):
+    """The resolution whose pattern (pick: 0 the number, 1 the words) comes first in the text, or None."""
+    words = '|'.join(f'(?P<r{res}>{w[pick]})' for res, w in RESOLUTIONS.items() if w[pick])
+    m = re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', text)
+    return m and m.lastgroup[1:]
 
 
 def resolution(text):
-    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none."""
-    for res, words in RESOLUTIONS:
-        if re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', str(text or '').lower()):
-            return res
-    return None
+    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none (#154).
+    A stated number wins over the words 4K, UHD (2160p) and FHD (1080p), which count only when no number is stated: "1080p
+    UHD BluRay" is a 1080p encode from a 4K disc. A side's own label ("AltMount FHD - ... [1080p]", "4K BluRay") is read
+    with the release name as one text, so the first stated number wins (tools/brain/docs/rules.md, "Like for like")."""
+    text = str(text or '').lower()
+    return _first_of(text, 0) or _first_of(text, 1)
 
 
 def _rule_break(v, rules):
