@@ -222,7 +222,8 @@ def target_rows(targets, report=False):
             margin += f'<small>{esc(noise)}</small>'
         drawn = t['result'] != 'not measured' and t['measure'] != 'fails' and t['limit'] is not None and not isinstance(t['value'], tuple)
         draw = '' if report else mini(t['value'], t['limit']) if drawn else '<span class="sl-empty"></span>'
-        rows.append(f'<li class="sl-trow"><span class="sl-ts">{status(t["result"])}</span><span class="sl-tt">{esc(t["text"])}</span>'
+        measured = f'<small>Measured: {esc(t["measured"])}.</small>' if t.get('measured') and not report else ''  # a speed test's (#169)
+        rows.append(f'<li class="sl-trow"><span class="sl-ts">{status(t["result"])}</span><span class="sl-tt">{esc(t["text"])}{measured}</span>'
                     f'<span class="sl-num sl-r"><span class="sl-lab">KaijuFlow</span>{mine}</span>'
                     f'<span class="sl-num sl-r"><span class="sl-lab">Limit</span>{lim}</span><span class="sl-tm">{margin}</span>{draw}</li>')
     return ''.join(rows)
@@ -351,6 +352,7 @@ RULES = """.sl * { box-sizing: border-box }
 .sl .sl-thead .sl-r, .sl .sl-trow .sl-r { text-align: right }
 .sl .sl-trow .sl-lab { display: none }
 .sl .sl-trow .sl-tt { line-height: 1.35 }
+.sl .sl-trow .sl-tt small { display: block; font-size: 14px; line-height: 1.35; color: var(--slate); margin-top: 4px }
 .sl .sl-tm small { display: block; font-size: 14px; line-height: 1.35; color: var(--slate); margin-top: 4px }
 .sl .sl-mtrack { position: relative; height: 32px; box-shadow: -3px 0 0 var(--ink) }
 .sl .sl-mlim { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); z-index: 2 }
@@ -470,6 +472,23 @@ WORDS = [('Setup', 'One way of searching and playing that the test times, such a
          ('Round', 'One pass over all {titles} titles. A run has four: cold, warm, cold, warm.'),
          ('Inside the noise', "KaijuFlow's own two rounds differ by more than a target is met or missed by, so the same run "
                               'done again could turn the result around.')]
+
+
+SPEED_WORDS = [  # a speed test's words (GLOSSARY.md, "Measuring"), after those of every run
+    ('Title to video', 'Seconds from asking for a title until its video starts: the list and the start on one clock. A fail '
+                       'has no time.'),
+    ('Fail', 'A title whose top pick does not play on its one try: an error, the failure video, or video only after a fallback.'),
+    ('Fallback', 'Video that came only after the top pick failed and the setup tried another Source. It counts as a fail.'),
+    ('Easy list', 'Popular, well kept titles, where most Sources still play.'),
+    ('Hard list', 'Older releases, titles prone to takedowns and less popular titles, where dead Sources are common.'),
+    ('Final bar', 'The goal beyond the targets: on both lists, KaijuFlow has the fewest fails, and the fastest title to video '
+                  'among setups with as few fails. Shown apart and never counted with the targets.')]
+
+
+def speed_words():
+    """The words of a speed test's page: a median is over one list's titles, and the speed test's own words follow."""
+    median = ('Median', 'The middle value over the titles of one list, so one slow title cannot drag the number.')
+    return [median if w == 'Median' else (w, d) for w, d in WORDS] + SPEED_WORDS
 
 
 def change_words(before, now, plays=False):
@@ -604,9 +623,11 @@ def targets_heading(met, total):
 def targets_section(m):
     head = ('<div class="sl-trow sl-thead" aria-hidden="true"><span>Result</span><span>Target</span><span class="sl-r">KaijuFlow</span>'
             '<span class="sl-r">Limit</span><span>Margin</span><span>KaijuFlow against the limit</span></div>')
-    return (f'<section class="sl-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
-            '<p class="sl-text sl-sub">Each target compares KaijuFlow with a limit. On the small rulers the yellow bar is KaijuFlow '
-            'and the upright line is the limit. Every time is the median over the titles of both rounds of its kind.</p>'
+    sub = ('Each list is judged on its own: fails first, then title to video. On the small rulers the yellow bar is KaijuFlow '
+           'and the upright line is the limit.' if m.get('speed') else
+           'Each target compares KaijuFlow with a limit. On the small rulers the yellow bar is KaijuFlow and the upright line is '
+           'the limit. Every time is the median over the titles of both rounds of its kind.')
+    return (f'<section class="sl-sec"><h2>{targets_heading(m["met"], m["total"])}</h2><p class="sl-text sl-sub">{sub}</p>'
             f'<div class="sl-targets">{head}{target_lists(m["targets"])}</div>{final_bar(m)}</section>')
 
 
@@ -668,6 +689,14 @@ def setups_heading(m):
 
 
 def setups_section(m):
+    if m.get('speed'):  # a speed test: start and list stay as detail, with no target on them, beside each setup's fails
+        figs = ''.join(figure(f'<b>{caption}</b>', setup_lanes(m, key)) for caption, key, _ in FOUR)
+        fails = ''.join(f'<p class="{"sl-pk" if s["id"] == KAIJUFLOW else ""}"><span class="sl-num sl-pv">{plays_text(s["fails"])}</span>'
+                        f'<span class="sl-pn">{esc(s["name"])}</span></p>' for s in m['setups'])
+        return ('<section class="sl-sec"><h2>Start and list, the two parts of title to video</h2>'
+                '<p class="sl-text sl-sub">Medians over every title of both lists and both rounds of each kind. Each ruler has its '
+                'own scale and is sorted fastest first. No target is set on these: the targets judge title to video.</p>'
+                f'<div class="sl-four">{figs}</div><div class="sl-plays"><h3>Fails, both lists</h3>{fails}</div></section>')
     figs = []
     for caption, key, measure in FOUR:
         limits = limits_on(m['targets'], measure)
@@ -776,7 +805,8 @@ def next_section(m):
 
 
 def words_section(m):
-    items = ''.join(f'<div><dt>{w}</dt><dd>{esc(d.format(titles=m["run"]["titles"]))}</dd></div>' for w, d in WORDS)
+    words = speed_words() if m.get('speed') else WORDS
+    items = ''.join(f'<div><dt>{w}</dt><dd>{esc(d.format(titles=m["run"]["titles"]))}</dd></div>' for w, d in words)
     return f'<section class="sl-sec"><h2>What the words mean</h2><dl class="sl-words">{items}</dl></section>'
 
 
@@ -922,8 +952,16 @@ def report(m):
         parts.append(f'<section class="sl-r-sec"><h2>What the run found</h2><ul class="sl-finds">{finds}</ul></section>')
     if m['next']:
         parts.append(f'<section class="sl-r-next">{m["next"][0]}<div>{m["next"][1]}</div></section>')
-    parts.append(f'<footer class="sl-r-foot"><span>Page 1 of 1</span><p><b>Start:</b> seconds from pressing play on the top '
-                 f'pick until the first bytes of video arrive. <b>List:</b> seconds from asking for a title until the list of Sources '
-                 f'arrives. Medians over {m["run"]["titles"]} titles and both rounds of each kind. '
+    if m.get('speed'):
+        sizes = {len(lst['titles']) for lst in m['speed']['lists']}
+        over = f'the {sizes.pop()} titles' if len(sizes) == 1 else 'the titles'
+        words = ('<b>Title to video:</b> seconds from asking for a title until its video starts, the list and the start on one '
+                 'clock. <b>Fail:</b> a title whose top pick does not play on its one try; video after a fallback is a fail too. '
+                 f'Medians over {over} of each list.')
+    else:
+        words = (f'<b>Start:</b> seconds from pressing play on the top pick until the first bytes of video arrive. <b>List:</b> '
+                 f'seconds from asking for a title until the list of Sources arrives. Medians over {m["run"]["titles"]} titles and '
+                 'both rounds of each kind.')
+    parts.append(f'<footer class="sl-r-foot"><span>Page 1 of 1</span><p>{words} '
                  "<b>Inside the noise:</b> KaijuFlow's own two rounds differ by more than the target is met or missed by.</p></footer>")
     return f'{REPORT_HEAD}<style>\n{RULES}{REPORT_CSS}</style>\n<div class="sl sl-rep">\n{"".join(parts)}\n</div>\n'

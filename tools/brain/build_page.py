@@ -79,7 +79,8 @@ class Run:
                 'warm_start': br.side_time(self.visits, side, 'warm', 'start'),
                 'cold_list': br.side_time(self.visits, side, 'cold', 'list'),
                 'warm_list': br.side_time(self.visits, side, 'warm', 'list'),
-                'plays': br.side_plays(self.visits, side)}
+                'plays': br.side_plays(self.visits, side),
+                'fails': (br.side_fails(self.visits, side), br.side_plays(self.visits, side)[1])}
 
     def list_numbers(self, side, lst):
         """A setup's figures on one list of a speed test: its fails (fails, top picks counted) over every round, and its

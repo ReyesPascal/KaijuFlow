@@ -474,7 +474,8 @@ class SpeedTest(unittest.TestCase):
             self.assertIn('<h1>5 of 6 targets met</h1>', page)
             groups = re.findall(r'<h3 class="sl-list">(.*?)</h3><ul>(.*?)</ul>', page)
             self.assertEqual([g for g, _ in groups], ['Easy list', 'Hard list'])
-            easy, hard = ([text(r) for r in re.findall(r'<li class="sl-trow">.*?</li>', rows)] for _, rows in groups)
+            easy, hard = ([text(re.sub(r'<small>Measured:.*?</small>', '', r)) for r in re.findall(r'<li class="sl-trow">.*?</li>', rows)]
+                          for _, rows in groups)  # what was measured, on the page alone, has its own test
             self.assertEqual([re.match('Not met|Met', r).group(0) for r in easy], ['Met', 'Met', 'Met'])
             self.assertEqual([re.match('Not met|Met', r).group(0) for r in hard], ['Met', 'Not met', 'Met'])
             self.assertTrue(easy[0].startswith('Met KaijuFlow fails no more titles than any other setup, and none on the easy '
@@ -485,6 +486,14 @@ class SpeedTest(unittest.TestCase):
                                                'with as many fails or more KaijuFlow 3.50 s Limit 2.00 s 1.50 s over'), hard[1])
             self.assertTrue(easy[2].startswith('Met Warm title to video under about 1 s KaijuFlow 0.60 s Limit 1.00 s '
                                                '0.40 s to spare'), easy[2])
+
+    def test_on_the_page_a_target_row_says_what_was_measured_on_every_setup(self):
+        row = [text(r) for r in re.findall(r'<li class="sl-trow">.*?</li>', self.index)][4]
+        self.assertIn('Measured: KaijuFlow 3.50 s with 1 fail, Usenet Ultimate 3.50 s with 2 fails (more fails: not held '
+                      'against it), AltMount direct 2.00 s with 1 fail.', row)
+        sub = text(re.search(r'<p class="sl-text sl-sub">Each list.*?</p>', self.index).group(0))
+        self.assertEqual(sub, 'Each list is judged on its own: fails first, then title to video. On the small rulers the '
+                              'yellow bar is KaijuFlow and the upright line is the limit.')
 
     def test_the_lead_under_the_verdict_is_the_outcome_line(self):
         for page in (self.index, self.report):
@@ -545,6 +554,27 @@ class SpeedTest(unittest.TestCase):
                                                   'AltMount direct Matrix (Cold 2) Rare Show S01E01 (Cold 1 after a fallback)'])
         self.assertEqual(re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', fails), ['Setup', 'Easy list', 'Hard list'])
         self.assertNotIn('List, warm', text(self.report))
+
+    def test_the_words_say_what_title_to_video_and_a_fail_are_and_name_the_setups_in_the_pages_words(self):
+        foot = text(re.search(r'<footer.*?</footer>', self.report).group(0))
+        self.assertIn('Title to video: seconds from asking for a title until its video starts, the list and the start on one clock.', foot)
+        self.assertIn('Fail: a title whose top pick does not play on its one try; video after a fallback is a fail too.', foot)
+        self.assertIn('Medians over the 2 titles of each list.', foot)
+        self.assertIn('Page 1 of 1', foot)
+        words = section(self.index, 'What the words mean')
+        for term in ('Fail', 'Title to video', 'Easy list', 'Hard list', 'Final bar'):
+            self.assertIn(f'<dt>{term}</dt>', words)
+        for page in (self.index, self.report):
+            self.assertIn('AltMount direct', text(page))
+            for avoid in ("AltMount's own addon", 'addon', 'altmount-addon', 'kaijuflow-1page'):
+                self.assertNotIn(avoid, text(page))
+
+    def test_start_and_list_stay_as_detail_with_no_target_and_each_setups_fails_beside_them(self):
+        four = section(self.index, 'Start and list, the two parts of title to video')
+        self.assertNotIn('No target: AltMount direct checks nothing', four)
+        self.assertNotIn('sl-lim', four)
+        plays = text(re.search(r'<div class="sl-plays">.*?</div>', four).group(0))
+        self.assertEqual(plays, 'Fails, both lists 1 of 16 KaijuFlow 2 of 16 Usenet Ultimate 2 of 16 AltMount direct')
 
 
 class SpeedTestAgainstEarlierRuns(unittest.TestCase):
