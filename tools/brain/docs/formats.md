@@ -25,6 +25,7 @@ The previous run's top picks are read from its folder's `raw.json`, so a run mad
 
 **A run on a tagged title list (#167).** A speed test's title list is tagged ([#165](#the-pool-pooljson-and-the-tagged-title-list)): each entry is `[type, id, label, list]`, `list` being `"easy"` or `"hard"`. `record` and `run` take it with `--titles-file` like any title list and keep each title's list: `meta.json` has `lists` (`{"<label>": "easy"}`, beside `titles`; a record folder's `meta.json` too), and every visit in `raw.json` has `list`. A tagged list is a speed test's whole list, so a run on it is not a short run. The report adds, for such a run:
 
+- its opening sentence and its INDEX.md headline: each setup's fails per list, then its median cold title to video per list (#159: list and start times stay as detail, in the tables);
 - in "Per title", the columns **List** and **Title to video** (that visit's list time plus its start time; "-" for a fail);
 - after the extras table, "Fails and title to video per list": one row per setup, list and phase, with the fails of the phase and of each round (`1 title failed · 1 of 20 plays: 1 of 10 in Cold 1, 0 of 10 in Cold 2`) and the median title to video over the top picks that played in both rounds of the phase.
 
