@@ -110,6 +110,17 @@ class PoolTest(unittest.TestCase):
         self.assertEqual(self.read(self.pool), before)
         self.assertFalse(os.path.exists(self.out))
 
+    def test_a_title_list_that_cannot_be_written_wastes_the_drawn_titles_but_never_lets_them_be_drawn_again(self):
+        self.write(make_pool(films=12, episodes=8))
+        code, out = self.draw('Test 2', out=os.path.join(self.dir.name, 'no-such-folder', 'titles.json'))
+        self.assertEqual(code, 1)
+        self.assertIn('could not be written', out)
+        marked = {t['id'] for t in self.read(self.pool)['titles'] if t.get('used_by') == 'Test 2'}
+        self.assertEqual(len(marked), 20)  # the pool was written first: the 20 are spent, not drawn again
+        code, _ = self.draw('Test 3')
+        self.assertEqual(code, 0)
+        self.assertFalse(marked & {t[1] for t in self.read(self.out)})
+
     def refused(self, extra):
         """(exit code, printed text) of a draw from an otherwise good pool with `extra` added; asserts nothing changed."""
         self.write(make_pool(films=8, episodes=5, extra=extra))
@@ -211,7 +222,10 @@ class CheckIdsTest(unittest.TestCase):
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             code = pool.main(['check-ids', '--pool', self.pool, '--test-dir', self.test_dir], http=self.tmdb)
         self.assertNotIn(KEY, buf.getvalue())
-        return code, buf.getvalue().strip().splitlines()
+        lines = buf.getvalue().strip().splitlines()
+        if lines and lines[-1].startswith('done in '):
+            lines.pop()
+        return code, lines
 
     def test_a_film_and_an_episode_tmdb_has_are_found(self):
         code, lines = self.check([{'type': 'movie', 'id': 'tt0111161', 'label': 'The Shawshank Redemption'},
@@ -242,6 +256,22 @@ class CheckIdsTest(unittest.TestCase):
             '"Pilot" (1994-09-22).',
             'LABEL DIFFERS The Green Mile (tt0111161): TMDB has film The Shawshank Redemption (1994), TMDB 278.',
             '6 titles checked against TMDB: 6 not as the pool says.'])
+
+    def test_each_title_is_printed_as_it_is_checked_and_the_last_line_says_how_long_it_took(self):
+        titles = [{'type': 'movie', 'id': 'tt0111161', 'label': 'The Shawshank Redemption'},
+                  {'type': 'series', 'id': 'tt0108778:1:1', 'label': 'Friends S01E01'}]
+        with open(self.pool, 'w') as f:
+            json.dump({'about': 'test pool', 'titles': [dict(t, list='easy', reason='popular') for t in titles]}, f)
+        buf, seen = io.StringIO(), []
+
+        def http(url, headers):
+            seen.append((url, buf.getvalue()))
+            return self.tmdb(url, headers)
+        with contextlib.redirect_stdout(buf):
+            pool.main(['check-ids', '--pool', self.pool, '--test-dir', self.test_dir], http=http)
+        [(_, before_friends)] = [x for x in seen if 'tt0108778' in x[0]]
+        self.assertIn('OK The Shawshank Redemption (tt0111161)', before_friends)  # printed before the next title is asked for
+        self.assertRegex(buf.getvalue().strip().splitlines()[-1], r'^done in \d+ s$')
 
     def test_a_missing_or_refused_key_is_one_sentence_and_never_printed(self):
         self.set_key('wrong-key-never-printed')

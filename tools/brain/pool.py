@@ -6,8 +6,8 @@
 `draw` takes the first 6 films and 4 episodes of each list (easy, hard) that no speed test has used, writes them as the
 speed test's tagged title list ([type, id, label, list]) and marks them used by that speed test in the pool.
 `check-ids` looks every pool title up on TMDB (the film, or the show and its season and episode) with the metadata key
-of KaijuFlow's test copy, which it reads itself and never prints; one line per title, exit 1 when any is not as the
-pool says. It is the tool's only network call.
+of KaijuFlow's test copy, which it reads itself and never prints; one line per title as it goes, then `done in N s`;
+exit 1 when any is not as the pool says. It is the tool's only network call.
 The pool and the tagged title list are described in docs/formats.md, "The pool".
 """
 import argparse
@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -109,9 +110,15 @@ def draw_command(a):
     except Refused as e:
         print(e)
         return 1
-    write_json(a.out, dump_lines(tagged) + '\n')
+    # The pool first: a failure after it can only waste the drawn titles, never let a later draw take them again.
     write_json(a.pool, '{"about": ' + json.dumps(data.get('about', ''), ensure_ascii=False)
                + ',\n "titles": ' + dump_lines(data['titles']) + '}\n')
+    try:
+        write_json(a.out, dump_lines(tagged) + '\n')
+    except OSError as e:
+        print(f'The pool marks {len(tagged)} titles used by {a.test}, but the title list could not be written to {a.out} '
+              f'({type(e).__name__}): those titles are spent; draw again under another speed test name.')
+        return 1
     print(f'Drew {len(tagged)} titles for {a.test} into {a.out}; the pool marks them used.')
     return 0
 
@@ -198,18 +205,22 @@ def check_title(t, get):
 
 
 def check_ids_command(a, http):
+    """One line per title as it is checked, the count, then `done in N s` (README: a log without it is unfinished)."""
+    began = time.monotonic()
     data = read_json(a.pool)
+    results = []
     try:
         check_pool(data)
         get = tmdb_getter(a.test_dir, http)
-        results = [check_title(t, get) for t in data['titles']]
+        for t in data['titles']:
+            results.append(check_title(t, get))
+            print(results[-1][1], flush=True)
     except (Refused, TmdbError) as e:
         print(e)
         return 1
-    for _, line in results:
-        print(line)
     bad = sum(1 for ok, _ in results if not ok)
     print(f'{len(results)} titles checked against TMDB: ' + (f'{bad} not as the pool says.' if bad else 'all as the pool says.'))
+    print(f'done in {round(time.monotonic() - began)} s')
     return 1 if bad else 0
 
 
