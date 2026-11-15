@@ -561,11 +561,38 @@ def _settings_at(flat, name):
     return {k: [v[i] for i in sorted(v)] if isinstance(v, dict) else v for k, v in out.items()}
 
 
+EMPTY = ([], '{}')  # how a settings map writes an empty list or section
+
+
+def _holds_nothing(settings):
+    """True when a level of a settings map has no setting, or only an empty list or section (`custom_formats: []`)."""
+    return all(v in EMPTY for v in settings.values())
+
+
 def _whole_gap(key, name, other):
     """The highest level of the setting `key`, from `name` down, that `other` has nothing of: a section or a rule that is
     missing as a whole is named once, not once per value in it. a.b[c].d is tried as a, a.b, a.b[c], a.b[c].d."""
     ends = [m.end() for m in re.finditer(r'\[.*?\](?=[.\[]|$)|[^.\[]+', key)]
-    return next((key[:e] for e in ends if e >= len(name) and not _settings_at(other, key[:e])), key)
+    return next((key[:e] for e in ends if e >= len(name) and _holds_nothing(_settings_at(other, key[:e]))), key)
+
+
+# The copies whose config is YAML (AltMount's config.yaml), read by br.flatten_yaml: every value as text, list entries by position.
+YAML_COPIES = ('altmount-addon', 'altmount-kf')
+
+
+def _as_yaml_read(value, prefix):
+    """An expected value as br.flatten_yaml reads the same setting from AltMount's config.yaml: list entries tagged by position
+    ([0], [1], ...), numbers, true, false and null as text, `key: ""` left out (the reader skips it), [] and {} for empty ones."""
+    out = {}
+    if isinstance(value, (dict, list)):
+        items = value.items() if isinstance(value, dict) else ((f'[{i}]', v) for i, v in enumerate(value))
+        for k, v in items:
+            out.update(_as_yaml_read(v, prefix + k if k.startswith('[') else f'{prefix}.{k}'))
+        if not value:
+            out[prefix] = '[]' if isinstance(value, list) else '{}'
+    elif value != '':
+        out[prefix] = value if isinstance(value, str) else json.dumps(value)
+    return out
 
 
 def _show(value):
@@ -592,7 +619,8 @@ def setting_differences(expected, settings, file=None):
             if not have or '(file missing)' in have:  # a config that cannot be read: the other preflight checks say so
                 continue
             for name, value in entry['settings'].items():
-                want, got = _settings_at(br.flatten(value, name), name), _settings_at(have, name)
+                flat = _as_yaml_read(value, name) if side in YAML_COPIES else br.flatten(value, name)
+                want, got = _settings_at(flat, name), _settings_at(have, name)
                 gaps = []  # a setting, a rule or a section one of the two lacks as a whole, each named once
                 for k in want:
                     if k not in got:
@@ -613,6 +641,8 @@ def setting_differences(expected, settings, file=None):
                     elif got[k] != want[k]:
                         say(f'{copy_name} has {k} set to {_show(got[k])}, but', f'says {_show(want[k])}')
                 for k in got:
+                    if got[k] in EMPTY and _settings_at(want, k):  # an empty list where the file has entries: named once above
+                        continue
                     gap = (_whole_gap(k, name, want), 'extra')
                     if k not in want and gap not in gaps:
                         gaps.append(gap)

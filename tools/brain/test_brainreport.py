@@ -231,6 +231,28 @@ class ScrubTest(unittest.TestCase):
         self.assertNotIn('hunter2', json.dumps(flat))
         self.assertNotIn('abc', json.dumps(flat))
 
+    def test_yaml_lists_of_plain_values_and_quoted_values_are_read(self):
+        # AltMount's layout (config.yaml on Brain, 2026-11-15): 4-space indent, list items under their key
+        y = ('stremio:\n    scoring:\n        preset: ""\n        custom_formats:\n            - id: r2160\n'
+             '              pattern: (?i)\\b(2160p?|4k|uhd)\\b\n              category: ""\n              score: 400\n'
+             '            - id: r1080\n              pattern: "(?i)\\\\b1080[pi]?\\\\b"\n            - id: r720\n'
+             "              pattern: '(?i)\\b720p?\\b it''s'\n        exclude_keywords:\n            - iso\n            - BDMV\n"
+             '        preferred_languages: []\n    prowlarr:\n        host: http://localhost:9696\n        categories:\n'
+             '            - 2000\n            - http://x.example/a\n        api_key: SECRETKEY\n')
+        flat = br.flatten_yaml(y)
+        self.assertEqual(flat['stremio.scoring.custom_formats[0].pattern'], r'(?i)\b(2160p?|4k|uhd)\b')
+        self.assertEqual(flat['stremio.scoring.custom_formats[1].pattern'], r'(?i)\b1080[pi]?\b')  # "..." with its escapes
+        self.assertEqual(flat['stremio.scoring.custom_formats[2].pattern'], r"(?i)\b720p?\b it's")
+        self.assertEqual(flat['stremio.scoring.custom_formats[0].score'], '400')
+        self.assertNotIn('stremio.scoring.preset', flat)
+        self.assertNotIn('stremio.scoring.custom_formats[0].category', flat)
+        self.assertEqual((flat['stremio.scoring.exclude_keywords[0]'], flat['stremio.scoring.exclude_keywords[1]']), ('iso', 'BDMV'))
+        self.assertEqual(flat['stremio.scoring.preferred_languages'], '[]')
+        self.assertEqual(flat['stremio.prowlarr.categories[0]'], '2000')
+        self.assertEqual(flat['stremio.prowlarr.categories[1]'], 'http://x.example/a')
+        self.assertEqual(flat['stremio.prowlarr.host'], 'http://localhost:9696')
+        self.assertEqual(flat['stremio.prowlarr.api_key'], '***')
+
 
 def runs_fixture(failing=False):
     visits = []

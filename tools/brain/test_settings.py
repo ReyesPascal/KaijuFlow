@@ -33,6 +33,23 @@ def _put(path, text):
         f.write(text)
 
 
+ALTMOUNT_FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'altmount-v0.4.0')
+
+
+def addon_stremio(name='stremio-like-for-like.yaml'):
+    """The lines of a captured AltMount `stremio:` block (fixtures/altmount-v0.4.0) without its header and its `indexers`
+    section, which make_copies writes itself. By default the block that holds the like-for-like settings (#142)."""
+    with open(os.path.join(ALTMOUNT_FIXTURES, name)) as f:
+        lines = f.read().splitlines()[1:]
+    out, skip = [], False
+    for line in lines:
+        if line.startswith('    ') and line[4] != ' ':  # a setting directly under stremio
+            skip = line.strip().startswith('indexers:')
+        if not skip:
+            out.append(line)
+    return out
+
+
 def rules(films=3000, episodes=1000):
     """Sort and filter rules in the shape KaijuFlow and Usenet Ultimate keep them (`movieFilters`, `tvFilters`), cut short:
     an order, switches, a size cap and one named drop rule."""
@@ -46,9 +63,10 @@ def rules(films=3000, episodes=1000):
 
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 12, 25, 25, 25),
                 url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=(), backup_host='backup.example',
-                kf_rules=None, uu_rules=None):
+                kf_rules=None, uu_rules=None, addon_lines=None):
     """A fake kaijuflow-test folder: KaijuFlow, UU, NzbDAV and both AltMounts, plus the key file. KaijuFlow and UU hold the
-    sort and filter rules of rules() unless others are given (kf_rules, uu_rules: what goes into the config; {} for none)."""
+    sort and filter rules of rules() unless others are given (kf_rules, uu_rules: what goes into the config; {} for none).
+    AltMount direct's `stremio:` block holds addon_lines, by default addon_stremio(): the like-for-like settings (#142)."""
     base = base or tempdir(case)
     td = os.path.join(base, 'kaijuflow-test')
     kf_cap, uu_cap, nz_cap, addon_cap, altkf_cap = caps
@@ -64,7 +82,8 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
             'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False}))
     for side, cap in (('altmount-addon', addon_cap), ('altmount-kf', altkf_cap)):
         lines = ['import:', '    max_processor_workers: 2', '    segment_sample_percentage: 1',
-                 'stremio:', '    indexers:', '        newsnab:']
+                 'stremio:', *((addon_stremio() if addon_lines is None else addon_lines) if side == 'altmount-addon' else []),
+                 '    indexers:', '        newsnab:']
         for s in list(enabled) + list(disabled):
             lines += ['            - id: x_%s' % s, '              name: %s' % SHORT[s], '              url: %s' % url(s).replace('/api', ''),
                       '              api_key: ' + SECRET, '              timeout_seconds: 15',

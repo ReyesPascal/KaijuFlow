@@ -1098,7 +1098,7 @@ class RecordIO(FakeIO):
         if self.limit_from_visit and self.visits >= self.limit_from_visit:
             fakes.FakeIndexer.limit = True
         base = f'http://127.0.0.1:{self.port}/fake/api'
-        asks = {'kaijuflow': [f'?t=search&q={vid}&offset=0', f'?t=search&q={vid}&offset=3'],
+        asks = {'kaijuflow': [f'?t=search&q={vid}&offset=0', f'?t=search&q={vid}&cat=2000'],  # two searches (a later page is empty, #142)
                 'kaijuflow-1page': [f'?t=search&q={vid}&offset=0&limit=100'],
                 'uu': [f'?t=search&q={vid}&cat=uu'], 'altmount-addon': [f'?t=search&q={vid}&o=json']}[side]
         if (side, vid) in self.seen:  # what only a warm visit asks: a health-check replacement, the addon's second search
@@ -1138,7 +1138,7 @@ class RecordTest(unittest.TestCase):
     def test_every_sides_requests_are_stored_and_a_second_record_asks_the_indexer_for_nothing(self):
         io, rec = self.record()
         self.assertEqual(rec['status'], 'recorded')
-        # 2 titles x (2 KaijuFlow pages + 1 UU + 1 addon JSON) cold, + 2 titles x (1 replacement + 1 addon search) warm
+        # 2 titles x (2 KaijuFlow searches + 1 UU + 1 addon JSON) cold, + 2 titles x (1 replacement + 1 addon search) warm
         self.assertEqual(len(self.stored()), 12)
         self.assertEqual(fakes.FakeIndexer.hits, 12)
         self.assertEqual(rec['new_answers'], 12)
@@ -1285,7 +1285,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(rec['status'], 'stopped')
         # 20 s reset, 2 s stand-in, two visits of 4 s
         self.assertEqual((rec['stopped']['time'], rec['stopped']['plays_done']), ('2026-11-10T18:00:30.000Z', 2))
-        self.assertEqual(len(self.stored()), 3)  # KaijuFlow's two pages and Usenet Ultimate's one, for the first title
+        self.assertEqual(len(self.stored()), 3)  # KaijuFlow's two searches and Usenet Ultimate's one, for the first title
         self.assertEqual(json.loads(read(os.path.join(rec['dir'], 'meta.json')))['status'], 'stopped')
         row = read(os.path.join(self.tmp, 'runs', 'INDEX.md')).splitlines()[-1]
         self.assertIn('| trial (record) | stopped |', row)
