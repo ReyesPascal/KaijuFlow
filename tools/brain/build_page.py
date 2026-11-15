@@ -81,6 +81,13 @@ class Run:
                 'warm_list': br.side_time(self.visits, side, 'warm', 'list'),
                 'plays': br.side_plays(self.visits, side)}
 
+    def list_numbers(self, side, lst):
+        """A setup's figures on one list of a speed test: its fails (fails, top picks counted) over every round, and its
+        median title to video of both rounds of each kind."""
+        return {'fails': (br.side_fails(self.visits, side, lst=lst), br.side_plays(self.visits, side, lst=lst)[1]),
+                'cold_video': br.side_time(self.visits, side, 'cold', 'video', lst=lst),
+                'warm_video': br.side_time(self.visits, side, 'warm', 'video', lst=lst)}
+
     def title_cell(self, side, title):
         """One setup's cold start of one title: the median of the cold rounds whose top pick played on the first try, and how
         many of the counted cold rounds played. None when the setup never played the title cold."""
@@ -189,7 +196,10 @@ def speed_model(run):
     """What the page shows of a speed test beside its targets: the outcome line and the final bar (#169)."""
     j = run.judgement()
     bar = j['final_bar']
-    return {'outcome': j['outcome']['text'],
+    lists = [{'list': x, 'name': f'{x.capitalize()} list',
+              'setups': [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.list_numbers(side, x)} for side in run.sides]}
+             for x in br.run_lists(run.visits)]
+    return {'lists': lists, 'outcome': j['outcome']['text'],
             'final_bar': {'result': bar['verdict']['result'], 'text': bar['target'],
                           'lists': [(f'{x.capitalize()} list', r['result'], r['why']) for x, r in bar['lists'].items()]}}
 

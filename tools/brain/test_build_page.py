@@ -504,6 +504,18 @@ class SpeedTest(unittest.TestCase):
                                   'Shown apart from the targets and not counted in them.')
             self.assertLess(page.index('<div class="sl-targets">'), page.index('<div class="sl-final">'))
 
+    def test_the_first_rulers_are_cold_title_to_video_on_each_list_fewest_fails_first(self):
+        for page in (self.index, self.report):
+            easy, hard = re.findall(r'<figure class="sl-fig".*?</figure>', page)[:2]
+            self.assertTrue(text(easy).startswith('Easy list: cold title to video.'), text(easy))
+            self.assertTrue(text(hard).startswith('Hard list: cold title to video.'), text(hard))
+            self.assertEqual(lanes(easy), [('KaijuFlow', '2.50 s'), ('Usenet Ultimate', '3.50 s'), ('AltMount direct', '2.00 s')])
+            self.assertEqual(lanes(hard), [('AltMount direct', '2.00 s'), ('KaijuFlow', '3.50 s'), ('Usenet Ultimate', '3.50 s')])
+            self.assertIn('<b>2.00 s</b><small>1 fail</small>', easy)
+            self.assertIn('<b>3.50 s</b><small>2 fails</small>', hard)
+            self.assertIn('Title asked for', easy)
+        self.assertNotIn('Cold start.', text(self.index))
+
 
 REAL = os.path.expanduser('~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline/')  # Test 1 (#127, #150); 3.46 s since #154 reads The Matrix as 1080p on both sides
 

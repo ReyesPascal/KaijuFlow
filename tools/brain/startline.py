@@ -141,7 +141,7 @@ def ruler(lanes, limits=(), end=None, hero=False, play_label=False):
     for i, t in enumerate(ticks):
         text = f'{num(t)} s' if i in (0, len(ticks) - 1) else num(t)
         labels.append(f'<span class="sl-tick{" sl-t0" if i == 0 else ""}" style="left:{pct(t, end)}%">{text}</span>')
-    play = '<span class="sl-play">Play pressed</span>' if play_label else ''
+    play = f'<span class="sl-play">{esc(play_label if isinstance(play_label, str) else "Play pressed")}</span>' if play_label else ''
     rows.append(f'<div class="sl-axis" style="grid-row:{k + 2}" aria-hidden="true">{play}{"".join(labels)}</div>')
     return f'<div class="sl-plot{" sl-hero" if hero else ""}">{"".join(rows)}</div>'
 
@@ -357,6 +357,7 @@ RULES = """.sl * { box-sizing: border-box }
 .sl .sl-mbar { position: absolute; top: 7px; bottom: 7px; left: 0; background: var(--yellow); box-shadow: inset 0 0 0 1.5px var(--edge); z-index: 1 }
 .sl .sl-mscale { display: flex; justify-content: space-between; font-size: 14px; line-height: 1; color: var(--slate); border-top: 1px solid var(--ink); padding-top: 5px; font-variant-numeric: tabular-nums }
 .sl .sl-list { font-size: 20px; margin: 24px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--ink) }
+.sl .sl-lists { display: grid; gap: 48px }
 .sl .sl-final { margin-top: 40px; padding: 16px 20px 18px; border: 2px solid var(--ink); max-width: 880px }
 .sl .sl-final h3 { display: inline-block; margin: 0 16px 0 0 }
 .sl .sl-final .sl-ftext { margin: 8px 0 6px; font-weight: 600 }
@@ -542,7 +543,30 @@ def setup_lanes(m, key, sort=True):
     return sorted(lanes, key=lambda x: (x[1] is None, x[1] or 0)) if sort else lanes
 
 
+def speed_lanes(lst, key='cold_video'):
+    """The lanes of one list of a speed test: fewest fails first, then fastest; a lane's note is its fails."""
+    lanes = []
+    for s in sorted(lst['setups'], key=lambda s: (s['fails'][0], s[key] is None, s[key] or 0)):
+        fails = fails_text(s['fails'][0]) if s['fails'][0] else ''
+        note = fails if s[key] is not None else f'{fails}, no top pick played' if fails else 'no top pick played'
+        lanes.append((s['name'], s[key], s['id'] == KAIJUFLOW, note))
+    return lanes
+
+
+def speed_rulers(m, hero=False):
+    """A speed test's first rulers: cold title to video on each list, fewest fails first."""
+    figs = []
+    for lst in m['speed']['lists']:
+        cap = (f'<b>{esc(lst["name"])}: cold title to video.</b> Seconds from asking for a title until its video starts, the '
+               'first time it is played. Fewest fails first, then fastest; a fail has no time.')
+        figs.append(figure(cap, speed_lanes(lst), hero=hero, play_label='Title asked for'))
+    return figs
+
+
 def verdict_section(m):
+    if m.get('speed'):
+        return (f'<section class="sl-sec sl-verdict"><div class="sl-vtop"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>'
+                f'{headline_numbers(m)}</div><div class="sl-lists">{"".join(speed_rulers(m, hero=True))}</div></section>')
     lanes = setup_lanes(m, 'cold_start')
     cap = ('<b>Cold start.</b> Seconds from pressing play until the video starts, the first time a title is played. '
            'Each bar ends where the video starts. Shorter is faster.')
@@ -835,7 +859,8 @@ def report(m):
     finds = ''.join(f'<li>{h}{p}</li>' for h, p in m['findings'])
     parts = [header(m),
              f'<section class="sl-r-top"><div><h1>{m["met"]} of {m["total"]} targets met</h1>{lead(m)}</div>{headline_numbers(m)}</section>',
-             f'<section class="sl-r-sec">{cold}</section>',
+             f'<section class="sl-r-sec sl-r-two">{"".join(f"<div>{f}</div>" for f in speed_rulers(m))}</section>' if m.get('speed')
+             else f'<section class="sl-r-sec">{cold}</section>',
              f'<section class="sl-r-sec"><h2>{targets_heading(m["met"], m["total"])}</h2>'
              f'<div class="sl-targets">{head}{target_lists(m["targets"], report=True)}</div>{final_bar(m)}</section>',
              f'<section class="sl-r-sec sl-r-two">{report_change(m)}<div>{warm}</div></section>']
