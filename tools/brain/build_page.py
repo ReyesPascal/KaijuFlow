@@ -113,11 +113,18 @@ def refuse_short_run(folder):
         raise SystemExit(f'{folder}: a short run ({short}) is not a baseline, so the page does not show it.')
 
 
+def refuse_archived_run(folder):
+    """An archived run (#144) is from before the like-for-like rules: it is never on the page, not even as a comparison."""
+    if br.is_archived(folder):
+        raise SystemExit(f'{folder}: the run is {br.ARCHIVED_TEXT}, so the page does not show it.')
+
+
 def find_runs(folders):
     """The timed runs among the given folders (those with raw.json), newest first. A recording folder (meta mode
     'record') may be named beside its run; nothing on the page is read from it."""
     runs = []
     for f in folders:
+        refuse_archived_run(f)
         refuse_short_run(f)
         if os.path.exists(os.path.join(f, 'raw.json')):
             runs.append(Run(f))

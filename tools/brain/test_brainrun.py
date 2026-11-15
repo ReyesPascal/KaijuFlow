@@ -1706,5 +1706,47 @@ class ShortRunTest(SignalGuard):
         self.assertIn('only for run', self.bad(['smoke', '--rounds', '1']))
 
 
+
+class ArchiveTest(unittest.TestCase):
+    """#144: a run in the runs root's archive folder is never the baseline nor a comparison."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+        self.root = os.path.join(self.tmp, 'runs')
+
+    def archive_all(self):
+        os.makedirs(os.path.join(self.root, br.ARCHIVE), exist_ok=True)
+        for d in os.listdir(self.root):
+            if d not in (br.ARCHIVE, 'INDEX.md'):
+                os.rename(os.path.join(self.root, d), os.path.join(self.root, br.ARCHIVE, d))
+
+    def test_a_run_next_to_an_archive_folder_is_the_first_one(self):
+        brainrun.run_all(make_cfg(self.tmp, name='old'), CleanIO(commit='c1'))
+        brainrun.run_all(make_cfg(self.tmp, name='old-null'), FakeIO(limit_at_visit=1))
+        self.archive_all()
+        run = brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO(commit='c2'))
+        self.assertEqual(run['changes'], ['No earlier run to compare with: this is the first one.'])
+        self.assertIn('No earlier run to compare with: this is the first one.', read(os.path.join(run['dir'], 'report.md')))
+        self.assertIsNone(br.previous_run(self.root, exclude=os.path.basename(run['dir'])))
+        # the next run is compared with that first one, not with anything archived
+        nxt = brainrun.run_all(make_cfg(self.tmp, name='tuning'), CleanIO(commit='c3'))
+        self.assertIn('KaijuFlow code: c2 -> c3', nxt['changes'])
+        self.assertFalse([c for c in nxt['changes'] if 'null run' in c], nxt['changes'])
+
+    def test_a_short_run_is_never_compared_with_an_archived_baseline(self):
+        brainrun.run_all(make_cfg(self.tmp, name='old'), CleanIO())
+        self.archive_all()
+        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
+        self.assertEqual(short['changes'], ['No earlier run to compare with: this is the first one.'])
+
+    def test_the_check_says_an_archived_run_is_not_usable_as_a_baseline(self):
+        run = brainrun.run_all(make_cfg(self.tmp, name='old'), CleanIO())
+        self.assertTrue(runcheck.check_run(run['dir'])[0])
+        self.archive_all()
+        usable, lines = runcheck.check_run(os.path.join(self.root, br.ARCHIVE, os.path.basename(run['dir'])))
+        self.assertFalse(usable)
+        self.assertEqual(lines[0], 'Not usable as a baseline: archived (not like for like): the folder is in the archive.')
+
+
 if __name__ == '__main__':
     unittest.main()

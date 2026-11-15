@@ -235,6 +235,15 @@ class Refusals(unittest.TestCase):
             bp.build([folder])
         self.assertEqual(str(stop.exception), f'{folder}: a short run (KaijuFlow, 1 round, 2 titles) is not a baseline, so the page does not show it.')
 
+    def test_an_archived_run_is_refused_even_beside_a_newer_run(self):
+        root = tempdir(self)
+        old = copy_run(os.path.join(root, br.ARCHIVE))
+        new = copy_run(root, '2026-11-20T000000Z-baseline')
+        with self.assertRaises(SystemExit) as stop:
+            bp.build([new, old])
+        self.assertEqual(str(stop.exception), f'{old}: the run is archived (not like for like), so the page does not show it.')
+        self.assertIn('No earlier run on this page to compare with.', bp.build([new]))
+
     def test_a_recording_folder_alone_is_not_enough(self):
         with self.assertRaises(SystemExit):
             bp.build([make_record(tempdir(self))])

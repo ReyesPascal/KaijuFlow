@@ -109,3 +109,7 @@ _Avoid_: rate-limit handling
 **Stopped run**:
 A timed run that was stopped by Ctrl-C, or by SIGTERM as `timeout` sends it, before its last play. Its record keeps the plays that finished and says where it stopped; it is not a baseline, its targets are not judged, and it is never the previous run of a comparison. A record command is stopped the same way.
 _Avoid_: aborted run, cancelled run, null run (null is the cap rule's result)
+
+**Archived run**:
+A run from before the like-for-like rules, kept in the `archive/` folder of the runs root as a record. It is never the baseline, never compared with, and never on the Speed Check page.
+_Avoid_: old run, deleted run (nothing is deleted)
