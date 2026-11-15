@@ -18,10 +18,6 @@ Default labels: needs-triage, needs-info, ready-for-agent, ready-for-human, wont
 
 Component map: `docs/kaijuflow/A3_STATIC_ARCHITECTURE.md` (read the Backend slot row before touching stream preparation). Local test commands: `package.json` scripts; gotchas (commit first, memory caps, byte checks) in `docs/agents/testing.md`.
 
-### Delegating
-
-Before spawning subagents: `docs/agents/delegating.md` (three at a time, budget in the brief).
-
 ### Review standards
 
 Four written rules for reviewing tests, shared setup and call sites: `docs/agents/review-standards.md`.
