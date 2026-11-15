@@ -11,6 +11,7 @@ from unittest import mock
 
 import brainreport as br
 import common
+import runcheck
 from test_settings import tempdir
 
 KF_LOG = """2026-11-10T18:00:01.100000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":200,"ok":true,"t":"2026-11-10T18:00:01.000Z","ref":"tt1","page":1}
@@ -1172,6 +1173,28 @@ class TaggedRunTest(unittest.TestCase):
         self.assertEqual(rows['KaijuFlow', 'easy', 'Warm']['Title to video'], '3.5')
         self.assertEqual(rows["AltMount's own addon", 'easy', 'Warm']['Title to video'], '3.5')  # 0.75, 3.5, 3.5, 3.5
         self.assertEqual(len(rows), 2 * 2 * 2)
+
+    FAILS = {('kaijuflow', 'cold', 1, 'Old Film'): dict(ok=False),  # a cold fail; the warm play after it works
+             ('altmount-addon', 'cold', 1, 'Rare Show S01E01'): dict(imports=[  # video only after its top pick's import failed
+                 {'name': 'Rare Show S01E01.2160p.WEB-DL-GRP', 'ok': False}, {'name': 'Rare.Show.S01E01.720p-OTHER', 'ok': True}]),
+             ('altmount-addon', 'cold', 2, 'Matrix'): dict(ok=False)}
+
+    def test_a_title_with_no_video_or_with_video_only_after_a_fallback_is_a_fail_counted_per_side_round_and_list(self):
+        text = tagged_report(self, self.FAILS)
+        rows = self.list_rows(text)
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Warm']['Fails'], '0 of 2 in Warm 1, 0 of 2 in Warm 2')  # the warm play counts
+        self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows["AltMount's own addon", 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows["AltMount's own addon", 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 1 of 2 in Cold 2')
+        self.assertEqual(self.row(text, 'Rare Show S01E01', "AltMount's own addon", 'Cold 1')['Result'], 'played after 1 fallback')
+        self.assertEqual(self.row(text, 'Old Film', 'KaijuFlow', 'Warm 1')['Result'], 'plays')
+
+    def test_the_check_names_the_fails_of_each_setup_per_list(self):
+        usable, lines = runcheck.check_run(tagged_run_folder(self, self.FAILS))
+        self.assertIn('Fails, KaijuFlow: easy 0 of 8; hard 1 of 8 (Cold 1 Old Film).', lines)
+        self.assertIn("Fails, AltMount's own addon: easy 1 of 8 (Cold 2 Matrix); hard 1 of 8 "
+                      '(Cold 1 Rare Show S01E01, played after 1 fallback).', lines)
 
     def test_an_untagged_run_has_no_list_section_and_its_per_title_table_as_before(self):
         text = br.render_report(runs_fixture(), [])

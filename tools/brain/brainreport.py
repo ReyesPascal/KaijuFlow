@@ -893,9 +893,23 @@ def side_time(visits, side, phase, what, lst=None):
     return _time(visits, side, phase, what, lst=lst)
 
 
-def side_plays(visits, side):
-    """(top picks that played, top picks counted) of one side over every round, as the targets count them."""
-    return _plays(visits, side)
+def side_fails(visits, side, phase=None, rnd=None, lst=None):
+    """How many of one side's counted top picks failed (#167): every round, one phase or one round; every title, or the
+    titles of one list. A fail is a top pick that did not play on its one try: no video, the failure video, a refusal, or
+    video only after a fallback. Each visit counts on its own, so a cold fail stays a fail when the warm play after it works."""
+    played, counted = _plays(visits, side, phase, rnd, lst)
+    return counted - played
+
+
+def fail_visits(visits, side, lst=None):
+    """The counted visits of one side (of one list) whose top pick failed, in the order they were played."""
+    return [v for v in _counted([v for v in visits if v['side'] == side and lst in (None, v.get('list'))]) if not plays(v)]
+
+
+def side_plays(visits, side, lst=None):
+    """(top picks that played, top picks counted) of one side over every round, as the targets count them; with `lst`,
+    over the titles of that list alone (#167)."""
+    return _plays(visits, side, lst=lst)
 
 
 MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
@@ -1125,8 +1139,10 @@ def tagged(visits):
 
 LISTS = ('easy', 'hard')  # the lists of a tagged title list (#165), in the order the report shows them
 LIST_SECTION = '## Fails and title to video per list'
-LIST_HELP = ('Title to video = seconds from asking for the title until video arrived (list time plus start time), the median '
-             'over the top picks that played in both rounds of the phase.')
+LIST_HELP = ('Fails = top picks that did not play on their one try, out of the titles of the list in that round: no video, '
+             'the failure video, a refusal, or video only after a fallback ("played after N fallbacks"). A warm play that works '
+             'after a cold fail is a warm play; the cold fail stays a fail. Title to video = seconds from asking for the title '
+             'until video arrived (list time plus start time), the median over the top picks that played in both rounds of the phase.')
 
 
 def run_lists(visits):
@@ -1138,11 +1154,17 @@ def list_section(run):
     """The report's table of a tagged run (#167): per side, list and phase, the median title to video. Empty for a run
     without tags."""
     vs = run['visits']
-    rows = [[SIDE_NAMES[s], x, phase.capitalize(), _cell(_time(vs, s, phase, 'video', lst=x))]
+    rows = [[SIDE_NAMES[s], x, phase.capitalize(), _round_fails(vs, s, phase, x), _cell(_time(vs, s, phase, 'video', lst=x))]
             for s in _sides(run) for x in run_lists(vs) for phase in ('cold', 'warm')]
     if not rows:
         return []
-    return [LIST_SECTION, ''] + _table(['Side', 'List', 'Phase', 'Title to video'], rows) + ['', LIST_HELP, '']
+    return [LIST_SECTION, ''] + _table(['Side', 'List', 'Phase', 'Fails', 'Title to video'], rows) + ['', LIST_HELP, '']
+
+
+def _round_fails(vs, side, phase, lst):
+    """'1 of 10 in Cold 1, 0 of 10 in Cold 2': the fails of one side and list in each round of a phase the run holds."""
+    return ', '.join(f"{side_fails(vs, side, phase, r, lst)} of {n} in {_run_label(phase, r)}"
+                     for p, r in RUN_ORDER if p == phase for n in [_plays(vs, side, phase, r, lst)[1]] if n)
 
 
 def render_report(run, changes, opening=None):

@@ -136,6 +136,15 @@ def check_run(run_dir):
     if fell_back:
         lines.append(f'Played after a fallback ({len(fell_back)}), not counted as played:')
         lines += [f'- {_visit_name(v)}: {br.failed_result(v, "fallback")}' for v in fell_back]
+    for s in sides:  # a run on a tagged title list (#167): the fails of each setup per list
+        parts = []
+        for x in br.run_lists(visits):
+            failed = br.fail_visits(visits, s, x)
+            names = [f"{v['phase'].capitalize()} {v['round']} {v['title']}"
+                     + (f", {br.failed_result(v, 'fallback')}" if br.fallbacks(v) else '') for v in failed]
+            parts.append(f"{x} {len(failed)} of {br.side_plays(visits, s, x)[1]}" + (f" ({'; '.join(names)})" if names else ''))
+        if parts:
+            lines.append(f"Fails, {_side(s)}: " + '; '.join(parts) + '.')
     lines += br.like_for_like_lines(visits)
     if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
         lines += br.target_lines({'status': status, 'visits': visits})
