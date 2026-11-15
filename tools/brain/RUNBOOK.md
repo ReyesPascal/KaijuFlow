@@ -1,6 +1,16 @@
 # Runbook: a timed run on the test copies
 
-Every command runs from the repo root. Long ones: shell background mode with a hard `timeout`, and watch the log (stop at the first `Error`).
+Every command runs from the repo root. Long ones: shell background mode with a hard `timeout`, the output kept in a log that ends with the exit code, and the log watched through one filter (stop at the first `Error`):
+
+```
+timeout 3h python3 -I tools/brain/brainrun.py run ... > run.log 2>&1; echo "EXIT $?" >> run.log
+grep -E ' FAILS |does not play|Error|limit|^EXIT ' run.log      # failed plays, errors, limits, the exit; nothing else
+tail -1 run.log                                                  # how far it is
+```
+
+Works for `record` too (a play that does not play reads `does not play`). Never improvise another filter and never `cat` a whole log.
+
+**The guard hook.** `.claude/settings.json` runs `tools/brain/guard.py` before every Bash, Read and Grep call (tests: `test_guard.py`, in `npm run check:brain`). It refuses anything that would show the test folder's key files (`indexers.json`, `limits.json`, `provider.json`, `*-secrets.json`, `metadata-keys.json`, `admin-login.json`, `db.sqlite`) or a test copy's config folder: `cat`, `jq`, `grep`, `python3 -c`, Read, Grep. It allows the brain tools (`tools/brain/*.py` and `*.sh`, so runs, preflights and applying expected settings keep working), `store/` and `backups/`, and every unrelated command. The settings with secrets as `***`: `python3 -I tools/brain/testbed.py read-settings [side]`. It also refuses `gh issue view <n> --comments`, `gh pr edit` and `gh issue create --parent`, which fail here, and names the call that works ([issue-tracker.md](../../docs/agents/issue-tracker.md)).
 
 **Rules.** This is the one place the rules are stated; other files point here, and [docs/rules.md](docs/rules.md) holds the detail.
 
