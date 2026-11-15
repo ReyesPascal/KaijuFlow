@@ -46,11 +46,6 @@ def write_expected(case, entries):
     return path
 
 
-def outside(flat, names):
-    """The settings of a flat map that are not at or below one of `names`."""
-    return {k: v for k, v in flat.items() if not any(k == n or k.startswith((n + '.', n + '[')) for n in names)}
-
-
 class ApplyJsonCopyTest(unittest.TestCase):
     def setUp(self):
         self.td = make_copies(self)
@@ -83,7 +78,7 @@ class ApplyJsonCopyTest(unittest.TestCase):
         data = json.loads(read(self.path))
         self.assertEqual(data['movieFilters']['maxFileSize'], 9000)
         names = ['movieFilters', 'tvFilters']
-        self.assertEqual(outside(br.flatten(data), names), outside(br.flatten(json.loads(self.before)), names))
+        self.assertEqual(testbed.outside_named(br.flatten(data), names), testbed.outside_named(br.flatten(json.loads(self.before)), names))
         self.assertEqual(data['indexers'][0]['apiKey'], SECRET)  # the real values are written back, not the reader's ***
         uu = json.loads(read(os.path.join(self.td, 'uu/config/config.json')))
         self.assertEqual(uu['movieFilters']['maxFileSize'], 3000)  # only the named copy
@@ -137,7 +132,7 @@ class ApplyCommittedFileTest(unittest.TestCase):
             'AltMount direct: stremio.scoring.custom_formats: added',
             'AltMount direct: 3 settings changed in altmount-addon/config/config.yaml.'])
         names = list(brainrun.load_expected_settings()[1]['settings'])
-        self.assertEqual(outside(br.flatten_yaml(read(self.yaml)), names), outside(br.flatten_yaml(before), names))
+        self.assertEqual(testbed.outside_named(br.flatten_yaml(read(self.yaml)), names), testbed.outside_named(br.flatten_yaml(before), names))
         self.assertEqual(read(self.yaml).count('api_key: ' + SECRET), before.count('api_key: ' + SECRET))
         self.assertNotIn(SECRET, text)
         self.assertEqual(apply(self.td, 'altmount-addon')[1],

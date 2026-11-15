@@ -60,7 +60,7 @@ services:
         aliases: [nzbdav]
     logging: *logging
 
-  # AltMount side (8086): Backend and addon in one container, as AltMount's own addon runs
+  # AltMount side (8086): Backend and addon in one container, as AltMount direct runs
   altmount-addon:
     <<: *host
     image: ghcr.io/kipsilabs/altmount:v0.4.0

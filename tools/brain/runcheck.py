@@ -143,7 +143,7 @@ def check_run(run_dir):
             failed = br.fail_visits(visits, s, x)
             names = [f"{v['phase'].capitalize()} {v['round']} {v['title']}"
                      + (f", {br.failed_result(v, 'fallback')}" if br.fallbacks(v) else '') for v in failed]
-            parts.append(f"{x} {len(failed)} of {br.side_plays(visits, s, x)[1]}" + (f" ({'; '.join(names)})" if names else ''))
+            parts.append(f"{x} {br.fails_words(br.fail_figure(visits, s, lst=x))}" + (f" ({'; '.join(names)})" if names else ''))
         if parts:
             lines.append(f"Fails, {_side(s)}: " + '; '.join(parts) + '.')
     lines += br.like_for_like_lines(visits)

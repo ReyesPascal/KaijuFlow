@@ -551,7 +551,7 @@ class TopPickRunTest(unittest.TestCase):
         run2 = brainrun.run_all(make_cfg(tmp, name='two'), io2)
         rep = read(os.path.join(run2['dir'], 'report.md'))
         changed = rep.split('## What changed since the last run')[1].split('##')[0]
-        for side in ('KaijuFlow', 'Usenet Ultimate', "AltMount's own addon"):
+        for side in ('KaijuFlow', 'Usenet Ultimate', "AltMount direct"):
             self.assertIn(f'- Top pick changed: {side}, Matrix (Cold 1, Warm 1, Cold 2, Warm 2): 4K REMUX Matrix 💾 95.01 GB FGT, 85.4 GB '
                           '-> 4K WEB-DL Matrix 💾 21.9 GB NEW, 22.3 GB', changed)
         self.assertEqual(changed.count('Top pick changed'), 2 * 3)  # two titles on three sides
@@ -786,7 +786,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual(rep.split('\n')[0],
                          "This run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the main sides: "
                          "4 of 24 plays had finished, and it stopped "
-                         "during the next one (AltMount's own addon, cold 1, Show S01E01). The tables below are made from the "
+                         "during the next one (AltMount direct, cold 1, Show S01E01). The tables below are made from the "
                          "finished plays alone, so the run is not a baseline.")
         self.assertNotIn('each round done twice', rep)
         self.assertIn('| Usenet Ultimate | Cold 1 | 2 of 2 |', rep)  # the failures table: both of its finished plays played
@@ -903,7 +903,7 @@ class InterruptedRunTest(unittest.TestCase):
         first = out.getvalue().splitlines()[0]  # the fake stand-in's one miss is a second reason, after this one
         self.assertTrue(first.startswith(
             "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:38.000Z in the pass of the "
-            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount direct, cold 1, "
             "Show S01E01)"), first)
 
     def test_the_run_command_ends_a_stopped_run_with_the_check_and_exit_code_130(self):
@@ -924,7 +924,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
         self.assertTrue(first.startswith(  # the command's own --settle: a 3 s pause after each of the four plays
             "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:50.000Z in the pass of the "
-            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount's own addon, cold 1, "
+            "main sides: 4 of 24 plays had finished, and it stopped during the next one (AltMount direct, cold 1, "
             "Show S01E01)"), first)
 
 
@@ -1337,7 +1337,7 @@ class RecordTest(unittest.TestCase):
         st = self.state()
         self.assertEqual((st['state'], st['why']), ('stopped', 'the record command was stopped by Ctrl-C (SIGINT) at '
                                                     '2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, '
-                                                    "and it stopped during the next one (AltMount's own addon, cold, Matrix)"))
+                                                    "and it stopped during the next one (AltMount direct, cold, Matrix)"))
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds.count('standin-start'), 1)  # no proof of a pass that did not finish
         self.assertEqual(kinds[-4:], ['standin-stop', 'restore-config', 'reset', 'stop-all'])
@@ -1381,7 +1381,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(out.getvalue().splitlines()[0],
                          'Not usable as a baseline: the folder holds a recording, not a timed run; the recording was stopped '
                          'by Ctrl-C (SIGINT) at 2026-11-10T18:00:30.000Z in the record pass: 2 of 12 plays had finished, and '
-                         "it stopped during the next one (AltMount's own addon, cold, Matrix).")
+                         "it stopped during the next one (AltMount direct, cold, Matrix).")
 
     def test_a_stopped_record_and_a_stopped_run_say_how_they_stopped_in_one_shape(self):
         io, rec = self.stopped_record(3)
@@ -1404,7 +1404,7 @@ class RecordTest(unittest.TestCase):
         last = out.getvalue().splitlines()[-1]
         self.assertTrue(last.startswith('The recording was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:36.000Z in the record '
                                         'pass: 2 of 12 plays had finished, and it stopped during the next one '
-                                        "(AltMount's own addon, cold, Matrix). What was stored is kept; "
+                                        "(AltMount direct, cold, Matrix). What was stored is kept; "
                                         'run the same command again to top up. Folder: '), last)
 
     def record_command(self, **kw):
@@ -1425,7 +1425,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertTrue(lines[-1].endswith(
             ' Top picks played, KaijuFlow: cold 2 of 2, warm 2 of 2; Usenet Ultimate: cold 2 of 2, warm 2 of 2; '
-            "AltMount's own addon: cold 2 of 2, warm 2 of 2."), lines[-1])
+            "AltMount direct: cold 2 of 2, warm 2 of 2."), lines[-1])
         self.assertTrue(lines[-1].startswith('Recorded 12 new answers'), lines[-1])
         self.assertTrue(lines[-2].startswith('Folder: '), lines[-2])
 
@@ -1435,7 +1435,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         sentence = lines[-1].split(' Top picks played, ')[1]
         self.assertEqual(sentence, 'KaijuFlow: cold 1 of 2, warm 2 of 2; Usenet Ultimate: cold 2 of 2, warm 2 of 2; '
-                                   "AltMount's own addon: cold 2 of 2, warm 0 of 2.")
+                                   "AltMount direct: cold 2 of 2, warm 0 of 2.")
         # check's lines for the same plays, from a run folder that holds them
         run = os.path.join(self.tmp, 'same-plays')
         os.makedirs(run)
