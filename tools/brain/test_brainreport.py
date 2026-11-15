@@ -11,6 +11,7 @@ from unittest import mock
 
 import brainreport as br
 import common
+import runcheck
 from test_settings import tempdir
 
 KF_LOG = """2026-11-10T18:00:01.100000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":200,"ok":true,"t":"2026-11-10T18:00:01.000Z","ref":"tt1","page":1}
@@ -341,9 +342,9 @@ class ListedSizeTest(unittest.TestCase):
         self.assertEqual(br.top_pick({'tries': [{'title': captured}]})['listed'], '4.07 GB')  # a record made before: from its text
 
 
-def per_title_rows(report):
-    """The rows of the report's per-title table as {column: cell}."""
-    lines = report.split('## Per title')[1].strip().splitlines()
+def per_title_rows(report, section='## Per title'):
+    """The rows of the report's per-title table (or the first table of another section) as {column: cell}."""
+    lines = report.split(section)[1].strip().splitlines()
     cols = [c.strip() for c in lines[0].strip('|').split('|')]
     rows = []
     for line in lines[2:]:
@@ -1124,6 +1125,114 @@ class RunRecordTest(unittest.TestCase):
         prev = br.previous_run(self.root, exclude='2026-11-10T120000Z-c')
         self.assertEqual(prev['commit'], '2026-11-10T100000Z-a')
         self.assertIsNone(br.previous_run(self.root + '/none'))
+
+
+TAGGED_TITLES = [('movie', 'tt1', 'Matrix', 'easy'), ('movie', 'tt2', 'Dune', 'easy'),
+                 ('movie', 'tt3', 'Old Film', 'hard'), ('series', 'tt4:1:1', 'Rare Show S01E01', 'hard')]
+
+
+def tagged_visit(side, phase, rnd, title, **kw):
+    """One visit of a run on the tagged title list: its top pick plays on the first try in 2.0 s list and 1.5 s start time,
+    unless kw says otherwise (ok=False: no video)."""
+    kind, vid, label, lst = next(t for t in TAGGED_TITLES if t[2] == title)
+    ok = kw.pop('ok', True)
+    v = dict(side=side, phase=phase, round=rnd, title=label, id=vid, kind=kind, list=lst, ok=ok, list_s=2.0,
+             start_s=1.5 if ok else None, sources=5, note=None if ok else 'failure video', misses=[], steps=[], imports=[],
+             played_source=None, limit=None, t_start='2026-11-16T10:00:00Z', t_end='2026-11-16T10:00:04Z',
+             tries=[{'plays': ok, 'size': 10_000_000_000 if ok else None, 'title': f'{label}.2160p.WEB-DL-GRP'}])
+    v.update(kw)
+    return v
+
+
+def tagged_run_folder(case, changed=None):
+    """A finished run folder on the tagged title list, KaijuFlow and AltMount direct, four rounds: every visit as
+    tagged_visit makes it, except those named in `changed` ({(side, phase, round, title): {field: value}})."""
+    changed = changed or {}
+    visits = [tagged_visit(side, phase, rnd, t[2], **changed.get((side, phase, rnd, t[2]), {}))
+              for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in ('kaijuflow', 'altmount-addon')]
+    folder = os.path.join(tempdir(case), '2026-11-16T100000Z-speed')
+    os.makedirs(folder)
+    meta = dict(name='speed', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z', commit='abc',
+                dirty=False, titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES},
+                indexers=['ninjacentral'], sides=['kaijuflow', 'altmount-addon'], rounds=2, short=None, settings={},
+                null=None, standin_misses=0, changes=['First run.'])
+    with open(os.path.join(folder, 'meta.json'), 'w') as f:
+        json.dump(meta, f)
+    with open(os.path.join(folder, 'raw.json'), 'w') as f:
+        json.dump({'status': 'ok', 'visits': visits}, f)
+    return folder
+
+
+def tagged_report(case, changed=None):
+    return br.render_report(br.load_run(tagged_run_folder(case, changed)), ['First run.'])
+
+
+class TaggedRunTest(unittest.TestCase):
+    """#167: a run on a tagged title list (easy and hard) is judged on title to video and fails, per list."""
+
+    def row(self, report, title, side, run):
+        [r] = [r for r in per_title_rows(report) if (r['Title'], r['Side'], r['Run']) == (title, side, run)]
+        return r
+
+    def test_a_visits_title_to_video_is_its_list_time_plus_its_start_time_and_a_visit_with_no_video_has_none(self):
+        text = tagged_report(self, {('kaijuflow', 'cold', 1, 'Dune'): dict(list_s=3.25, start_s=4.5),
+                                    ('kaijuflow', 'cold', 1, 'Old Film'): dict(ok=False)})
+        dune, old = self.row(text, 'Dune', 'KaijuFlow', 'Cold 1'), self.row(text, 'Old Film', 'KaijuFlow', 'Cold 1')
+        self.assertEqual((dune['List'], dune['Title to video']), ('easy', '7.75'))
+        self.assertEqual((old['List'], old['Title to video']), ('hard', '-'))
+
+    def list_rows(self, report):
+        return {(r['Side'], r['List'], r['Phase']): r for r in per_title_rows(report, '## Fails and title to video per list')}
+
+    def test_the_median_title_to_video_is_given_per_side_phase_and_list_over_the_top_picks_that_played(self):
+        rows = self.list_rows(tagged_report(self, {
+            ('kaijuflow', 'cold', 1, 'Dune'): dict(list_s=3.25, start_s=4.5),   # 7.75
+            ('kaijuflow', 'cold', 2, 'Dune'): dict(list_s=2.0, start_s=4.0),    # 6.0; Matrix 3.5 in both cold rounds
+            ('kaijuflow', 'cold', 1, 'Old Film'): dict(ok=False, list_s=30.0),  # no video: not in the median
+            ('kaijuflow', 'cold', 1, 'Rare Show S01E01'): dict(list_s=1.0, start_s=1.0),
+            ('altmount-addon', 'warm', 2, 'Matrix'): dict(list_s=0.5, start_s=0.25)}))
+        self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Title to video'], '4.75')
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Title to video'], '3.5')  # 2.0, 3.5, 3.5
+        self.assertEqual(rows['KaijuFlow', 'easy', 'Warm']['Title to video'], '3.5')
+        self.assertEqual(rows["AltMount's own addon", 'easy', 'Warm']['Title to video'], '3.5')  # 0.75, 3.5, 3.5, 3.5
+        self.assertEqual(len(rows), 2 * 2 * 2)
+
+    FAILS = {('kaijuflow', 'cold', 1, 'Old Film'): dict(ok=False),  # a cold fail; the warm play after it works
+             ('altmount-addon', 'cold', 1, 'Rare Show S01E01'): dict(imports=[  # video only after its top pick's import failed
+                 {'name': 'Rare Show S01E01.2160p.WEB-DL-GRP', 'ok': False}, {'name': 'Rare.Show.S01E01.720p-OTHER', 'ok': True}]),
+             ('altmount-addon', 'cold', 2, 'Matrix'): dict(ok=False)}
+
+    def test_a_title_with_no_video_or_with_video_only_after_a_fallback_is_a_fail_counted_per_side_round_and_list(self):
+        text = tagged_report(self, self.FAILS)
+        rows = self.list_rows(text)
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Warm']['Fails'], '0 of 2 in Warm 1, 0 of 2 in Warm 2')  # the warm play counts
+        self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows["AltMount's own addon", 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows["AltMount's own addon", 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 1 of 2 in Cold 2')
+        fallback = self.row(text, 'Rare Show S01E01', "AltMount's own addon", 'Cold 1')
+        self.assertEqual((fallback['Result'], fallback['Title to video']), ('played after 1 fallback', '-'))  # a fail has none
+        self.assertEqual(self.row(text, 'Old Film', 'KaijuFlow', 'Warm 1')['Result'], 'plays')
+
+    def test_the_check_names_the_fails_of_each_setup_per_list(self):
+        usable, lines = runcheck.check_run(tagged_run_folder(self, self.FAILS))
+        self.assertIn('Fails, KaijuFlow: easy 0 of 8; hard 1 of 8 (Cold 1 Old Film).', lines)
+        self.assertIn("Fails, AltMount's own addon: easy 1 of 8 (Cold 2 Matrix); hard 1 of 8 "
+                      '(Cold 1 Rare Show S01E01, played after 1 fallback).', lines)
+
+    def test_the_replayed_2026_11_13_run_read_untagged_still_gives_altmount_direct_36_of_40_and_no_lists(self):
+        run = br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports'))
+        self.assertEqual(br.side_plays(run['visits'], 'altmount-addon'), (36, 40))
+        self.assertEqual(br.run_lists(run['visits']), [])
+        text = br.render_report(run, ['x'])
+        self.assertNotIn(br.LIST_SECTION, text)
+        self.assertEqual(list(per_title_rows(text)[0]), br.TITLE_COLS)
+
+    def test_an_untagged_run_has_no_list_section_and_its_per_title_table_as_before(self):
+        text = br.render_report(runs_fixture(), [])
+        self.assertNotIn('per list', text)
+        self.assertNotIn('Title to video', text)
+        self.assertEqual(list(per_title_rows(text)[0]), br.TITLE_COLS)
 
 
 if __name__ == '__main__':

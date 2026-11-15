@@ -78,6 +78,15 @@ SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetc
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
 FAIL_COLS = ['Side', 'Run', 'Top pick plays', 'Fallback'] + [c for _, c in CAUSES]
 TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Result']
+# A run on a tagged title list (#167) shows each title's list and its title to video too; a run without tags shows neither.
+LIST_COLUMN_HELP = {
+    'List': 'the title list the title is on: easy (popular, well kept) or hard (older releases, takedown-prone shows, less '
+            'popular titles).',
+    'Title to video': 'seconds from asking for the title until video arrived: Search plus First byte. "-" for a fail: no '
+                      'video, or video only after a fallback.',
+}
+TAGGED_TITLE_COLS = ['Title', 'List', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Title to video',
+                     'Result']
 
 # --------------------------------------------------------------------------- parsing
 
@@ -411,6 +420,14 @@ def fallbacks(v):
 def plays(v):
     """Whether a visit's top pick played on the first try: video arrived, and not after a fallback (#143)."""
     return bool(v.get('ok')) and not fallbacks(v)
+
+
+def title_to_video(v):
+    """Seconds from asking for the title until video arrived (#167): the list time plus the start time. None for a fail
+    (no video, or video only after a fallback: GLOSSARY.md, "a fail has no title-to-video time") and without both times."""
+    if not plays(v) or v.get('list_s') is None or v.get('start_s') is None:
+        return None
+    return round(v['list_s'] + v['start_s'], 3)
 
 
 def top_picks_played(counts):
@@ -888,27 +905,47 @@ def _plays_text(plays):
     return f'{plays[0]} of {plays[1]}' if plays[1] else NO_FIGURE
 
 
-def _time(visits, side, phase, what, rnd=None):
-    """Median start (top picks that played) or list time (every visit) of one side: both rounds of a phase, or one round."""
-    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])]
-    return median([v.get('start_s') for v in vs if plays(v)] if what == 'start' else [v.get('list_s') for v in vs])
+def _time(visits, side, phase, what, rnd=None, lst=None):
+    """Median start or title to video (top picks that played) or list time (every visit) of one side: both rounds of a
+    phase, or one round; every title, or the titles of one list (#167)."""
+    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])
+          and lst in (None, v.get('list'))]
+    if what == 'list':
+        return median([v.get('list_s') for v in vs])
+    return median([v.get('start_s') if what == 'start' else title_to_video(v) for v in vs if plays(v)])  # a fail has neither
 
 
-def _plays(visits, side, phase=None, rnd=None):
-    """(top picks that played, top picks counted) of one side: every round, or one round."""
-    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])])
+def _plays(visits, side, phase=None, rnd=None, lst=None):
+    """(top picks that played, top picks counted) of one side: every round, or one round; every title, or one list's."""
+    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])
+                   and lst in (None, v.get('list'))])
     return sum(1 for v in vs if plays(v)), len(vs)
 
 
-def side_time(visits, side, phase, what):
-    """The median start or list time of one side over both rounds of a phase: the figure the targets judge, for the
-    Speed Check page (build_page.py), so the page and the verdict show one number."""
-    return _time(visits, side, phase, what)
+def side_time(visits, side, phase, what, lst=None):
+    """The median start, list or title to video ('start', 'list', 'video') of one side over both rounds of a phase: the
+    figure the targets judge, for the Speed Check page (build_page.py), so the page and the verdict show one number. With
+    `lst` ('easy' or 'hard'), over the titles of that list alone (#167); title to video is over the top picks that played."""
+    return _time(visits, side, phase, what, lst=lst)
 
 
-def side_plays(visits, side):
-    """(top picks that played, top picks counted) of one side over every round, as the targets count them."""
-    return _plays(visits, side)
+def side_fails(visits, side, phase=None, rnd=None, lst=None):
+    """How many of one side's counted top picks failed (#167): every round, one phase or one round; every title, or the
+    titles of one list. A fail is a top pick that did not play on its one try: no video, the failure video, a refusal, or
+    video only after a fallback. Each visit counts on its own, so a cold fail stays a fail when the warm play after it works."""
+    played, counted = _plays(visits, side, phase, rnd, lst)
+    return counted - played
+
+
+def fail_visits(visits, side, lst=None):
+    """The counted visits of one side (of one list) whose top pick failed, in the order they were played."""
+    return [v for v in _counted([v for v in visits if v['side'] == side and lst in (None, v.get('list'))]) if not plays(v)]
+
+
+def side_plays(visits, side, lst=None):
+    """(top picks that played, top picks counted) of one side over every round, as the targets count them; with `lst`,
+    over the titles of that list alone (#167)."""
+    return _plays(visits, side, lst=lst)
 
 
 MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
@@ -1119,11 +1156,56 @@ def _table(cols, rows):
 
 
 def _defs(cols):
-    return [f'- **{c}**: {COLUMN_HELP[c]}' for c in cols]
+    return [f'- **{c}**: {COLUMN_HELP.get(c) or LIST_COLUMN_HELP[c]}' for c in cols]
+
+
+def load_run(folder):
+    """A run folder as the report reads a run: its meta.json, with the visits of its raw.json under 'visits'."""
+    with open(os.path.join(folder, 'meta.json')) as f:
+        run = json.load(f)
+    with open(os.path.join(folder, 'raw.json'), encoding='utf-8') as f:
+        run['visits'] = json.load(f).get('visits') or []
+    return run
+
+
+def tagged(visits):
+    """Whether a run's visits were played on a tagged title list (#167): any visit keeps its title's list."""
+    return any(v.get('list') for v in visits)
+
+
+LISTS = ('easy', 'hard')  # the lists of a tagged title list (#165), in the order the report shows them
+LIST_SECTION = '## Fails and title to video per list'
+LIST_HELP = ('Fails = top picks that did not play on their one try, out of the titles of the list in that round: no video, '
+             'the failure video, a refusal, or video only after a fallback ("played after N fallbacks"). A warm play that works '
+             'after a cold fail is a warm play; the cold fail stays a fail. Title to video = seconds from asking for the title '
+             'until video arrived (list time plus start time), the median over the top picks that played in both rounds of the phase.')
+
+
+def run_lists(visits):
+    """The lists a run's titles are on, in LISTS order; [] for a run without tags."""
+    return [x for x in LISTS if any(v.get('list') == x for v in visits)]
+
+
+def list_section(run):
+    """The report's table of a tagged run (#167): per side, list and phase, the median title to video. Empty for a run
+    without tags."""
+    vs = run['visits']
+    rows = [[SIDE_NAMES[s], x, phase.capitalize(), _round_fails(vs, s, phase, x), _cell(_time(vs, s, phase, 'video', lst=x))]
+            for s in _sides(run) for x in run_lists(vs) for phase in ('cold', 'warm')]
+    if not rows:
+        return []
+    return [LIST_SECTION, ''] + _table(['Side', 'List', 'Phase', 'Fails', 'Title to video'], rows) + ['', LIST_HELP, '']
+
+
+def _round_fails(vs, side, phase, lst):
+    """'1 of 10 in Cold 1, 0 of 10 in Cold 2': the fails of one side and list in each round of a phase the run holds."""
+    return ', '.join(f"{side_fails(vs, side, phase, r, lst)} of {n} in {_run_label(phase, r)}"
+                     for p, r in RUN_ORDER if p == phase for n in [_plays(vs, side, phase, r, lst)[1]] if n)
 
 
 def render_report(run, changes, opening=None):
     g = _groups(run)
+    lists = tagged(run['visits'])
     lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
@@ -1155,6 +1237,7 @@ def render_report(run, changes, opening=None):
                          sum(1 for c in causes if c == 'fallback')] + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
     lines += ['## Steps every side shares', ''] + _table(SHARED_COLS, shared) + [''] + _defs(SHARED_COLS) + ['']
     lines += ['## Extras (steps only some sides have)', ''] + _table(EXTRA_COLS, extra) + [''] + _defs(EXTRA_COLS[2:]) + ['']
+    lines += list_section(run)
     lines += ['## Failures', ''] + _table(FAIL_COLS, fail) + [''] + _defs(FAIL_COLS[2:]) + ['']
     rows = []
     for t in run.get('titles', []):
@@ -1166,9 +1249,15 @@ def render_report(run, changes, opening=None):
                     m = visit_metrics(v)
                     cause = classify_failure(v)
                     res = 'plays' if plays(v) else failed_result(v, cause)
-                    rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
-                                + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
-    lines += ['## Per title', ''] + _table(TITLE_COLS, rows) + [''] + _defs(TITLE_COLS) + ['']
+                    if lists:
+                        rows.append([t, v.get('list') or '-', SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                    + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']),
+                                       _cell(title_to_video(v)), res])
+                    else:
+                        rows.append([t, SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
+                                    + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']), res])
+    cols = TAGGED_TITLE_COLS if lists else TITLE_COLS
+    lines += ['## Per title', ''] + _table(cols, rows) + [''] + _defs(cols) + ['']
     lines += not_recorded_section(run)
     lines += time_section(run)
     return '\n'.join(lines)
