@@ -35,13 +35,32 @@ def dump_lines(items):
     return '[\n' + ',\n'.join('  ' + json.dumps(i, ensure_ascii=False) for i in items) + '\n]'
 
 
+NOUN = {'movie': 'films', 'series': 'episodes'}
+
+
+class Refused(Exception):
+    """The one sentence that says why the pool or the draw is refused."""
+
+
+def unused(data, lst, kind):
+    return [t for t in data['titles'] if t['list'] == lst and t['type'] == kind and not t.get('used_by')]
+
+
 def draw(data, test):
-    """The tagged title list for a speed test from the pool's unused titles; marks them used in `data`."""
+    """The tagged title list for a speed test from the pool's unused titles; marks them used in `data`.
+    Refused, with nothing marked, when a list has too few unused films or episodes."""
+    short = []
+    for lst in LISTS:
+        missing = [f'{len(unused(data, lst, kind))} unused {NOUN[kind]} of the {count}'
+                   for kind, count in PER_LIST.items() if len(unused(data, lst, kind)) < count]
+        if missing:
+            short.append(f'the {lst} list has ' + ' and '.join(missing))
+    if short:
+        raise Refused(f'The pool is too small for {test}: ' + ', and '.join(short) + ' a speed test needs.')
     drawn = []
     for lst in LISTS:
         for kind, count in PER_LIST.items():
-            free = [t for t in data['titles'] if t['list'] == lst and t['type'] == kind and not t.get('used_by')]
-            drawn += free[:count]
+            drawn += unused(data, lst, kind)[:count]
     for t in drawn:
         t['used_by'] = test
     return [[t['type'], t['id'], t['label'], t['list']] for t in drawn]
@@ -49,7 +68,11 @@ def draw(data, test):
 
 def draw_command(a):
     data = read_json(a.pool)
-    tagged = draw(data, a.test)
+    try:
+        tagged = draw(data, a.test)
+    except Refused as e:
+        print(e)
+        return 1
     write_json(a.out, dump_lines(tagged) + '\n')
     write_json(a.pool, '{"about": ' + json.dumps(data.get('about', ''), ensure_ascii=False)
                + ',\n "titles": ' + dump_lines(data['titles']) + '}\n')

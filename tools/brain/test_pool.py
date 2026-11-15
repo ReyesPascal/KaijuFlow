@@ -79,6 +79,35 @@ class PoolTest(unittest.TestCase):
         self.assertEqual({t['id'] for t in titles if t.get('used_by') == 'Test 2'}, drawn)
         self.assertEqual(sum(1 for t in titles if 'used_by' not in t), 26 - 20)
 
+    def test_a_used_title_is_never_drawn_again(self):
+        used = [entry(100 + i, 'movie', 'easy', used_by='Test 1b') for i in range(3)]
+        self.write(make_pool(films=12, episodes=8, extra=used))
+        self.draw('Test 2')
+        first = {t[1] for t in self.read(self.out)}
+        second_out = os.path.join(self.dir.name, 'second.json')
+        code, _ = self.draw('Test 3', out=second_out)
+        self.assertEqual(code, 0)
+        second = {t[1] for t in self.read(second_out)}
+        self.assertEqual(len(second), 20)
+        self.assertFalse(first & second)
+        self.assertFalse({t['id'] for t in used} & (first | second))
+        marks = {t['id']: t.get('used_by') for t in self.read(self.pool)['titles']}
+        self.assertTrue(all(marks[i] == 'Test 2' for i in first))
+        self.assertTrue(all(marks[t['id']] == 'Test 1b' for t in used))
+
+    def test_a_pool_too_small_is_refused_in_one_sentence_and_nothing_is_marked(self):
+        data = make_pool(films=6, episodes=4)
+        data['titles'] = [t for t in data['titles'] if t['id'] not in ('tt9000011', 'tt8000017:1:17', 'tt8000018:1:18')]
+        data['titles'].append(entry(50, 'series', 'hard', used_by='Test 1b'))
+        self.write(data)
+        before = self.read(self.pool)
+        code, out = self.draw('Test 2')
+        self.assertEqual(code, 1)
+        self.assertEqual(out.strip(), 'The pool is too small for Test 2: the hard list has 5 unused films of the 6 '
+                                      'and 2 unused episodes of the 4 a speed test needs.')
+        self.assertEqual(self.read(self.pool), before)
+        self.assertFalse(os.path.exists(self.out))
+
 
 if __name__ == '__main__':
     unittest.main()
