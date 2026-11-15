@@ -1,4 +1,4 @@
-# Handoff: where KaijuFlow stands (2026-11-13)
+# Handoff: where KaijuFlow stands (2026-11-14)
 
 This is the one state note. Replace it; do not append. Older versions are in git history.
 Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
@@ -34,18 +34,24 @@ Measure and optimize KaijuFlow with AltMount before InfiniDysk (spec #58). Infin
 ## In progress
 Nothing is being built.
 
-Waiting on the owner (from the retro):
-- #111 short runs by choosing sides, rounds and titles (a decision, not agreed work).
+Triaged 2026-11-14, each with an agent brief as an issue comment (the brief is the contract):
+- #119 `bug`: Unscramble one Source at a time, direct plays first, each with its own 15 s from its turn; ADR 0005 note and a glossary entry in the same PR.
+- #120 `bug`: a bare `.iso` / `.img` in the health check's largest-file fallback becomes `blocked` "Disc image".
+- #111 `enhancement`: `run --sides`, `--rounds 1|2`, `--quick`; a short run is never usable as a baseline.
+
+Waiting on the owner:
 - #114 backup: the run records and recordings are pushed to the private repo `ReyesPascal/kaijuflow-notes` (runbook step 7, `tools/brain/backup.sh`). Still with the owner: the secrets in `~/kaijuflow-test/*.json` (and `~/.stash`) into a password manager.
 - #118 log out and in so Docker works without the wrapper.
-- #119 Unscramble hits its 15 s limit when three large Sources are prepared at once.
-- #120 KaijuFlow lists and verifies disc images (.iso) that the Backend cannot play.
+
+Not triaged: #2 and #4 (look stale), #40 (health check misgroups `<hash>.NN` parts).
 
 ## Next
-1. Top up the recording and run a new baseline with the standard filter rules (owner's go for both; the top-up spends NinjaCentral downloads). Follow the runbook. Later runs replay that recording.
-2. #64 tuning, one setting at a time. No `src` changes during #64. Note: `healthChecks.maxConnections` is saved but not read for the number of health-check workers (`src/addon/healthCheckCoordinator.ts` takes it from `smartBatchSize` or `nzbsToInspect`); fix it before tuning it.
-3. #65 and #66, then #68 (final run). Architecture candidates proposed on the old machine (not confirmed by the owner; the review itself is lost): Source marks + stream-list pipeline before #65; Usenet reader + Backend slot with #66.
-4. InfiniDysk 1.x.
+1. `/implement` #119, then #120 (a fresh session each). Both are `src` changes, so they land before the new baseline: #64 allows no `src` changes. Rebuild the image afterwards (runbook, step 0).
+2. Top up the recording and run a new baseline with the standard filter rules (owner's go for both; the top-up spends NinjaCentral downloads). Follow the runbook. Later runs replay that recording. It checks #119: Inception's top pick plays in both cold rounds.
+3. #111 before #64, so tuning runs can be short (`--quick`).
+4. #64 tuning, one setting at a time. No `src` changes during #64. Note: `healthChecks.maxConnections` is saved but not read for the number of health-check workers (`src/addon/healthCheckCoordinator.ts` takes it from `smartBatchSize` or `nzbsToInspect`); fix it before tuning it.
+5. #65 and #66, then #68 (final run). Architecture candidates proposed on the old machine (not confirmed by the owner; the review itself is lost): Source marks + stream-list pipeline before #65; Usenet reader + Backend slot with #66.
+6. InfiniDysk 1.x.
 
 ## Where things live
 - Run records: `~/kaijuflow-notes/brain-runs/` and its `INDEX.md`; backed up with the recordings to the private repo `ReyesPascal/kaijuflow-notes` (`tools/brain/backup.sh`).
