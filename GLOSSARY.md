@@ -44,6 +44,10 @@ _Avoid_: obfuscated release (obfuscated names can still be in order), broken RAR
 Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend.
 _Avoid_: reorder, repair, fix names
 
+**Auto-queue**:
+KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (setting `autoQueueMode`: the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
+_Avoid_: pre-warm, preload, prefetch
+
 ### Measuring
 
 **Cold start**:
