@@ -627,18 +627,48 @@ class SignalGuard(unittest.TestCase):
         self.addCleanup(signal.signal, signal.SIGTERM, signal.signal(signal.SIGTERM, unhandled))
         self.addCleanup(signal.signal, signal.SIGINT, signal.default_int_handler)
 
-    def command(self, argv, io_for):
-        """brainrun.main with the world of `io_for(cfg)`: (exit code, printed lines, the run folder or record folder)."""
+    def command(self, argv, io_for, titles=None):
+        """brainrun.main with the world of `io_for(cfg)`, on the test's titles or the `titles` given: (exit code, printed
+        lines, the run folder or record folder)."""
         cfg = make_cfg(self.tmp)
-        titles = os.path.join(self.tmp, 'titles.json')
-        with open(titles, 'w') as f:
-            json.dump(cfg['titles'], f)
+        titles_file = os.path.join(self.tmp, 'titles.json')
+        with open(titles_file, 'w') as f:
+            json.dump(titles or cfg['titles'], f)
         out = io_module.StringIO()
         with mock.patch.object(brainrun, 'RealIO', io_for), contextlib.redirect_stdout(out):
             code = brainrun.main(argv + ['--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root',
-                                         cfg['runs_root'], '--test-dir', cfg['test_dir'], '--titles-file', titles])
+                                         cfg['runs_root'], '--test-dir', cfg['test_dir'], '--titles-file', titles_file])
         folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
         return code, out.getvalue().splitlines(), folder
+
+
+TAGGED = [['movie', 'tt1', 'Matrix', 'easy'], ['series', 'tt2:1:1', 'Show S01E01', 'hard']]  # #165's tagged title list
+
+
+class TaggedListTest(SignalGuard):
+    """#167: a speed test's tagged title list ([type, id, label, list]) goes through run and record, and each title's list
+    lands in the run folder."""
+
+    def test_a_run_on_a_tagged_list_keeps_each_titles_list_in_meta_and_raw(self):
+        code, _, folder = self.command(['run'], lambda cfg: CleanIO(), titles=TAGGED)
+        self.assertEqual(code, 0)
+        meta = json.loads(read(os.path.join(folder, 'meta.json')))
+        self.assertEqual(meta['lists'], {'Matrix': 'easy', 'Show S01E01': 'hard'})
+        self.assertEqual(meta['titles'], ['Matrix', 'Show S01E01'])
+        visits = json.loads(read(os.path.join(folder, 'raw.json')))['visits']
+        self.assertEqual({(v['title'], v['list']) for v in visits}, {('Matrix', 'easy'), ('Show S01E01', 'hard')})
+        self.assertIn('## Fails and title to video per list', read(os.path.join(folder, 'report.md')))
+
+    def test_a_tagged_list_is_a_speed_tests_whole_list_not_a_short_run(self):
+        code, lines, folder = self.command(['run'], lambda cfg: CleanIO(), titles=TAGGED)
+        self.assertIsNone(json.loads(read(os.path.join(folder, 'meta.json')))['short'])
+        self.assertTrue(runcheck.check_run(folder)[0], lines)
+
+    def test_a_run_without_tags_keeps_no_list(self):
+        code, _, folder = self.command(['run'], lambda cfg: CleanIO())
+        self.assertNotIn('lists', json.loads(read(os.path.join(folder, 'meta.json'))))
+        self.assertFalse(any('list' in v for v in json.loads(read(os.path.join(folder, 'raw.json')))['visits']))
+        self.assertNotIn('per list', read(os.path.join(folder, 'report.md')))
 
 
 class SigtermTest(SignalGuard):
@@ -1200,6 +1230,18 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(set(io.calls[resets[0]][1]), {'nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow'})
         self.assertIn(('standin-start', 'record', True), io.calls)
         self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 24)  # per side and title: a cold and a warm visit, then the same in the proof
+
+    def test_a_record_on_a_tagged_list_keeps_each_titles_list_in_its_meta(self):
+        self.cfg['titles'] = [tuple(t) for t in TAGGED]
+        io, rec = self.record()
+        self.assertEqual(rec['status'], 'recorded')
+        meta = json.load(open(os.path.join(rec['dir'], 'meta.json')))
+        self.assertEqual((meta['titles'], meta['lists']), (['Matrix', 'Show S01E01'], {'Matrix': 'easy', 'Show S01E01': 'hard'}))
+        self.assertEqual(len([c for c in io.calls if c[0] == 'visit']), 24)  # every title played, as on a list without tags
+
+    def test_a_record_without_tags_keeps_no_list(self):
+        io, rec = self.record()
+        self.assertNotIn('lists', json.load(open(os.path.join(rec['dir'], 'meta.json'))))
 
     def test_nothing_reaches_a_report_and_a_good_record_has_no_index_row(self):
         io, rec = self.record()

@@ -770,8 +770,21 @@ def preflight_command(mode, cfg, io):
 
 # --------------------------------------------------------------------------- the run
 
+def title_lists(titles):
+    """{label: list} of a tagged title list (#165's [type, id, label, list], list 'easy' or 'hard'); None for a list
+    without tags, whose run folder keeps no list (#167)."""
+    lists = {t[2]: t[3] for t in titles if len(t) > 3}
+    return lists or None
+
+
+def partial_titles(pool, titles_file):
+    """Whether a run plays part of the built-in title list (a short run): a --titles-file that leaves out one of its
+    titles. A tagged title list is a speed test's whole list of new titles (#165), never a part."""
+    return bool(titles_file) and not title_lists(pool) and not {t[2] for t in common.TITLES} <= {t[2] for t in pool}
+
+
 def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
-    kind, vid, label = title
+    kind, vid, label = title[:3]
     kf_c, be_c, be_kind = SIDE_LOGS[side]
     hist_before = io.nzbdav_history() if be_kind == 'nzbdav' else None
     t0 = io.now()
@@ -801,7 +814,7 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
             'list_s': http.get('list_s'), 'sources': http.get('sources'), 'start_s': http.get('start_s'),
             'seeks': http.get('seeks', {}), 'note': http.get('note'), 'tries': http.get('tries', []),
             'steps': steps, 'imports': imports, 'limit': limit, 'played_source': played,
-            'cause': '' if ok else br.failure_cause(kf_text)}
+            'cause': '' if ok else br.failure_cause(kf_text), **({'list': title[3]} if len(title) > 3 else {})}
 
 
 def finalize_steps(io, visits):
@@ -938,7 +951,8 @@ def run_all(cfg, io):
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
                      'one-page side': 'yes' if 'kaijuflow-1page' in run_sides(cfg) else 'no'},
-           'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []}}
+           'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []},
+           'lists': title_lists(cfg['titles'])}
     wait = cfg.get('wait', True)
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     try:
@@ -1021,6 +1035,8 @@ def write_run_ending(cfg, io, run, started, logbuf):
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
                                     'standin_misses', 'changes', 'timing')}
+    if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
+        meta['lists'] = run['lists']
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
         'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': run['changes'],
@@ -1053,6 +1069,8 @@ def record_all(cfg, io):
            'error': None, 'titles': [t[2] for t in cfg['titles']], 'sides': planned_sides(cfg),
            'commit': None, 'new_answers': 0, 'stored_answers': 0, 'errors': 0, 'visits': 0,
            'listed': {side: 0 for side in planned_sides(cfg)}, 'rounds': list(RECORD_ROUNDS), 'misses': []}
+    if title_lists(cfg['titles']):  # a recording of a tagged title list (#167) keeps each title's list
+        rec['lists'] = title_lists(cfg['titles'])
     handle, failure, restore_signals = None, None, lambda: None
     planned = planned_plays(cfg, RECORD_ROUNDS)
     stage, counts = 'the record pass', rec  # the proof counts its plays on its own
@@ -1225,7 +1243,7 @@ def record_pass(cfg, io, rec, sides, proof=False):
             for i, title in enumerate(cfg['titles']):
                 k = i % len(sides)
                 for side in sides[k:] + sides[:k]:
-                    kind, vid, label = title
+                    kind, vid, label = title[:3]
                     rec['playing'] = {'side': side, 'phase': phase, 'round': None, 'title': label}
                     http = io.visit_http(side, kind, vid, cfg['tries'])
                     rec['visits'] += 1
@@ -1399,7 +1417,7 @@ def main(argv):
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
                one_page=a.one_page, sides=sides, rounds=rounds, titles=pool,
-               partial_titles=bool(a.titles_file) and not {t[2] for t in common.TITLES} <= {t[2] for t in pool}, tries=a.tries, settle=a.settle,
+               partial_titles=partial_titles(pool, a.titles_file), tries=a.tries, settle=a.settle,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
