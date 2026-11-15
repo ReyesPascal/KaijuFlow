@@ -1275,6 +1275,26 @@ class SpeedTestTargetsTest(unittest.TestCase):
                                   fail('altmount-addon', 'Matrix'), fail('altmount-addon', 'Dune'))
         self.assertEqual((verdicts[1, 'easy'], verdicts[1, 'hard']), (br.NOT_MET, br.MET))
 
+    def test_the_cold_title_to_video_target_is_met_when_kaijuflow_is_no_slower_than_every_setup_with_as_few_fails(self):
+        verdicts = speed_verdicts(self, video('uu', 'easy', 5.0), video('altmount-addon', 'hard', 3.5))  # KaijuFlow 3.5
+        self.assertEqual((verdicts[2, 'easy'], verdicts[2, 'hard']), (br.MET, br.MET))
+
+    def test_the_cold_title_to_video_target_is_not_met_on_a_list_where_a_setup_as_reliable_is_faster(self):
+        easy = speed_verdicts(self, video('altmount-addon', 'easy', 2.0))
+        self.assertEqual((easy[2, 'easy'], easy[2, 'hard']), (br.NOT_MET, br.MET))
+        hard = speed_verdicts(self, video('uu', 'hard', 2.0), fail('kaijuflow', 'Old Film'), fail('uu', 'Old Film', 2))
+        self.assertEqual((hard[2, 'easy'], hard[2, 'hard']), (br.MET, br.NOT_MET))
+
+    def test_a_faster_setup_with_more_fails_does_not_count_against_the_cold_title_to_video_target(self):
+        verdicts = speed_verdicts(self, video('altmount-addon', 'hard', 2.0), fail('altmount-addon', 'Old Film'))
+        self.assertEqual(verdicts[2, 'hard'], br.MET)
+
+    def test_the_warm_title_to_video_target_is_met_under_1_s_on_each_list_on_its_own(self):
+        verdicts = speed_verdicts(self, video('kaijuflow', 'easy', 0.8, 'warm'), video('kaijuflow', 'hard', 1.0, 'warm'))
+        self.assertEqual((verdicts[3, 'easy'], verdicts[3, 'hard']), (br.MET, br.NOT_MET))  # 1.00 s is not under 1 s
+        verdicts = speed_verdicts(self, video('kaijuflow', 'easy', 1.2, 'warm'), video('kaijuflow', 'hard', 0.5, 'warm'))
+        self.assertEqual((verdicts[3, 'easy'], verdicts[3, 'hard']), (br.NOT_MET, br.MET))
+
 
 if __name__ == '__main__':
     unittest.main()

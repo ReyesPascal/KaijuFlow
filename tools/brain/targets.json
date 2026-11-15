@@ -9,7 +9,9 @@
  ],
  "speed_test": {
   "targets": [
-   {"target": "KaijuFlow fails no more titles than any other setup, and none on the easy list", "measure": "fails"}
+   {"target": "KaijuFlow fails no more titles than any other setup, and none on the easy list", "measure": "fails"},
+   {"target": "KaijuFlow's median cold title to video is no slower than any setup with as many fails or more", "measure": "cold title to video"},
+   {"target": "Warm title to video under about 1 s", "measure": "warm title to video", "limit": 1}
   ]
  }
 }

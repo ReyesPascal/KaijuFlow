@@ -1060,7 +1060,7 @@ def target_results(visits, path=TARGETS_FILE):
     return [(t['target'],) + _measure_target(visits, t, unlike) for t in load_targets(path)]
 
 
-SPEED_MEASURES = ('fails',)  # the measures of a speed test's targets (#169), each judged per list
+SPEED_MEASURES = ('fails', 'cold title to video', 'warm title to video')  # a speed test's measures (#169), judged per list
 
 
 def load_speed_targets(path=TARGETS_FILE):
@@ -1074,9 +1074,14 @@ def load_speed_targets(path=TARGETS_FILE):
         raise ValueError(f'{name} cannot be read: {type(e).__name__} in "speed_test"') from None
     for i, t in enumerate(targets, 1):
         if not isinstance(t, dict) or not isinstance(t.get('target'), str):
-            raise ValueError(f'{name}, speed test entry {i}: it has no target text')
-        if t.get('measure') not in SPEED_MEASURES:
-            raise ValueError(f"{name}, speed test entry {i}: the measure \"{t.get('measure')}\" is not known")
+            why = 'it has no target text'
+        elif t.get('measure') not in SPEED_MEASURES:
+            why = f"the measure \"{t.get('measure')}\" is not known"
+        elif t['measure'] == 'warm title to video' and not _is_number(t.get('limit')):
+            why = '"warm title to video" takes a fixed limit'
+        else:
+            continue
+        raise ValueError(f'{name}, speed test entry {i}: {why}')
     return speed
 
 
@@ -1087,37 +1092,56 @@ def _others(visits):
 
 def _pair(visits, side, lst, unlike):
     """KaijuFlow against one other setup on one list, on the titles that are like for like between the two:
-    {'side', 'mine', 'theirs', 'left_out'}, where mine and theirs are {'fails', 'counted'}."""
+    {'side', 'mine', 'theirs', 'left_out', 'rounds'}, where mine and theirs are {'fails', 'counted', 'video'} (video: the
+    median cold title to video, None without a top pick that played) and rounds is KaijuFlow's cold title to video in
+    each of its two cold rounds."""
     left_out = unlike.get(side, {})
     vs = [v for v in visits if v.get('list') == lst and v['title'] not in left_out]
     titles = {v['title'] for v in visits if v.get('list') == lst}
 
     def figures(s):
         played, counted = _plays(vs, s, lst=lst)
-        return {'fails': counted - played, 'counted': counted}
-    return {'side': side, 'mine': figures(JUDGED), 'theirs': figures(side), 'left_out': len(titles & set(left_out))}
+        return {'fails': counted - played, 'counted': counted, 'video': _time(vs, s, 'cold', 'video', lst=lst)}
+    return {'side': side, 'mine': figures(JUDGED), 'theirs': figures(side), 'left_out': len(titles & set(left_out)),
+            'rounds': tuple(_time(vs, JUDGED, 'cold', 'video', r, lst) for r in (1, 2))}
 
 
 def _fails_text(f):
     return f"{f['fails']} of {f['counted']}"
 
 
-def _pairs_text(pairs, mine, part):
+def _video_text(f):
+    return f"{_secs(f['video'])} with {f['fails']} fail{'' if f['fails'] == 1 else 's'}"
+
+
+def _pairs_text(pairs, mine, part, note=None):
     """'KaijuFlow 1 of 8, Usenet Ultimate 2 of 8, AltMount direct 1 of 6 (KaijuFlow 1 of 6 on the same titles; 1 title
-    left out: not like for like)': KaijuFlow's figure, then each other setup's, with KaijuFlow's on the same titles when
-    some were left out."""
+    left out: not like for like)': KaijuFlow's figure, then each other setup's, with what note(pair) says of it and
+    KaijuFlow's figure on the same titles when some were left out."""
     out = [f'{SHORT_NAMES[JUDGED]} {part(mine)}']
     for p in pairs:
-        text = f"{SHORT_NAMES[p['side']]} {part(p['theirs'])}"
+        notes = [x for x in [note and note(p)] if x]
         if p['left_out']:
             n = p['left_out']
-            text += (f" ({SHORT_NAMES[JUDGED]} {part(p['mine'])} on the same titles; {n} title{'' if n == 1 else 's'} "
-                     'left out: not like for like)')
-        out.append(text)
+            notes.append(f"{SHORT_NAMES[JUDGED]} {part(p['mine'])} on the same titles; {n} title{'' if n == 1 else 's'} "
+                         'left out: not like for like')
+        out.append(f"{SHORT_NAMES[p['side']]} {part(p['theirs'])}" + (f" ({'; '.join(notes)})" if notes else ''))
     return ', '.join(out)
 
 
-def _judge_fails(visits, lst, pairs):
+def _time_verdict(mine, limit, rounds, phase, strict=False):
+    """The verdict of a time target: met when KaijuFlow's figure is no higher than the limit (lower, when strict), with
+    the noise of KaijuFlow's two rounds of the phase (`rounds`) as the targets of before have it."""
+    over = round(mine - limit, 2)  # above 0: missed by this much; below: met by this much
+    a, b = rounds
+    noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
+             if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
+    if over < 0 or (over == 0 and not strict):
+        return _verdict(MET, noise=noise, value=mine, limit=limit)
+    return _verdict(NOT_MET, over, noise, value=mine, limit=limit)
+
+
+def _judge_fails(visits, lst, pairs, entry):
     """Target 1 on one list: KaijuFlow fails no more titles than any other setup, and none on the easy list."""
     mine = _pair(visits, JUDGED, lst, {})['mine']
     measured = _pairs_text(pairs, mine, _fails_text)
@@ -1128,7 +1152,33 @@ def _judge_fails(visits, lst, pairs):
     return measured, _verdict(MET if met else NOT_MET, value=mine['fails'], limit=limit)
 
 
-SPEED_JUDGES = {'fails': _judge_fails}
+def _judge_cold_video(visits, lst, pairs, entry):
+    """Target 2 on one list: KaijuFlow's median cold title to video, over the titles it played, is no slower than that of
+    any setup KaijuFlow has as many fails as or more: a faster setup that fails more titles than KaijuFlow is not held
+    against it (no fails comes first), nor is a setup with no title to video."""
+    mine = _pair(visits, JUDGED, lst, {})['mine']
+    measured = _pairs_text(pairs, mine, _video_text,
+                           lambda p: 'more fails: not held against it' if p['theirs']['fails'] > p['mine']['fails'] else None)
+    if mine['video'] is None or not pairs:
+        return measured, _verdict(NOT_MEASURED)
+    held = [p for p in pairs if p['theirs']['fails'] <= p['mine']['fails'] and None not in (p['mine']['video'], p['theirs']['video'])]
+    if not held:
+        return measured + '; every other setup fails more titles', _verdict(MET, value=mine['video'])
+    p = max(held, key=lambda p: p['mine']['video'] - p['theirs']['video'])  # the setup KaijuFlow is furthest behind
+    return measured, _time_verdict(p['mine']['video'], p['theirs']['video'], p['rounds'], 'cold')
+
+
+def _judge_warm_video(visits, lst, pairs, entry):
+    """Target 3 on one list: KaijuFlow's median warm title to video is under the limit (1.00 s is not under 1 s)."""
+    mine = _time(visits, JUDGED, 'warm', 'video', lst=lst)
+    measured = f'{SHORT_NAMES[JUDGED]} {_secs(mine)}'
+    if mine is None:
+        return measured, _verdict(NOT_MEASURED)
+    rounds = tuple(_time(visits, JUDGED, 'warm', 'video', r, lst) for r in (1, 2))
+    return measured, _time_verdict(mine, entry['limit'], rounds, 'warm', strict=True)
+
+
+SPEED_JUDGES = {'fails': _judge_fails, 'cold title to video': _judge_cold_video, 'warm title to video': _judge_warm_video}
 
 
 def speed_test_judgement(visits, path=TARGETS_FILE):
@@ -1141,7 +1191,7 @@ def speed_test_judgement(visits, path=TARGETS_FILE):
     for lst in run_lists(visits):
         pairs = [_pair(visits, s, lst, unlike) for s in _others(visits)]
         for n, t in enumerate(entries, 1):
-            measured, verdict = SPEED_JUDGES[t['measure']](visits, lst, pairs)
+            measured, verdict = SPEED_JUDGES[t['measure']](visits, lst, pairs, t)
             rows.append({'number': n, 'target': t['target'], 'list': lst, 'measured': measured, 'verdict': verdict})
     return {'targets': rows}
 
