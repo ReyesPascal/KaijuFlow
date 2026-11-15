@@ -528,8 +528,201 @@ def render_settings(rep):
     return "\n".join(lines) + "\n"
 
 
+# --------------------------------------------------------------------------- applying the expected settings (ticket #163)
+
+# The config file of every copy the apply command can write, relative to the test folder (NzbDAV keeps its settings in a database).
+CONFIG_FILES = {**JSON_CONFIGS, "altmount-addon": "altmount-addon/config/config.yaml", "altmount-kf": "altmount-kf/config/config.yaml"}
+BACKUP_DIR = "backups"
+YAML_STEP = 4  # AltMount writes its config.yaml four spaces per level
+
+
+def _flat(rel, text):
+    """A config file's settings as the settings reader gives them (secrets replaced by ***)."""
+    return br.flatten(json.loads(text)) if rel.endswith(".json") else br.flatten_yaml(text)
+
+
+def _json_set(text, settings):
+    """The JSON config with each setting (a dotted name) replaced by its value; everything else as it was."""
+    data = json.loads(text)
+    for name, value in settings.items():
+        *parents, last = name.split(".")
+        node = data
+        for p in parents:
+            if not isinstance(node.get(p), dict):
+                node[p] = {}
+            node = node[p]
+        node[last] = value
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
+def _yaml_text(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    if isinstance(value, (dict, list)):  # only empty ones are written on one line
+        return "{}" if isinstance(value, dict) else "[]"
+    return json.dumps(value, ensure_ascii=False)  # a JSON string is a YAML double-quoted one, so no pattern needs escaping by hand
+
+
+def _yaml_lines(key, value, indent):
+    """`key: value` as YAML lines at `indent`: maps and lists nested YAML_STEP deeper, list entries as AltMount writes them."""
+    pad = " " * indent
+    if isinstance(value, dict) and value:
+        return [pad + key + ":"] + [x for k, v in value.items() for x in _yaml_lines(k, v, indent + YAML_STEP)]
+    if isinstance(value, list) and value:
+        out, item_pad = [pad + key + ":"], indent + YAML_STEP
+        for item in value:
+            if isinstance(item, dict) and item:
+                lines = [x for k, v in item.items() for x in _yaml_lines(k, v, item_pad + 2)]
+                out += [" " * item_pad + "- " + lines[0][item_pad + 2:]] + lines[1:]
+            elif isinstance(item, list) and item:
+                raise ValueError("a list inside a list cannot be written to config.yaml")
+            else:
+                out.append(" " * item_pad + "- " + _yaml_text(item))
+        return out
+    return [pad + key + ": " + _yaml_text(value)]
+
+
+def _indent(line):
+    return len(line) - len(line.lstrip())
+
+
+def _blank(line):
+    return not line.strip() or line.lstrip().startswith("#")
+
+
+def _yaml_key(line):
+    c = line.strip()
+    return None if c.startswith("-") else c.partition(":")[0].strip()
+
+
+def _block_end(lines, i):
+    """The index after the key on line i and everything under it (deeper lines, and list entries at its own indent)."""
+    ind, j = _indent(lines[i]), i + 1
+    while j < len(lines) and (_blank(lines[j]) or _indent(lines[j]) > ind or (_indent(lines[j]) == ind and lines[j].lstrip().startswith("-"))):
+        j += 1
+    while j > i + 1 and _blank(lines[j - 1]):
+        j -= 1
+    return j
+
+
+def _yaml_set_one(lines, name, value):
+    """The lines of a config.yaml with the setting `name` (a.b.c) replaced by `value`, or added under its section."""
+    parts = name.split(".")
+    lo, hi, ind = 0, len(lines), 0
+    for depth, part in enumerate(parts):
+        kids = [j for j in range(lo, hi) if not _blank(lines[j])]
+        ind = _indent(lines[kids[0]]) if kids else ind
+        hit = next((j for j in kids if _indent(lines[j]) == ind and _yaml_key(lines[j]) == part), None)
+        if hit is None:  # missing: added at the end of its section, with the sections it needs
+            nested = value
+            for p in reversed(parts[depth + 1:]):
+                nested = {p: nested}
+            return lines[:hi] + _yaml_lines(part, nested, ind) + lines[hi:]
+        end = _block_end(lines, hit)
+        if depth == len(parts) - 1:
+            return lines[:hit] + _yaml_lines(part, value, ind) + lines[end:]
+        if lines[hit].partition(":")[2].strip():  # a section written on one line (`scoring: {}`) gets its settings below it
+            lines = lines[:hit] + [" " * ind + part + ":"] + lines[hit + 1:]
+        lo, hi, ind = hit + 1, end, ind + YAML_STEP
+    return lines
+
+
+def _yaml_set(text, settings):
+    lines = text.splitlines()
+    for name, value in settings.items():
+        lines = _yaml_set_one(lines, name, value)
+    return "\n".join(lines) + "\n"
+
+
+def _changes(before, after, names):
+    """One line per setting that differs between two flat settings maps, below the named settings: `name: old -> new`, or
+    a setting, rule or section that one of them lacks as a whole, named once (as the preflight names it)."""
+    import brainrun  # brainrun imports this module; its settings comparison is the preflight's own
+    out = []
+    for name in names:
+        was, now = brainrun._settings_at(before, name), brainrun._settings_at(after, name)
+        named = []
+        for k in now:
+            if k in was:
+                if was[k] != now[k]:
+                    out.append("%s: %s -> %s" % (k, brainrun._show(was[k]), brainrun._show(now[k])))
+                continue
+            gap = brainrun._whole_gap(k, name, was)
+            if gap not in named:
+                named.append(gap)
+                out.append("%s: added%s" % (gap, ", " + brainrun._show(now[k]) if gap == k else ""))
+        for k in was:
+            if k in now or (was[k] in brainrun.EMPTY and brainrun._settings_at(now, k)):
+                continue
+            gap = brainrun._whole_gap(k, name, now)
+            if gap not in named:
+                named.append(gap)
+                out.append("%s: removed%s" % (gap, " (was %s)" % brainrun._show(was[k]) if gap == k else ""))
+    return out
+
+
+def _backup(test_dir, side, path, stamp):
+    folder = os.path.join(test_dir, BACKUP_DIR)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    base = "%s-%s-%s" % (side, stamp, os.path.basename(path))
+    name, n = base, 1
+    while os.path.exists(os.path.join(folder, name)):
+        n += 1
+        name = "%s.%d" % (base, n)
+    shutil.copy2(path, os.path.join(folder, name))
+    return os.path.join(BACKUP_DIR, name)
+
+
+def apply_expected(test_dir, side, expected_path=None, stamp=None):
+    """Writes the expected settings into one test copy's config: backs the config up first (into the test folder's
+    backups/), then returns the lines to print, one per setting that changed, none with a secret in it. Nothing is
+    written or backed up when the copy already holds them. ValueError when the copy or the file cannot be used."""
+    import brainrun
+    if side not in CONFIG_FILES:
+        raise ValueError("%s is not a test copy with a config file (%s)" % (side, ", ".join(CONFIG_FILES)))
+    entries = brainrun.load_expected_settings(expected_path or brainrun.EXPECTED_SETTINGS_FILE)
+    settings = {}
+    for entry in entries:
+        if side in entry["copies"]:
+            settings.update(entry["settings"])
+    name, rel = SETTINGS[side]["short"], CONFIG_FILES[side]
+    if not settings:
+        raise ValueError("the expected settings file holds no settings for %s" % name)
+    path = os.path.join(test_dir, rel)
+    text = _read_text(path)
+    if text is None:
+        raise ValueError("%s cannot be read" % rel)
+    new = (_json_set if rel.endswith(".json") else _yaml_set)(text, settings)
+    before, after = _flat(rel, text), _flat(rel, new)
+    if outside_named(before, settings) != outside_named(after, settings):
+        raise ValueError("writing the expected settings would change other settings of %s; nothing was written" % name)
+    changes = _changes(before, after, list(settings))
+    if not changes:
+        return ["%s: nothing changed; %s already holds the expected settings." % (name, rel)]
+    saved = _backup(test_dir, side, path, stamp or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()))
+    with open(path, "w") as f:
+        f.write(new)
+    return (["%s: %s backed up to %s." % (name, rel, saved)] + ["%s: %s" % (name, c) for c in changes]
+            + ["%s: %d setting%s changed in %s." % (name, len(changes), "" if len(changes) == 1 else "s", rel)])
+
+
+def outside_named(flat, names):
+    """The settings of a flat map that are not at or below one of `names`."""
+    return {k: v for k, v in flat.items() if not any(k == n or k.startswith((n + ".", n + "[")) for n in names)}
+
+
 def main(argv):
     test_dir = os.environ.get("TEST_DIR", DEFAULT_TEST_DIR)
+    if len(argv) >= 3 and argv[1] == "apply":
+        expected = argv[argv.index("--expected") + 1] if "--expected" in argv else None
+        try:
+            print("\n".join(apply_expected(test_dir, argv[2], expected)))
+        except ValueError as e:
+            print("Nothing applied: %s." % e)
+            return 1
+        return 0
     if len(argv) >= 2 and argv[1] == "settings":
         limit = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else PROVIDER_LIMIT
         print(render_settings(settings_report(test_dir, limit)), end="")
