@@ -366,9 +366,9 @@ def top_pick(v):
 
     name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
     Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
-    the failure video, and a fallback another file, whose size says nothing about the Source). listed: the size the list text states, or None. KaijuFlow,
-    Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01 GB 🔊 DTS-HD MA ...", "... 💾 4.05
-    GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
+    the failure video, and a fallback another file, whose size says nothing about the Source). listed: the size the list
+    text states, or None. KaijuFlow, Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01
+    GB 🔊 DTS-HD MA ...", "... 💾 4.05 GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
     from the 140 characters of text it kept.
     """
     tries = v.get('tries') or []
@@ -440,8 +440,9 @@ def _rule_break(v, rules):
 
 def unlike_titles(visits):
     """{side: {title: why}}: the titles whose top picks are not like for like between KaijuFlow and another setup (not a
-    KaijuFlow variant such as one page per indexer, which no target is held against), with the first round that shows it. Not like for like: in one round the two top picks state different resolutions, or either one breaks
-    the like-for-like rules (_rule_break). A title is left out of judging KaijuFlow against that side (#143)."""
+    KaijuFlow variant such as one page per indexer, which no target is held against), with the first round that shows it.
+    Not like for like: in one round the two top picks state different resolutions, or either one breaks the like-for-like
+    rules (_rule_break). A title is left out of judging KaijuFlow against that side (#143)."""
     try:
         rules = indexer_standin.like_for_like_rules()
     except ValueError:  # the expected settings file cannot be used: the preflight says so; resolutions are still compared
@@ -478,7 +479,12 @@ LIKE_FOR_LIKE_HELP = (
 
 def like_for_like_lines(visits):
     """The like-for-like lines the report and the check both show: one line that every title is like for like, or a head
-    line and one line per setup and title that is not."""
+    line and one line per setup and title that is not; one line instead when no round holds top picks of KaijuFlow and
+    another setup (a run of KaijuFlow alone, or a record that kept no tries)."""
+    def rounds(keep):
+        return {(v['title'], v['phase'], v['round']) for v in visits if keep(v['side']) and v.get('tries')}
+    if not rounds(lambda s: s == JUDGED) & rounds(lambda s: not s.startswith(JUDGED)):
+        return [f'No title has top picks of {SIDE_NAMES[JUDGED]} and another setup to compare, so like for like is not judged.']
     unlike = unlike_titles(visits)
     if not unlike:
         return ["Every title's top picks are like for like: the same resolution, inside the size caps, no disc images."]

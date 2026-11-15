@@ -588,6 +588,12 @@ class LikeForLikeTest(unittest.TestCase):
         self.assertIn("- AltMount's own addon, Dune: AltMount's own addon's top pick breaks the like-for-like rules (Cold 1): "
                       '70.0 GB served, over the cap for a film (32.2 GB).', br.render_report(run, ['x']))
 
+    def test_a_run_with_nothing_to_compare_does_not_claim_like_for_like(self):
+        run = picks_run()
+        run['visits'] = [v for v in run['visits'] if v['side'] == 'kaijuflow']  # a short run of KaijuFlow alone
+        self.assertEqual(br.like_for_like_lines(run['visits']),
+                         ['No title has top picks of KaijuFlow and another setup to compare, so like for like is not judged.'])
+
     def test_equal_picks_say_so(self):
         run = picks_run(altmount_dune='Dune.2021.2160p.WEB-DL-GRP')
         text = br.render_report(run, ['x'])
