@@ -1418,6 +1418,18 @@ class FinalBarTest(unittest.TestCase):
                       'with as few fails. Hard list: not met, Usenet Ultimate fails fewer titles (0 of 8 against KaijuFlow\'s '
                       '1 of 8).\n', section)
 
+    def test_a_targets_file_whose_speed_test_part_cannot_be_used_gives_one_sentence_for_a_tagged_run(self):
+        run = br.load_run(speed_run_folder(self))
+        path = os.path.join(tempdir(self), 'targets.json')
+        with open(br.TARGETS_FILE) as f:
+            data = json.load(f)
+        del data['speed_test']['final_bar']
+        with open(path, 'w') as f:
+            json.dump(data, f)
+        self.assertEqual(br.target_lines(run, path), ['Targets: not judged (targets.json, speed test: the final bar has no text).'])
+        self.assertEqual(br.targets_section(run, path),
+                         ['## Targets', '', 'Not judged (targets.json, speed test: the final bar has no text).', ''])
+
     def test_the_report_of_an_untagged_run_keeps_the_six_targets_and_has_no_final_bar(self):
         text = br.render_report(br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures',
                                                          'run-2026-11-15-test1')), ['x'])

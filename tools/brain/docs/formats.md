@@ -78,12 +78,43 @@ The targets KaijuFlow is measured against are in `tools/brain/targets.json`, one
 
 "Counted" leaves out a top pick that failed only because a request was not recorded, as everywhere in the report. How a target is judged is in [rules.md](rules.md#targets).
 
+**A speed test** (a run on a tagged title list, #167) is judged on the three targets under `speed_test` instead (spec #159, ADR 0007), each on the easy list and on the hard list on its own; the six entries under `targets` judge an untagged run (Test 1 and before), as they always did. `speed_test` also holds the owner's final bar, in the owner's words:
+
+```json
+"speed_test": {
+ "targets": [
+  {"target": "KaijuFlow fails no more titles than any other setup, and none on the easy list", "measure": "fails"},
+  {"target": "KaijuFlow's median cold title to video is no slower than any setup with as many fails or more", "measure": "cold title to video"},
+  {"target": "Warm title to video under about 1 s", "measure": "warm title to video", "limit": 1}
+ ],
+ "final_bar": "On both lists, KaijuFlow has the fewest fails, and the fastest title to video among setups with as few fails."
+}
+```
+
+| `measure` | Figure, per list | Takes |
+|---|---|---|
+| `fails` | top picks that did not play on their one try, all four rounds together, of KaijuFlow and of each other setup | nothing |
+| `cold title to video` | median seconds from asking for the title until video, over the top picks that played in both cold rounds | nothing |
+| `warm title to video` | the same over both warm rounds | `limit` (seconds) |
+
+The final bar is shown beside the targets and never counted with them, and like every target it does not decide whether a run is usable.
+
 **Where the result shows.** `check --run <folder>` prints one line per target after its other lines, and `report.md` has the same as a table (Target, This run, Result) right under its opening lines, followed by how many targets are met:
 
 ```
 Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 3.46 s. Met.
 Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 6.73 s, Usenet Ultimate 5.51 s. Not met (1.22 s slower), inside the noise: KaijuFlow's two cold rounds differ by 1.86 s (8.59 and 6.73 s), more than the 1.22 s the target is missed by.
 ```
+
+For a speed test, `check` prints one line per list and target, how many are met, the outcome line and the final bar on a line of its own; `report.md` has the same as a table (List, Target, This run, Result), then the outcome and a **Final bar** paragraph:
+
+```
+Target, hard list: KaijuFlow fails no more titles than any other setup, and none on the easy list. Measured: KaijuFlow 0 of 8, Usenet Ultimate 0 of 8, AltMount direct 1 of 8. Met.
+Outcome on the hard list: KaijuFlow fails fewer titles than AltMount direct (0 of 8 against 1 of 8), so tune its speed.
+Final bar (shown apart from the targets, not counted towards usable): On both lists, KaijuFlow has the fewest fails, and the fastest title to video among setups with as few fails. Not met. Easy list: met, ... Hard list: not met, ...
+```
+
+The page reads the same judgement from `brainreport.speed_test_judgement` (targets per list, outcome, final bar).
 
 Only a finished run (status `ok`) is judged: for a stopped, null or failed run, the check prints one line instead (`Targets: not judged: the run was stopped before its last play, and the targets are judged on a finished run alone.`) and the report's Targets section is that one sentence. The check and the report go through the same gate (`brainreport.targets_not_judged`). If `targets.json` cannot be used, one sentence says why (`Targets: not judged (targets.json, entry 2: the margin is not a number from 0 up).`) and the rest of the check and the report is unchanged.
 
