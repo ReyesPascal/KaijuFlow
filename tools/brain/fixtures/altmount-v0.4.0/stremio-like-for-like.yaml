@@ -64,43 +64,38 @@ stremio:
     scoring:
         preset: ""
         custom_formats:
-            - id: kf-2160p
-              name: 2160p
-              category: ""
-              pattern: (?i)\b(2160p?|4k|uhd)\b
-              pattern_type: regex
+            - id: "kf-2160p"
+              name: "2160p"
+              pattern: "(?i)\\b(2160p?|4k|uhd)\\b"
+              pattern_type: "regex"
               score: 400
               enabled: true
               is_custom: true
-            - id: kf-1080p
-              name: 1080p
-              category: ""
-              pattern: (?i)\b1080[pi]?\b
-              pattern_type: regex
+            - id: "kf-1080p"
+              name: "1080p"
+              pattern: "(?i)\\b1080[pi]?\\b"
+              pattern_type: "regex"
               score: 300
               enabled: true
               is_custom: true
-            - id: kf-720p
-              name: 720p
-              category: ""
-              pattern: (?i)\b720p?\b
-              pattern_type: regex
+            - id: "kf-720p"
+              name: "720p"
+              pattern: "(?i)\\b720p?\\b"
+              pattern_type: "regex"
               score: 200
               enabled: true
               is_custom: true
-            - id: kf-4k-words-beside-1080p-or-720p
-              name: 4K words beside 1080p or 720p
-              category: ""
-              pattern: (?i)\b(4k|uhd)\b.*\b(1080[pi]?|720p?)\b|\b(1080[pi]?|720p?)\b.*\b(4k|uhd)\b
-              pattern_type: regex
+            - id: "kf-4k-words-beside-1080p-or-720p"
+              name: "4K words beside 1080p or 720p"
+              pattern: "(?i)\\b(4k|uhd)\\b.*\\b(1080[pi]?|720p?)\\b|\\b(1080[pi]?|720p?)\\b.*\\b(4k|uhd)\\b"
+              pattern_type: "regex"
               score: -400
               enabled: true
               is_custom: true
-            - id: kf-no-disc-images
-              name: No disc images
-              category: ""
-              pattern: (?i)\bCOMPLETE[. _-](UHD[. _-])?BLU-?RAY\b|\bBDMV\b|\b(UHD|BD)[. _-]?ISO\b|\bBD(25|50|66|100)\b
-              pattern_type: regex
+            - id: "kf-no-disc-images"
+              name: "No disc images"
+              pattern: "(?i)\\bCOMPLETE[. _-](UHD[. _-])?BLU-?RAY\\b|\\bBDMV\\b|\\b(UHD|BD)[. _-]?ISO\\b|\\bBD(25|50|66|100)\\b"
+              pattern_type: "regex"
               score: -10000
               enabled: true
               is_custom: true
