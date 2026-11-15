@@ -1,6 +1,6 @@
 # Brain tools: formats
 
-What the files and lines look like: run folder, top picks, targets, expected settings, recording state, misses, the page's `findings.html`, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+What the files and lines look like: run folder, top picks, targets, expected settings, the pool and the tagged title list, recording state, misses, the page's `findings.html`, step lines. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
 ## Run folder
 
@@ -114,6 +114,45 @@ A setting is named from the top of the copy's config down, with dots: a whole se
 - A file that cannot be used fails the preflight with one sentence that says why.
 
 Today the file holds the standard sort and filter rules of KaijuFlow and Usenet Ultimate and nothing else; any other setting the settings reader reads can be added the same way.
+
+## The pool (`pool.json`) and the tagged title list
+
+Every speed test plays titles no speed test has played before (ADR 0007). They come from the pool, `tools/brain/pool.json` (#165): titles are not secret, so it is in the repository. `pool.py draw` takes a speed test's titles from it and marks them used; a used title is never drawn again.
+
+```json
+{"about": "...",
+ "titles": [
+  {"type": "movie", "id": "tt0071360", "label": "The Conversation", "list": "hard", "reason": "1974 film, older release"},
+  {"type": "series", "id": "tt4574334:4:1", "label": "Stranger Things S04E01", "list": "easy", "reason": "very popular streaming show, 2022 season", "used_by": "Test 2"}
+ ]}
+```
+
+| Field | Meaning |
+|---|---|
+| `about` | what the file is, in plain words; not read by the tools |
+| `type` | `movie` (a film) or `series` (an episode), as in a title list |
+| `id` | the IMDb ID; an episode's is the show's ID, its season and its episode: `tt4574334:4:1` |
+| `label` | the name the tables show: a film's TMDB title, or the show's TMDB name and `S04E01` |
+| `list` | `easy` or `hard` ([GLOSSARY.md](../../../GLOSSARY.md), "Easy list" and "Hard list") |
+| `reason` | one line saying why the title is on its list, by kind only (`1974 film, older release`, `anime series, takedown-prone`) |
+| `used_by` | the speed test that drew it (`Test 2`); absent while the title is unused |
+
+**Filling it.** An agent adds titles by kind only, without asking the owner: easy, popular well-kept titles whose top Sources nearly always play; hard, the kinds where dead Sources are common (older releases, takedown-prone shows, less popular titles). A title is never chosen by which side failed and never checked before it is played (no indexer search, no article check), and a title whose Sources all turn out dead stays. Each ID (and an episode's season and episode) is checked against TMDB with `python3 -I tools/brain/pool.py check-ids`, which reads the metadata key from KaijuFlow's test copy (`<TEST_DIR>/config/config.json`, `searchConfig.tmdbApiKey`) itself and never prints it. It prints one line per title with what TMDB has (`OK`, `NOT FOUND` or `LABEL DIFFERS`, with TMDB's name, year and id, and an episode's name and air date) and exits 1 when any title is not as the pool says. Keep the pool at three speed tests' worth or more: 18 films and 12 episodes on each list.
+
+**What the pool refuses.** `draw` and `check-ids` refuse, with one sentence and nothing changed, a pool that holds one of Test 1's ten titles (`common.TITLES`), a title twice, a list other than `easy` or `hard`, an ID that does not fit its type, or a title without a reason. `draw` also refuses when a list has fewer unused titles than a speed test needs, naming what is missing (`The pool is too small for Test 5: the hard list has 2 unused episodes of the 4 a speed test needs.`); nothing is marked then.
+
+**The draw.** `python3 -I tools/brain/pool.py draw --test "Test 2" --out <titles.json>` takes the first 6 unused films and the first 4 unused episodes of each list, in the pool's order, writes the speed test's tagged title list to `--out`, then marks the 20 titles `used_by` that speed test in the pool (`--pool` names another pool file, for a trial on a copy). Commit the pool after a draw, so the next speed test cannot draw the same titles.
+
+**The tagged title list.** The run's title list (a JSON list of `[type, id, label]`, as `--titles-file` takes it) with a fourth field, the list the title is on:
+
+```json
+[
+  ["movie", "tt1630029", "Avatar: The Way of Water", "easy"],
+  ["series", "tt0098936:1:2", "Twin Peaks S01E02", "hard"]
+]
+```
+
+The field is called the list, not the kind: kind already means film or series. A draw writes the easy films, the easy episodes, the hard films, then the hard episodes.
 
 ## Recording state and misses
 
