@@ -514,6 +514,24 @@ def _pick_cells(pick):
     return [str(pick['name'] or '-').replace('|', '/'), _pick_size(pick)]
 
 
+def top_pick_table(visits):
+    """The check's per-title table (#154): per title and side, the resolution the like-for-like check reads from the top
+    pick (`resolution`) and its size (served, else listed), in the first round that holds top picks; [] when none does."""
+    picks = top_picks(visits)
+    held = {x for side in picks.values() for rounds in side.values() for x in rounds}
+    label = next((x for x in (_run_label(p, r) for p, r in RUN_ORDER) if x in held), None)
+    if not label:
+        return []
+    sides = [s for s in SIDE_NAMES if s in picks]
+
+    def cell(pick):
+        return f"{resolution(pick['name']) or '-'}, {_pick_size(pick)}" if pick else '-'
+    return ([f'Top picks per title, {label}: the resolution the like-for-like check reads, and the size served (else listed).',
+             '| Title | ' + ' | '.join(SIDE_NAMES[s] for s in sides) + ' |', '|---' * (len(sides) + 1) + '|'] +
+            [f'| {title} | ' + ' | '.join(cell(picks[s].get(title, {}).get(label)) for s in sides) + ' |'
+             for title in dict.fromkeys(v['title'] for v in visits)])
+
+
 def top_picks(visits):
     """{side: {title: {'Cold 1': top pick, ...}}} of a run's visits. A visit that holds no record of what was tried (a run
     folder cut down, or written before plays were kept) is left out, so it is never compared."""
