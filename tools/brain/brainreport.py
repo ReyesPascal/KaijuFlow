@@ -553,8 +553,25 @@ def flatten(obj, prefix=''):
     return out
 
 
+YAML_MAP_LINE = re.compile(r'[^\s:#"\'][^:#]*:(\s|$)')  # `key: value` or `key:`; a scalar such as `http://x` is not one
+
+
+def _yaml_scalar(val):
+    """A YAML scalar as text: quotes taken off ("..." read with its escapes, '...' with '' as one quote), plain as it is."""
+    val = val.strip()
+    if len(val) >= 2 and val[0] == val[-1] == '"':
+        try:
+            return json.loads(val)  # YAML's double-quoted escapes are JSON's (\\, \", \n, \u....)
+        except ValueError:
+            return val[1:-1]
+    if len(val) >= 2 and val[0] == val[-1] == "'":
+        return val[1:-1].replace("''", "'")
+    return val
+
+
 def flatten_yaml(text):
-    """Indentation-based flattening of simple YAML (AltMount's config.yaml); secrets replaced by ***."""
+    """Indentation-based flattening of simple YAML (AltMount's config.yaml); secrets replaced by ***. A list of plain values
+    (`- iso`) is read as name[0], name[1], ... like a list of maps."""
     out, stack, counts = {}, [], {}
     for raw in text.splitlines():
         if not raw.strip() or raw.lstrip().startswith('#'):
@@ -571,12 +588,16 @@ def flatten_yaml(text):
             c, indent = c[1:].strip(), indent + 2
             if not c:
                 continue
+            if not YAML_MAP_LINE.match(c):  # a plain value in a list
+                path = ''.join(('.' if i and not n.startswith('[') else '') + n for i, (_, n) in enumerate(stack))
+                out[path] = _scrub_value(path, _yaml_scalar(c))
+                continue
         while stack and stack[-1][0] >= indent:
             stack.pop()
         key, sep, val = c.partition(':')
         if not sep:
             continue
-        val = val.strip().strip('"\'')
+        val = _yaml_scalar(val)
         stack.append((indent, key.strip()))
         if val:
             path = ''.join(('.' if i and not n.startswith('[') else '') + n for i, (_, n) in enumerate(stack))

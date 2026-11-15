@@ -1,4 +1,5 @@
-"""Indexer stand-in (#59): records newznab answers once per title list and replays them byte-identical to every side.
+"""Indexer stand-in (#59): records newznab answers once per title list and replays them byte-identical to every side
+(search answers like for like, see below).
 
 URL shape for a side: http://<host>:1340/<indexer-slug>/api?...  (any dummy API key). Search answers have their NZB
 links rewritten to http://<host>:1340/<slug>/nzb/<token>, so a side never contacts the real indexer.
@@ -23,8 +24,13 @@ The dropped-parameter setting of an indexer is fixed once the list holds answers
 Dropped parameters (#73): an indexer entry may carry "drop_params": ["o"]; those query parameters are removed before the
 request is looked up or forwarded (for an indexer whose JSON answers the AltMount addon cannot read: o=json, as the owner's live proxy does). The list is saved as
 <store>/<list>/<slug>/indexer.json (no key in it) and replay reads it from there, so replay needs no key file.
+Like for like (#142): every search answer (t=search, movie, tvsearch) is served filtered, in record and replay mode alike, so
+every setup chooses from the same list: posts over the size cap dropped (films 30 GB, episodes 10 GB; a season pack has no cap),
+disc images dropped, the first 100 that are left kept. A search for a later page (offset > 0) gets an empty answer at once,
+never stored and never sent to the indexer (logged "EMPTY <slug> <request>"). The caps and the disc-image rule come from
+tools/brain/expected-settings.json; stored answers stay as the indexer sent them. tools/brain/docs/rules.md, "Like for like".
 """
-import argparse, signal, base64, hashlib, http.server, json, os, re, sys, threading, time, urllib.error, urllib.request
+import argparse, signal, base64, hashlib, html, http.server, json, os, re, sys, threading, time, urllib.error, urllib.request
 from urllib.parse import urlparse, parse_qsl, quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
@@ -35,6 +41,11 @@ SAFE = re.compile(r'^[A-Za-z0-9._-]+$')
 LIMIT_EXIT = 3
 SETTINGS_FILE = 'indexer.json'  # per indexer inside a recording: {"drop_params": [...]}; holds no key
 HOST_MARK = b'@@STANDIN@@'  # stored in place of the stand-in's own address in rewritten links
+EXPECTED_SETTINGS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
+SEARCHES = ('search', 'movie', 'tvsearch')
+FIRST = 100  # posts a search answer keeps: AltMount direct asks limit=100 and never asks for a second page
+EPISODE = re.compile(r'\bS\d{1,3}[ ._-]?E\d{1,4}|\b\d{1,2}x\d{2}\b', re.I)  # a title that names an episode, not a whole season
+ITEM_XML = re.compile(rb'<item>.*?</item>\s*', re.S)
 
 
 def is_limit(status, body):
@@ -94,9 +105,113 @@ def scrub(body, key):
     return body
 
 
+def like_for_like_rules(path=EXPECTED_SETTINGS):
+    """{'film': cap, 'episode': cap, 'disc': compiled regex}: KaijuFlow's size caps (maxFileSize of movieFilters and tvFilters)
+    and its "No disc images" drop rule, from the expected settings file. ValueError with a plain reason when they are not there."""
+    try:
+        with open(path) as f:
+            entries = json.load(f)['expected']
+        rules = next(e['settings'] for e in entries if 'kaijuflow' in e['copies'])
+        drop = next(r for r in rules['movieFilters']['rules']['rankedRegexPatterns'] if r['name'] == 'No disc images')
+        return {'film': int(rules['movieFilters']['maxFileSize']), 'episode': int(rules['tvFilters']['maxFileSize']),
+                'disc': re.compile(drop['pattern'], re.I if 'i' in drop.get('flags', '') else 0)}
+    except (OSError, ValueError, KeyError, TypeError, StopIteration, re.error) as e:
+        raise ValueError(f'The like-for-like rules cannot be read from {os.path.basename(path)} ({type(e).__name__}): it needs '
+                         'the KaijuFlow entry with movieFilters and tvFilters, their maxFileSize and the "No disc images" rule.') from None
+
+
+def _int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def search_kind(items):
+    """'film' or 'episode' for a search request's parameters (t=tvsearch, or only TV categories 5xxx, is an episode search);
+    None for any other request (caps, get)."""
+    q = dict(items)
+    if q.get('t') not in SEARCHES:
+        return None
+    cats = [c for c in q.get('cat', '').split(',') if c]
+    return 'episode' if q['t'] == 'tvsearch' or (cats and all(c.startswith('5') for c in cats)) else 'film'
+
+
+def keep_post(title, size, kind, rules):
+    """True when a post is on the like-for-like list: not a disc image, and not over the cap of its kind. In an episode search
+    a post whose title names no episode is a season pack, which has no cap (KaijuFlow's maxFileSize leaves packs alone)."""
+    if rules['disc'].search(title or ''):
+        return False
+    if size is None or (kind == 'episode' and not EPISODE.search(title or '')):
+        return True
+    return size <= rules[kind]
+
+
+def _json_post(item):
+    """(title, size) of an o=json post: the newznab size attribute, else the enclosure length."""
+    attrs = item.get('attr') or []
+    for a in attrs if isinstance(attrs, list) else [attrs]:
+        a = a.get('@attributes', a) if isinstance(a, dict) else {}
+        if a.get('name') == 'size':
+            return item.get('title'), _int(a.get('value'))
+    enc = item.get('enclosure')
+    enc = enc.get('@attributes', enc) if isinstance(enc, dict) else {}
+    return item.get('title'), _int(enc.get('length'))
+
+
+def _xml_post(block):
+    """(title, size) of an XML <item>: the newznab size attribute, else the enclosure length."""
+    title = re.search(rb'<title>(.*?)</title>', block, re.S)
+    size = re.search(rb'<newznab:attr name="size" value="(\d+)"', block) or re.search(rb'<enclosure\b[^>]*\blength="(\d+)"', block)
+    return (html.unescape(title.group(1).decode('utf-8', 'replace')) if title else None), (int(size.group(1)) if size else None)
+
+
+def like_for_like(body, kind, rules):
+    """A stored search answer as every setup is served it: dropped posts out, the first 100 that are left kept. The bytes are
+    unchanged when nothing is dropped; an answer that is neither newznab XML nor JSON is passed on as it is."""
+    if body.lstrip()[:1] == b'{':
+        try:
+            data = json.loads(body)
+            items = data['channel'].get('item')
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return body
+        items = [] if items is None else items if isinstance(items, list) else [items]
+        kept = [it for it in items if isinstance(it, dict) and keep_post(*_json_post(it), kind, rules)][:FIRST]
+        if len(kept) == len(items):
+            return body
+        if kept:  # the indexer's own way: one post is an object, no post is no "item" at all
+            data['channel']['item'] = kept if len(kept) > 1 else kept[0]
+        else:
+            data['channel'].pop('item', None)
+        return json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
+    out, last, n, dropped = [], 0, 0, False
+    for m in ITEM_XML.finditer(body):
+        out.append(body[last:m.start()])
+        last = m.end()
+        if n < FIRST and keep_post(*_xml_post(m.group(0)), kind, rules):
+            out.append(m.group(0))
+            n += 1
+        else:
+            dropped = True
+    return b''.join(out) + body[last:] if dropped else body
+
+
+def empty_page(items):
+    """(content type, body) of the answer to a search for a later page: no posts, in the format asked for (o=json or XML)."""
+    q = dict(items)
+    off = q.get('offset', '0')
+    if q.get('o') == 'json':
+        return 'application/json', json.dumps({'@attributes': {'version': '2.0'}, 'channel': {
+            'response': {'@attributes': {'offset': off, 'total': '0'}}}}, separators=(',', ':')).encode()
+    return 'application/rss+xml', ('<?xml version="1.0" encoding="utf-8" ?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" '
+                                   'xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">\n<channel>\n'
+                                   f'<newznab:response offset="{html.escape(off)}" total="0" />\n</channel>\n</rss>\n').encode()
+
+
 class State:
-    def __init__(self, cfg, store, mode, listname, wait=True):
+    def __init__(self, cfg, store, mode, listname, wait=True, rules=None):
         self.cfg, self.store, self.mode, self.listname, self.wait = cfg, store, mode, listname, wait
+        self.rules = rules or like_for_like_rules()
         self.limit_reached = None
         self.errors = 0
         self.log_lines = []
@@ -220,26 +335,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
             items = sorted((k, v) for k, v in q if k != KEY_PARAM and k not in drop)
             key = cache_key('api', items)
             shown = '&'.join(f'{k}={v}' for k, v in items)
+            kind = search_kind(items)
+            if kind and _int(dict(items).get('offset')):  # like for like: every setup gets the first page only
+                st.log(f'EMPTY {slug} api {shown}{self.who()}')
+                return self.reply(200, *empty_page(items))
 
             def real_url(ix):
                 return ix['url'].rstrip('/') + '/api?' + '&'.join(
                     f'{quote(k)}={quote(v)}' for k, v in items + [(KEY_PARAM, ix['apikey'])])
-            return self.serve(slug, key, 'api ' + shown, real_url, base, rewrite=dict(items).get('t') != 'get')
+            return self.serve(slug, key, 'api ' + shown, real_url, base, rewrite=dict(items).get('t') != 'get', kind=kind)
         return self.reply(404, 'text/plain', b'unknown path')
 
     def who(self):
         """' from=<client address> t=<epoch ms now>': appended to every request line, at the moment the answer is sent."""
         return f' from={self.client_address[0]} t={int(time.time() * 1000)}'
 
-    def serve(self, slug, key, shown, real_url, base, rewrite):
+    def serve(self, slug, key, shown, real_url, base, rewrite, kind=None):
         st = self.st
         d, p = st.path(slug, key)
         if st.mode == 'record':  # two identical requests together: the second waits and is served the stored answer
             with st.request_lock(p):
-                return self.serve_one(slug, shown, real_url, base, rewrite, d, p)
-        return self.serve_one(slug, shown, real_url, base, rewrite, d, p)
+                return self.serve_one(slug, shown, real_url, base, rewrite, d, p, kind)
+        return self.serve_one(slug, shown, real_url, base, rewrite, d, p, kind)
 
-    def serve_one(self, slug, shown, real_url, base, rewrite, d, p):
+    def answer(self, status, ctype, body, base, kind):
+        """A stored answer as the side gets it: a search answer like for like, its links pointing at the stand-in."""
+        if kind and 200 <= status < 300:
+            body = like_for_like(body, kind, self.st.rules)
+        return self.reply(status, ctype, body.replace(HOST_MARK, base.encode()))
+
+    def serve_one(self, slug, shown, real_url, base, rewrite, d, p, kind=None):
         st = self.st
         if os.path.exists(p + '.body'):
             body = rd(p + '.body', 'rb')
@@ -248,7 +373,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if waited:
                 time.sleep(waited / 1000)
             st.log(f'HIT {slug} {shown} wait_ms={waited}{self.who()}')
-            return self.reply(meta['status'], meta['content_type'], body.replace(HOST_MARK, base.encode()))
+            return self.answer(meta['status'], meta['content_type'], body, base, kind)
         if st.mode == 'replay':
             st.log(f'MISS {slug} {shown}{self.who()}')
             return self.reply(404, 'text/plain', b'not recorded')
@@ -279,7 +404,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         wr(p + '.body', body)
         wr(p + '.meta.json', json.dumps({'status': status, 'content_type': ctype, 'request': shown, 'ms': took_ms}))
         st.log(f'RECORD {slug} {shown} -> {status} {len(body)} bytes{self.who()}')
-        self.reply(status, ctype, body.replace(HOST_MARK, base.encode()))
+        self.answer(status, ctype, body, base, kind)
 
 
 def rewrite_links(body, ix, slug):
@@ -306,15 +431,16 @@ def fetch_real(url):
         return 502, 'text/plain', b'indexer not reachable'
 
 
-def make_server(cfg, store, mode, listname, port=1340, bind='0.0.0.0', wait=True):
+def make_server(cfg, store, mode, listname, port=1340, bind='0.0.0.0', wait=True, rules_file=EXPECTED_SETTINGS):
     if mode not in ('record', 'replay') or not SAFE.match(listname):
         raise ValueError('mode must be record or replay; list name letters, digits, . _ -')
+    rules = like_for_like_rules(rules_file)
     if mode == 'record':
         problems = setting_conflicts(cfg, store, listname)
         if problems:
             raise ValueError(' '.join(problems))
     srv = http.server.ThreadingHTTPServer((bind, port), Handler)
-    srv.state = State(cfg, store, mode, listname, wait)
+    srv.state = State(cfg, store, mode, listname, wait, rules)
     return srv
 
 
