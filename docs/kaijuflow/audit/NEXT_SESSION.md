@@ -1,4 +1,4 @@
-# Handoff: where KaijuFlow stands (2026-11-14)
+# Handoff: where KaijuFlow stands (2026-11-15)
 
 This is the one state note. Replace it; do not append. Older versions are in git history.
 Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
@@ -24,11 +24,12 @@ It lists #58's open sub-issues with no open blocker and no assignee, each with a
 - 2026-11-10 baseline (#63, old machine): its run record is lost; its section of the speed-check page is kept in `tools/brain/page-archive/2026-11-10-baseline-nc/`.
 - Recording `~/kaijuflow-notes/brain-runs/2026-11-13T035846Z-baseline-record`: complete (no misses, 174 stored answers). #127 tops it up; later runs replay it.
 - Baseline run `~/kaijuflow-notes/brain-runs/2026-11-13T053200Z-baseline`: usable as a baseline (CHECK.txt), 39 min, 160 plays; results in its `story.html` and the speed-check page, version 7. It predates the standard filter rules, so its top picks were the largest 4K remuxes (#109).
-- The image was built from 750c2eb and is still current; the tool changes since then touch no build input. A ticket that changes `src` needs a rebuild afterwards (runbook, step 0).
+- The image was built from 750c2eb. #131 (merged 2026-11-15) changed `src`, so the image is now stale. The owner chose one rebuild (runbook, step 0) after #131, #120 and #119 are all merged, before the #127 baseline.
 
 ## Owner's decisions
 - Standard filter rules (#109): applied to both test copies; what they are and how `preflight` holds the copies to them is in `tools/brain/docs/rules.md`, "Expected settings (#109)".
 - Secrets are kept outside both repos (#114, closed): the run records and recordings are pushed to the private repo `ReyesPascal/kaijuflow-notes` (runbook step 7, `tools/brain/backup.sh`).
+- 2026-11-15: every frontier ticket is done in its simplest form, one ticket per session, one PR each, merged on green CI. The cuts are on each ticket as "Owner's decision (2026-11-15)" comments (#119, #120, #111, #132, #127; #133 split from #132). The third side is called **AltMount direct** in text people read; its code ID stays `altmount-addon`.
 - Not confirmed by the owner: the architecture candidates proposed on the old machine (the review itself is lost): Source marks + stream-list pipeline before #65; Usenet reader + Backend slot with #66.
 
 ## Gotchas

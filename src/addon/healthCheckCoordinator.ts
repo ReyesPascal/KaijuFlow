@@ -93,6 +93,14 @@ export async function markLibraryHits(
   return hits;
 }
 
+/**
+ * Number of Sources health-checked at once: `healthChecks.maxConnections`.
+ * Callers still cap it by the number of Sources in the batch.
+ */
+export function healthCheckWorkerCount(healthChecks: { maxConnections?: number } | undefined): number {
+  return healthChecks?.maxConnections || 12;
+}
+
 export interface HealthCheckContext {
   allResults: any[];
   type: string;
@@ -148,9 +156,7 @@ export async function coordinateHealthChecks(
   };
   const inspectionMethod = config.healthChecks.inspectionMethod || 'smart';
   setHealthCheckConnectionCap(config.healthChecks.maxTotalConnections);
-  const maxConnections = inspectionMethod === 'smart'
-    ? (config.healthChecks?.smartBatchSize || 3)
-    : (config.healthChecks?.nzbsToInspect || 6);
+  const maxConnections = healthCheckWorkerCount(config.healthChecks);
 
   // Check if EasyNews NZB results should be health-checked instead of auto-verified
   const shouldHealthCheckEasynews = config.easynewsHealthCheck && config.easynewsMode === 'nzb';
