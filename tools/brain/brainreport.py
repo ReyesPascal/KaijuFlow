@@ -694,11 +694,13 @@ def _plays(visits, side, phase=None, rnd=None):
 MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
 
 
-def _verdict(result, slower_s=None, noise=None):
+def _verdict(result, slower_s=None, noise=None, value=None, limit=None):
     """A target's verdict as a value: the result (MET, NOT_MET or NOT_MEASURED); for a time target that is not met, how many
-    seconds KaijuFlow is slower than what it is held against; and the noise: None, or KaijuFlow's two rounds of the phase
-    with how far the target is met or missed by, when those two rounds differ by more than that."""
-    return {'result': result, 'slower_s': slower_s, 'noise': noise}
+    seconds KaijuFlow is slower than what it is held against; the noise: None, or KaijuFlow's two rounds of the phase
+    with how far the target is met or missed by, when those two rounds differ by more than that; and the two figures the
+    result compares (None when not measured): KaijuFlow's value and the limit it is held to, both in seconds for a time
+    target (the limit includes the margin), both (top picks that played, top picks counted) for a plays target."""
+    return {'result': result, 'slower_s': slower_s, 'noise': noise, 'value': value, 'limit': limit}
 
 
 def verdict_text(verdict):
@@ -725,13 +727,20 @@ def _measure_target(visits, t):
         if not all(rounds.values()):
             return measured, _verdict(NOT_MEASURED)
         met = all(p >= t['limit'] - margin and n - p <= margin for rs in rounds.values() for p, n in rs)
-        return measured, _verdict(MET if met else NOT_MET)
+        every = [x for rs in rounds.values() for x in rs]
+        value = (sum(p for p, _ in every), sum(n for _, n in every))
+        limit = (sum(t['limit'] - margin for _ in every), value[1])
+        return measured, _verdict(MET if met else NOT_MET, value=value, limit=limit)
     if t['measure'] == 'plays':  # the share of top picks that played, every round together
         (p, n), (q, m) = _plays(visits, JUDGED), _plays(visits, t['against'])
         measured = f"{me} {_plays_text((p, n))}, {SIDE_NAMES[t['against']]} {_plays_text((q, m))}"
         if not n or not m:
             return measured, _verdict(NOT_MEASURED)
-        return measured, _verdict(MET if p * m > (q - margin * m) * n else NOT_MET)
+        # At least as often, and more often unless both play every time (spec #58; owner, 2026-11-15): a tie at the
+        # maximum is met, any other tie is not.
+        more_often = p * m > (q - margin * m) * n
+        both_every_time = p == n and q == m
+        return measured, _verdict(MET if more_often or both_every_time else NOT_MET, value=(p, n), limit=(q, m))
     phase, what = t['measure'].split()
     mine = _time(visits, JUDGED, phase, what)
     ref = t['limit'] if 'limit' in t else _time(visits, t['against'], phase, what)
@@ -742,7 +751,8 @@ def _measure_target(visits, t):
     a, b = (_time(visits, JUDGED, phase, what, r) for r in (1, 2))
     noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
              if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
-    return measured, _verdict(MET, noise=noise) if over <= 0 else _verdict(NOT_MET, mine - ref, noise)
+    figures = {'value': mine, 'limit': round(ref + margin, 2)}
+    return measured, _verdict(MET, noise=noise, **figures) if over <= 0 else _verdict(NOT_MET, mine - ref, noise, **figures)
 
 
 def _is_number(x):

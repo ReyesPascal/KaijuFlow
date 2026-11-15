@@ -47,7 +47,7 @@ Usenet Ultimate's Import column is NzbDAV's own job time (#82): after each Usene
 The targets KaijuFlow is measured against are in `tools/brain/targets.json`, one entry per target under `targets`. Change a target there and nowhere else.
 
 ```json
-{"target": "Cold start within 1 s of the addon", "measure": "cold start", "against": "altmount-addon", "margin": 1}
+{"target": "Cold start within 1 s of AltMount direct", "measure": "cold start", "against": "altmount-addon", "margin": 1}
 ```
 
 | Field | Meaning |

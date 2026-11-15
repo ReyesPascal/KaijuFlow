@@ -172,11 +172,11 @@ class TargetTests(unittest.TestCase):
             "Not met (1.22 s slower), inside the noise: KaijuFlow's two cold rounds differ by 1.86 s (8.59 and 6.73 s), "
             'more than the 1.22 s the target is missed by.',
             'Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 3.46 s. Met.',
-            "Target: Top pick plays more often than AltMount's own addon. "
+            'Target: Top pick plays at least as often as AltMount direct, and more often unless both play every time. '
             "Measured: KaijuFlow 39 of 40, AltMount's own addon 40 of 40. Not met.",
-            "Target: Warm start within 0.05 s of the addon. Measured: KaijuFlow 0.18 s, AltMount's own addon 0.07 s. "
+            "Target: Warm start within 0.05 s of AltMount direct. Measured: KaijuFlow 0.18 s, AltMount's own addon 0.07 s. "
             'Not met (0.11 s slower).',
-            "Target: Cold start within 1 s of the addon. Measured: KaijuFlow 6.73 s, AltMount's own addon 3.70 s. "
+            "Target: Cold start within 1 s of AltMount direct. Measured: KaijuFlow 6.73 s, AltMount's own addon 3.70 s. "
             'Not met (3.03 s slower).'])
 
     def test_a_target_whose_side_is_not_in_the_run_is_not_measured(self):
@@ -188,15 +188,16 @@ class TargetTests(unittest.TestCase):
                                    'Measured: cold 2 of 2, warm 2 of 2. Not met.')
         self.assertEqual(lines[1], 'Target: Cold start no slower than Usenet Ultimate. '
                                    'Measured: KaijuFlow 1.00 s, Usenet Ultimate no figure. Not measured.')
-        self.assertEqual(lines[3], "Target: Top pick plays more often than AltMount's own addon. "
-                                   "Measured: KaijuFlow 4 of 4, AltMount's own addon 4 of 4. Not met.")
+        self.assertEqual(lines[3], 'Target: Top pick plays at least as often as AltMount direct, and more often unless both '
+                                   "play every time. Measured: KaijuFlow 4 of 4, AltMount's own addon 4 of 4. Met.")  # a tie at 4 of 4
 
     def test_a_run_with_no_visits_of_a_side_has_no_plays_figure(self):
         with tempdir() as tmp:
             run = copy_run(tmp)
             edit(run, 'raw.json', lambda raw: raw.update(visits=[v for v in raw['visits'] if v['side'] == 'kaijuflow']))
             _, out = run_check(run)
-        self.assertEqual(target_lines(out)[3], "Target: Top pick plays more often than AltMount's own addon. "
+        self.assertEqual(target_lines(out)[3], 'Target: Top pick plays at least as often as AltMount direct, and more often '
+                                               'unless both play every time. '
                                                "Measured: KaijuFlow 4 of 4, AltMount's own addon no figure. Not measured.")
 
 

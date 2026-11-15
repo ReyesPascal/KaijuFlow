@@ -3,8 +3,8 @@
   {"target": "Top pick plays on 10 of 10 titles, cold and warm", "measure": "plays per round", "limit": 10, "margin": 0},
   {"target": "Cold start no slower than Usenet Ultimate", "measure": "cold start", "against": "uu", "margin": 0},
   {"target": "Warm list no slower than 4.7 s", "measure": "warm list", "limit": 4.7, "margin": 0},
-  {"target": "Top pick plays more often than AltMount's own addon", "measure": "plays", "against": "altmount-addon", "margin": 0},
-  {"target": "Warm start within 0.05 s of the addon", "measure": "warm start", "against": "altmount-addon", "margin": 0.05},
-  {"target": "Cold start within 1 s of the addon", "measure": "cold start", "against": "altmount-addon", "margin": 1}
+  {"target": "Top pick plays at least as often as AltMount direct, and more often unless both play every time", "measure": "plays", "against": "altmount-addon", "margin": 0},
+  {"target": "Warm start within 0.05 s of AltMount direct", "measure": "warm start", "against": "altmount-addon", "margin": 0.05},
+  {"target": "Cold start within 1 s of AltMount direct", "measure": "cold start", "against": "altmount-addon", "margin": 1}
  ]
 }

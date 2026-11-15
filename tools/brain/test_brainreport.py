@@ -498,12 +498,12 @@ class TargetsTest(unittest.TestCase):
         self.assertLess(text.index('## Targets'), text.index('## What changed since the last run'))
         self.assertIn('| Target | This run | Result |', text)
         self.assertIn('| Warm list no slower than 4.7 s | KaijuFlow 3.00 s | Met |', text)
-        self.assertIn("| Warm start within 0.05 s of the addon | KaijuFlow 2.00 s, AltMount's own addon 1.00 s | "
+        self.assertIn("| Warm start within 0.05 s of AltMount direct | KaijuFlow 2.00 s, AltMount's own addon 1.00 s | "
                       'Not met (1.00 s slower) |', text)
         self.assertIn('| Cold start no slower than Usenet Ultimate | KaijuFlow 3.00 s, Usenet Ultimate 2.50 s | '
                       "Not met (0.50 s slower), inside the noise: KaijuFlow's two cold rounds differ by 2.00 s "
                       '(4.00 and 2.00 s), more than the 0.50 s the target is missed by |', text)
-        self.assertIn('1 of 6 targets met.', text)
+        self.assertIn('2 of 6 targets met.', text)  # the warm list, and the plays: both played every top pick
 
     def test_a_met_target_can_be_inside_the_noise_too(self):
         text = br.render_report(targets_run(**{
@@ -515,13 +515,54 @@ class TargetsTest(unittest.TestCase):
     def test_with_a_margin_the_noise_is_held_against_the_distance_to_the_margin(self):
         # 1.10 s behind the addon where 1 s is allowed: missed by 0.10 s, and the two cold rounds are 0.20 s apart
         text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 2.2, 'kaijuflow cold 2 start_s': 2.0}), ['x'])
-        self.assertIn("| Cold start within 1 s of the addon | KaijuFlow 2.10 s, AltMount's own addon 1.00 s | "
+        self.assertIn("| Cold start within 1 s of AltMount direct | KaijuFlow 2.10 s, AltMount's own addon 1.00 s | "
                       "Not met (1.10 s slower), inside the noise: KaijuFlow's two cold rounds differ by 0.20 s "
                       '(2.20 and 2.00 s), more than the 0.10 s the target is missed by |', text)
 
+    def plays_verdict(self, kaijuflow, altmount):
+        """The verdict of the plays target ("at least as often as AltMount direct") when KaijuFlow's top picks play
+        `kaijuflow` times out of 40 and AltMount direct's `altmount` times (spec #58, the tie rule of 2026-11-15)."""
+        visits = []
+        for side, plays in (('kaijuflow', kaijuflow), ('altmount-addon', altmount)):
+            for i in range(40):
+                visits.append(dict(side=side, phase='cold' if i % 2 else 'warm', round=1 + i % 4 // 2, title=f't{i}',
+                                   ok=i < plays, list_s=1.0, start_s=1.0, steps=[], imports=[], note='failure video'))
+        [(target, measured, verdict)] = [r for r in br.target_results(visits) if r[0].startswith('Top pick plays at least')]
+        return verdict
+
+    def test_a_tie_at_the_maximum_counts_as_met(self):
+        verdict = self.plays_verdict(40, 40)
+        self.assertEqual(verdict['result'], br.MET)
+        self.assertEqual((verdict['value'], verdict['limit']), ((40, 40), (40, 40)))
+
+    def test_a_tie_below_the_maximum_is_not_met_and_more_often_is(self):
+        self.assertEqual(self.plays_verdict(39, 39)['result'], br.NOT_MET)
+        self.assertEqual(self.plays_verdict(40, 39)['result'], br.MET)
+        self.assertEqual(self.plays_verdict(38, 39)['result'], br.NOT_MET)
+        self.assertEqual(self.plays_verdict(39, 40)['result'], br.NOT_MET)
+
+    def test_the_targets_file_says_the_tie_rule_in_words(self):
+        texts = [t['target'] for t in br.load_targets()]
+        self.assertIn('Top pick plays at least as often as AltMount direct, and more often unless both play every time', texts)
+
+    def test_a_time_verdict_carries_kaijuflows_value_and_the_limit_it_is_held_to(self):
+        rows = br.target_results(targets_run(**{'kaijuflow cold 1 start_s': 2.2, 'kaijuflow cold 2 start_s': 2.0})['visits'])
+        [(_, _, verdict)] = [r for r in rows if r[0].startswith('Cold start within 1 s')]
+        self.assertEqual((verdict['value'], verdict['limit']), (2.1, 2.0))  # AltMount direct 1.00 s + the 1 s allowed
+        [(_, _, verdict)] = [r for r in rows if r[0].startswith('Warm list')]
+        self.assertEqual((verdict['value'], verdict['limit']), (5.0, 4.7))
+
+    def test_the_plays_per_round_verdict_carries_the_plays_of_every_round_together(self):
+        # the real 2026-11-13 baseline: cold 10 of 10 and 9 of 10, warm 10 of 10 and 10 of 10; 10 a round are needed
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13', 'raw.json')
+        with open(path) as f:
+            rows = br.target_results(json.load(f)['visits'])
+        [(_, _, verdict)] = [r for r in rows if r[0].startswith('Top pick plays on')]
+        self.assertEqual((verdict['result'], verdict['value'], verdict['limit']), (br.NOT_MET, (39, 40), (40, 40)))
+
     def test_rounds_closer_together_than_the_gap_leave_the_result_plain(self):
         text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 3.2, 'kaijuflow cold 2 start_s': 3.0}), ['x'])
-        self.assertIn("| Cold start within 1 s of the addon | KaijuFlow 3.10 s, AltMount's own addon 1.00 s | "
+        self.assertIn("| Cold start within 1 s of AltMount direct | KaijuFlow 3.10 s, AltMount's own addon 1.00 s | "
                       'Not met (2.10 s slower) |', text)
 
 
