@@ -12,7 +12,7 @@ import frontier
 
 
 def sub_issue(number, state='open', assignees=(), labels=('ready-for-agent',), blocked_by=0, title=None):
-    """One entry as `gh api repos/<repo>/issues/<parent>/sub_issues` returns it (the fields the command reads)."""
+    """One entry as `gh api repos/{owner}/{repo}/issues/<parent>/sub_issues` returns it (the fields the command reads)."""
     return {'number': number, 'title': title or f'Ticket {number}', 'state': state,
             'assignees': [{'login': a} for a in assignees], 'labels': [{'name': n} for n in labels],
             'issue_dependencies_summary': {'blocked_by': blocked_by, 'blocking': 0, 'total_blocked_by': blocked_by,
@@ -29,7 +29,7 @@ class FakeGh:
         self.issues, self.parent = issues, parent  # a list of entries, or the raw text gh printed
 
     def __call__(self, args):
-        if args != ['api', f'repos/ReyesPascal/KaijuFlow/issues/{self.parent}/sub_issues?per_page=100']:
+        if args != ['api', f'repos/{{owner}}/{{repo}}/issues/{self.parent}/sub_issues?per_page=100']:
             raise frontier.GhError('gh: Not Found (HTTP 404)')
         return self.issues if isinstance(self.issues, str) else json.dumps(self.issues)
 
@@ -37,7 +37,7 @@ class FakeGh:
 def run(argv, gh):
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        code = frontier.main(argv, gh=gh)
+        code = frontier.main(argv, run_gh=gh)
     return code, out.getvalue()
 
 
@@ -97,6 +97,21 @@ class FrontierTest(unittest.TestCase):
             code, out = run(['999'], FakeGh([sub_issue(119)]))
         self.assertEqual((code, out), (1, ''))
         self.assertIn('HTTP 404', err.getvalue())
+
+    def test_exits_1_with_one_line_when_gh_prints_no_json(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code, out = run([], FakeGh('<html>Service unavailable</html>'))
+        self.assertEqual((code, out), (1, ''))
+        self.assertEqual(len(err.getvalue().splitlines()), 1)
+        self.assertIn('did not print JSON', err.getvalue())
+
+    def test_exits_2_with_one_line_when_the_parent_is_not_a_number(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code, out = run(['abc'], FakeGh([sub_issue(119)]))
+        self.assertEqual((code, out), (2, ''))
+        self.assertEqual(err.getvalue().splitlines(), ["Usage: frontier.py [parent]: the parent is an issue number, not 'abc'."])
 
 
 if __name__ == '__main__':

@@ -20,4 +20,4 @@ Edit the "Label in our tracker" column to match whatever vocabulary you actually
 | ------ | -------------------------------------- |
 | `spec` | A spec: its sub-issues are the tickets |
 
-A `spec` issue is never a ticket itself, so it carries no triage label. Its open sub-issues with no open blocker are what can start now (frontier query in `docs/agents/issue-tracker.md`).
+A `spec` issue is never a ticket itself, so it carries no triage label. Its open sub-issues with no open blocker and no assignee are what can start now (frontier query in `docs/agents/issue-tracker.md`).

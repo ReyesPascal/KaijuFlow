@@ -18,7 +18,7 @@ The work order lives in the tracker, not here. Spec #58 is the map: its sub-issu
 
     python3 -I tools/brain/frontier.py
 
-It lists #58's open sub-issues with no open blocker and no assignee, with their labels (`ready-for-agent` or `ready-for-human`). Spec #77 and the first baseline #63 are closed; #127 is the new baseline (recording top-up plus run with the standard filter rules; owner's go for both, the top-up spends NinjaCentral downloads). Closed tickets carry their done comments; `gh issue list` shows the rest.
+It lists #58's open sub-issues with no open blocker and no assignee, each with all its labels. Which tickets are open, closed or waiting is in the tracker (closed ones carry their done comments; `gh issue list` shows the rest).
 
 ## Runs and recordings on this machine
 - 2026-11-10 baseline (#63, old machine): its run record is lost; its section of the speed-check page is kept in `tools/brain/page-archive/2026-11-10-baseline-nc/`.
@@ -27,7 +27,7 @@ It lists #58's open sub-issues with no open blocker and no assignee, with their 
 - The image was built from 750c2eb and is still current; the tool changes since then touch no build input. A ticket that changes `src` needs a rebuild afterwards (runbook, step 0).
 
 ## Owner's decisions
-- Standard filter rules (#109 and its comments; the old ones are lost): films at most 30 GiB, episodes at most 10 GiB, disc images dropped, KaijuFlow's defaults otherwise. Applied to both test copies (KaijuFlow and Usenet Ultimate); `preflight` holds them to `tools/brain/expected-settings.json`.
+- Standard filter rules (#109): applied to both test copies; what they are and how `preflight` holds the copies to them is in `tools/brain/docs/rules.md`, "Expected settings (#109)".
 - Secrets are kept outside both repos (#114, closed): the run records and recordings are pushed to the private repo `ReyesPascal/kaijuflow-notes` (runbook step 7, `tools/brain/backup.sh`).
 - Not confirmed by the owner: the architecture candidates proposed on the old machine (the review itself is lost): Source marks + stream-list pipeline before #65; Usenet reader + Backend slot with #66.
 
