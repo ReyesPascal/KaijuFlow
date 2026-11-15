@@ -370,7 +370,7 @@ class TopPickTest(unittest.TestCase):
         self.assertEqual(row['Top pick'], '✅ 4K BluRay REMUX 🎬 Inception (2010) 🗣️ English ⚙️ hevc 💾 95.01 GB 🔊 DTS-HD MA 🏴‍☠️ FGT '
                                           '🗂️ NinjaCentral 📅 4.2y 📡 Newshosting (3/3) 📊 91.9 Mb')
         self.assertEqual(row['Size'], '85.4 GB')
-        row, = self.rows(baseline_picks(), Title='Inception', Side="AltMount's own addon", Run='Warm 2')
+        row, = self.rows(baseline_picks(), Title='Inception', Side="AltMount direct", Run='Warm 2')
         self.assertEqual(row['Top pick'], 'AltMount 🌍 FHD - Inception (2010) [1080p][Dual] Inception 2010 1080p NF WEB-DL DUAL DDP5 1 H 264-TURG '
                                           '💾 4.05 GB 🌐 ninja')
         self.assertEqual(row['Size'], '3.5 GB')  # 3549321653 bytes
@@ -452,7 +452,7 @@ class TopPickTest(unittest.TestCase):
             if (v['side'], v['title'], v['phase']) == ('altmount-addon', 'The Matrix', 'warm'):
                 v.update(ok=False, sources=0, tries=[], note='no Sources')
         self.assertEqual(self.changed(baseline_picks(), cur), [
-            "Top pick changed: AltMount's own addon, The Matrix (Warm 1, Warm 2): "
+            "Top pick changed: AltMount direct, The Matrix (Warm 1, Warm 2): "
             'AltMount 🇩🇪 4K - Matrix (1999) [2160p][Deu] Matrix.1999.GERMAN.DL.DV.HDR.2160p.WEB.H265-SunDry 💾 24.01 GB 🌐 ninja, 21.2 GB '
             '-> no top pick',
             'Top pick changed: Usenet Ultimate, Game of Thrones S02E03 (Cold 1, Cold 2): 4K BluRay 🎬 Game of Thrones S02E03 🗣️ English '
@@ -541,10 +541,10 @@ class FirstTryTest(unittest.TestCase):
     def test_the_report_shows_a_fallback_apart_from_the_plays(self):
         text = br.render_report(baseline_run(), ['x'])
         self.assertIn('| Side | Run | Top pick plays | Fallback | Indexer limit |', text)
-        self.assertIn("| AltMount's own addon | Cold 1 | 9 of 10 | 1 | 0 | 0 | 0 | 0 | 0 |", text)
+        self.assertIn("| AltMount direct | Cold 1 | 9 of 10 | 1 | 0 | 0 | 0 | 0 | 0 |", text)
         self.assertIn("| KaijuFlow | Cold 1 | 10 of 10 | 0 | 0 | 0 | 0 | 0 | 0 |", text)
         [row] = [r for r in per_title_rows(text)
-                 if (r['Title'], r['Side'], r['Run']) == ('Chernobyl S01E02', "AltMount's own addon", 'Cold 1')]
+                 if (r['Title'], r['Side'], r['Run']) == ('Chernobyl S01E02', "AltMount direct", 'Cold 1')]
         self.assertEqual(row['Result'], 'played after 3 fallbacks')
 
 
@@ -595,11 +595,11 @@ class LikeForLikeTest(unittest.TestCase):
         run = picks_run()
         text = br.render_report(run, ['x'])
         self.assertIn("## Like for like\n\nNot like for like with KaijuFlow, so left out of the targets against that setup:\n"
-                      "- AltMount's own addon, Dune: KaijuFlow's top pick is 2160p, AltMount's own addon's is 1080p (Cold 1).\n\n",
+                      "- AltMount direct, Dune: KaijuFlow's top pick is 2160p, AltMount direct's is 1080p (Cold 1).\n\n",
                       text)
         rows = {t: (m, v) for t, m, v in br.target_results(run['visits'])}
         measured, verdict = rows['Cold start within 1 s of AltMount direct']
-        self.assertEqual(measured, "KaijuFlow 2.00 s, AltMount's own addon 1.00 s (1 title left out: not like for like)")
+        self.assertEqual(measured, "KaijuFlow 2.00 s, AltMount direct 1.00 s (1 title left out: not like for like)")
         self.assertEqual(verdict['result'], br.MET)  # with Dune, KaijuFlow's median would be 5.50 s
 
     def test_a_target_held_to_a_fixed_limit_keeps_every_title(self):
@@ -609,7 +609,7 @@ class LikeForLikeTest(unittest.TestCase):
 
     def test_a_top_pick_over_the_size_cap_is_not_like_for_like(self):
         run = picks_run(altmount_dune='Dune.2021.2160p.UHD.BluRay.REMUX-GRP', altmount_dune_size=70_000_000_000)
-        self.assertIn("- AltMount's own addon, Dune: AltMount's own addon's top pick breaks the like-for-like rules (Cold 1): "
+        self.assertIn("- AltMount direct, Dune: AltMount direct's top pick breaks the like-for-like rules (Cold 1): "
                       '70.0 GB served, over the cap for a film (32.2 GB).', br.render_report(run, ['x']))
 
     def test_a_run_with_nothing_to_compare_does_not_claim_like_for_like(self):
@@ -646,7 +646,7 @@ class TargetsTest(unittest.TestCase):
         self.assertLess(text.index('## Targets'), text.index('## What changed since the last run'))
         self.assertIn('| Target | This run | Result |', text)
         self.assertIn('| Warm list no slower than 4.7 s | KaijuFlow 3.00 s | Met |', text)
-        self.assertIn("| Warm start within 0.05 s of AltMount direct | KaijuFlow 2.00 s, AltMount's own addon 1.00 s | "
+        self.assertIn("| Warm start within 0.05 s of AltMount direct | KaijuFlow 2.00 s, AltMount direct 1.00 s | "
                       'Not met (1.00 s slower) |', text)
         self.assertIn('| Cold start no slower than Usenet Ultimate | KaijuFlow 3.00 s, Usenet Ultimate 2.50 s | '
                       "Not met (0.50 s slower), inside the noise: KaijuFlow's two cold rounds differ by 2.00 s "
@@ -663,7 +663,7 @@ class TargetsTest(unittest.TestCase):
     def test_with_a_margin_the_noise_is_held_against_the_distance_to_the_margin(self):
         # 1.10 s behind the addon where 1 s is allowed: missed by 0.10 s, and the two cold rounds are 0.20 s apart
         text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 2.2, 'kaijuflow cold 2 start_s': 2.0}), ['x'])
-        self.assertIn("| Cold start within 1 s of AltMount direct | KaijuFlow 2.10 s, AltMount's own addon 1.00 s | "
+        self.assertIn("| Cold start within 1 s of AltMount direct | KaijuFlow 2.10 s, AltMount direct 1.00 s | "
                       "Not met (1.10 s slower), inside the noise: KaijuFlow's two cold rounds differ by 0.20 s "
                       '(2.20 and 2.00 s), more than the 0.10 s the target is missed by |', text)
 
@@ -710,7 +710,7 @@ class TargetsTest(unittest.TestCase):
 
     def test_rounds_closer_together_than_the_gap_leave_the_result_plain(self):
         text = br.render_report(targets_run(**{'kaijuflow cold 1 start_s': 3.2, 'kaijuflow cold 2 start_s': 3.0}), ['x'])
-        self.assertIn("| Cold start within 1 s of AltMount direct | KaijuFlow 3.10 s, AltMount's own addon 1.00 s | "
+        self.assertIn("| Cold start within 1 s of AltMount direct | KaijuFlow 3.10 s, AltMount direct 1.00 s | "
                       'Not met (2.10 s slower) |', text)
 
 
@@ -1194,7 +1194,7 @@ class TaggedRunTest(unittest.TestCase):
         self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Title to video'], '4.75')
         self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Title to video'], '3.5')  # 2.0, 3.5, 3.5
         self.assertEqual(rows['KaijuFlow', 'easy', 'Warm']['Title to video'], '3.5')
-        self.assertEqual(rows["AltMount's own addon", 'easy', 'Warm']['Title to video'], '3.5')  # 0.75, 3.5, 3.5, 3.5
+        self.assertEqual(rows["AltMount direct", 'easy', 'Warm']['Title to video'], '3.5')  # 0.75, 3.5, 3.5, 3.5
         self.assertEqual(len(rows), 2 * 2 * 2)
 
     FAILS = {('kaijuflow', 'cold', 1, 'Old Film'): dict(ok=False),  # a cold fail; the warm play after it works
@@ -1208,16 +1208,16 @@ class TaggedRunTest(unittest.TestCase):
         self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
         self.assertEqual(rows['KaijuFlow', 'hard', 'Warm']['Fails'], '0 of 2 in Warm 1, 0 of 2 in Warm 2')  # the warm play counts
         self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 0 of 2 in Cold 2')
-        self.assertEqual(rows["AltMount's own addon", 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
-        self.assertEqual(rows["AltMount's own addon", 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 1 of 2 in Cold 2')
-        fallback = self.row(text, 'Rare Show S01E01', "AltMount's own addon", 'Cold 1')
+        self.assertEqual(rows["AltMount direct", 'hard', 'Cold']['Fails'], '1 of 2 in Cold 1, 0 of 2 in Cold 2')
+        self.assertEqual(rows["AltMount direct", 'easy', 'Cold']['Fails'], '0 of 2 in Cold 1, 1 of 2 in Cold 2')
+        fallback = self.row(text, 'Rare Show S01E01', "AltMount direct", 'Cold 1')
         self.assertEqual((fallback['Result'], fallback['Title to video']), ('played after 1 fallback', '-'))  # a fail has none
         self.assertEqual(self.row(text, 'Old Film', 'KaijuFlow', 'Warm 1')['Result'], 'plays')
 
     def test_the_check_names_the_fails_of_each_setup_per_list(self):
         usable, lines = runcheck.check_run(tagged_run_folder(self, self.FAILS))
         self.assertIn('Fails, KaijuFlow: easy 0 of 8; hard 1 of 8 (Cold 1 Old Film).', lines)
-        self.assertIn("Fails, AltMount's own addon: easy 1 of 8 (Cold 2 Matrix); hard 1 of 8 "
+        self.assertIn("Fails, AltMount direct: easy 1 of 8 (Cold 2 Matrix); hard 1 of 8 "
                       '(Cold 1 Rare Show S01E01, played after 1 fallback).', lines)
 
     def test_the_replayed_2026_11_13_run_read_untagged_still_gives_altmount_direct_36_of_40_and_no_lists(self):

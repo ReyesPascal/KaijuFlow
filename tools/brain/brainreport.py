@@ -18,7 +18,7 @@ import indexer_standin  # noqa: E402
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
     'uu': 'Usenet Ultimate',
-    'altmount-addon': "AltMount's own addon",
+    'altmount-addon': "AltMount direct",
     'kaijuflow-1page': 'KaijuFlow, one page per indexer',
 }
 SHORT_NAMES = {'kaijuflow': 'KaijuFlow', 'uu': 'Usenet Ultimate', 'altmount-addon': 'AltMount direct',
@@ -33,7 +33,7 @@ COLUMN_HELP = {
     'Run': 'Cold 1 and Cold 2 start from an empty Backend (nothing imported yet); Warm 1 and Warm 2 follow right after, '
            'so the Backend already knows the titles. The number is the first or second time the whole round was done.',
     'Search': 'seconds from asking for the Stream list of a title until the list arrived. For KaijuFlow and Usenet '
-              'Ultimate this includes their health checks; AltMount\'s own addon has none.',
+              'Ultimate this includes their health checks; AltMount direct has none.',
     'NZB fetch': 'seconds to download the chosen Source\'s NZB file from the indexer stand-in. Only KaijuFlow reports '
                  'it; the other sides do not show it from outside, so it reads "-".',
     'Import': 'seconds the Backend needed to take the NZB in and make the video ready. KaijuFlow: its own timing, to the '
@@ -376,7 +376,7 @@ def top_pick(v):
     name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
     Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
     the failure video, and a fallback another file, whose size says nothing about the Source). listed: the size the list
-    text states, or None. KaijuFlow, Usenet Ultimate and AltMount's own addon all write it after a disk sign ("... 💾 95.01
+    text states, or None. KaijuFlow, Usenet Ultimate and AltMount direct all write it after a disk sign ("... 💾 95.01
     GB 🔊 DTS-HD MA ...", "... 💾 4.05 GB 🌐 ninja"); common.play_stream reads it from the whole text (`listed_size`), and a record made before that is read
     from the 140 characters of text it kept.
     """
@@ -1630,7 +1630,7 @@ def time_section(run):
     out += _table(['Pass', 'Round', 'Started (UTC)', 'Reset before it (s)', 'Plays', 'Round (s)', 'Round (minutes)'],
                   _round_rows(rounds, resets))
     out += ['',
-            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount\'s own addon) are played in turn, title by '
+            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount direct) are played in turn, title by '
             'title, in one pass; the one-page side has its own pass after them.',
             '- **Round**: the cold or warm round of every side of the pass, played together, from the first play to the end '
             'of the pause after the last play. The reset before a cold round is not part of it.', '']
