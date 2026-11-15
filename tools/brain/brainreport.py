@@ -869,22 +869,28 @@ def _plays_text(plays):
     return f'{plays[0]} of {plays[1]}' if plays[1] else NO_FIGURE
 
 
-def _time(visits, side, phase, what, rnd=None):
-    """Median start (top picks that played) or list time (every visit) of one side: both rounds of a phase, or one round."""
-    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])]
-    return median([v.get('start_s') for v in vs if plays(v)] if what == 'start' else [v.get('list_s') for v in vs])
+def _time(visits, side, phase, what, rnd=None, lst=None):
+    """Median start or title to video (top picks that played) or list time (every visit) of one side: both rounds of a
+    phase, or one round; every title, or the titles of one list (#167)."""
+    vs = [v for v in visits if v['side'] == side and v['phase'] == phase and rnd in (None, v['round'])
+          and lst in (None, v.get('list'))]
+    if what == 'list':
+        return median([v.get('list_s') for v in vs])
+    return median([v.get('start_s') if what == 'start' else title_to_video(v) for v in vs if plays(v)])
 
 
-def _plays(visits, side, phase=None, rnd=None):
-    """(top picks that played, top picks counted) of one side: every round, or one round."""
-    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])])
+def _plays(visits, side, phase=None, rnd=None, lst=None):
+    """(top picks that played, top picks counted) of one side: every round, or one round; every title, or one list's."""
+    vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])
+                   and lst in (None, v.get('list'))])
     return sum(1 for v in vs if plays(v)), len(vs)
 
 
-def side_time(visits, side, phase, what):
-    """The median start or list time of one side over both rounds of a phase: the figure the targets judge, for the
-    Speed Check page (build_page.py), so the page and the verdict show one number."""
-    return _time(visits, side, phase, what)
+def side_time(visits, side, phase, what, lst=None):
+    """The median start, list or title to video ('start', 'list', 'video') of one side over both rounds of a phase: the
+    figure the targets judge, for the Speed Check page (build_page.py), so the page and the verdict show one number. With
+    `lst` ('easy' or 'hard'), over the titles of that list alone (#167); title to video is over the top picks that played."""
+    return _time(visits, side, phase, what, lst=lst)
 
 
 def side_plays(visits, side):
@@ -1117,6 +1123,28 @@ def tagged(visits):
     return any(v.get('list') for v in visits)
 
 
+LISTS = ('easy', 'hard')  # the lists of a tagged title list (#165), in the order the report shows them
+LIST_SECTION = '## Fails and title to video per list'
+LIST_HELP = ('Title to video = seconds from asking for the title until video arrived (list time plus start time), the median '
+             'over the top picks that played in both rounds of the phase.')
+
+
+def run_lists(visits):
+    """The lists a run's titles are on, in LISTS order; [] for a run without tags."""
+    return [x for x in LISTS if any(v.get('list') == x for v in visits)]
+
+
+def list_section(run):
+    """The report's table of a tagged run (#167): per side, list and phase, the median title to video. Empty for a run
+    without tags."""
+    vs = run['visits']
+    rows = [[SIDE_NAMES[s], x, phase.capitalize(), _cell(_time(vs, s, phase, 'video', lst=x))]
+            for s in _sides(run) for x in run_lists(vs) for phase in ('cold', 'warm')]
+    if not rows:
+        return []
+    return [LIST_SECTION, ''] + _table(['Side', 'List', 'Phase', 'Title to video'], rows) + ['', LIST_HELP, '']
+
+
 def render_report(run, changes, opening=None):
     g = _groups(run)
     lists = tagged(run['visits'])
@@ -1151,6 +1179,7 @@ def render_report(run, changes, opening=None):
                          sum(1 for c in causes if c == 'fallback')] + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
     lines += ['## Steps every side shares', ''] + _table(SHARED_COLS, shared) + [''] + _defs(SHARED_COLS) + ['']
     lines += ['## Extras (steps only some sides have)', ''] + _table(EXTRA_COLS, extra) + [''] + _defs(EXTRA_COLS[2:]) + ['']
+    lines += list_section(run)
     lines += ['## Failures', ''] + _table(FAIL_COLS, fail) + [''] + _defs(FAIL_COLS[2:]) + ['']
     rows = []
     for t in run.get('titles', []):

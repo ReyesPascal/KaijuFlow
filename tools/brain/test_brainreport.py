@@ -341,9 +341,9 @@ class ListedSizeTest(unittest.TestCase):
         self.assertEqual(br.top_pick({'tries': [{'title': captured}]})['listed'], '4.07 GB')  # a record made before: from its text
 
 
-def per_title_rows(report):
-    """The rows of the report's per-title table as {column: cell}."""
-    lines = report.split('## Per title')[1].strip().splitlines()
+def per_title_rows(report, section='## Per title'):
+    """The rows of the report's per-title table (or the first table of another section) as {column: cell}."""
+    lines = report.split(section)[1].strip().splitlines()
     cols = [c.strip() for c in lines[0].strip('|').split('|')]
     rows = []
     for line in lines[2:]:
@@ -1156,6 +1156,28 @@ class TaggedRunTest(unittest.TestCase):
         dune, old = self.row(text, 'Dune', 'KaijuFlow', 'Cold 1'), self.row(text, 'Old Film', 'KaijuFlow', 'Cold 1')
         self.assertEqual((dune['List'], dune['Title to video']), ('easy', '7.75'))
         self.assertEqual((old['List'], old['Title to video']), ('hard', '-'))
+
+    def list_rows(self, report):
+        return {(r['Side'], r['List'], r['Phase']): r for r in per_title_rows(report, '## Fails and title to video per list')}
+
+    def test_the_median_title_to_video_is_given_per_side_phase_and_list_over_the_top_picks_that_played(self):
+        rows = self.list_rows(tagged_report(self, {
+            ('kaijuflow', 'cold', 1, 'Dune'): dict(list_s=3.25, start_s=4.5),   # 7.75
+            ('kaijuflow', 'cold', 2, 'Dune'): dict(list_s=2.0, start_s=4.0),    # 6.0; Matrix 3.5 in both cold rounds
+            ('kaijuflow', 'cold', 1, 'Old Film'): dict(ok=False, list_s=30.0),  # no video: not in the median
+            ('kaijuflow', 'cold', 1, 'Rare Show S01E01'): dict(list_s=1.0, start_s=1.0),
+            ('altmount-addon', 'warm', 2, 'Matrix'): dict(list_s=0.5, start_s=0.25)}))
+        self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Title to video'], '4.75')
+        self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Title to video'], '3.5')  # 2.0, 3.5, 3.5
+        self.assertEqual(rows['KaijuFlow', 'easy', 'Warm']['Title to video'], '3.5')
+        self.assertEqual(rows["AltMount's own addon", 'easy', 'Warm']['Title to video'], '3.5')  # 0.75, 3.5, 3.5, 3.5
+        self.assertEqual(len(rows), 2 * 2 * 2)
+
+    def test_an_untagged_run_has_no_list_section_and_its_per_title_table_as_before(self):
+        text = br.render_report(runs_fixture(), [])
+        self.assertNotIn('per list', text)
+        self.assertNotIn('Title to video', text)
+        self.assertEqual(list(per_title_rows(text)[0]), br.TITLE_COLS)
 
 
 if __name__ == '__main__':
