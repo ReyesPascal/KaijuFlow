@@ -8,6 +8,7 @@ import json
 import os
 import tempfile
 import unittest
+import urllib.parse
 
 import pool
 
@@ -136,6 +137,107 @@ class PoolTest(unittest.TestCase):
                              '(tt and digits) or an episode\'s (tt and digits:season:episode) for its type movie.'))
         twice = entry(1, 'movie', 'hard')
         self.assertEqual(self.refused([twice]), (1, 'The pool cannot be used: tt9000001 is in it twice.'))
+
+
+TMDB_SAMPLES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-15-tmdb')
+KEY = 'abc123notarealkey'
+
+
+def sample(name):
+    """(status, body bytes) of an answer captured from TMDB on 2026-11-15."""
+    with open(os.path.join(TMDB_SAMPLES, name + '.json')) as f:
+        s = json.load(f)
+    return s['status'], json.dumps(s['body']).encode()
+
+
+class FakeTmdb:
+    """Answers as TMDB did: 401 without the right key, the captured answer for the paths sampled, an empty find for
+    any other IMDb ID and a 404 for any other episode."""
+
+    def __init__(self):
+        self.urls = []
+
+    def __call__(self, url, headers):
+        self.urls.append(url)
+        parsed = urllib.parse.urlparse(url)
+        query = urllib.parse.parse_qs(parsed.query)
+        if query.get('api_key') != [KEY]:
+            return sample('refused-key')
+        path = parsed.path.removeprefix('/3/')
+        if path.startswith('find/'):
+            if query.get('external_source') != ['imdb_id']:
+                return sample('refused-key')
+            name = 'find-' + path.split('/')[1]
+            return sample(name if os.path.exists(os.path.join(TMDB_SAMPLES, name + '.json')) else 'find-none')
+        if path == 'tv/1668/season/1/episode/1':
+            return sample('tv-1668-season-1-episode-1')
+        return sample('tv-1668-season-1-episode-99')
+
+
+class CheckIdsTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.pool = os.path.join(self.dir.name, 'pool.json')
+        self.test_dir = os.path.join(self.dir.name, 'test')
+        os.makedirs(os.path.join(self.test_dir, 'config'))
+        self.set_key(KEY)
+        self.tmdb = FakeTmdb()
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def set_key(self, key):
+        with open(os.path.join(self.test_dir, 'config', 'config.json'), 'w') as f:
+            json.dump({'searchConfig': {'tmdbApiKey': key}, 'port': 1338}, f)
+
+    def check(self, titles):
+        with open(self.pool, 'w') as f:
+            json.dump({'about': 'test pool', 'titles': [dict(t, list='easy', reason='popular') for t in titles]}, f)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            code = pool.main(['check-ids', '--pool', self.pool, '--test-dir', self.test_dir], http=self.tmdb)
+        self.assertNotIn(KEY, buf.getvalue())
+        return code, buf.getvalue().strip().splitlines()
+
+    def test_a_film_and_an_episode_tmdb_has_are_found(self):
+        code, lines = self.check([{'type': 'movie', 'id': 'tt0111161', 'label': 'The Shawshank Redemption'},
+                                  {'type': 'series', 'id': 'tt0108778:1:1', 'label': 'Friends S01E01'}])
+        self.assertEqual(code, 0)
+        self.assertEqual(lines, [
+            'OK The Shawshank Redemption (tt0111161): film The Shawshank Redemption (1994), TMDB 278.',
+            'OK Friends S01E01 (tt0108778:1:1): show Friends (1994), TMDB 1668, S01E01 '
+            '"Pilot" (1994-09-22).',
+            '2 titles checked against TMDB: all as the pool says.'])
+
+    def test_an_id_or_episode_tmdb_does_not_have_or_a_label_that_differs_is_named(self):
+        code, lines = self.check([
+            {'type': 'movie', 'id': 'tt0000000', 'label': 'Nothing'},
+            {'type': 'movie', 'id': 'tt0108778', 'label': 'Friends'},
+            {'type': 'series', 'id': 'tt0111161:1:1', 'label': 'Shawshank S01E01'},
+            {'type': 'series', 'id': 'tt0108778:1:99', 'label': 'Friends S01E99'},
+            {'type': 'series', 'id': 'tt0108778:1:1', 'label': 'Friends S01E02'},
+            {'type': 'movie', 'id': 'tt0111161', 'label': 'The Green Mile'}])
+        self.assertEqual(code, 1)
+        self.assertEqual(lines, [
+            'NOT FOUND Nothing (tt0000000): TMDB has no film with this IMDb ID.',
+            'NOT FOUND Friends (tt0108778): TMDB has a show with this IMDb ID (Friends), not a film.',
+            'NOT FOUND Shawshank S01E01 (tt0111161:1:1): TMDB has no show with the IMDb ID tt0111161.',
+            'NOT FOUND Friends S01E99 (tt0108778:1:99): TMDB has the show Friends (1994), TMDB 1668, '
+            'but no season 1 episode 99.',
+            'LABEL DIFFERS Friends S01E02 (tt0108778:1:1): TMDB has the show Friends (1994), TMDB 1668, S01E01 '
+            '"Pilot" (1994-09-22).',
+            'LABEL DIFFERS The Green Mile (tt0111161): TMDB has film The Shawshank Redemption (1994), TMDB 278.',
+            '6 titles checked against TMDB: 6 not as the pool says.'])
+
+    def test_a_missing_or_refused_key_is_one_sentence_and_never_printed(self):
+        self.set_key('wrong-key-never-printed')
+        code, lines = self.check([{'type': 'movie', 'id': 'tt0111161', 'label': 'The Shawshank Redemption'}])
+        self.assertEqual((code, lines), (1, ["TMDB refused the key of KaijuFlow's test copy (HTTP 401), so no ID can be checked."]))
+        self.assertNotIn('wrong-key-never-printed', '\n'.join(lines))
+        self.set_key('')
+        code, lines = self.check([{'type': 'movie', 'id': 'tt0111161', 'label': 'The Shawshank Redemption'}])
+        self.assertEqual((code, lines), (1, [f"There is no TMDB key in KaijuFlow's test copy ({self.test_dir}/config/config.json, "
+                                             'searchConfig.tmdbApiKey), so no ID can be checked.']))
 
 
 if __name__ == '__main__':
