@@ -85,11 +85,11 @@ def check_run(run_dir):
         reasons.append('planned side absent: ' + ', '.join(_side(s) for s in absent))
     # top picks played per side, cold and warm (a top pick "played" when its visit served video on the first try, br.plays)
     for s in sides:
-        parts = []
+        by = {}
         for phase in ('cold', 'warm'):
             vs = [v for v in visits if v['side'] == s and v['phase'] == phase]
-            parts.append(f"{phase} {sum(1 for v in vs if br.plays(v))} of {len(vs)}")
-        lines.append(f"Top picks played, {_side(s)}: " + ', '.join(parts) + '.')
+            by[phase] = (sum(1 for v in vs if br.plays(v)), len(vs))
+        lines.append(br.top_picks_played([(s, by)]))
     # missed requests: requests the indexer stand-in did not hold, per round and side
     missed = [v for v in visits if v.get('misses')]
     if missed:

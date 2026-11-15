@@ -1181,6 +1181,9 @@ def record_summary(rec):
     if misses:
         text += (f" The proof replay missed {len(misses)} request{'' if len(misses) == 1 else 's'}, so the recording is INCOMPLETE "
                  "and a run will refuse it: run the same record command again.")
+    plays = rec.get('plays') or {}
+    if plays:  # last: the top picks of the record pass that played, in check's words
+        text += ' ' + br.top_picks_played([(side, plays[side]) for side in rec.get('sides') or plays if side in plays])
     return text
 
 
@@ -1238,6 +1241,7 @@ def record_pass(cfg, io, rec, sides, proof=False):
     with its own count, and its play lines say `proof`."""
     _check_cap(io)
     listed = {side: set() for side in sides}
+    played = rec.setdefault('plays', {})  # {side: {round: [top picks that played, plays]}}, for the command's last sentence
     try:
         for phase in RECORD_ROUNDS:
             for i, title in enumerate(cfg['titles']):
@@ -1250,6 +1254,9 @@ def record_pass(cfg, io, rec, sides, proof=False):
                     rec['playing'] = None
                     if http.get('sources'):
                         listed[side].add(vid)
+                    count = played.setdefault(side, {}).setdefault(phase, [0, 0])
+                    count[0] += 1 if http.get('first_try_plays') else 0
+                    count[1] += 1
                     print(f"{line_prefix(io, rec['visits'], planned_plays(cfg, RECORD_ROUNDS), proof)} "
                           f"{side} {phase} {label}: {http.get('sources')} Sources, top pick "
                           f"{'plays' if http.get('first_try_plays') else 'does not play'}", flush=True)
@@ -1445,7 +1452,8 @@ def main(argv):
             print(f"The recording was {br.stopped_text(rec['stopped'])}. What was stored is kept; "
                   f"run the same command again to top up. Folder: {rec['dir']}")
             return EXIT_INTERRUPTED
-        print(f"{record_summary(rec)} Folder: {rec['dir']}")
+        print(f"Folder: {rec['dir']}")
+        print(record_summary(rec))
         if rec.get('misses'):
             for m in rec['misses'][:10]:
                 print(f"  missed: {br.SIDE_NAMES.get(m['side'], m['side'])} asked {m['request']}")

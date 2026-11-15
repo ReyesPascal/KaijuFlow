@@ -430,6 +430,15 @@ def title_to_video(v):
     return round(v['list_s'] + v['start_s'], 3)
 
 
+def top_picks_played(counts):
+    """The sentence of how many top picks played, per side and round, in the words `check` and the record command share:
+    `Top picks played, KaijuFlow: cold 9 of 10, warm 10 of 10; Usenet Ultimate: ...`. counts: [(side, {'cold': (played,
+    of), 'warm': (played, of)})], in the order to name them."""
+    return 'Top picks played, ' + '; '.join(
+        f"{SIDE_NAMES.get(side, side)}: " + ', '.join(f'{phase} {p} of {n}' for phase, (p, n) in by.items())
+        for side, by in counts) + '.'
+
+
 RESOLUTIONS = [('2160p', '2160p|4k|uhd'), ('1080p', '1080p|fhd'), ('720p', '720p')]  # first match wins: "UHD" is no "HD"
 
 

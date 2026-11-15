@@ -148,5 +148,38 @@ class BlockedByInBodyTest(unittest.TestCase):
         self.assertEqual((code, err), (0, ''))
 
 
+HUMAN_LINE = "  Run in this session by the runbook (tools/brain/RUNBOOK.md); the owner's go for each live step; never a parallel build."
+
+
+class ReadyForHumanTest(unittest.TestCase):
+    def test_one_line_under_each_ready_for_human_ticket_only(self):
+        gh = FakeGh([sub_issue(119), sub_issue(127, labels=['ready-for-human'], title='New baseline'), sub_issue(120)])
+        code, out = run([], gh)
+        self.assertEqual(out.splitlines(), ['#119 [ready-for-agent] Ticket 119', '#127 [ready-for-human] New baseline', HUMAN_LINE,
+                                            '#120 [ready-for-agent] Ticket 120'])
+
+    def test_a_ticket_with_several_labels_still_gets_it_once(self):
+        code, out = run([], FakeGh([sub_issue(127, labels=['wayfinder:task', 'ready-for-human'])]))
+        self.assertEqual(out.splitlines().count(HUMAN_LINE), 1)
+
+
+class SpecIssueTest(unittest.TestCase):
+    def test_leaves_out_spec_issues(self):
+        code, out, err = run_with_stderr([], FakeGh([sub_issue(58, labels=['spec']), sub_issue(119)]))
+        self.assertEqual((numbers(out), err), ([119], ''))
+
+    def test_one_warning_names_every_spec_issue_with_a_triage_label(self):
+        gh = FakeGh([sub_issue(58, labels=['spec', 'needs-triage']), sub_issue(70, labels=['spec', 'ready-for-agent']),
+                     sub_issue(71, labels=['spec']), sub_issue(119)])
+        code, out, err = run_with_stderr([], gh)
+        self.assertEqual(numbers(out), [119])
+        self.assertEqual(err.splitlines(), ['Warning: spec issues #58, #70 carry a triage label (docs/agents/triage-labels.md); '
+                                            'a spec is a map, not a ticket: remove the label.'])
+
+    def test_says_nothing_about_a_closed_spec_issue(self):
+        code, out, err = run_with_stderr([], FakeGh([sub_issue(58, state='closed', labels=['spec', 'wontfix']), sub_issue(119)]))
+        self.assertEqual(err, '')
+
+
 if __name__ == '__main__':
     unittest.main()
