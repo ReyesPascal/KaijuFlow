@@ -44,6 +44,10 @@ _Avoid_: obfuscated release (obfuscated names can still be in order), broken RAR
 Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend.
 _Avoid_: reorder, repair, fix names
 
+**Disc image**:
+A Source whose content is a disc image file (`.iso`, `.img`) that the Backends cannot play; the health check blocks it.
+_Avoid_: ISO release, Blu-ray rip
+
 ### Measuring
 
 **Cold start**:
