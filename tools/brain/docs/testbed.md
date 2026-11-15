@@ -24,7 +24,7 @@ Recipe (from the repo root; `testbed.py` runs every Docker command through the t
 4. Emptiness check alone: `python3 -I tools/brain/testbed.py check [side ...]` (database tables, the Backend's own API/WebDAV listing, leftover files, cache files). Exit 1 and `NOT EMPTY: ...` lines otherwise.
 5. Stop when done: `python3 -I tools/brain/testbed.py stop`. `status` lists the test containers.
 
-Never run two test Backends at the same time (connection budget: [rules.md](rules.md#settings-table-and-preflight-spec-72-ticket-74), `testbed.py settings`). Tests of the scripts (no Docker, run in CI): `python3 -I -m unittest discover -s tools/brain -p 'test_*.py'`.
+Never run two test Backends at the same time (connection budget: [rules.md](rules.md#settings-table-and-preflight-spec-72-ticket-74), `testbed.py settings`). Tests of the scripts (no Docker): `npm run check:brain`, as CI runs them.
 
 ## The 1338 test container
 

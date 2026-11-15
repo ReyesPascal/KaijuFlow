@@ -32,7 +32,7 @@ It lists #58's open sub-issues with no open blocker and no assignee, each with a
 - Not confirmed by the owner: the architecture candidates proposed on the old machine (the review itself is lost): Source marks + stream-list pipeline before #65; Usenet reader + Backend slot with #66.
 
 ## Gotchas
-- `healthChecks.maxConnections` is saved but not read for the number of health-check workers (`src/addon/healthCheckCoordinator.ts` takes it from `smartBatchSize` or `nzbsToInspect`); fix it before tuning it in #64.
+- Fix `healthChecks.maxConnections` before tuning it: see #64's comments.
 - The retro's tool changes (PR #121) have not yet been exercised by a real run.
 - A run's tables on the speed-check page are keyed by its run folder, so the next publish renames the 2026-11-13 run's table slots.
 
@@ -44,4 +44,4 @@ It lists #58's open sub-issues with no open blocker and no assignee, each with a
 - Open issues: `gh issue list`; what can start now: `python3 -I tools/brain/frontier.py`.
 
 ## How to update
-Update this note after every run or merge. Keep issue lists out of it: the tracker holds them (close a ticket in the session its work is done, `docs/agents/issue-tracker.md`).
+Update this note after every run or merge. Keep issue lists out of it: the tracker holds them (close a ticket in the session its work is done, `docs/agents/issue-tracker.md`). A gotcha that needs work goes on its ticket; this note keeps only a pointer.
