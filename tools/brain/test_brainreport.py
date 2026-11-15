@@ -1144,17 +1144,17 @@ def tagged_visit(side, phase, rnd, title, **kw):
     return v
 
 
-def tagged_run_folder(case, changed=None):
-    """A finished run folder on the tagged title list, KaijuFlow and AltMount direct, four rounds: every visit as
-    tagged_visit makes it, except those named in `changed` ({(side, phase, round, title): {field: value}})."""
+def tagged_run_folder(case, changed=None, sides=('kaijuflow', 'altmount-addon')):
+    """A finished run folder on the tagged title list, KaijuFlow and AltMount direct (or `sides`), four rounds: every visit
+    as tagged_visit makes it, except those named in `changed` ({(side, phase, round, title): {field: value}})."""
     changed = changed or {}
     visits = [tagged_visit(side, phase, rnd, t[2], **changed.get((side, phase, rnd, t[2]), {}))
-              for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in ('kaijuflow', 'altmount-addon')]
+              for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in sides]
     folder = os.path.join(tempdir(case), '2026-11-16T100000Z-speed')
     os.makedirs(folder)
     meta = dict(name='speed', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z', commit='abc',
                 dirty=False, titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES},
-                indexers=['ninjacentral'], sides=['kaijuflow', 'altmount-addon'], rounds=2, short=None, settings={},
+                indexers=['ninjacentral'], sides=list(sides), rounds=2, short=None, settings={},
                 null=None, standin_misses=0, changes=['First run.'])
     with open(os.path.join(folder, 'meta.json'), 'w') as f:
         json.dump(meta, f)
@@ -1233,6 +1233,47 @@ class TaggedRunTest(unittest.TestCase):
         self.assertNotIn('per list', text)
         self.assertNotIn('Title to video', text)
         self.assertEqual(list(per_title_rows(text)[0]), br.TITLE_COLS)
+
+
+THREE = ('kaijuflow', 'uu', 'altmount-addon')
+
+
+def fail(side, title, rnd=1):
+    """A `changed` entry of tagged_run_folder: that side's top pick of the title gives no video in that cold round."""
+    return {(side, 'cold', rnd, title): dict(ok=False)}
+
+
+def video(side, lst, secs, phase='cold'):
+    """`changed` entries of tagged_run_folder: every title to video of that side, list and phase takes `secs`."""
+    return {(side, phase, rnd, t[2]): dict(list_s=secs - 1.5) for p, rnd in br.RUN_ORDER if p == phase
+            for t in TAGGED_TITLES if t[3] == lst}
+
+
+def speed_verdicts(case, *changes, sides=THREE):
+    """{(target number, list): result} of a fake tagged run, as brainreport.speed_test_judgement gives them."""
+    changed = {k: v for c in changes for k, v in c.items()}
+    run = br.load_run(tagged_run_folder(case, changed, sides))
+    return {(r['number'], r['list']): r['verdict']['result'] for r in br.speed_test_judgement(run['visits'])['targets']}
+
+
+class SpeedTestTargetsTest(unittest.TestCase):
+    """#169: a tagged run (a speed test) is judged per list on three targets: fails, cold title to video against the
+    setups with as many fails or more, and warm title to video under 1 s."""
+
+    def test_the_fails_target_is_met_on_a_list_where_kaijuflow_fails_no_more_than_any_other_setup(self):
+        verdicts = speed_verdicts(self, fail('kaijuflow', 'Old Film'), fail('uu', 'Old Film'),
+                                  fail('altmount-addon', 'Rare Show S01E01'), fail('altmount-addon', 'Old Film', 2))
+        self.assertEqual((verdicts[1, 'easy'], verdicts[1, 'hard']), (br.MET, br.MET))  # hard: 1 against 1 and 2
+
+    def test_the_fails_target_is_not_met_on_the_hard_list_when_another_setup_fails_fewer(self):
+        verdicts = speed_verdicts(self, fail('kaijuflow', 'Old Film'), fail('kaijuflow', 'Rare Show S01E01'),
+                                  fail('uu', 'Old Film'), fail('uu', 'Rare Show S01E01'), fail('altmount-addon', 'Old Film'))
+        self.assertEqual((verdicts[1, 'easy'], verdicts[1, 'hard']), (br.MET, br.NOT_MET))
+
+    def test_a_fail_on_the_easy_list_fails_the_fails_target_even_when_every_other_setup_fails_more(self):
+        verdicts = speed_verdicts(self, fail('kaijuflow', 'Matrix'), fail('uu', 'Matrix'), fail('uu', 'Dune'),
+                                  fail('altmount-addon', 'Matrix'), fail('altmount-addon', 'Dune'))
+        self.assertEqual((verdicts[1, 'easy'], verdicts[1, 'hard']), (br.NOT_MET, br.MET))
 
 
 if __name__ == '__main__':

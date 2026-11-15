@@ -1060,6 +1060,92 @@ def target_results(visits, path=TARGETS_FILE):
     return [(t['target'],) + _measure_target(visits, t, unlike) for t in load_targets(path)]
 
 
+SPEED_MEASURES = ('fails',)  # the measures of a speed test's targets (#169), each judged per list
+
+
+def load_speed_targets(path=TARGETS_FILE):
+    """The speed test's part of the targets file: {'targets': [entry]}. ValueError with a plain reason when it cannot be used."""
+    name = os.path.basename(path)
+    try:
+        with open(path) as f:
+            speed = json.load(f)['speed_test']
+        targets = speed['targets']
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise ValueError(f'{name} cannot be read: {type(e).__name__} in "speed_test"') from None
+    for i, t in enumerate(targets, 1):
+        if not isinstance(t, dict) or not isinstance(t.get('target'), str):
+            raise ValueError(f'{name}, speed test entry {i}: it has no target text')
+        if t.get('measure') not in SPEED_MEASURES:
+            raise ValueError(f"{name}, speed test entry {i}: the measure \"{t.get('measure')}\" is not known")
+    return speed
+
+
+def _others(visits):
+    """The setups KaijuFlow is held against in a run: every side but KaijuFlow and its variants, in SIDE_NAMES order."""
+    return [s for s in SIDE_NAMES if not s.startswith(JUDGED) and any(v['side'] == s for v in visits)]
+
+
+def _pair(visits, side, lst, unlike):
+    """KaijuFlow against one other setup on one list, on the titles that are like for like between the two:
+    {'side', 'mine', 'theirs', 'left_out'}, where mine and theirs are {'fails', 'counted'}."""
+    left_out = unlike.get(side, {})
+    vs = [v for v in visits if v.get('list') == lst and v['title'] not in left_out]
+    titles = {v['title'] for v in visits if v.get('list') == lst}
+
+    def figures(s):
+        played, counted = _plays(vs, s, lst=lst)
+        return {'fails': counted - played, 'counted': counted}
+    return {'side': side, 'mine': figures(JUDGED), 'theirs': figures(side), 'left_out': len(titles & set(left_out))}
+
+
+def _fails_text(f):
+    return f"{f['fails']} of {f['counted']}"
+
+
+def _pairs_text(pairs, mine, part):
+    """'KaijuFlow 1 of 8, Usenet Ultimate 2 of 8, AltMount direct 1 of 6 (KaijuFlow 1 of 6 on the same titles; 1 title
+    left out: not like for like)': KaijuFlow's figure, then each other setup's, with KaijuFlow's on the same titles when
+    some were left out."""
+    out = [f'{SHORT_NAMES[JUDGED]} {part(mine)}']
+    for p in pairs:
+        text = f"{SHORT_NAMES[p['side']]} {part(p['theirs'])}"
+        if p['left_out']:
+            n = p['left_out']
+            text += (f" ({SHORT_NAMES[JUDGED]} {part(p['mine'])} on the same titles; {n} title{'' if n == 1 else 's'} "
+                     'left out: not like for like)')
+        out.append(text)
+    return ', '.join(out)
+
+
+def _judge_fails(visits, lst, pairs):
+    """Target 1 on one list: KaijuFlow fails no more titles than any other setup, and none on the easy list."""
+    mine = _pair(visits, JUDGED, lst, {})['mine']
+    measured = _pairs_text(pairs, mine, _fails_text)
+    if not mine['counted'] or not pairs:
+        return measured, _verdict(NOT_MEASURED)
+    met = all(p['mine']['fails'] <= p['theirs']['fails'] for p in pairs) and not (lst == 'easy' and mine['fails'])
+    limit = 0 if lst == 'easy' else min(p['theirs']['fails'] for p in pairs)
+    return measured, _verdict(MET if met else NOT_MET, value=mine['fails'], limit=limit)
+
+
+SPEED_JUDGES = {'fails': _judge_fails}
+
+
+def speed_test_judgement(visits, path=TARGETS_FILE):
+    """The judgement of a tagged run (#169), for the check, the report and the page: {'targets': [{'number', 'target',
+    'list', 'measured', 'verdict'}]}: each target of the targets file's speed test part judged on each list of the run,
+    list by list. ValueError when the targets file cannot be used."""
+    entries = load_speed_targets(path)['targets']
+    unlike = unlike_titles(visits)
+    rows = []
+    for lst in run_lists(visits):
+        pairs = [_pair(visits, s, lst, unlike) for s in _others(visits)]
+        for n, t in enumerate(entries, 1):
+            measured, verdict = SPEED_JUDGES[t['measure']](visits, lst, pairs)
+            rows.append({'number': n, 'target': t['target'], 'list': lst, 'measured': measured, 'verdict': verdict})
+    return {'targets': rows}
+
+
 def targets_not_judged(status):
     """The one gate of the targets, which the report and the check both go through: None for a finished run (status
     'ok'), else why its targets are not judged. A stopped, null or failed run holds part of its plays or none, so no

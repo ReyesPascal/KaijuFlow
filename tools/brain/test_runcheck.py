@@ -282,6 +282,22 @@ class Test1Tests(unittest.TestCase):
             for t in ('Inception', 'Interstellar', 'Oppenheimer', 'Dune', 'The Dark Knight', 'Pulp Fiction', 'Chernobyl S01E02')])
         self.assertTrue(lines[start + 8].startswith('Top picks per title, '), lines[start + 8])  # The Matrix: 1080p on every side
 
+    def test_an_untagged_run_is_judged_on_the_six_targets_as_before_with_no_outcome_and_no_final_bar(self):
+        _, out = run_check(TEST_1)  # the lines as the check gave them before #169
+        self.assertEqual(target_lines(out), [
+            'Target: Top pick plays on 10 of 10 titles, cold and warm. '
+            'Measured: cold 10 of 10 and 10 of 10, warm 10 of 10 and 10 of 10. Met.',
+            'Target: Cold start no slower than Usenet Ultimate. Measured: KaijuFlow 3.29 s, Usenet Ultimate 3.46 s. Met.',
+            'Target: Warm list no slower than 4.7 s. Measured: KaijuFlow 0.20 s. Met.',
+            'Target: Top pick plays at least as often as AltMount direct, and more often unless both play every time. '
+            "Measured: KaijuFlow 12 of 12, AltMount's own addon 12 of 12 (7 titles left out: not like for like). Met.",
+            "Target: Warm start within 0.05 s of AltMount direct. Measured: KaijuFlow 0.02 s, AltMount's own addon 0.00 s "
+            '(7 titles left out: not like for like). Met.',
+            "Target: Cold start within 1 s of AltMount direct. Measured: KaijuFlow 3.00 s, AltMount's own addon 3.06 s "
+            "(7 titles left out: not like for like). Met, inside the noise: KaijuFlow's two cold rounds differ by 1.72 s "
+            '(3.86 and 2.14 s), more than the 1.06 s the target is met by.'])
+        self.assertFalse([x for x in out.splitlines() if x.startswith(('Outcome', 'Final bar'))], out)
+
 
     def test_the_check_prints_each_titles_top_picks_with_the_resolution_read_and_the_size(self):
         _, out = run_check(TEST_1)
