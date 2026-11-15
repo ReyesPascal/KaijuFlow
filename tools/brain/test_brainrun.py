@@ -1034,9 +1034,10 @@ class RecordIO(FakeIO):
     """FakeIO whose stand-in is the real one in record mode on loopback, in front of a fake indexer; the 'sides' ask it
     for different requests, the way the three sides do. Everything else (containers, resets) is the fake's."""
 
-    def __init__(self, cfg, fake_url, limit_from_visit=None, drop=None, proof_asks_more=False):
+    def __init__(self, cfg, fake_url, limit_from_visit=None, drop=None, proof_asks_more=False, fails=()):
         super().__init__()
         self.proof_asks_more, self.mode = proof_asks_more, None
+        self.fails = set(fails)  # (side, title id, 'cold' or 'warm'): the visits of the record pass whose top pick does not play
         self.cfg, self.fake_url, self.limit_from_visit, self.drop = cfg, fake_url, limit_from_visit, drop or []
         self.port, self.server, self.recording_dir = None, None, cfg['store']
         self.up = set()
@@ -1101,6 +1102,7 @@ class RecordIO(FakeIO):
         asks = {'kaijuflow': [f'?t=search&q={vid}&offset=0', f'?t=search&q={vid}&cat=2000'],  # two searches (a later page is empty, #142)
                 'kaijuflow-1page': [f'?t=search&q={vid}&offset=0&limit=100'],
                 'uu': [f'?t=search&q={vid}&cat=uu'], 'altmount-addon': [f'?t=search&q={vid}&o=json']}[side]
+        phase = 'warm' if (side, vid) in self.seen else 'cold'
         if (side, vid) in self.seen:  # what only a warm visit asks: a health-check replacement, the addon's second search
             asks = asks + {'kaijuflow': [f'?t=search&q={vid}-replacement'],
                            'altmount-addon': [f'?t=search&q={vid}&o=json&again=1']}.get(side, [])
@@ -1112,7 +1114,7 @@ class RecordIO(FakeIO):
                 urllib.request.urlopen(f'{base}{a}&apikey=dummy', timeout=10).read()
             except OSError:
                 pass
-        return dict(sources=3, first_try_plays=True)
+        return dict(sources=3, first_try_plays=self.mode == 'replay' or (side, vid, phase) not in self.fails)
 
 
 class RecordTest(unittest.TestCase):
@@ -1362,6 +1364,49 @@ class RecordTest(unittest.TestCase):
                                         'pass: 2 of 12 plays had finished, and it stopped during the next one '
                                         "(AltMount's own addon, cold, Matrix). What was stored is kept; "
                                         'run the same command again to top up. Folder: '), last)
+
+    def record_command(self, **kw):
+        """The record command as the owner runs it, on the fake stand-in world; returns (exit code, printed lines)."""
+        titles = os.path.join(self.tmp, 'titles.json')
+        with open(titles, 'w') as f:
+            json.dump(self.cfg['titles'], f)
+        out = io_module.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: RecordIO(cfg, self.url, **kw)), contextlib.redirect_stdout(out):
+            code = brainrun.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
+                                  self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles, '--settle', '0'])
+        lines = out.getvalue().splitlines()
+        self.assertTrue(lines[-1].startswith('done in '), lines[-1])  # every brain tool ends so (README)
+        return code, lines[:-1]
+
+    def test_a_record_where_every_top_pick_played_ends_with_the_plays_per_side_and_round(self):
+        code, lines = self.record_command()
+        self.assertEqual(code, 0, lines)
+        self.assertTrue(lines[-1].endswith(
+            ' Top picks played, KaijuFlow: cold 2 of 2, warm 2 of 2; Usenet Ultimate: cold 2 of 2, warm 2 of 2; '
+            "AltMount's own addon: cold 2 of 2, warm 2 of 2."), lines[-1])
+        self.assertTrue(lines[-1].startswith('Recorded 12 new answers'), lines[-1])
+        self.assertTrue(lines[-2].startswith('Folder: '), lines[-2])
+
+    def test_a_record_where_some_top_picks_did_not_play_ends_with_the_right_counts_in_checks_words(self):
+        fails = {('kaijuflow', 'tt1', 'cold'), ('altmount-addon', 'tt1', 'warm'), ('altmount-addon', 'tt2:1:1', 'warm')}
+        code, lines = self.record_command(fails=fails)
+        self.assertEqual(code, 0, lines)
+        sentence = lines[-1].split(' Top picks played, ')[1]
+        self.assertEqual(sentence, 'KaijuFlow: cold 1 of 2, warm 2 of 2; Usenet Ultimate: cold 2 of 2, warm 2 of 2; '
+                                   "AltMount's own addon: cold 2 of 2, warm 0 of 2.")
+        # check's lines for the same plays, from a run folder that holds them
+        run = os.path.join(self.tmp, 'same-plays')
+        os.makedirs(run)
+        visits = [{'side': s, 'phase': ph, 'round': 1, 'title': t[2], 'ok': (s, t[1], ph) not in fails, 'start_s': 1.0, 'list_s': 1.0}
+                  for s in brainrun.MAIN_SIDES for ph in ('cold', 'warm') for t in self.cfg['titles']]
+        with open(os.path.join(run, 'meta.json'), 'w') as f:
+            json.dump({'name': 'same', 'status': 'ok', 'sides': list(brainrun.MAIN_SIDES)}, f)
+        with open(os.path.join(run, 'raw.json'), 'w') as f:
+            json.dump({'visits': visits}, f)
+        checked = [x for x in runcheck.check_run(run)[1] if x.startswith('Top picks played, ')]
+        self.assertEqual(len(checked), 3, checked)
+        for line in checked:
+            self.assertIn(line[len('Top picks played, '):-1], sentence)
 
     def marker_files(self):
         return sorted(f for f in os.listdir(self.cfg['store']) if f.startswith('LIMIT_REACHED'))
