@@ -1,0 +1,92 @@
+stremio:
+    enabled: true
+    addon_name: ""
+    addon_description: ""
+    direct_stream: null
+    show_cached_indicator: null
+    fallback_timeout_ms: 15000
+    max_retries: 0
+    stream_ttl_seconds: 0
+    nzb_ttl_hours: 24
+    failed_release_ttl_hours: 24
+    max_fallback_releases: 2
+    include_library_streams: null
+    skip_search_when_cached: false
+    display:
+        preset: ""
+        name_template: ""
+        description_template: ""
+    fast_fail_header_only: true
+    skip_repair: null
+    base_url: ""
+    indexers:
+        provider: newsnab
+        user_agent_mode: ""
+        custom_user_agent: ""
+        prowlarr:
+            enabled: null
+            host: ""
+            api_key: REDACTED
+            categories: []
+            indexers: []
+            preferred_indexers: []
+            preferred_indexer_names: []
+            languages: []
+            preferred_languages: []
+            qualities: []
+            exclude_keywords: []
+            custom_scores: {}
+        newsnab:
+            - id: ninjacentral
+              name: ninja
+              url: http://host.docker.internal:1340/ninjacentral
+              api_key: REDACTED
+              categories: []
+              weight: 0
+              timeout_seconds: 15
+              enabled: true
+            - id: drunkenslug
+              name: drunkenslug
+              url: http://host.docker.internal:1340/drunkenslug
+              api_key: REDACTED
+              categories: []
+              weight: 0
+              timeout_seconds: 15
+              enabled: false
+            - id: althub
+              name: althub
+              url: http://host.docker.internal:1340/althub
+              api_key: REDACTED
+              categories: []
+              weight: 0
+              timeout_seconds: 15
+              enabled: false
+    scoring:
+        preset: ""
+        custom_formats: []
+        exclude_keywords: []
+        preferred_languages: []
+        require_preferred_language: false
+    prowlarr:
+        enabled: false
+        host: http://localhost:9696
+        api_key: REDACTED
+        categories:
+            - 2000
+            - 2010
+            - 2030
+            - 2040
+            - 2045
+            - 2060
+            - 5000
+            - 5010
+            - 5030
+            - 5040
+        indexers: []
+        preferred_indexers: []
+        preferred_indexer_names: []
+        languages: []
+        preferred_languages: []
+        qualities: []
+        exclude_keywords: []
+        custom_scores: {}

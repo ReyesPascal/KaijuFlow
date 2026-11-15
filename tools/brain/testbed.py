@@ -256,7 +256,7 @@ SETTINGS = {
     "kaijuflow": dict(title="KaijuFlow (1338)", short="KaijuFlow", json="config/config.json"),
     "uu": dict(title="Usenet Ultimate (1339)", short="Usenet Ultimate", json="uu/config/config.json"),
     "nzbdav": dict(title="NzbDAV (3001)", short="NzbDAV"),
-    "altmount-addon": dict(title="AltMount addon (8086)", short="AltMount addon"),
+    "altmount-addon": dict(title="AltMount direct (8086)", short="AltMount direct"),
     "altmount-kf": dict(title="AltMount KaijuFlow (8087)", short="AltMount KaijuFlow"),
 }
 SETTINGS_SIDES = list(SETTINGS)
@@ -508,7 +508,7 @@ def _rows(rep):
     yield "Cache: healthy NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "healthyNzbDbMode", "healthyNzbDbTTL", "healthyNzbDbMaxSizeMB"))
     yield "Cache: dead NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "deadNzbDbMode", "deadNzbDbTTL", "deadNzbDbMaxSizeMB"))
     yield "Cache: stream buffer / pipe buffer MB / method", {"uu": _cell(g("uu"), "nzbdavStreamBufferMB", "nzbdavPipeBufferMB", "nzbdavStreamingMethod")}
-    yield "AltMount addon: fallback ms / retries / max fallback releases", per(am, lambda f: _cell(f, "stremio.fallback_timeout_ms", "stremio.max_retries", "stremio.max_fallback_releases"))
+    yield "AltMount direct: fallback ms / retries / max fallback releases", per(am, lambda f: _cell(f, "stremio.fallback_timeout_ms", "stremio.max_retries", "stremio.max_fallback_releases"))
     yield "AltMount: fast_fail_header_only / skip_repair", per(am, lambda f: _cell(f, "stremio.fast_fail_header_only", "stremio.skip_repair"))
     yield "AltMount: PAR2 repair / failure masking / mount type", per(am, lambda f: _cell(f, "par2_repair.enabled", "streaming.failure_masking.enabled", "mount_type"))
 

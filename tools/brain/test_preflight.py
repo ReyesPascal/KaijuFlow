@@ -12,9 +12,10 @@ import re
 import subprocess
 import unittest
 
+import brainreport as br
 import brainrun
 import testbed
-from test_settings import SECRET, make_copies, rules, tempdir
+from test_settings import ALTMOUNT_FIXTURES, SECRET, addon_stremio, make_copies, rules, tempdir
 
 COMMIT = 'a' * 40
 OLDER = 'b' * 40
@@ -225,7 +226,7 @@ class PreflightTest(unittest.TestCase):
     def test_copies_must_agree_on_enabled_indexers(self):
         # AltMount's addon copy has DrunkenSlug switched off; the key file and the other copies use it
         self.cfg = make_cfg(make_copies(self, addon_off=('drunkenslug',)))
-        self.assert_stops('record', self.world(), 'AltMount addon', 'drunkenslug')
+        self.assert_stops('record', self.world(), 'AltMount direct', 'drunkenslug')
 
     def test_indexer_address_must_be_the_standins(self):
         td = make_copies(self, url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
@@ -454,8 +455,23 @@ class ExpectedSettingsFileTest(unittest.TestCase):
 
     def committed(self):
         entries = brainrun.load_expected_settings()
-        self.assertEqual([e['copies'] for e in entries], [['kaijuflow', 'uu']])  # AltMount's own addon and NzbDAV have no such rules
+        self.assertEqual([e['copies'] for e in entries], [['kaijuflow', 'uu'], ['altmount-addon']])  # NzbDAV has no such rules
         return entries[0]['settings']
+
+    def test_the_committed_file_holds_altmount_directs_like_for_like_settings(self):
+        entry = brainrun.load_expected_settings()[1]['settings']
+        self.assertEqual((entry['stremio.max_fallback_releases'], entry['stremio.include_library_streams']), (0, False))  # one try
+        formats = entry['stremio.scoring.custom_formats']
+        self.assertEqual([(f['name'], f['score']) for f in formats],
+                         [('2160p', 400), ('1080p', 300), ('720p', 200), ('No disc images', -10000)])  # 4K first; -1500 or below drops
+        self.assertEqual(formats[3]['pattern'], '(?i)' + self.DROP)  # the same rule as KaijuFlow's and Usenet Ultimate's
+        self.assertEqual(self.committed()['movieFilters']['rules']['rankedRegexPatterns'][0]['pattern'], self.DROP)
+        titles = {'Film.2010.2160p.UHD.BluRay.REMUX': '2160p', 'Film.2010.UHD.BluRay': '2160p', 'Film.2010.1080p.WEB-DL': '1080p',
+                  'Film 2010 1080i HDTV': '1080p', 'Show.S01E02.720p.WEB': '720p', 'Film.2010.COMPLETE.UHD.BLURAY': 'No disc images',
+                  'Film.2010.BDMV': 'No disc images', 'Film.2010.DVDRip': None}
+        for title, want in titles.items():  # on ASCII titles Python's re and Go's RE2 read these patterns alike
+            hit = [f['name'] for f in formats if re.search(f['pattern'], title)]
+            self.assertEqual(hit[-1:] if want == 'No disc images' else hit, [want] if want else [], title)
 
     def test_the_committed_file_holds_the_standard_rules_for_kaijuflow_and_usenet_ultimate(self):
         rules_ = self.committed()
@@ -483,6 +499,40 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         code, text = run_command('record', cfg, FakeWorld(cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('Usenet Ultimate has no movieFilters setting, but the expected settings file (tools/brain/expected-settings.json) has one', text)
+
+    # ---- AltMount direct, through the settings reader and the preflight (#142)
+    def test_altmount_direct_as_captured_before_like_for_like_differs_in_three_settings(self):
+        with open(os.path.join(ALTMOUNT_FIXTURES, 'stremio-as-found.yaml')) as f:
+            found = br.flatten_yaml(f.read())
+        self.assertEqual(brainrun.setting_differences(brainrun.load_expected_settings(), {'altmount-addon': found}), [
+            'AltMount direct has stremio.max_fallback_releases set to "2", but the expected settings file says "0": '
+            "change the test copy's config, or the file if the copy's value is the intended one.",
+            'AltMount direct has stremio.include_library_streams set to "null", but the expected settings file says "false".',
+            'AltMount direct has no stremio.scoring.custom_formats setting, but the expected settings file has one.'])
+        with open(os.path.join(ALTMOUNT_FIXTURES, 'stremio-like-for-like.yaml')) as f:
+            applied = br.flatten_yaml(f.read())
+        self.assertEqual(brainrun.setting_differences(brainrun.load_expected_settings(), {'altmount-addon': applied}), [])
+
+    def addon_preflight(self, lines):
+        cfg = make_cfg(make_copies(self, kf_rules=self.committed(), uu_rules=self.committed(), addon_lines=lines), expected_settings=None)
+        return run_command('record', cfg, FakeWorld(cfg))
+
+    def test_altmount_direct_with_a_fallback_or_without_the_custom_formats_stops_with_one_sentence_each(self):
+        lines = addon_stremio()
+        fallback = [x.replace('max_fallback_releases: 0', 'max_fallback_releases: 2') for x in lines]
+        start = lines.index('        custom_formats:')
+        end = next(i for i in range(start + 1, len(lines)) if not lines[i].startswith('            '))
+        no_formats = lines[:start] + ['        custom_formats: []'] + lines[end:]
+        for changed, sentence in (
+                (fallback, 'AltMount direct has stremio.max_fallback_releases set to "2", but the expected settings file '
+                           '(tools/brain/expected-settings.json) says "0"'),
+                (no_formats, 'AltMount direct has no stremio.scoring.custom_formats setting, but the expected settings file '
+                             '(tools/brain/expected-settings.json) has one')):
+            code, text = self.addon_preflight(changed)
+            self.assertEqual(code, 1, text)
+            self.assertEqual([x.split(': change')[0] for x in text.splitlines() if x.strip()], [sentence])
+        code, text = self.addon_preflight(lines)
+        self.assertEqual(code, 0, text)
 
 
 class DocsOnlyCommitTest(unittest.TestCase):
