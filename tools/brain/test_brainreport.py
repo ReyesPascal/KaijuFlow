@@ -1249,16 +1249,27 @@ def video(side, lst, secs, phase='cold'):
             for t in TAGGED_TITLES if t[3] == lst}
 
 
+def speed_run_folder(case, *changes, sides=THREE):
+    """A finished tagged run folder of `sides` with the `changed` entries of fail() and video() applied together."""
+    changed = {}
+    for c in changes:
+        for k, v in c.items():
+            changed[k] = {**changed.get(k, {}), **v}
+    return tagged_run_folder(case, changed, sides)
+
+
+def speed_judgement(case, *changes, sides=THREE):
+    return br.speed_test_judgement(br.load_run(speed_run_folder(case, *changes, sides=sides))['visits'])
+
+
 def speed_verdicts(case, *changes, sides=THREE):
     """{(target number, list): result} of a fake tagged run, as brainreport.speed_test_judgement gives them."""
-    changed = {k: v for c in changes for k, v in c.items()}
-    run = br.load_run(tagged_run_folder(case, changed, sides))
-    return {(r['number'], r['list']): r['verdict']['result'] for r in br.speed_test_judgement(run['visits'])['targets']}
+    return {(r['number'], r['list']): r['verdict']['result'] for r in speed_judgement(case, *changes, sides=sides)['targets']}
 
 
 class SpeedTestTargetsTest(unittest.TestCase):
     """#169: a tagged run (a speed test) is judged per list on three targets: fails, cold title to video against the
-    setups with as many fails or more, and warm title to video under 1 s."""
+    setups KaijuFlow has as many fails as or more, and warm title to video under 1 s."""
 
     def test_the_fails_target_is_met_on_a_list_where_kaijuflow_fails_no_more_than_any_other_setup(self):
         verdicts = speed_verdicts(self, fail('kaijuflow', 'Old Film'), fail('uu', 'Old Film'),
@@ -1294,6 +1305,37 @@ class SpeedTestTargetsTest(unittest.TestCase):
         self.assertEqual((verdicts[3, 'easy'], verdicts[3, 'hard']), (br.MET, br.NOT_MET))  # 1.00 s is not under 1 s
         verdicts = speed_verdicts(self, video('kaijuflow', 'easy', 1.2, 'warm'), video('kaijuflow', 'hard', 0.5, 'warm'))
         self.assertEqual((verdicts[3, 'easy'], verdicts[3, 'hard']), (br.NOT_MET, br.MET))
+
+    def outcome(self, *changes):
+        return speed_judgement(self, *changes)['outcome']
+
+    def test_the_outcome_is_to_tune_kaijuflows_speed_when_it_fails_fewer_hard_titles_than_altmount_direct(self):
+        outcome = self.outcome(fail('altmount-addon', 'Old Film'), video('altmount-addon', 'hard', 2.0),
+                               fail('kaijuflow', 'Matrix'))  # the easy list does not decide the outcome
+        self.assertEqual(outcome['outcome'], br.OUTCOME_TUNE)
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: KaijuFlow fails fewer titles than AltMount direct '
+                                          '(0 of 8 against 1 of 8), so tune its speed.')
+
+    def test_the_outcome_is_to_try_kaijuflow_without_its_pre_list_check_when_it_ties_and_altmount_direct_is_faster(self):
+        outcome = self.outcome(fail('altmount-addon', 'Old Film'), fail('kaijuflow', 'Rare Show S01E01', 2),
+                               video('altmount-addon', 'hard', 2.0))
+        self.assertEqual(outcome['outcome'], br.OUTCOME_NO_PRE_LIST_CHECK)
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: KaijuFlow and AltMount direct fail the same number of '
+                                          'titles (1 of 8 each) and AltMount direct is faster (cold title to video 2.00 s '
+                                          'against 3.50 s), so try KaijuFlow without its own pre-list check, behind AltMount.')
+
+    def test_the_outcome_is_a_bug_in_kaijuflows_checking_when_altmount_direct_fails_fewer_hard_titles(self):
+        outcome = self.outcome(fail('kaijuflow', 'Old Film'), video('kaijuflow', 'hard', 1.0))
+        self.assertEqual(outcome['outcome'], br.OUTCOME_BUG)
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: AltMount direct fails fewer titles than KaijuFlow '
+                                          "(0 of 8 against 1 of 8), so KaijuFlow's checking has a bug to find first.")
+
+    def test_a_tie_where_kaijuflow_is_no_slower_names_none_of_the_three_outcomes(self):
+        outcome = self.outcome(video('altmount-addon', 'hard', 4.0))
+        self.assertIsNone(outcome['outcome'])
+        self.assertEqual(outcome['text'], 'Outcome on the hard list: none of the three decided in advance: KaijuFlow and '
+                                          'AltMount direct fail the same number of titles (0 of 8 each) and KaijuFlow is '
+                                          'no slower (cold title to video 3.50 s against 4.00 s).')
 
 
 if __name__ == '__main__':

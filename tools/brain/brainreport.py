@@ -1181,10 +1181,43 @@ def _judge_warm_video(visits, lst, pairs, entry):
 SPEED_JUDGES = {'fails': _judge_fails, 'cold title to video': _judge_cold_video, 'warm title to video': _judge_warm_video}
 
 
+# The three outcomes of the hard list, decided before the first speed test (ADR 0007, spec #159), and what each says to do.
+OUTCOME_TUNE, OUTCOME_NO_PRE_LIST_CHECK, OUTCOME_BUG = 'tune its speed', 'try without its pre-list check', 'find the bug'
+OUTCOME_HEAD = 'Outcome on the hard list: '
+ALTMOUNT = 'altmount-addon'  # the setup the outcome compares KaijuFlow with: AltMount direct
+
+
+def _outcome(visits, unlike):
+    """{'outcome', 'text'}: which of the three outcomes the hard list gave, KaijuFlow against AltMount direct on the titles
+    like for like between the two (fails first, then the median cold title to video); outcome None when it gave none of
+    them (the same fails and KaijuFlow no slower) or cannot be named."""
+    if 'hard' not in run_lists(visits) or ALTMOUNT not in _others(visits):
+        why = 'the run has no hard list' if 'hard' not in run_lists(visits) else f'{SHORT_NAMES[ALTMOUNT]} is not in the run'
+        return {'outcome': None, 'text': f'{OUTCOME_HEAD}not named: {why}.'}
+    p = _pair(visits, ALTMOUNT, 'hard', unlike)
+    me, them, (a, b) = SHORT_NAMES[JUDGED], SHORT_NAMES[ALTMOUNT], (p['mine'], p['theirs'])
+    fails = f'({_fails_text(a)} against {_fails_text(b)})'
+    if a['fails'] < b['fails']:
+        return {'outcome': OUTCOME_TUNE, 'text': f'{OUTCOME_HEAD}{me} fails fewer titles than {them} {fails}, so tune its speed.'}
+    if a['fails'] > b['fails']:
+        return {'outcome': OUTCOME_BUG, 'text': f"{OUTCOME_HEAD}{them} fails fewer titles than {me} "
+                                                f"({_fails_text(b)} against {_fails_text(a)}), so {me}'s checking has a bug to find first."}
+    same = f"{me} and {them} fail the same number of titles ({_fails_text(a)} each)"
+    if a['video'] is None or b['video'] is None:
+        return {'outcome': None, 'text': f'{OUTCOME_HEAD}not named: {same}, and one of them has no cold title to video.'}
+    if b['video'] < a['video']:
+        return {'outcome': OUTCOME_NO_PRE_LIST_CHECK, 'text': (
+            f"{OUTCOME_HEAD}{same} and {them} is faster (cold title to video {_secs(b['video'])} against "
+            f"{_secs(a['video'])}), so try {me} without its own pre-list check, behind AltMount.")}
+    return {'outcome': None, 'text': (f"{OUTCOME_HEAD}none of the three decided in advance: {same} and {me} is no slower "
+                                      f"(cold title to video {_secs(a['video'])} against {_secs(b['video'])}).")}
+
+
 def speed_test_judgement(visits, path=TARGETS_FILE):
     """The judgement of a tagged run (#169), for the check, the report and the page: {'targets': [{'number', 'target',
-    'list', 'measured', 'verdict'}]}: each target of the targets file's speed test part judged on each list of the run,
-    list by list. ValueError when the targets file cannot be used."""
+    'list', 'measured', 'verdict'}], 'outcome': {'outcome', 'text'}}: each target of the targets file's speed test part
+    judged on each list of the run, list by list, and the outcome of the hard list (_outcome). ValueError when the
+    targets file cannot be used."""
     entries = load_speed_targets(path)['targets']
     unlike = unlike_titles(visits)
     rows = []
@@ -1193,7 +1226,7 @@ def speed_test_judgement(visits, path=TARGETS_FILE):
         for n, t in enumerate(entries, 1):
             measured, verdict = SPEED_JUDGES[t['measure']](visits, lst, pairs, t)
             rows.append({'number': n, 'target': t['target'], 'list': lst, 'measured': measured, 'verdict': verdict})
-    return {'targets': rows}
+    return {'targets': rows, 'outcome': _outcome(visits, unlike)}
 
 
 def targets_not_judged(status):
