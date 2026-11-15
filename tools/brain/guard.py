@@ -19,6 +19,9 @@ import re
 import shlex
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import common  # noqa: E402
+
 HOME_TEST = r'(?:~|\$HOME|\$\{HOME\}|/home/[^/\s]+)/kaijuflow-test'
 KEY_FILE = re.compile(r'(?<![\w.-])(?:indexers|limits|provider|metadata-keys|admin-login|[\w-]*-secrets)\.json\b|(?<![\w.-])db\.sqlite\b')
 COPY_CONFIG = re.compile(r'(?<![\w.-])(?:uu|nzbdav|altmount-addon|altmount-kf)/config\b')
@@ -37,10 +40,9 @@ GH_PARENT = ('create the issue without --parent, then `gh api --method POST repo
 
 
 def test_dirs():
-    dirs = {os.path.realpath(os.path.expanduser('~/kaijuflow-test'))}
-    if os.environ.get('TEST_DIR'):
-        dirs.add(os.path.realpath(os.environ['TEST_DIR']))
-    return dirs
+    """The test folder (`common.DEFAULT_TEST_DIR`, and TEST_DIR when set), as given and with links resolved."""
+    given = [common.DEFAULT_TEST_DIR] + ([os.environ['TEST_DIR']] if os.environ.get('TEST_DIR') else [])
+    return {f(os.path.expanduser(d)) for d in given for f in (os.path.normpath, os.path.realpath)}
 
 
 def _mentions_secret(segment):
@@ -93,7 +95,7 @@ def _protected_path(value):
     head = re.split(r'[*?\[{]', os.path.expandvars(os.path.expanduser(value)), maxsplit=1)[0]
     path = os.path.realpath(os.path.normpath(head)) if head else ''
     for d in test_dirs():
-        if path == d:
+        if path == d or d.startswith(path.rstrip(os.sep) + os.sep):  # the folder or one holding it (a recursive Grep)
             return True
         if path.startswith(d + os.sep):
             return path[len(d) + 1:].split(os.sep)[0] not in SAFE_SUBFOLDERS
