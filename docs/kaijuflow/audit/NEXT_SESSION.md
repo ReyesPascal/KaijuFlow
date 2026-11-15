@@ -25,7 +25,7 @@ It lists #58's open sub-issues with no open blocker and no assignee, each with a
 - 2026-11-10 baseline (#63, old machine): its run record is lost; its section of the speed-check page is kept in `tools/brain/page-archive/2026-11-10-baseline-nc/`.
 - Recording `~/kaijuflow-notes/brain-runs/2026-11-13T035846Z-baseline-record`: complete (no misses, 174 stored answers). #127 tops it up; later runs replay it.
 - **Archived (#144, done 2026-11-15):** every run from before like for like sits in `~/kaijuflow-notes/brain-runs/archive/` (the 2026-11-13 baseline `…053200Z-baseline`, which was not like for like: AltMount direct played smaller files and its hidden fallback covered four failed top picks, 36 of 40 on first tries; and `…044542Z-baseline`, a run that never wrote its record). The tools never use an archived run as a baseline or comparison, and the page refuses one. The 2026-11-09/10 page-archive sections are archived the same way.
-- **#127 is the first baseline**, compared with nothing (owner, 2026-11-15): its report will say "No earlier run to compare with: this is the first one." It waits for the rest of the like-for-like work (#142 rules, #143 first-try plays), then: `--rebuild-image` on its first preflight (the image is from 750c2eb; #131, #119 and #120 changed `src`), the #142 settings applied to the test copies, the run, and the page published in the new design from that run. Each live step needs the owner's go.
+- **#127 is the first baseline**, compared with nothing (owner, 2026-11-15): its report will say "No earlier run to compare with: this is the first one." It waits for #143 (first-try plays; #142 and #144 are done), then: `--rebuild-image` on its first preflight (the image is from 750c2eb; #131, #119 and #120 changed `src`), the #142 settings applied to the test copies (runbook step 2; the preflight names each one still missing, starting with AltMount direct's fallback, library streams and custom formats), the run, and the page published in the new design from that run. Each live step needs the owner's go.
 
 ## Owner's decisions
 - Standard filter rules (#109): applied to both test copies; what they are and how `preflight` holds the copies to them is in `tools/brain/docs/rules.md`, "Expected settings (#109)".
@@ -38,6 +38,8 @@ It lists #58's open sub-issues with no open blocker and no assignee, each with a
 ## Gotchas
 - Fix `healthChecks.maxConnections` before tuning it: see #64's comments.
 - The retro's tool changes (PR #121) have not yet been exercised by a real run.
+- Like for like (#142, done 2026-11-15) is in `tools/brain/docs/rules.md`: the stand-in serves every setup the same filtered first 100 (size caps, no disc images; later pages empty), so KaijuFlow gets one page per search in the test. Season packs are exempt from the 10 GB episode cap, as in KaijuFlow's own `maxFileSize`; the owner has not confirmed that. The setups still send their own queries (title text vs IMDb/TVDB ID).
+- `tools/brain/fixtures/altmount-v0.4.0/stremio-like-for-like.yaml` is written by hand; replace it with a capture once #127 has applied the settings.
 - The page no longer shows `tools/brain/page-archive/`; readable side names live in three tables (`brainreport.SIDE_NAMES`, `SHORT_NAMES`, `startline.SETUP_NAMES`), not yet one.
 
 ## Where things live
