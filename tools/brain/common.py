@@ -6,6 +6,7 @@ The scripts run under `python3 -I`, which leaves the script's folder off sys.pat
 import hashlib, json, os, re, statistics, sys, time, urllib.request, urllib.error
 
 DEFAULT_TEST_DIR = os.path.expanduser('~/kaijuflow-test')  # config folders with secrets; outside the repo (env TEST_DIR overrides in the tools)
+LISTS = ('easy', 'hard')  # the lists of a tagged title list (#165), in the order the report and the pool show them
 FAILURE_SIZE = 1242455  # UU/KaijuFlow failure video, served when a Source cannot play
 TITLES = [
     ('movie', 'tt1375666', 'Inception'), ('movie', 'tt0816692', 'Interstellar'),

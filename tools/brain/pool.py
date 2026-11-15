@@ -27,7 +27,7 @@ import common  # noqa: E402
 OLD_LIST = common.TITLES  # Test 1's ten titles: a speed test never draws them (ADR 0007, new titles every speed test)
 ID_SHAPE = {'movie': re.compile(r'tt\d+'), 'series': re.compile(r'tt\d+:\d+:\d+')}
 DEFAULT_POOL = os.path.join(HERE, 'pool.json')
-LISTS = ('easy', 'hard')
+LISTS = common.LISTS
 PER_LIST = {'movie': 6, 'series': 4}  # a speed test's films and episodes on each list
 
 

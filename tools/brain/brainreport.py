@@ -1425,7 +1425,7 @@ def tagged(visits):
     return any(v.get('list') for v in visits)
 
 
-LISTS = ('easy', 'hard')  # the lists of a tagged title list (#165), in the order the report shows them
+LISTS = common.LISTS
 LIST_SECTION = '## Fails and title to video per list'
 LIST_HELP = ('Fails = top picks that did not play on their one try, out of the titles of the list in that round: no video, '
              'the failure video, a refusal, or video only after a fallback ("played after N fallbacks"). A warm play that works '

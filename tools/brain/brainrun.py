@@ -777,10 +777,10 @@ def title_lists(titles):
     return lists or None
 
 
-def partial_titles(pool, titles_file):
+def partial_titles(titles, titles_file):
     """Whether a run plays part of the built-in title list (a short run): a --titles-file that leaves out one of its
     titles. A tagged title list is a speed test's whole list of new titles (#165), never a part."""
-    return bool(titles_file) and not title_lists(pool) and not {t[2] for t in common.TITLES} <= {t[2] for t in pool}
+    return bool(titles_file) and not title_lists(titles) and not {t[2] for t in common.TITLES} <= {t[2] for t in titles}
 
 
 def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
@@ -1419,12 +1419,12 @@ def main(argv):
     td = a.test_dir
     users = (_read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
     key = (_read_text(os.path.join(td, 'templates/altmount.key')) or '').strip()
-    pool = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
+    titles = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
     listdir = os.path.join(a.store or '', a.listname or '')
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
-               one_page=a.one_page, sides=sides, rounds=rounds, titles=pool,
-               partial_titles=partial_titles(pool, a.titles_file), tries=a.tries, settle=a.settle,
+               one_page=a.one_page, sides=sides, rounds=rounds, titles=titles,
+               partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
