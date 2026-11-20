@@ -102,10 +102,11 @@ export async function useFakeNews(configData, config) {
 /**
  * Start a fake news server. `articles`: Map<messageId, Buffer> (a missing id
  * answers 430). `delayMs` slows every BODY reply. Records `reads` (message ids
- * asked for) and the `peak` number of open connections.
+ * whose bodies were asked for), `stats` (ids asked for with STAT) and the `peak`
+ * number of open connections.
  */
 export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) {
-  const state = { reads: [], open: 0, peak: 0 };
+  const state = { reads: [], stats: [], open: 0, peak: 0 };
   const sockets = new Set();
   const server = net.createServer(sock => {
     state.open++; state.peak = Math.max(state.peak, state.open);
@@ -126,7 +127,7 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
         else if (line.startsWith('BODY') || line.startsWith('STAT')) {
           const id = line.slice(line.indexOf('<') + 1, line.lastIndexOf('>'));
           const isBody = line.startsWith('BODY');
-          if (isBody) state.reads.push(id);
+          if (isBody) state.reads.push(id); else state.stats.push(id);
           const reply = () => {
             if (sock.destroyed) return;
             const data = articles.get(id);
