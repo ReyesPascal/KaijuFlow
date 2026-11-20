@@ -1,4 +1,5 @@
 {
+ "about": "The Speed Check page's targets (pagetargets.py, page code), held against the other setups of the runs before #185. check and report.md no longer judge them: a run is judged against the previous run (#187). They go with the page code (#195).",
  "targets": [
   {"target": "Top pick plays on 10 of 10 titles, cold and warm", "measure": "plays per round", "limit": 10, "margin": 0},
   {"target": "Cold start no slower than Usenet Ultimate", "measure": "cold start", "against": "uu", "margin": 0},

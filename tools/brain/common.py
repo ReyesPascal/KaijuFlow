@@ -1,13 +1,12 @@
-"""Shared pieces of the Brain tools: the ten titles, the timed HTTP read and the table helpers.
+"""Shared pieces of the Brain tools: the ten titles, the timed HTTP read and a Stream play.
 
-parity.py and search.py both import this, so their tables stay comparable: change the title list here only.
 The scripts run under `python3 -I`, which leaves the script's folder off sys.path; each one adds it before importing.
 """
-import hashlib, json, os, re, statistics, sys, time, urllib.request, urllib.error
+import hashlib, os, re, time, urllib.request, urllib.error
 
 DEFAULT_TEST_DIR = os.path.expanduser('~/kaijuflow-test')  # config folders with secrets; outside the repo (env TEST_DIR overrides in the tools)
 LISTS = ('easy', 'hard')  # the lists of a tagged title list (#165), in the order the report and the pool show them
-FAILURE_SIZE = 1242455  # UU/KaijuFlow failure video, served when a Source cannot play
+FAILURE_SIZE = 1242455  # KaijuFlow's failure video, served when a Source cannot play
 TITLES = [
     ('movie', 'tt1375666', 'Inception'), ('movie', 'tt0816692', 'Interstellar'),
     ('movie', 'tt15398776', 'Oppenheimer'), ('movie', 'tt0133093', 'The Matrix'),
@@ -15,21 +14,6 @@ TITLES = [
     ('movie', 'tt0110912', 'Pulp Fiction'), ('series', 'tt0903747:1:1', 'Breaking Bad S01E01'),
     ('series', 'tt7366338:1:2', 'Chernobyl S01E02'), ('series', 'tt0944947:2:3', 'Game of Thrones S02E03'),
 ]
-
-
-def pick_titles(env_name):
-    """The title list, or the subset whose label contains one of the comma-separated names in os.environ[env_name].
-
-    TITLES_FILE=<path.json> swaps the list for another one (a JSON list of [kind, id, label]), e.g. fresh titles
-    that no Backend on Brain has played, for a cold run.
-    """
-    path = os.environ.get('TITLES_FILE')
-    pool = [tuple(t) for t in json.load(open(path))] if path else TITLES
-    only = [t.strip() for t in os.environ.get(env_name, '').split(',') if t.strip()]
-    titles = [t for t in pool if not only or any(o.lower() in t[2].lower() for o in only)]
-    if not titles:
-        sys.exit(f'{env_name}={only} matches none of: ' + ', '.join(t[2] for t in pool))
-    return titles
 
 
 def get(url, rng=None, timeout=330, limit=70000):
@@ -57,25 +41,11 @@ def get(url, rng=None, timeout=330, limit=70000):
         return None, {'error': str(e)}, b'', timings
 
 
-def took(t):
-    """Total time of a get(), or the time to the headers when the body read did not finish."""
-    return t.get('total', t['ready'])
-
-
 def total_size(st, h):
     """Full file size from a 206 Content-Range, else Content-Length."""
     if st == 206:
         return int((h.get('Content-Range') or h.get('content-range') or '/0').split('/')[-1] or 0)
     return int(h.get('Content-Length') or h.get('content-length') or 0)
-
-
-def fmt(v, unit=''):
-    return '-' if v is None else f'{v}{unit}'
-
-
-def med(xs):
-    xs = [x for x in xs if x is not None]
-    return round(statistics.median(xs), 2) if xs else None
 
 
 def finish(started):

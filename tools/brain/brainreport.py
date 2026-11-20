@@ -1,8 +1,9 @@
 """Merge, report and run records for the Brain runs (spec #58, ticket #62). Pure logic: no Docker, no network.
 
 brainrun.py collects one "visit" per run phase, side and title; this module turns visits into
-medians, a failure split, a diff against the previous run, the targets of targets.json judged on
-the run, the plain-language report and the run folder / INDEX.md bookkeeping.
+medians, a failure split, a diff against the previous run, the plain-language report and the run folder / INDEX.md
+bookkeeping. The run is judged against the previous run in runcheck.py; the Speed Check page's targets, held against
+other setups, are in pagetargets.py (page code, #187).
 """
 import datetime
 import json
@@ -13,15 +14,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import common  # noqa: E402
-import indexer_standin  # noqa: E402
 
+# A run plays KaijuFlow, and with --one-page its one-page side (#185). Usenet Ultimate and AltMount direct are the sides of
+# the runs before #185, named here only so an earlier or archived run still reads as it was (#187).
 SIDE_NAMES = {
     'kaijuflow': 'KaijuFlow',
     'uu': 'Usenet Ultimate',
     'altmount-addon': "AltMount direct",
     'kaijuflow-1page': 'KaijuFlow, one page per indexer',
 }
-SHORT_NAMES = {'kaijuflow': 'KaijuFlow', 'uu': 'Usenet Ultimate', 'altmount-addon': 'AltMount direct',
+SHORT_NAMES = {'kaijuflow': 'KaijuFlow',
                'kaijuflow-1page': 'KaijuFlow with one page per indexer'}  # the sides as a short run's text names them (GLOSSARY)
 RUN_ORDER = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 CAUSES = [('indexer_limit', 'Indexer limit'), ('backend_rejection', 'Backend rejection'),
@@ -29,17 +31,15 @@ CAUSES = [('indexer_limit', 'Indexer limit'), ('backend_rejection', 'Backend rej
 SEARCH_STEPS = ('indexer_page', 'health_batch')
 
 COLUMN_HELP = {
-    'Side': 'which setup was tested.',
+    'Side': 'KaijuFlow, or KaijuFlow with one page per indexer (`--one-page`).',
     'Run': 'Cold 1 and Cold 2 start from an empty Backend (nothing imported yet); Warm 1 and Warm 2 follow right after, '
            'so the Backend already knows the titles. The number is the first or second time the whole round was done.',
-    'Search': 'seconds from asking for the Stream list of a title until the list arrived. For KaijuFlow and Usenet '
-              'Ultimate this includes their health checks; AltMount direct has none.',
-    'NZB fetch': 'seconds to download the chosen Source\'s NZB file from the indexer stand-in. Only KaijuFlow reports '
-                 'it; the other sides do not show it from outside, so it reads "-".',
-    'Import': 'seconds the Backend needed to take the NZB in and make the video ready. KaijuFlow: its own timing, to the '
-              'millisecond. Usenet Ultimate: NzbDAV\'s own job time, whole seconds only (NzbDAV reports no fractions). '
-              'AltMount: read from its log, start to finish, to the millisecond. "-" means the source showed no figure '
-              '(for NzbDAV: no new job, for example when the item was already imported).',
+    'Search': 'seconds from asking for the Stream list of a title until the list arrived, KaijuFlow\'s health checks '
+              'included.',
+    'NZB fetch': 'seconds to download the chosen Source\'s NZB file from the indexer stand-in, from KaijuFlow\'s own '
+                 'step lines; "-" when they show none.',
+    'Import': 'seconds the Backend needed to take the NZB in and make the video ready: KaijuFlow\'s own timing, to the '
+              'millisecond. "-" means it showed no figure.',
     'First byte': 'seconds from pressing play on the top pick until the first piece of video arrived. This is the '
                   'whole start and includes the NZB fetch and the import.',
     'Indexer wait': 'KaijuFlow only: seconds spent waiting for indexers during the search (the slowest indexer, its '
@@ -59,7 +59,7 @@ COLUMN_HELP = {
                 'title to video.',
     'Indexer limit': 'failures caused by an indexer saying its limit was reached (such a run is stopped, so this '
                      'should stay 0 in a finished run).',
-    'Backend rejection': 'failures where the Backend (AltMount or NzbDAV) refused or could not import the NZB, or took the import '
+    'Backend rejection': 'failures where the Backend (AltMount) refused or could not import the NZB, or took the import '
                          'but did not deliver the first byte of the file (the cause is shown in the Result column of the title tables).',
     'Failure video': 'failures where the side served its "this Source failed" video, with no cause found.',
     'Other': 'any other failure: no Sources, an error, a timeout, a video too short to be a film.',
@@ -159,33 +159,10 @@ def altmount_imports(text):
     return order
 
 
-def nzbdav_job_imports(before, after):
-    """Import figures of NzbDAV from its own history answer (mode=history, the answer's `history.slots`).
-    `before` and `after` are the answers read before and after one visit; a job is the visit's when it is new in `after`.
-    The figure is NzbDAV's own `download_time`: whole seconds the job took (NzbDAV does not report fractions)."""
-    def slots(answer):
-        h = (answer or {}).get('history') or {}
-        return [x for x in (h.get('slots') or []) if isinstance(x, dict)]
-    if before is None or after is None:  # an answer that could not be read: no figure, never a guess
-        return []
-    seen = {x.get('nzo_id') for x in slots(before)}
-    recs = []
-    for x in slots(after):
-        if x.get('nzo_id') in seen:
-            continue
-        t = x.get('download_time')
-        ok = str(x.get('status') or '').lower()
-        recs.append({'name': str(x.get('nzb_name') or x.get('name') or ''),
-                     'seconds': float(t) if isinstance(t, (int, float)) and not isinstance(t, bool) else None,
-                     'ok': True if ok == 'completed' else False if ok == 'failed' else None})
-    return recs
-
-
 # The wordings the sides really print when an indexer says "limit reached" (read from the live logs, read-only):
 #  - the indexer's own newznab text, passed on by AltMount ("newznab API error 500: Request limit reached. Retry in
 #    113 minutes", "search returned HTTP 429 (althub)") and by KaijuFlow's searchers,
-#  - Usenet Ultimate: "Search error for <indexer>:" followed by a line "Status: 429",
-#  - KaijuFlow's NZB grab (src/nzbdav/nzbdavApi.ts): "Failed to download NZB from <indexer>: 429 ...",
+#  - KaijuFlow's NZB grab (src/backends/nzbGrab.ts): "Failed to download NZB from <indexer>: 429 ...",
 #  - the stand-in's own "LIMIT_REACHED indexer=<slug>" line.
 # Loose phrases ("api limit", "limit reached" alone) are not used: "Backup processing limit reached" is a benign
 # KaijuFlow line.
@@ -195,7 +172,6 @@ LIMIT_RE = re.compile(
     r'|\bHTTP 429\b'
     r'|Failed to download NZB from .+: 429\b'
     r'|Request failed with status code 429'
-    r'|(?:^|\s)Status: 429\s*$'
     r'|retry in \d+ minutes?')
 
 
@@ -206,13 +182,11 @@ def scrub_text(s):
 
 def limit_event(text, indexers):
     """First line that says an indexer's limit was reached: {indexer, time, line} or None."""
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
+    for line in text.splitlines():
         if not LIMIT_RE.search(line):
             continue
         m = re.match(r'(\d{4}-\d\d-\d\dT[\d:.]+Z?)', line)
-        near = line + ' ' + (lines[i - 1] if i else '')  # UU prints the indexer on the line before "Status: 429"
-        name = next((n for n in indexers if n.lower() in near.lower()), 'unknown')
+        name = next((n for n in indexers if n.lower() in line.lower()), 'unknown')
         return {'indexer': name, 'time': m.group(1) if m else None, 'line': scrub_text(line)[:300]}
     return None
 
@@ -223,8 +197,7 @@ def limit_event(text, indexers):
 # The runner maps each address to the test container that sent it and each container to its visits (assign_standin).
 LINE_RE = re.compile(r'^(HIT|MISS|RECORD|ERROR) (\S+) (.*?)(?:\swait_ms=(\d+))? from=(\S+) t=(\d+)$')
 # The test container that sends a side's indexer requests (the one-page side uses KaijuFlow's container too).
-CLIENT_CONTAINER = {'kaijuflow': 'kaijuflow-test', 'kaijuflow-1page': 'kaijuflow-test', 'uu': 'uu-test',
-                    'altmount-addon': 'altmount-addon-test'}
+CLIENT_CONTAINER = {'kaijuflow': 'kaijuflow-test', 'kaijuflow-1page': 'kaijuflow-test'}
 LIST_SLACK_MS = 100  # the list time is rounded; a search answer sent just before the list arrived still counts
 
 
@@ -457,98 +430,11 @@ def title_to_video(v):
 
 def top_picks_played(counts):
     """The sentence of how many top picks played, per side and round, in the words `check` and the record command share:
-    `Top picks played, KaijuFlow: cold 9 of 10, warm 10 of 10; Usenet Ultimate: ...`. counts: [(side, {'cold': (played,
+    `Top picks played, KaijuFlow: cold 9 of 10, warm 10 of 10.`. counts: [(side, {'cold': (played,
     of), 'warm': (played, of)})], in the order to name them."""
     return 'Top picks played, ' + '; '.join(
         f"{SIDE_NAMES.get(side, side)}: " + ', '.join(f'{phase} {p} of {n}' for phase, (p, n) in by.items())
         for side, by in counts) + '.'
-
-
-RESOLUTIONS = {'2160p': ('2160p', '4k|uhd'), '1080p': ('1080p', 'fhd'), '720p': ('720p', '')}  # (stated number, words)
-
-
-def _first_of(text, pick):
-    """The resolution whose pattern (pick: 0 the number, 1 the words) comes first in the text, or None."""
-    words = '|'.join(f'(?P<r{res}>{w[pick]})' for res, w in RESOLUTIONS.items() if w[pick])
-    m = re.search(rf'(?<![a-z0-9])(?:{words})(?![a-z0-9])', text)
-    return m and m.lastgroup[1:]
-
-
-def resolution(text):
-    """The resolution a top pick's name or list text states ('2160p', '1080p', '720p'), or None when it states none (#154).
-    A stated number wins over the words 4K, UHD (2160p) and FHD (1080p), which count only when no number is stated: "1080p
-    UHD BluRay" is a 1080p encode from a 4K disc. A side's own label ("AltMount FHD - ... [1080p]", "4K BluRay") is read
-    with the release name as one text, so the first stated number wins (tools/brain/docs/rules.md, "Like for like")."""
-    text = str(text or '').lower()
-    return _first_of(text, 0) or _first_of(text, 1)
-
-
-def _rule_break(v, rules):
-    """Why a visit's top pick is outside the like-for-like rules (#142), or None: a disc image, or a served file over the size
-    cap of its kind. The served size is held to the cap the indexer's post size is held to; the file is never larger than
-    its post, so a file over the cap means its post was over it too. Season packs have no cap (indexer_standin.keep_post)."""
-    pick = top_pick(v)
-    kind = {'movie': 'film', 'series': 'episode'}.get(v.get('kind'))
-    if not pick or not rules or not kind or indexer_standin.keep_post(pick['name'], pick['size'], kind, rules):
-        return None
-    if rules['disc'].search(str(pick['name'] or '')):
-        return 'a disc image'
-    return f"{pick['size'] / 1e9:.1f} GB served, over the cap for {'a film' if kind == 'film' else 'an episode'} " \
-           f"({rules[kind] / 1e9:.1f} GB)"
-
-
-def unlike_titles(visits):
-    """{side: {title: why}}: the titles whose top picks are not like for like between KaijuFlow and another setup (not a
-    KaijuFlow variant such as one page per indexer, which no target is held against), with the first round that shows it.
-    Not like for like: in one round the two top picks state different resolutions, or either one breaks the like-for-like
-    rules (_rule_break). A title is left out of judging KaijuFlow against that side (#143)."""
-    try:
-        rules = indexer_standin.like_for_like_rules()
-    except ValueError:  # the expected settings file cannot be used: the preflight says so; resolutions are still compared
-        rules = None
-    by = {(v['side'], v['title'], _run_label(v['phase'], v['round'])): v for v in visits if v.get('tries')}
-    labels = [_run_label(phase, rnd) for phase, rnd in RUN_ORDER]
-    me = SIDE_NAMES[JUDGED]
-    out = {}
-    for side in [s for s in SIDE_NAMES if not s.startswith(JUDGED)]:
-        for title in dict.fromkeys(v['title'] for v in visits):
-            for label in labels:
-                mine, theirs = by.get((JUDGED, title, label)), by.get((side, title, label))
-                if not mine or not theirs:
-                    continue
-                a, b = (resolution((top_pick(x) or {}).get('name')) for x in (mine, theirs))
-                if a and b and a != b:
-                    why = f"{me}'s top pick is {a}, {SIDE_NAMES[side]}'s is {b} ({label})"
-                else:
-                    broken = [(x, r) for x in (mine, theirs) for r in [_rule_break(x, rules)] if r]
-                    why = broken and (f"{SIDE_NAMES[broken[0][0]['side']]}'s top pick breaks the like-for-like rules "
-                                      f"({label}): {broken[0][1]}")
-                if why:
-                    out.setdefault(side, {})[title] = why
-                    break
-    return out
-
-
-LIKE_FOR_LIKE_HELP = (
-    "Each title's top pick of every setup is compared with KaijuFlow's, round by round: the resolution its name or list "
-    'states, and whether its served file keeps the like-for-like rules (the size cap of its kind, no disc images; '
-    'tools/brain/docs/rules.md, "Like for like"). Two files of one resolution inside the cap count as like for like, '
-    'whatever their sizes. A title that is not is left out of the targets held against that setup.')
-
-
-def like_for_like_lines(visits):
-    """The like-for-like lines the report and the check both show: one line that every title is like for like, or a head
-    line and one line per setup and title that is not; one line instead when no round holds top picks of KaijuFlow and
-    another setup (a run of KaijuFlow alone, or a record that kept no tries)."""
-    def rounds(keep):
-        return {(v['title'], v['phase'], v['round']) for v in visits if keep(v['side']) and v.get('tries')}
-    if not rounds(lambda s: s == JUDGED) & rounds(lambda s: not s.startswith(JUDGED)):
-        return [f'No title has top picks of {SIDE_NAMES[JUDGED]} and another setup to compare, so like for like is not judged.']
-    unlike = unlike_titles(visits)
-    if not unlike:
-        return ["Every title's top picks are like for like: the same resolution, inside the size caps, no disc images."]
-    return [f'Not like for like with {SIDE_NAMES[JUDGED]}, so left out of the targets against that setup:'] + [
-        f'- {SIDE_NAMES[side]}, {title}: {why}.' for side, titles in unlike.items() for title, why in titles.items()]
 
 
 def _pick_size(pick):
@@ -563,24 +449,6 @@ def _pick_cells(pick):
     if not pick:
         return ['-', '-']
     return [str(pick['name'] or '-').replace('|', '/'), _pick_size(pick)]
-
-
-def top_pick_table(visits):
-    """The check's per-title table (#154): per title and side, the resolution the like-for-like check reads from the top
-    pick (`resolution`) and its size (served, else listed), in the first round that holds top picks; [] when none does."""
-    picks = top_picks(visits)
-    held = {x for side in picks.values() for rounds in side.values() for x in rounds}
-    label = next((x for x in (_run_label(p, r) for p, r in RUN_ORDER) if x in held), None)
-    if not label:
-        return []
-    sides = [s for s in SIDE_NAMES if s in picks]
-
-    def cell(pick):
-        return f"{resolution(pick['name']) or '-'}, {_pick_size(pick)}" if pick else '-'
-    return ([f'Top picks per title, {label}: the resolution the like-for-like check reads, and the size served (else listed).',
-             '| Title | ' + ' | '.join(SIDE_NAMES[s] for s in sides) + ' |', '|---' * (len(sides) + 1) + '|'] +
-            [f'| {title} | ' + ' | '.join(cell(picks[s].get(title, {}).get(label)) for s in sides) + ' |'
-             for title in dict.fromkeys(v['title'] for v in visits)])
 
 
 def top_picks(visits):
@@ -909,23 +777,14 @@ def null_runs_between(root, since, exclude=None):
     return sorted(found, key=lambda m: m['started'])
 
 
-# --------------------------------------------------------------------------- targets
+# --------------------------------------------------------------------------- figures per side
 
-TARGETS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'targets.json')
-JUDGED = 'kaijuflow'  # the side the targets are set for
-# What each measure is held against: a fixed limit, another side (against), or either of the two.
-TARGET_MEASURES = {'plays per round': 'limit', 'plays': 'against',
-                   'cold start': 'either', 'warm start': 'either', 'cold list': 'either', 'warm list': 'either'}
-NO_FIGURE = 'no figure'  # the run holds nothing to measure a target with (a side or a round is not in it)
+JUDGED = 'kaijuflow'  # the side a run is judged on: KaijuFlow
+NO_FIGURE = 'no figure'  # the run holds no visit to make the figure from (a side or a round is not in it)
 
 
 def _secs(x):
     return NO_FIGURE if x is None else f'{x:.2f} s'
-
-
-def _plays_text(plays):
-    """'p of n' for (top picks that played, top picks counted), or 'no figure' when none was counted."""
-    return f'{plays[0]} of {plays[1]}' if plays[1] else NO_FIGURE
 
 
 def _time(visits, side, phase, what, rnd=None, lst=None):
@@ -947,7 +806,7 @@ def _plays(visits, side, phase=None, rnd=None, lst=None):
 
 def side_time(visits, side, phase, what, lst=None):
     """The median start, list or title to video ('start', 'list', 'video') of one side over both rounds of a phase: the
-    figure the targets judge, for the Speed Check page (build_page.py), so the page and the verdict show one number. With
+    figure `check` judges against the previous run and the Speed Check page shows (build_page.py). With
     `lst` ('easy' or 'hard'), over the titles of that list alone (#167); title to video is over the top picks that played."""
     return _time(visits, side, phase, what, lst=lst)
 
@@ -963,7 +822,7 @@ def side_fails(visits, side, phase=None, rnd=None, lst=None):
 def fail_figure(visits, side, phase=None, rnd=None, lst=None):
     """One side's fails as every count shows them (#167, owner: "Plays, say both"): {'titles': titles with at least one
     failed play, 'fails': failed plays, 'counted': plays counted}, over every round, one phase or one round, and every
-    title or one list's. The targets, the outcome and the final bar are judged on 'fails', the failed plays."""
+    title or one list's. A run is judged against the previous run on 'fails', the failed plays (runcheck.judged_lines)."""
     vs = _counted([v for v in visits if v['side'] == side and phase in (None, v['phase']) and rnd in (None, v['round'])
                    and lst in (None, v.get('list'))])
     failed = [v for v in vs if not plays(v)]
@@ -984,450 +843,9 @@ def fail_visits(visits, side, lst=None):
 
 
 def side_plays(visits, side, lst=None):
-    """(top picks that played, top picks counted) of one side over every round, as the targets count them; with `lst`,
+    """(top picks that played, top picks counted) of one side over every round, as the page counts them; with `lst`,
     over the titles of that list alone (#167)."""
     return _plays(visits, side, lst=lst)
-
-
-MET, NOT_MET, NOT_MEASURED = 'met', 'not met', 'not measured'
-
-
-def _verdict(result, slower_s=None, noise=None, value=None, limit=None, **held):
-    """A target's verdict as a value: the result (MET, NOT_MET or NOT_MEASURED); for a time target that is not met, how many
-    seconds KaijuFlow is slower than what it is held against; the noise: None, or KaijuFlow's two rounds of the phase
-    with how far the target is met or missed by, when those two rounds differ by more than that; and the two figures the
-    result compares (None when not measured): KaijuFlow's value and the limit it is held to, both in seconds for a time
-    target (the limit includes the margin), both (top picks that played, top picks counted) for a plays target, both fail
-    figures (fail_figure) for a speed test's fails target. A speed test's verdict also names what the two figures were
-    judged on (`held`): 'held_against', the setup the limit is from (None for a fixed limit), and 'left_out', how many
-    titles were left out of both figures as not like for like."""
-    return {'result': result, 'slower_s': slower_s, 'noise': noise, 'value': value, 'limit': limit, **held}
-
-
-def verdict_text(verdict):
-    """The Result words of a verdict, as the report's table and the check's lines show them."""
-    text = verdict['result'].capitalize()
-    if verdict['result'] == NOT_MET and verdict['slower_s'] is not None:
-        text += f" ({_secs(verdict['slower_s'])} slower)"
-    noise = verdict['noise']
-    if noise:
-        a, b = noise['rounds']
-        text += (f", inside the noise: {SIDE_NAMES[JUDGED]}'s two {noise['phase']} rounds differ by {_secs(abs(a - b))} "
-                 f"({a:.2f} and {b:.2f} s), more than the {_secs(noise['by'])} the target is "
-                 f"{'missed' if verdict['result'] == NOT_MET else 'met'} by")
-    return text
-
-
-def _measure_target(visits, t, unlike=None):
-    """(measured values, verdict) of one entry of the targets file. A target held against a side leaves out the titles that
-    are not like for like between KaijuFlow and that side (`unlike`, as unlike_titles gives it), and says how many."""
-    left_out = (unlike or {}).get(t.get('against'), {})
-    if left_out:
-        visits = [v for v in visits if v['title'] not in left_out]
-        n = len(left_out)
-        measured, verdict = _measure_target(visits, t)
-        return f"{measured} ({n} title{'' if n == 1 else 's'} left out: not like for like)", verdict
-    me, margin = SIDE_NAMES[JUDGED], t['margin']
-    if t['measure'] == 'plays per round':  # every round the run holds, cold and warm
-        rounds = {phase: [x for p, r in RUN_ORDER if p == phase for x in [_plays(visits, JUDGED, phase, r)] if x[1]]
-                  for phase in ('cold', 'warm')}
-        measured = ', '.join(f'{phase} ' + (' and '.join(_plays_text(x) for x in rs) or NO_FIGURE) for phase, rs in rounds.items())
-        if not all(rounds.values()):
-            return measured, _verdict(NOT_MEASURED)
-        met = all(p >= t['limit'] - margin and n - p <= margin for rs in rounds.values() for p, n in rs)
-        every = [x for rs in rounds.values() for x in rs]
-        value = (sum(p for p, _ in every), sum(n for _, n in every))
-        limit = (sum(t['limit'] - margin for _ in every), value[1])
-        return measured, _verdict(MET if met else NOT_MET, value=value, limit=limit)
-    if t['measure'] == 'plays':  # the share of top picks that played, every round together
-        (p, n), (q, m) = _plays(visits, JUDGED), _plays(visits, t['against'])
-        measured = f"{me} {_plays_text((p, n))}, {SIDE_NAMES[t['against']]} {_plays_text((q, m))}"
-        if not n or not m:
-            return measured, _verdict(NOT_MEASURED)
-        # At least as often, and more often unless both play every time (spec #58; owner, 2026-11-15): a tie at the
-        # maximum is met, any other tie is not.
-        more_often = p * m > (q - margin * m) * n
-        both_every_time = p == n and q == m
-        return measured, _verdict(MET if more_often or both_every_time else NOT_MET, value=(p, n), limit=(q, m))
-    phase, what = t['measure'].split()
-    mine = _time(visits, JUDGED, phase, what)
-    ref = t['limit'] if 'limit' in t else _time(visits, t['against'], phase, what)
-    measured = f'{me} {_secs(mine)}' + ('' if 'limit' in t else f", {SIDE_NAMES[t['against']]} {_secs(ref)}")
-    if mine is None or ref is None:
-        return measured, _verdict(NOT_MEASURED)
-    over = round(mine - ref - margin, 2)  # above 0: the target is missed by this much; below: met by this much
-    a, b = (_time(visits, JUDGED, phase, what, r) for r in (1, 2))
-    noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
-             if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
-    figures = {'value': mine, 'limit': round(ref + margin, 2)}
-    return measured, _verdict(MET, noise=noise, **figures) if over <= 0 else _verdict(NOT_MET, mine - ref, noise, **figures)
-
-
-def _is_number(x):
-    return isinstance(x, (int, float)) and not isinstance(x, bool)
-
-
-def load_targets(path=TARGETS_FILE):
-    """The entries of the targets file. ValueError with a plain reason when the file or one of its entries cannot be used."""
-    name = os.path.basename(path)
-    try:
-        with open(path) as f:
-            targets = json.load(f)['targets']
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        raise ValueError(f'{name} cannot be read: {type(e).__name__}') from None
-    if not isinstance(targets, list):
-        raise ValueError(f'{name} cannot be read: "targets" is not a list')
-    for i, t in enumerate(targets, 1):
-        if not isinstance(t, dict) or not isinstance(t.get('target'), str):
-            why = 'it has no target text'
-        elif t.get('measure') not in TARGET_MEASURES:
-            why = f"the measure \"{t.get('measure')}\" is not known"
-        elif not _is_number(t.get('margin')) or t['margin'] < 0:
-            why = 'the margin is not a number from 0 up'
-        elif 'against' in t and t['against'] not in SIDE_NAMES:
-            why = f"the side \"{t['against']}\" is not known"
-        elif TARGET_MEASURES[t['measure']] == 'limit' and ('against' in t or not _is_number(t.get('limit'))):
-            why = f"\"{t['measure']}\" takes a fixed limit, not a side"
-        elif TARGET_MEASURES[t['measure']] == 'against' and ('limit' in t or 'against' not in t):
-            why = f"\"{t['measure']}\" takes a side (against), not a fixed limit"
-        elif ('against' in t) == ('limit' in t) or ('limit' in t and not _is_number(t['limit'])):
-            why = f"\"{t['measure']}\" takes a side (against) or a fixed limit, one of the two"
-        else:
-            continue
-        raise ValueError(f'{name}, entry {i}: {why}')
-    return targets
-
-
-def target_results(visits, path=TARGETS_FILE):
-    """[(target, measured values, verdict)] for every entry of the targets file, in its order."""
-    unlike = unlike_titles(visits)
-    return [(t['target'],) + _measure_target(visits, t, unlike) for t in load_targets(path)]
-
-
-SPEED_MEASURES = ('fails', 'cold title to video', 'warm title to video')  # a speed test's measures (#169), judged per list
-
-
-def load_speed_targets(path=TARGETS_FILE):
-    """The speed test's part of the targets file: {'targets': [entry]}. ValueError with a plain reason when it cannot be used."""
-    name = os.path.basename(path)
-    try:
-        with open(path) as f:
-            speed = json.load(f)['speed_test']
-        targets = speed['targets']
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        raise ValueError(f'{name} cannot be read: {type(e).__name__} in "speed_test"') from None
-    for i, t in enumerate(targets, 1):
-        if not isinstance(t, dict) or not isinstance(t.get('target'), str):
-            why = 'it has no target text'
-        elif t.get('measure') not in SPEED_MEASURES:
-            why = f"the measure \"{t.get('measure')}\" is not known"
-        elif t['measure'] == 'warm title to video' and not _is_number(t.get('limit')):
-            why = '"warm title to video" takes a fixed limit'
-        else:
-            continue
-        raise ValueError(f'{name}, speed test entry {i}: {why}')
-    if not isinstance(speed.get('final_bar'), str):
-        raise ValueError(f'{name}, speed test: the final bar has no text')
-    return speed
-
-
-def _others(visits):
-    """The setups KaijuFlow is held against in a run: every side but KaijuFlow and its variants, in SIDE_NAMES order."""
-    return [s for s in SIDE_NAMES if not s.startswith(JUDGED) and any(v['side'] == s for v in visits)]
-
-
-def _pair(visits, side, lst, unlike):
-    """KaijuFlow against one other setup on one list, on the titles that are like for like between the two:
-    {'side', 'mine', 'theirs', 'left_out', 'rounds'}, where mine and theirs are fail figures (fail_figure) with 'video'
-    added (the median cold title to video, None without a top pick that played), left_out is how many of the list's titles
-    were left out of both, and rounds is KaijuFlow's cold title to video in each of its two cold rounds."""
-    left_out = unlike.get(side, {})
-    vs = [v for v in visits if v.get('list') == lst and v['title'] not in left_out]
-    titles = {v['title'] for v in visits if v.get('list') == lst}
-
-    def figures(s):
-        return {**fail_figure(vs, s, lst=lst), 'video': _time(vs, s, 'cold', 'video', lst=lst)}
-    return {'side': side, 'mine': figures(JUDGED), 'theirs': figures(side), 'left_out': len(titles & set(left_out)),
-            'rounds': tuple(_time(vs, JUDGED, 'cold', 'video', r, lst) for r in (1, 2))}
-
-
-def left_out_words(n):
-    """'1 title left out: not like for like', or '' when none was."""
-    return f"{n} title{'' if n == 1 else 's'} left out: not like for like" if n else ''
-
-
-def _fails_part(f):
-    return [fails_words(f)]
-
-
-def _video_part(f):
-    return [_secs(f['video']), fails_words(f)]
-
-
-def _part_text(part):
-    """'3.50 s (1 title failed · 1 of 8 plays; more failed plays: not held against it)' from [main, detail...]."""
-    main, *details = part
-    return main + (f" ({'; '.join(details)})" if details else '')
-
-
-def _pairs_text(pairs, mine, part, note=None):
-    """'KaijuFlow 1 title failed · 1 of 8 plays, Usenet Ultimate 2 titles failed · 2 of 8 plays, AltMount direct 1 title
-    failed · 1 of 6 plays (KaijuFlow 1 title failed · 1 of 6 plays on the same titles; 1 title left out: not like for
-    like)': KaijuFlow's figure, then each other setup's, with what note(pair) says of it and KaijuFlow's figure on the same
-    titles when some were left out."""
-    out = [f'{SHORT_NAMES[JUDGED]} {_part_text(part(mine))}']
-    for p in pairs:
-        main, *details = part(p['theirs'])
-        details += [x for x in [note and note(p)] if x]
-        if p['left_out']:
-            details.append(f"{SHORT_NAMES[JUDGED]} {_part_text(part(p['mine']))} on the same titles; {left_out_words(p['left_out'])}")
-        out.append(f"{SHORT_NAMES[p['side']]} {_part_text([main] + details)}")
-    return ', '.join(out)
-
-
-def _vs(p):
-    """'KaijuFlow 1 title failed · 2 of 8 plays against Usenet Ultimate 0 titles failed · 0 of 8 plays', the two figures of
-    a pair on the titles they were judged on, with how many were left out."""
-    words = (f"{SHORT_NAMES[JUDGED]} {fails_words(p['mine'])} against {SHORT_NAMES[p['side']]} "
-             f"{fails_words(p['theirs'])}")
-    return words + (f"; {left_out_words(p['left_out'])}" if p['left_out'] else '')
-
-
-def _time_verdict(mine, limit, rounds, phase, strict=False, **held):
-    """The verdict of a time target: met when KaijuFlow's figure is no higher than the limit (lower, when strict), with
-    the noise of KaijuFlow's two rounds of the phase (`rounds`) as the targets of before have it."""
-    over = round(mine - limit, 2)  # above 0: missed by this much; below: met by this much
-    a, b = rounds
-    noise = ({'phase': phase, 'rounds': (a, b), 'by': abs(over)}
-             if a is not None and b is not None and round(abs(a - b), 2) > abs(over) else None)
-    if over < 0 or (over == 0 and not strict):
-        return _verdict(MET, noise=noise, value=mine, limit=limit, **held)
-    return _verdict(NOT_MET, over, noise, value=mine, limit=limit, **held)
-
-
-def _judge_fails(visits, lst, pairs, entry):
-    """Target 1 on one list: KaijuFlow fails no more plays than any other setup, and none on the easy list. Against a
-    setup it is judged on the titles like for like with it; the no-fail rule of the easy list is a fixed limit and keeps
-    every title. The verdict's figures are the ones the result was decided on: on the easy list KaijuFlow's against no
-    fail, on the hard list KaijuFlow's against the setup it is closest to failing more than (on the same titles)."""
-    mine = _pair(visits, JUDGED, lst, {})['mine']
-    measured = _pairs_text(pairs, mine, _fails_part)
-    if not mine['counted'] or not pairs:
-        return measured, _verdict(NOT_MEASURED)
-    met = all(p['mine']['fails'] <= p['theirs']['fails'] for p in pairs) and not (lst == 'easy' and mine['fails'])
-    if lst == 'easy':
-        none = {'titles': 0, 'fails': 0, 'counted': mine['counted']}
-        return measured, _verdict(MET if met else NOT_MET, value=mine, limit=none, held_against=None, left_out=0)
-    p = max(pairs, key=lambda p: (p['mine']['fails'] - p['theirs']['fails'], -p['left_out']))
-    return measured, _verdict(MET if met else NOT_MET, value=p['mine'], limit=p['theirs'], held_against=p['side'],
-                              left_out=p['left_out'])
-
-
-def _judge_cold_video(visits, lst, pairs, entry):
-    """Target 2 on one list: KaijuFlow's median cold title to video, over the titles it played, is no slower than that of
-    any setup with as few fails or fewer (owner, 2026-11-15): a faster setup that fails more plays than KaijuFlow is not
-    held against it (fails come first), nor is a setup with no title to video."""
-    mine = _pair(visits, JUDGED, lst, {})['mine']
-    measured = _pairs_text(pairs, mine, _video_part,
-                           lambda p: 'more failed plays: not held against it' if p['theirs']['fails'] > p['mine']['fails'] else None)
-    if mine['video'] is None or not pairs:
-        return measured, _verdict(NOT_MEASURED)
-    held = [p for p in pairs if p['theirs']['fails'] <= p['mine']['fails'] and None not in (p['mine']['video'], p['theirs']['video'])]
-    if not held:
-        return measured + '; every other setup fails more plays', _verdict(MET, value=mine['video'], held_against=None, left_out=0)
-    p = max(held, key=lambda p: p['mine']['video'] - p['theirs']['video'])  # the setup KaijuFlow is furthest behind
-    return measured, _time_verdict(p['mine']['video'], p['theirs']['video'], p['rounds'], 'cold', held_against=p['side'],
-                                   left_out=p['left_out'])
-
-
-def _judge_warm_video(visits, lst, pairs, entry):
-    """Target 3 on one list: KaijuFlow's median warm title to video is under the limit (1.00 s is not under 1 s)."""
-    mine = _time(visits, JUDGED, 'warm', 'video', lst=lst)
-    measured = f'{SHORT_NAMES[JUDGED]} {_secs(mine)}'
-    if mine is None:
-        return measured, _verdict(NOT_MEASURED)
-    rounds = tuple(_time(visits, JUDGED, 'warm', 'video', r, lst) for r in (1, 2))
-    return measured, _time_verdict(mine, entry['limit'], rounds, 'warm', strict=True, held_against=None, left_out=0)
-
-
-SPEED_JUDGES = {'fails': _judge_fails, 'cold title to video': _judge_cold_video, 'warm title to video': _judge_warm_video}
-
-
-# The three outcomes of the hard list, decided before the first speed test (ADR 0007, spec #159), and what each says to do.
-OUTCOME_TUNE, OUTCOME_NO_PRE_LIST_CHECK, OUTCOME_BUG = 'tune its speed', 'try without its pre-list check', 'find the bug'
-OUTCOME_HEAD = 'Outcome on the hard list: '
-ALTMOUNT = 'altmount-addon'  # the setup the outcome compares KaijuFlow with: AltMount direct
-
-
-def _outcome(visits, unlike):
-    """{'outcome', 'text'}: which outcome the hard list gave, KaijuFlow against AltMount direct on the titles like for
-    like between the two (failed plays first, then the median cold title to video). The same fails with KaijuFlow no
-    slower is "as reliable and no slower: tune its speed" (owner, 2026-11-15). Outcome None when it cannot be named."""
-    if 'hard' not in run_lists(visits) or ALTMOUNT not in _others(visits):
-        why = 'the run has no hard list' if 'hard' not in run_lists(visits) else f'{SHORT_NAMES[ALTMOUNT]} is not in the run'
-        return {'outcome': None, 'text': f'{OUTCOME_HEAD}not named: {why}.'}
-    p = _pair(visits, ALTMOUNT, 'hard', unlike)
-    me, them, (a, b) = SHORT_NAMES[JUDGED], SHORT_NAMES[ALTMOUNT], (p['mine'], p['theirs'])
-    if a['fails'] < b['fails']:
-        return {'outcome': OUTCOME_TUNE, 'text': f'{OUTCOME_HEAD}{me} fails fewer plays than {them} ({_vs(p)}), so tune its speed.'}
-    if a['fails'] > b['fails']:
-        return {'outcome': OUTCOME_BUG, 'text': f"{OUTCOME_HEAD}{them} fails fewer plays than {me} ({_vs(p)}), so {me}'s "
-                                                'checking has a bug to find first.'}
-    if a['video'] is None or b['video'] is None:
-        return {'outcome': None, 'text': f'{OUTCOME_HEAD}not named: {me} and {them} fail as many plays ({_vs(p)}), and one '
-                                         'of them has no cold title to video.'}
-    video = f"cold title to video {_secs(a['video'])} against {_secs(b['video'])}"
-    if b['video'] < a['video']:
-        return {'outcome': OUTCOME_NO_PRE_LIST_CHECK, 'text': (
-            f"{OUTCOME_HEAD}{me} and {them} fail as many plays ({_vs(p)}) and {them} is faster (cold title to video "
-            f"{_secs(b['video'])} against {_secs(a['video'])}), so try {me} without its own pre-list check, behind AltMount.")}
-    return {'outcome': OUTCOME_TUNE, 'text': f'{OUTCOME_HEAD}{me} is as reliable and no slower: tune its speed ({_vs(p)}; {video}).'}
-
-
-def _bar_on_list(visits, lst, pairs):
-    """{'result', 'why'}: the final bar on one list. Fewest fails: no more failed plays than any other setup, any tie
-    counting as fewest (owner, 2026-11-15); then strictly the fastest median cold title to video among the setups with as
-    few. A setup that fails more is not held against KaijuFlow's speed. Each comparison is on the titles like for like."""
-    me, mine = SHORT_NAMES[JUDGED], _pair(visits, JUDGED, lst, {})['mine']
-    if not mine['counted'] or not pairs:
-        return {'result': NOT_MEASURED, 'why': f'no {"figure" if pairs else "other setup"} to judge it on'}
-    for p in pairs:
-        if p['theirs']['fails'] < p['mine']['fails']:
-            return {'result': NOT_MET, 'why': f"{SHORT_NAMES[p['side']]} fails fewer plays ({_vs(p)})"}
-    tied = [p for p in pairs if p['theirs']['fails'] == p['mine']['fails']]
-    for p in tied:
-        a, b = p['mine'], p['theirs']
-        if a['video'] is None or (b['video'] is not None and b['video'] <= a['video']):
-            return {'result': NOT_MET, 'why': f"{SHORT_NAMES[p['side']]} fails as few plays ({_vs(p)}) and is as fast or "
-                                              f"faster (cold title to video {_secs(b['video'])} against {me}'s {_secs(a['video'])})"}
-    speed = ('; '.join(f"cold title to video {_secs(p['mine']['video'])} against {SHORT_NAMES[p['side']]}'s "
-                       f"{_secs(p['theirs']['video'])}" for p in tied) if tied else 'no other setup fails as few plays')
-    closest = min(pairs, key=lambda p: (p['theirs']['fails'] - p['mine']['fails'], p['left_out']))  # the next fewest
-    return {'result': MET, 'why': f"{me} fails the fewest plays ({_vs(closest)}) and is the fastest among setups with as "
-                                  f'few ({speed})'}
-
-
-def _final_bar(visits, lists, text):
-    """{'target', 'lists': {list: {'result', 'why'}}, 'verdict'}: the final bar on each list and on both together. Met
-    when met on both lists; not measured when the run lacks a list or a list holds no figure for it."""
-    results = [r['result'] for r in lists.values()]
-    if set(run_lists(visits)) != set(LISTS) or NOT_MEASURED in results:
-        result = NOT_MEASURED
-    else:
-        result = MET if all(r == MET for r in results) else NOT_MET
-    return {'target': text, 'lists': lists, 'verdict': _verdict(result)}
-
-
-def speed_test_judgement(visits, path=TARGETS_FILE):
-    """The judgement of a tagged run (#169), for the check, the report and the page: {'targets': [{'number', 'target',
-    'list', 'measured', 'verdict'}], 'outcome': {'outcome', 'text'}, 'final_bar': {'target', 'lists', 'verdict'}}: each
-    target of the targets file's speed test part judged on each list of the run, list by list; the outcome of the hard
-    list (_outcome); and the owner's final bar (_final_bar), which is shown apart and never counted with the targets.
-    ValueError when the targets file cannot be used."""
-    speed = load_speed_targets(path)
-    unlike = unlike_titles(visits)
-    rows, bar = [], {}
-    for lst in run_lists(visits):
-        pairs = [_pair(visits, s, lst, unlike) for s in _others(visits)]
-        for n, t in enumerate(speed['targets'], 1):
-            measured, verdict = SPEED_JUDGES[t['measure']](visits, lst, pairs, t)
-            rows.append({'number': n, 'target': t['target'], 'list': lst, 'measured': measured, 'verdict': verdict})
-        bar[lst] = _bar_on_list(visits, lst, pairs)
-    return {'targets': rows, 'outcome': _outcome(visits, unlike), 'final_bar': _final_bar(visits, bar, speed['final_bar'])}
-
-
-def targets_not_judged(status):
-    """The one gate of the targets, which the report and the check both go through: None for a finished run (status
-    'ok'), else why its targets are not judged. A stopped, null or failed run holds part of its plays or none, so no
-    verdict is made from it."""
-    if status == 'ok':
-        return None
-    why = {'stopped': 'the run was stopped before its last play',
-           'null': 'the run is null (an indexer said its limit was reached)'}.get(status, 'the run did not finish')
-    return f'{why}, and the targets are judged on a finished run alone'
-
-
-def target_lines(run, path=TARGETS_FILE):
-    """One plain line per target of a run ({'status', 'visits'}), as the check prints them; one sentence when its targets
-    are not judged (targets_not_judged) or the targets file cannot be used."""
-    why = targets_not_judged(run.get('status'))
-    if why:
-        return [f'Targets: not judged: {why}.']
-    try:
-        if tagged(run['visits']):
-            return speed_test_lines(speed_test_judgement(run['visits'], path))
-        return [f'Target: {t}. Measured: {m}. {verdict_text(v)}.' for t, m, v in target_results(run['visits'], path)]
-    except ValueError as e:
-        return [f'Targets: not judged ({e}).']
-
-
-SPEED_TARGETS_HEAD = 'Speed test targets, judged per list (an untagged run is judged on the six of before):'
-FINAL_BAR_NOTE = 'shown apart from the targets, not counted towards usable'
-FINAL_BAR_HEAD = f'Final bar ({FINAL_BAR_NOTE}): '
-
-
-def met_count(rows):
-    """'5 of 6 targets met.' for a speed test's target rows (speed_test_judgement); the final bar is never one of them."""
-    return f"{sum(1 for r in rows if r['verdict']['result'] == MET)} of {len(rows)} targets met."
-
-
-def final_bar_text(bar):
-    """The final bar in one sentence after its text: its result, then each list's result and why."""
-    return (f"{bar['target']} {bar['verdict']['result'].capitalize()}. " +
-            ' '.join(f"{x.capitalize()} list: {r['result']}, {r['why']}." for x, r in bar['lists'].items()))
-
-
-def speed_test_lines(judgement):
-    """The check's lines of a tagged run's judgement (speed_test_judgement): one line per target and list, how many are
-    met, the outcome line, and the final bar on a line of its own."""
-    rows = judgement['targets']
-    return ([SPEED_TARGETS_HEAD] +
-            [f"Target, {r['list']} list: {r['target']}. Measured: {r['measured']}. {verdict_text(r['verdict'])}." for r in rows] +
-            [met_count(rows), judgement['outcome']['text'], FINAL_BAR_HEAD + final_bar_text(judgement['final_bar'])])
-
-
-TARGETS_HELP = (
-    'Start = seconds from pressing play on the top pick until the first byte. List = seconds from asking for a title until '
-    'its Stream list arrived. Each time is the median over the titles of both cold rounds or both warm rounds together (the '
-    'start over the top picks that played, the list over every title). Plays leave out a top pick that failed only because a '
-    'request was not recorded. "Inside the noise": KaijuFlow\'s own two rounds differ by more than the target is met or '
-    'missed by, so the same run done again could turn the result around. "Not measured": the run holds no figure for it.')
-
-
-def targets_section(run, path=TARGETS_FILE):
-    """The report's table of the targets of a run ({'status', 'visits'}): one row per target, then how many are met and
-    what the words mean. One sentence instead when its targets are not judged (targets_not_judged)."""
-    why = targets_not_judged(run.get('status'))
-    if why:
-        return ['## Targets', '', f'Not judged: {why}.', '']
-    try:  # a targets file that cannot be used must not cost a finished run its report
-        if tagged(run['visits']):
-            return speed_targets_section(speed_test_judgement(run['visits'], path))
-        rows = target_results(run['visits'], path)
-    except ValueError as e:
-        return ['## Targets', '', f'Not judged ({e}).', '']
-    met = sum(1 for _, _, verdict in rows if verdict['result'] == MET)
-    return ['## Targets', ''] + _table(['Target', 'This run', 'Result'], [(t, m, verdict_text(v)) for t, m, v in rows]) + [
-        '', f"{met} of {len(rows)} targets met. {TARGETS_HELP}", '']
-
-
-SPEED_TARGETS_HELP = (
-    'Each target is judged on each list on its own. Fails = plays whose top pick did not play on its one try, every round '
-    'together; each count names the titles with a failed play and the failed plays. Title to video = seconds from asking '
-    'for the title until video arrived, the median over the top picks that played in both cold (or both warm) rounds. A '
-    'setup that fails more plays than KaijuFlow is not held against its title to video. A title that is not like for like '
-    'with a setup is left out of judging KaijuFlow against it, on both sides. '
-    '"Inside the noise": KaijuFlow\'s own two rounds differ by more than the target is met or missed by.')
-
-
-def speed_targets_section(judgement):
-    """The report's Targets section of a tagged run (speed_test_judgement): one row per list and target, how many are
-    met, the outcome line, and the final bar in a paragraph of its own."""
-    rows = judgement['targets']
-    return ['## Targets', ''] + _table(['List', 'Target', 'This run', 'Result'], [
-        (r['list'], r['target'], r['measured'], verdict_text(r['verdict'])) for r in rows]) + [
-        '', f'{met_count(rows)} {SPEED_TARGETS_HELP}', '', judgement['outcome']['text'], '',
-        f"**Final bar** ({FINAL_BAR_NOTE}): {final_bar_text(judgement['final_bar'])}", '']
 
 
 # --------------------------------------------------------------------------- report
@@ -1565,8 +983,7 @@ def render_report(run, changes, opening=None):
     lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
              f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
-             "\"-\" means that side does not show the step from outside.", ''] + targets_section(run) + [
-             '## Like for like', ''] + like_for_like_lines(run['visits']) + ['', LIKE_FOR_LIKE_HELP, '',
+             "\"-\" means that side does not show the step from outside.", '',
              '## What changed since the last run', ''] + [f'- {c}' for c in changes] + ['']
     if run.get('standin_misses'):
         lines += [f"Warning: the indexer stand-in had {run['standin_misses']} requests it had not recorded (a side asked "
@@ -1730,8 +1147,7 @@ def time_section(run):
     out += _table(['Pass', 'Round', 'Started (UTC)', 'Reset before it (s)', 'Plays', 'Round (s)', 'Round (minutes)'],
                   _round_rows(rounds, resets))
     out += ['',
-            '- **Pass**: the main sides (KaijuFlow, Usenet Ultimate, AltMount direct) are played in turn, title by '
-            'title, in one pass; the one-page side has its own pass after them.',
+            '- **Pass**: KaijuFlow is played title by title in one pass; the one-page side has its own pass after it.',
             '- **Round**: the cold or warm round of every side of the pass, played together, from the first play to the end '
             'of the pause after the last play. The reset before a cold round is not part of it.', '']
     return out

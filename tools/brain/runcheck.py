@@ -4,12 +4,9 @@
 
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
 (a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
-a recording folder, or a run folder that cannot be read). For a finished run it then prints one line per
-target of targets.json (the target, the measured values, met or not met; for a run on a tagged title list, one line per
-list and speed test target, the outcome line and the final bar apart, brainreport.speed_test_lines); for any other run one line
-says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
-The targets do not change the exit code. Before them, KaijuFlow's run is judged per list against the previous run on the
-same recording, kept or not kept (judged_lines, rules.md "Judged against the previous run"); that does not change it either.
+a recording folder, or a run folder that cannot be read). It then prints one line per side and list (list_lines) and
+judges KaijuFlow's run per list against the previous run on the same recording, kept or not kept (judged_lines, rules.md
+"Judged against the previous run"); the verdict does not change the exit code.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import json
@@ -211,10 +208,6 @@ def check_run(run_dir):
         lines += [f'- {_visit_name(v)}: {br.fallback_text(v)}' for v in fell_back]
     lines += list_lines(visits, sides)
     lines += judged_lines(run_dir, meta, visits)
-    lines += br.like_for_like_lines(visits)
-    lines += br.top_pick_table(visits)
-    if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
-        lines += br.target_lines({'status': status, 'visits': visits})
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:

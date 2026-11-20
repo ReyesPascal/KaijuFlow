@@ -39,8 +39,6 @@ SAFE = re.compile(r'^[A-Za-z0-9._-]+$')
 LIMIT_EXIT = 3
 SETTINGS_FILE = 'indexer.json'  # per indexer inside a recording: {"drop_params": [...]}; holds no key
 HOST_MARK = b'@@STANDIN@@'  # stored in place of the stand-in's own address in rewritten links
-EXPECTED_SETTINGS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
-EPISODE = re.compile(r'\bS\d{1,3}[ ._-]?E\d{1,4}|\b\d{1,2}x\d{2}\b', re.I)  # a title that names an episode, not a whole season
 
 
 def is_limit(status, body):
@@ -98,32 +96,6 @@ def scrub(body, key):
         if form:
             body = body.replace(form.encode(), b'***')
     return body
-
-
-def like_for_like_rules(path=EXPECTED_SETTINGS):
-    """{'film': cap, 'episode': cap, 'disc': compiled regex}: KaijuFlow's size caps (maxFileSize of movieFilters and tvFilters)
-    and its "No disc images" drop rule, from the expected settings file. ValueError with a plain reason when they are not there.
-    The stand-in no longer filters (#185); only brainreport's per-title like-for-like comparison reads this, until #187."""
-    try:
-        with open(path) as f:
-            entries = json.load(f)['expected']
-        rules = next(e['settings'] for e in entries if 'kaijuflow' in e['copies'])
-        drop = next(r for r in rules['movieFilters']['rules']['rankedRegexPatterns'] if r['name'] == 'No disc images')
-        return {'film': int(rules['movieFilters']['maxFileSize']), 'episode': int(rules['tvFilters']['maxFileSize']),
-                'disc': re.compile(drop['pattern'], re.I if 'i' in drop.get('flags', '') else 0)}
-    except (OSError, ValueError, KeyError, TypeError, StopIteration, re.error) as e:
-        raise ValueError(f'The like-for-like rules cannot be read from {os.path.basename(path)} ({type(e).__name__}): it needs '
-                         'the KaijuFlow entry with movieFilters and tvFilters, their maxFileSize and the "No disc images" rule.') from None
-
-
-def keep_post(title, size, kind, rules):
-    """True when a post is on the like-for-like list: not a disc image, and not over the cap of its kind. In an episode search
-    a post whose title names no episode is a season pack, which has no cap (KaijuFlow's maxFileSize leaves packs alone)."""
-    if rules['disc'].search(title or ''):
-        return False
-    if size is None or (kind == 'episode' and not EPISODE.search(title or '')):
-        return True
-    return size <= rules[kind]
 
 
 class State:

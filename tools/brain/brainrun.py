@@ -29,7 +29,6 @@ import argparse
 import contextlib
 import copy
 import datetime
-import hashlib
 import json
 import os
 import re
@@ -37,7 +36,6 @@ import shlex
 import shutil
 import signal
 import socket
-import sqlite3
 import subprocess
 import sys
 import time
@@ -59,17 +57,12 @@ MAIN_SIDES = ['kaijuflow']  # one setup (#185): KaijuFlow with its AltMount copy
 ALL_TESTBED = ['altmount-kf', 'kaijuflow']  # the test copies a record or a run resets: the setup's own
 ONE_PAGE_TESTBED = ['kaijuflow', 'altmount-kf']  # the test copies the one-page side uses
 # side -> the test copy (testbed service) that answers its list address
-SIDE_SERVICE = {'kaijuflow': 'kaijuflow', 'kaijuflow-1page': 'kaijuflow', 'uu': 'uu', 'altmount-addon': 'altmount-addon'}
-# side -> (KaijuFlow container with [KF-STEP] lines or None, Backend container, how its log is read)
+SIDE_SERVICE = {'kaijuflow': 'kaijuflow', 'kaijuflow-1page': 'kaijuflow'}
+# side -> (KaijuFlow container with [KF-STEP] lines, its AltMount container, whose log holds the imports)
 SIDE_LOGS = {
-    'kaijuflow': ('kaijuflow-test', 'altmount-kf-test', 'altmount'),
-    'kaijuflow-1page': ('kaijuflow-test', 'altmount-kf-test', 'altmount'),
-    'uu': (None, 'nzbdav-test', 'nzbdav'),
-    'altmount-addon': (None, 'altmount-addon-test', 'altmount'),
+    'kaijuflow': ('kaijuflow-test', 'altmount-kf-test'),
+    'kaijuflow-1page': ('kaijuflow-test', 'altmount-kf-test'),
 }
-# side -> the side's own test copy whose log is kept in the run folder (its Backend's log is kept anyway)
-SIDE_COPY_LOG = {'uu': 'uu-test'}
-NZBDAV_PORT = 3001
 GRACE_S = 5
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
 EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
@@ -371,18 +364,6 @@ class RealIO:
         base = side_base(self.cfg, side)
         return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries)
 
-    def nzbdav_history(self):
-        """The test NzbDAV's history answer (port 3001, parsed), or None when it cannot be read. Read-only."""
-        try:
-            db = testbed._ro(os.path.join(self.cfg['test_dir'], testbed.SIDES['nzbdav']['conf'], 'db.sqlite'))
-            row = db.execute("select ConfigValue from ConfigItems where ConfigName = 'api.key'").fetchone()
-            db.close()
-            url = f'http://127.0.0.1:{NZBDAV_PORT}/api?mode=history&output=json&start=0&limit=50&apikey={row[0]}'
-            status, _h, body, _t = common.get(url, timeout=30, limit=0)
-            return json.loads(body) if status == 200 else None
-        except (OSError, ValueError, TypeError, sqlite3.Error):
-            return None
-
     def logs(self, container, since):
         if container not in self.testbed.TEST_CONTAINERS:
             raise ValueError('not a test container: ' + container)
@@ -455,9 +436,7 @@ def shelve_marker(store):
 
 def side_base(cfg, side):
     u = cfg['user_id']
-    return {'kaijuflow': f'http://localhost:1338/{u}', 'kaijuflow-1page': f'http://localhost:1338/{u}',
-            'uu': f'http://localhost:1339/{u}',
-            'altmount-addon': f"http://localhost:8086/stremio/{cfg['download_key']}"}[side]
+    return {'kaijuflow': f'http://localhost:1338/{u}', 'kaijuflow-1page': f'http://localhost:1338/{u}'}[side]
 
 
 # --------------------------------------------------------------------------- the preflight (spec #72, ticket #74)
@@ -577,7 +556,7 @@ def _whole_gap(key, name, other):
 
 
 # The copies whose config is YAML (AltMount's config.yaml), read by br.flatten_yaml: every value as text, list entries by position.
-YAML_COPIES = ('altmount-addon', 'altmount-kf')
+YAML_COPIES = testbed.YAML_CONFIGS
 
 
 def _as_yaml_read(value, prefix):
@@ -682,7 +661,7 @@ def preflight(mode, cfg, io):
 
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
     titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
-    indexer_sides = [s for s in testbed.SETTINGS_SIDES if s != 'nzbdav']
+    indexer_sides = testbed.SETTINGS_SIDES
     unreadable = [s for s in indexer_sides if rep['indexers'].get(s) is None]
     for s in unreadable:
         problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder.")
@@ -785,28 +764,21 @@ def partial_titles(titles, titles_file):
 
 def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     kind, vid, label = title[:3]
-    kf_c, be_c, be_kind = SIDE_LOGS[side]
-    hist_before = io.nzbdav_history() if be_kind == 'nzbdav' else None
+    kf_c, be_c = SIDE_LOGS[side]
     t0 = io.now()
     http = io.visit_http(side, kind, vid, cfg['tries'])
     t1 = io.now()
     since = br.iso(t0 - datetime.timedelta(seconds=1))
     lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
-    kf_text = io.logs(kf_c, since) if kf_c else ''
+    kf_text = io.logs(kf_c, since)
     be_text = io.logs(be_c, since)
-    copy_c = SIDE_COPY_LOG.get(side)
-    copy_text = io.logs(copy_c, since) if copy_c else ''
-    for c, text in ((kf_c, kf_text), (be_c, be_text), (copy_c, copy_text)):
-        if c:
-            logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
+    for c, text in ((kf_c, kf_text), (be_c, be_text)):
+        logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
     # provisional; finalize_steps() re-attributes once the whole run is read (late lines, next visit of the side)
     played = br.played_source(kf_text)
     steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', []), 'played_source': played},
                                br.parse_step_lines(kf_text))
-    if be_kind == 'altmount':
-        imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
-    else:  # NzbDAV: its own job time from its history answer, read after the round's visit
-        imports = br.nzbdav_job_imports(hist_before, io.nzbdav_history())
+    imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
     limit = br.limit_event(kf_text + '\n' + be_text, cfg['indexers'])
     ok = bool(http.get('first_try_plays'))
     return {'side': side, 'phase': phase, 'round': rnd, 'title': label, 'id': vid, 'kind': kind, 'ok': ok,
@@ -825,9 +797,7 @@ def finalize_steps(io, visits):
     """
     by_container = {}
     for v in visits:
-        kf = SIDE_LOGS[v['side']][0]
-        if kf:
-            by_container.setdefault(kf, []).append(v)
+        by_container.setdefault(SIDE_LOGS[v['side']][0], []).append(v)
     for container, vs in by_container.items():
         vs.sort(key=lambda v: br.parse_ts(v['t_start']))
         first = br.parse_ts(vs[0]['t_start']) - datetime.timedelta(seconds=1)
@@ -1418,11 +1388,10 @@ def main(argv):
             ap.error('--store and --list are needed')
     td = a.test_dir
     users = (_read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
-    key = (_read_text(os.path.join(td, 'templates/altmount.key')) or '').strip()
     titles = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
     listdir = os.path.join(a.store or '', a.listname or '')
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
-               user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
+               user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),
                one_page=a.one_page, sides=sides, rounds=rounds, titles=titles,
                partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
