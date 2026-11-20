@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import indexer_standin  # noqa: E402
 
 REAL_KEY = 'REALSECRETKEY123'
-PAGE = 7  # items per search page: all seven on the first one (the stand-in serves the first page only, #142)
+PAGE = 7  # items per search page: all seven on the first one
 
 
 def nzb_bytes(n):
@@ -519,18 +519,19 @@ def titles(fmt, body):
     return [t.decode() for t in re.findall(rb'<title>([^<]*)</title>', body) if t != b'NinjaCentral']
 
 
-class LikeForLikeTest(unittest.TestCase):
-    """#142: the stand-in serves every setup the same list: size caps, no disc images, the first 100, no later pages."""
+class UntouchedTest(unittest.TestCase):
+    """#185: the stand-in passes every answer on as the indexer sent it (KaijuFlow's own filters do the rest, as at home),
+    and a later page is asked of the indexer and recorded like any other request."""
 
     def setUp(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
         self.store = os.path.join(tmp, 'store')
         ListIndexer.items, ListIndexer.hits = [], 0
-        fake = serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), ListIndexer))
-        self.addCleanup(fake.server_close)
-        self.addCleanup(fake.shutdown)
-        self.cfg = {'indexers': {'fake': {'url': f'http://127.0.0.1:{fake.server_port}', 'apikey': REAL_KEY}}}
+        self.fake = serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), ListIndexer))
+        self.addCleanup(self.fake.server_close)
+        self.addCleanup(self.fake.shutdown)
+        self.cfg = {'indexers': {'fake': {'url': f'http://127.0.0.1:{self.fake.server_port}', 'apikey': REAL_KEY}}}
 
     def standin(self, mode, port=0, **kw):
         s = serve(indexer_standin.make_server(self.cfg, self.store, mode, 'l', port=port, bind='127.0.0.1', wait=False, **kw))
@@ -538,11 +539,7 @@ class LikeForLikeTest(unittest.TestCase):
         self.addCleanup(s.shutdown)
         return s, f'http://127.0.0.1:{s.server_port}'
 
-    def stored_bodies(self):
-        d = os.path.join(self.store, 'l', 'fake')
-        return {f: open(os.path.join(d, f), 'rb').read() for f in sorted(os.listdir(d)) if f.endswith('.body')}
-
-    def test_a_film_answer_loses_oversize_and_disc_image_posts_and_keeps_the_first_100(self):
+    def test_every_post_goes_out_as_the_indexer_sent_it_oversize_disc_images_and_past_the_first_100_included(self):
         ListIndexer.items = posts(118, [('Film.2023.2160p.BluRay.REMUX.HEVC-BIG', 40 * GB),
                                         ('Film.2023.COMPLETE.UHD.BLURAY-DISC', 20 * GB), ('Film 2023 BDMV 1080p', 20 * GB)])
         for fmt, ask in (('xml', 't=movie&imdbid=1&cat=2000'), ('json', 't=movie&imdbid=1&cat=2000&o=json&limit=100')):
@@ -550,82 +547,28 @@ class LikeForLikeTest(unittest.TestCase):
                 _, base = self.standin('record')
                 st, body = fetch(f'{base}/fake/api?{ask}&apikey=dummy')
                 self.assertEqual(st, 200)
-                got = titles(fmt, body)
-                self.assertEqual(len(got), 100)
-                self.assertEqual(got, [t for t, _ in posts(118)][:100])  # in the indexer's order
+                self.assertEqual(len(titles(fmt, body)), 121)
+                self.assertEqual(titles(fmt, body)[:3], ['Film.2023.2160p.BluRay.REMUX.HEVC-BIG',
+                                                         'Film.2023.COMPLETE.UHD.BLURAY-DISC', 'Film 2023 BDMV 1080p'])
                 self.assertNotIn(REAL_KEY.encode(), body)
 
-    def test_the_recording_on_disk_stays_as_the_indexer_sent_it_and_replay_serves_the_same_list(self):
-        ListIndexer.items = posts(3, [('Film.2023.2160p.REMUX-BIG', 40 * GB)])
+    def test_a_later_page_is_recorded_from_the_indexer_and_replayed_byte_identical_without_it(self):
+        ListIndexer.items = posts(5)
         rec, base = self.standin('record')
-        _, served = fetch(f'{base}/fake/api?t=movie&imdbid=1&apikey=dummy')
+        ask = '/fake/api?t=search&q=Film%202023&cat=2000&offset=100&apikey=dummy'
+        st, recorded = fetch(base + ask)
+        self.assertEqual((st, len(titles('xml', recorded))), (200, 5))
+        self.assertEqual(ListIndexer.hits, 1)  # asked of the indexer, not answered empty
+        self.assertTrue(any(x.startswith('RECORD fake api cat=2000&offset=100&') for x in rec.state.log_lines), rec.state.log_lines)
         rec.shutdown()
         rec.server_close()
-        stored = list(self.stored_bodies().values())
-        self.assertEqual(len(stored), 1)
-        self.assertEqual(stored[0].count(b'<item>'), 4)  # raw: the 40 GB post is still in the recording
-        self.assertEqual(served.count(b'<item>'), 3)
-        hits = ListIndexer.hits
-        _, pbase = self.standin('replay', port=rec.server_port)
-        _, replayed = fetch(f'{pbase}/fake/api?t=movie&imdbid=1&apikey=dummy')
-        self.assertEqual(ListIndexer.hits, hits)
-        self.assertTrue(replayed == served, 'replay serves the list the record pass served')
-        self.assertEqual(list(self.stored_bodies().values()), stored)
-
-    def test_a_later_page_is_empty_and_never_reaches_the_indexer_or_the_store(self):
-        ListIndexer.items = posts(5)
-        s, base = self.standin('record')
-        for fmt, ask in (('xml', 't=search&q=Film 2023&cat=2000&offset=100'), ('json', 't=search&q=x&o=json&offset=96')):
-            with self.subTest(fmt):
-                st, body = fetch(f'{base}/fake/api?{ask.replace(" ", "%20")}&apikey=dummy')
-                self.assertEqual(st, 200)
-                self.assertEqual(titles(fmt, body), [])
-        self.assertEqual(ListIndexer.hits, 0)
-        self.assertFalse(os.path.exists(os.path.join(self.store, 'l', 'fake')))
-        self.assertTrue(all(x.startswith('EMPTY fake api ') for x in s.state.log_lines), s.state.log_lines)
-        _, rbase = self.standin('replay')  # replay answers it too, though the recording holds nothing for it: no miss
-        st, body = fetch(f'{rbase}/fake/api?t=search&q=x&cat=2000&offset=100&apikey=dummy')
-        self.assertEqual((st, titles('xml', body)), (200, []))
-
-    def test_an_episode_answer_uses_the_episode_cap_and_leaves_season_packs_alone(self):
-        ListIndexer.items = [('Show.S01E02.2160p.WEB-DL-A', 11 * GB), ('Show.S01E02.1080p.WEB-DL-B', 9 * GB),
-                             ('Show.S01.2160p.WEB-DL-PACK', 60 * GB), ('Show.S01.COMPLETE.BLURAY-DISC', 9 * GB)]
-        _, base = self.standin('record')
-        for ask in ('t=tvsearch&tvdbid=1&season=1&ep=2', 't=search&q=Show%20S01E02&cat=5000'):
-            with self.subTest(ask):
-                _, body = fetch(f'{base}/fake/api?{ask}&apikey=dummy')
-                self.assertEqual(titles('xml', body), ['Show.S01E02.1080p.WEB-DL-B', 'Show.S01.2160p.WEB-DL-PACK'])
-        _, body = fetch(f'{base}/fake/api?t=movie&imdbid=1&apikey=dummy')  # a film search: 30 GB cap, the 11 GB post stays
-        self.assertEqual(titles('xml', body), ['Show.S01E02.2160p.WEB-DL-A', 'Show.S01E02.1080p.WEB-DL-B'])
-
-    def test_one_post_left_in_a_json_answer_is_an_object_and_none_is_no_item(self):
-        ListIndexer.items = [('Film.2023.2160p.REMUX-BIG', 40 * GB), ('Film.2023.1080p.WEB-DL-A', 5 * GB)]
-        _, base = self.standin('record')
-        _, body = fetch(f'{base}/fake/api?t=movie&imdbid=1&o=json&apikey=dummy')
-        self.assertIsInstance(json.loads(body)['channel']['item'], dict)
-        ListIndexer.items = [('Film.2023.2160p.REMUX-BIG', 40 * GB)]
-        _, body = fetch(f'{base}/fake/api?t=movie&imdbid=2&o=json&apikey=dummy')
-        self.assertNotIn('item', json.loads(body)['channel'])
-
-    def test_the_caps_and_the_disc_image_rule_come_from_the_expected_settings_file(self):
-        rules = indexer_standin.like_for_like_rules()  # the committed file
-        self.assertEqual((rules['film'], rules['episode']), (30 * GB, 10 * GB))
-        self.assertTrue(rules['disc'].search('Film.2023.UHD.ISO-X'))
-        path = os.path.join(os.path.dirname(self.store), 'expected.json')
-        with open(path, 'w') as f:
-            json.dump({'expected': [{'copies': ['kaijuflow'], 'settings': {
-                'movieFilters': {'maxFileSize': 4 * GB, 'rules': {'rankedRegexPatterns': [
-                    {'name': 'No disc images', 'pattern': r'\bNOPE\b', 'flags': 'i', 'mode': 'drop'}]}},
-                'tvFilters': {'maxFileSize': GB}}}]}, f)
-        ListIndexer.items = [('Film.2023.1080p-A', 5 * GB), ('Film.2023.720p-B', 3 * GB), ('Film.2023.nope-C', 1 * GB)]
-        _, base = self.standin('record', rules_file=path)
-        _, body = fetch(f'{base}/fake/api?t=movie&imdbid=1&apikey=dummy')
-        self.assertEqual(titles('xml', body), ['Film.2023.720p-B'])
-        with open(path, 'w') as f:
-            json.dump({'expected': []}, f)
-        with self.assertRaises(ValueError) as e:
-            indexer_standin.make_server(self.cfg, self.store, 'record', 'l', port=0, bind='127.0.0.1', rules_file=path)
-        self.assertIn('like-for-like rules', str(e.exception))
+        self.fake.shutdown()  # replay never needs the indexer
+        rep, rbase = self.standin('replay', port=rec.server_port)
+        st, replayed = fetch(rbase + ask)
+        self.assertEqual(st, 200)
+        self.assertTrue(replayed == recorded, 'replay serves the later page as it was recorded')
+        self.assertEqual(ListIndexer.hits, 1)
+        self.assertTrue(rep.state.log_lines[-1].startswith('HIT fake api cat=2000&offset=100&'), rep.state.log_lines)
 
 
 if __name__ == '__main__':
