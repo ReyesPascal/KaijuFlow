@@ -339,9 +339,7 @@ try {
   configData.altmountApiKey='synthetic-key';
   configData.nzbdavStreamingMethod='pipe';
   const deps={
-    config,handleStream:async(_req,res)=>res.end(),getCacheStats:()=>({}),
-    clearStreamCache:()=>{},clearReadyCache:()=>0,clearFailedCache:()=>0,
-    deleteCacheEntry:()=>false,getCacheEntries:()=>[],isStreamCached:()=>false,
+    config,handleStream:async(_req,res)=>res.end(),isStreamCached:()=>false,
     getLatestVersions:()=>({chrome:'synthetic'})
   };
   const app=express();

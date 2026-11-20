@@ -44,7 +44,7 @@ try {
   app.use(express.json());
   const noop = () => {};
   app.use('/api', createSettingsRoutes({ config, updateSettings, fetchLatestVersions: async () => {}, getLatestVersions: () => ({ chrome: 'synthetic', prowlarr: 's', sabnzbd: 's' }), testProxyConnection: async () => ({}), clearSearchCache: noop }));
-  app.use('/api/nzbdav', createNzbdavRoutes({ config, getCacheStats: () => ({}), clearStreamCache: noop, clearReadyCache: noop, clearFailedCache: noop, deleteCacheEntry: noop, getCacheEntries: () => [], getLatestVersions: () => ({ chrome: 'synthetic' }) }));
+  app.use('/api/nzbdav', createNzbdavRoutes({ config, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
   const kf = await listen(app);
   const call = async (method, path, body) => {
     const r = await fetch(kf + path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -108,6 +108,14 @@ try {
     assert.equal(a.status, 400); assert.match(a.json.message, /URL is required/);
     const b = await call('POST', '/api/nzbdav/test', { altmountUrl: fake, altmountApiKey: '' });
     assert.equal(b.status, 400); assert.match(b.json.message, /API key is required/);
+  });
+  await check('the NZB database card is gone, and so are its cache routes (#188)', async () => {
+    for (const [method, path] of [['GET', '/api/nzbdav/cache'], ['DELETE', '/api/nzbdav/cache'], ['GET', '/api/nzbdav/cache/entries'],
+      ['DELETE', '/api/nzbdav/cache/ready'], ['DELETE', '/api/nzbdav/cache/failed'], ['DELETE', '/api/nzbdav/cache/entry?key=x']]) {
+      const r = await fetch(kf + path, { method });
+      await r.arrayBuffer();
+      assert.equal(r.status, 404, `${method} ${path}`);
+    }
   });
   await check('streamingMode stremio still saves', async () => {
     const r = await call('PUT', '/api/settings', { streamingMode: 'stremio' });
