@@ -1823,6 +1823,26 @@ def append_index_row(path, row):
         f.write(line)
 
 
+def run_before(run_dir, recording):
+    """The run a run is judged against (#186, rules.md "Judged against the previous run"): the newest earlier finished run
+    in the same runs root on the same recording, not archived, not short and not marked never compared with, as load_run
+    reads it with its `folder`; None when there is none or `recording` is None."""
+    root, name = os.path.split(os.path.abspath(run_dir).rstrip(os.sep))
+    for d in reversed(run_folders(root)):
+        folder = os.path.join(root, d)
+        if d >= name or is_archived(folder):
+            continue
+        try:
+            run = load_run(folder)
+        except (OSError, ValueError):
+            continue
+        if recording is not None and run.get('recording') == recording and run.get('status') == 'ok' \
+                and not run.get('short') and not never_compared(run):
+            run['folder'] = d
+            return run
+    return None
+
+
 def previous_run(root, exclude=None, usable=None):
     """meta.json of the newest earlier finished (non-null) run, or None. A short run or one marked never compared with is never it. `usable(run folder)`, when
     given, must also say yes (a short run is compared with the last run usable as a baseline); the meta gets its `folder`. Its top picks are added from the folder's raw.json

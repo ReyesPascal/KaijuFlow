@@ -8,7 +8,8 @@ a recording folder, or a run folder that cannot be read). For a finished run it 
 target of targets.json (the target, the measured values, met or not met; for a run on a tagged title list, one line per
 list and speed test target, the outcome line and the final bar apart, brainreport.speed_test_lines); for any other run one line
 says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
-The targets do not change the exit code.
+The targets do not change the exit code. Before them, KaijuFlow's run is judged per list against the previous run on the
+same recording, kept or not kept (judged_lines, rules.md "Judged against the previous run"); that does not change it either.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import json
@@ -72,6 +73,46 @@ def list_lines(visits, sides):
                        + ''.join(f'; {phase} title to video {br._secs(br.side_time(vs, s, phase, "video"))}' for phase in ('cold', 'warm'))
                        + '.')
     return out
+
+
+KEPT, NOT_KEPT, NOT_JUDGED = 'kept', 'not kept', 'not judged'
+
+
+def _against(now, was):
+    """'better', 'same' or 'worse' for a figure where less is better (failed plays, seconds), or None when either is
+    missing. Seconds are compared as printed, to the hundredth."""
+    if now is None or was is None:
+        return None
+    now, was = round(now, 2), round(was, 2)
+    return 'better' if now < was else 'worse' if now > was else 'same'
+
+
+def judged_lines(run_dir, meta, visits):
+    """KaijuFlow's run judged against its previous run on the same recording (#186, rules.md "Judged against the previous
+    run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
+    and kept or not kept; then the verdict over every list."""
+    side, recording = br.JUDGED, meta.get('recording')
+    prev = br.run_before(run_dir, recording)
+    if prev is None:
+        return [f'Against the previous run: not compared, no earlier run on the same recording ({recording}).']
+    out, verdicts = [f"Against the previous run on the same recording ({recording}): {prev['folder']}."], []
+    for x in br.run_lists(visits) or [None]:
+        fails = [br.fail_figure(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        cold = [br.side_time(vs, side, 'cold', 'video', lst=x) for vs in (visits, prev['visits'])]
+        by_fails = _against(*[f['fails'] if f['counted'] else None for f in fails])
+        by_cold = _against(*cold)
+        if by_fails == 'worse':
+            verdict = NOT_KEPT
+        elif by_fails is None or by_cold is None:
+            verdict = NOT_JUDGED
+        else:
+            verdict = KEPT if by_cold != 'worse' else NOT_KEPT
+        verdicts.append(verdict)
+        out.append(f"{_side(side)}, {f'{x} list' if x else 'every title'}: fails {br.fails_words(fails[0])} "
+                   f"(was {br.fails_words(fails[1])}), {by_fails or 'not compared'}; cold title to video {br._secs(cold[0])} "
+                   f"(was {br._secs(cold[1])}), {by_cold or 'not compared'}. {verdict.capitalize()}.")
+    overall = NOT_KEPT if NOT_KEPT in verdicts else NOT_JUDGED if NOT_JUDGED in verdicts else KEPT
+    return out + [f'Verdict against the previous run: {overall}.']
 
 
 def check_run(run_dir):
@@ -161,6 +202,7 @@ def check_run(run_dir):
         lines.append(f'Played after a fallback ({len(fell_back)}), counted as played:')
         lines += [f'- {_visit_name(v)}: {br.fallback_text(v)}' for v in fell_back]
     lines += list_lines(visits, sides)
+    lines += judged_lines(run_dir, meta, visits)
     lines += br.like_for_like_lines(visits)
     lines += br.top_pick_table(visits)
     if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict

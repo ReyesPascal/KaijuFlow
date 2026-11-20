@@ -162,6 +162,89 @@ class CheckTests(unittest.TestCase):
                 self.assertEqual(f.read(), out)
 
 
+def runs_pair(tmp, edit_this=None, edit_prev=None):
+    """Two copies of the usable fixture in one runs root, the titles tagged (Alpha easy, Beta hard), both on the recording
+    'l': the previous run (every KaijuFlow play 2.00 s title to video, no fail) and this run, each edited as given.
+    Returns this run's folder."""
+    root = os.path.join(tmp, 'runs')
+    folders = []
+    for name, fn in (('2026-01-01T000000Z-before', edit_prev), ('2026-01-02T000000Z-after', edit_this)):
+        dest = os.path.join(root, name)
+        shutil.copytree(FIXTURE, dest)
+        edit(dest, 'meta.json', lambda m: m.update(recording='l', lists={'Alpha': 'easy', 'Beta': 'hard'}))
+
+        def tag(raw, fn=fn):
+            for v in raw['visits']:
+                v['list'] = 'easy' if v['title'] == 'Alpha' else 'hard'
+            if fn:
+                fn(raw)
+        edit(dest, 'raw.json', tag)
+        folders.append(dest)
+    return folders[1]
+
+
+def kf(raw, phase, title):
+    return visit_of(raw, 'kaijuflow', phase, title)
+
+
+def judged_lines(out):
+    lines = out.splitlines()
+    start = next(i for i, x in enumerate(lines) if x.startswith('Against the previous run'))
+    return lines[start:start + 4]
+
+
+class PreviousRunTests(unittest.TestCase):
+    """check judges a run against KaijuFlow's previous run on the same recording (#186): per list, fails and median cold
+    title to video, each better, same or worse, and kept or not kept. Expected lines worked out by hand: every KaijuFlow
+    play of the fixture is 1.00 s list and 1.00 s start, so 2.00 s title to video."""
+
+    def test_a_faster_run_with_the_same_fails_is_kept(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            _, out = run_check(run)
+        self.assertEqual(judged_lines(out), [
+            'Against the previous run on the same recording (l): 2026-01-01T000000Z-before.',
+            'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
+            'cold title to video 1.50 s (was 2.00 s), better. Kept.',
+            'KaijuFlow, hard list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
+            'cold title to video 2.00 s (was 2.00 s), same. Kept.',
+            'Verdict against the previous run: kept.'])
+
+    def test_a_faster_run_with_one_more_fail_is_not_kept(self):
+        def faster_with_a_fail(raw):
+            kf(raw, 'cold', 'Alpha').update(start_s=0.5)
+            kf(raw, 'cold', 'Beta').update(start_s=0.5)
+            kf(raw, 'warm', 'Beta').update(ok=False, note='failure video')
+        with tempdir() as tmp:
+            _, out = run_check(runs_pair(tmp, edit_this=faster_with_a_fail))
+        self.assertEqual(judged_lines(out)[1:], [
+            'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
+            'cold title to video 1.50 s (was 2.00 s), better. Kept.',
+            'KaijuFlow, hard list: fails 1 title failed · 1 of 2 plays (was 0 titles failed · 0 of 2 plays), worse; '
+            'cold title to video 1.50 s (was 2.00 s), better. Not kept.',
+            'Verdict against the previous run: not kept.'])
+
+    def test_a_run_on_a_different_recording_is_not_compared(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            edit(run, 'meta.json', lambda m: m.update(recording='another'))
+            _, out = run_check(run)
+        lines = out.splitlines()
+        self.assertIn('Against the previous run: not compared, no earlier run on the same recording (another).', lines)
+        self.assertFalse([x for x in lines if x.startswith('Verdict against the previous run')], out)
+
+    def test_an_earlier_run_marked_never_compared_with_or_archived_is_passed_over(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            root = os.path.dirname(run)
+            between = os.path.join(root, '2026-01-01T120000Z-between')
+            shutil.copytree(run, between)
+            edit(between, 'meta.json', lambda m: m.update(never_compared=True, label='Test 1'))
+            shutil.copytree(run, os.path.join(root, 'archive', '2026-01-01T180000Z-archived'))
+            _, out = run_check(run)
+        self.assertEqual(judged_lines(out)[0], 'Against the previous run on the same recording (l): 2026-01-01T000000Z-before.')
+
+
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13')
 
 
