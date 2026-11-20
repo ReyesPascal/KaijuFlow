@@ -1,0 +1,22 @@
+[
+  ["movie", "tt1877830", "The Batman", "easy"],
+  ["movie", "tt6710474", "Everything Everywhere All at Once", "easy"],
+  ["movie", "tt10366206", "John Wick: Chapter 4", "easy"],
+  ["movie", "tt6791350", "Guardians of the Galaxy Vol. 3", "easy"],
+  ["movie", "tt6718170", "The Super Mario Bros. Movie", "easy"],
+  ["movie", "tt7286456", "Joker", "easy"],
+  ["series", "tt10986410:1:1", "Ted Lasso S01E01", "easy"],
+  ["series", "tt12637874:1:1", "Fallout S01E01", "easy"],
+  ["series", "tt10919420:1:1", "Squid Game S01E01", "easy"],
+  ["series", "tt5180504:1:1", "The Witcher S01E01", "easy"],
+  ["movie", "tt0083190", "Thief", "hard"],
+  ["movie", "tt0094625", "Akira", "hard"],
+  ["movie", "tt0073453", "Night Moves", "hard"],
+  ["movie", "tt2084989", "Upstream Color", "hard"],
+  ["movie", "tt0070334", "The Long Goodbye", "hard"],
+  ["movie", "tt0097889", "Miracle Mile", "hard"],
+  ["series", "tt0213338:1:1", "Cowboy Bebop S01E01", "hard"],
+  ["series", "tt2384811:1:1", "Utopia S01E01", "hard"],
+  ["series", "tt0052520:2:6", "The Twilight Zone S02E06", "hard"],
+  ["series", "tt0112159:1:1", "Neon Genesis Evangelion S01E01", "hard"]
+]
