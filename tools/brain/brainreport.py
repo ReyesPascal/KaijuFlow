@@ -196,8 +196,8 @@ def limit_event(text, indexers):
 #   RECORD <slug> <request> -> <status> <n> bytes from=.. t=..   ERROR <slug> <request> -> <status> from=.. t=..
 # The runner maps each address to the test container that sent it and each container to its visits (assign_standin).
 LINE_RE = re.compile(r'^(HIT|MISS|RECORD|ERROR) (\S+) (.*?)(?:\swait_ms=(\d+))? from=(\S+) t=(\d+)$')
-# The test container that sends a side's indexer requests (the one-page side uses KaijuFlow's container too).
-CLIENT_CONTAINER = {'kaijuflow': 'kaijuflow-test', 'kaijuflow-1page': 'kaijuflow-test'}
+# The test container that sends every side's indexer requests (the one-page side is KaijuFlow's container too).
+CLIENT_CONTAINER = 'kaijuflow-test'
 LIST_SLACK_MS = 100  # the list time is rounded; a search answer sent just before the list arrived still counts
 
 
@@ -246,7 +246,7 @@ def assign_standin(visits, lines, addresses=None):
     marked = sorted((v for v in visits if v.get('t_start')), key=lambda v: _ms(v['t_start']))
     per_container, got = {}, {id(v): [] for v in marked}
     for v in marked:
-        per_container.setdefault(CLIENT_CONTAINER.get(v['side']), []).append(v)
+        per_container.setdefault(CLIENT_CONTAINER, []).append(v)
 
     def current(candidates, t):
         found = None
