@@ -56,6 +56,7 @@ test('A4-CACHE-CORRUPT-022',()=>{
  return {loaded,survived:true};
 });
 test('A4-CACHE-OLD-FLAG-023',()=>{
+ const bad='https://127.0.0.1/cache-restart-dead-A4.nzb'; // the child's dead URL
  const old={[bad]:{title:'A4 Old Flag',indexerName:'Synthetic',error:{message:'Source unavailable',isNzbdavFailure:true,isTimeout:false,isEpisodeSpecific:false},createdAt:Date.now(),expiresAt:0}};
  fs.writeFileSync(path.join(root,'config','healthy-nzbs.json'),'{}');
  fs.writeFileSync(path.join(root,'config','dead-nzbs.json'),JSON.stringify(old));
