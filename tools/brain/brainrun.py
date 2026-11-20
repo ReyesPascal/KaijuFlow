@@ -170,9 +170,11 @@ def switch_to_one_page(io, log=print):
     io.reset(ALL_TESTBED, log)
 
 
-def visit_answer(got, tries, play=None, seek=None):
+def visit_answer(got, tries, play=None, seek=None, pause_s=0, sleep=time.sleep):
     """One visit's result from one common.get() of a side's list address (status None: the copy did not answer), then the
-    top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same."""
+    top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same.
+    A list with something to play is read for `pause_s` seconds first, the Browse pause (#205, rules.md "Browse pause"):
+    `browse_pause_s` says how long it waited; it is in neither `list_s` nor `start_s`, so title to video leaves it out."""
     play, seek = play or common.play_stream, seek or common.seek_reads
     st, h, body, t = got
     out = {'list_status': st, 'list_s': round(t.get('total', t['ready']), 2), 'note': None}
@@ -183,6 +185,9 @@ def visit_answer(got, tries, play=None, seek=None):
     if st != 200:
         out['note'] = h.get('error') or f'HTTP {st}'
     out['sources'] = len(streams)
+    out['browse_pause_s'] = pause_s if streams[:tries] and pause_s else 0
+    if out['browse_pause_s']:
+        sleep(pause_s)
     plays = [play(s) for s in streams[:tries]]
     out['tries'] = plays
     top = plays[0] if plays else None

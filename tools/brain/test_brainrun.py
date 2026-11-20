@@ -931,6 +931,39 @@ class WaitSwitchTest(unittest.TestCase):
         self.assertFalse(brainrun.build_parser().parse_args(['run']).no_wait)
 
 
+class BrowsePauseVisitTest(unittest.TestCase):
+    """#205: a visit waits the Browse pause between its list arriving and its play; title to video leaves it out."""
+
+    def visit(self, body, status=200, pause_s=5):
+        events = []
+
+        def play(stream):
+            events.append(('play', stream['url']))
+            return {'plays': True, 'first_byte_s': 1.5, 'size': 1000, 'note': None}
+        got = (status, {}, json.dumps(body).encode(), {'ready': 2.0, 'total': 2.0})
+        out = brainrun.visit_answer(got, 1, play=play, seek=lambda url, size: {'50': 0.2, '90': 0.3},
+                                    pause_s=pause_s, sleep=lambda s: events.append(('sleep', s)))
+        return out, events
+
+    def test_the_visit_waits_the_browse_pause_between_the_list_and_the_play(self):
+        out, events = self.visit({'streams': [{'url': 'http://x/a'}, {'url': 'http://x/b'}]})
+        self.assertEqual(events, [('sleep', 5), ('play', 'http://x/a')])
+        self.assertEqual(out['browse_pause_s'], 5)
+        # title to video is the list and the start alone: the pause is in neither
+        self.assertEqual((out['list_s'], out['start_s']), (2.0, 1.5))
+
+    def test_a_list_with_nothing_to_play_waits_no_pause(self):
+        for body, status in (({'streams': []}, 200), ({}, 500)):
+            out, events = self.visit(body, status)
+            self.assertEqual(events, [])
+            self.assertEqual(out['browse_pause_s'], 0)
+
+    def test_without_a_pause_the_visit_plays_at_once(self):
+        out, events = self.visit({'streams': [{'url': 'http://x/a'}]}, pause_s=0)
+        self.assertEqual(events, [('play', 'http://x/a')])
+        self.assertEqual(out['browse_pause_s'], 0)
+
+
 class MissMatchingTest(unittest.TestCase):
     """The stand-in's lines carry no side or title: they are matched to the visit that was running."""
 
