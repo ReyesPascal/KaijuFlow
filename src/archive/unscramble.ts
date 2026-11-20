@@ -33,7 +33,7 @@ export type UnscrambleReason =
   | 'no-provider'       // no enabled health-check provider
   | 'missing-article'   // a part's first article is on no provider
   | 'read-error'        // a first article couldn't be read (connection errors on every provider)
-  | 'not-rar5'          // a part isn't RAR5 (RAR4, a hash-named 7z/other split, encrypted headers)
+  | 'not-rar5'          // a part isn't RAR5 (RAR4, a 7z set under a hash name, encrypted headers)
   | 'duplicate-volume'  // two parts claim the same volume number
   | 'volume-gap'        // the real volume numbers don't cover 0..N-1
   | 'timeout';          // the time limit ran out first

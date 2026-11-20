@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { unscrambleNzb } from '../../src/archive/unscramble.ts';
 import { setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../../src/health/nntpConnection.ts';
 import { scrambledRarSet, startFakeNntp, rar5FirstArticle, rar4FirstArticle } from '../integration/parity/fake-nntp.mjs';
-import { archiveFixture } from './health-nzb.ts';
+import { archiveFixture, sevenZipSet } from './health-nzb.ts';
 
 const LIMIT_MS = 15000; // the spec's ceiling; these tests never get near it
 const servers: Array<{ close(): Promise<void> }> = [];
@@ -92,12 +92,13 @@ test('a RAR4 set: unchanged, not-rar5', async () => {
 });
 
 test('a 7z set (<name>.7z.001 ...): unchanged from its names alone, no reads', async () => {
-  // Test 1's 7z sets were named like this (hash base, .7z, three-digit numbers)
-  // and each cost about a second reading first articles to answer not-rar5 (#193).
-  const set = scrambledRarSet({ base: 'Xq7Lm2Pz9Rb4Vn8Kw3Ty5uhaF.7z', parts: 4, startAt: 1, width: 3, firstArticle: (v: number) => archiveFixture(`stored-split.7z.00${v + 1}`) });
+  // Each 7z set in the Test 1 run cost about a second reading first articles
+  // to answer not-rar5 (#193).
+  const set = sevenZipSet();
   const n = await news({ articles: set.articles });
   const r = await unscrambleNzb(set.nzb, [n.provider()], LIMIT_MS);
-  assert.deepEqual({ nzb: r.nzb, changed: r.changed, reason: r.reason, parts: r.parts }, { nzb: set.nzb, changed: false, reason: 'not-scrambled', parts: 0 });
+  assertUnchanged(r, set.nzb, 'not-scrambled');
+  assert.equal(r.parts, 0);
   assert.equal(n.state.reads.length, 0, 'no first article should be read');
 });
 

@@ -9,7 +9,7 @@ import { cacheNzbContent } from '../../src/health/nzbContentCache.ts';
 import { grabSourceNzb } from '../../src/backends/sourceNzb.ts';
 import { scrambledRarSet, startFakeNntp } from '../integration/parity/fake-nntp.mjs';
 import { captureLogs } from './capture-logs.ts';
-import { archiveFixture } from './health-nzb.ts';
+import { sevenZipSet } from './health-nzb.ts';
 import { parseStepLine } from '../../src/utils/stepTiming.ts';
 
 const servers: Array<{ close(): Promise<void> }> = [];
@@ -116,7 +116,7 @@ test('a plain NZB logs unscramble with the not-scrambled answer; a skip logs its
 });
 
 test('a 7z set goes up as it is, its step line says not-scrambled, and no article is read (#193)', async () => {
-  const set = scrambledRarSet({ base: 'Xq7Lm2Pz9Rb4Vn8Kw3Ty5uhaF.7z', parts: 4, startAt: 1, width: 3, firstArticle: (v: number) => archiveFixture(`stored-split.7z.00${v + 1}`) });
+  const set = sevenZipSet();
   const news = await startFakeNntp({ articles: set.articles });
   servers.push(news);
   useProviders([news.provider()]);
