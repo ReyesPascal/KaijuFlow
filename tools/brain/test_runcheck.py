@@ -252,6 +252,36 @@ class PreviousRunTests(unittest.TestCase):
                          'cold title to video 2.00 s (was 2.00 s), same; fallback time unknown (was 0.00 s), not compared. Kept.')
         self.assertEqual(judged_lines(out)[3], 'Verdict against the previous run: kept.')
 
+    def test_a_stopped_run_with_fewer_fails_is_not_judged(self):
+        """Spec #183: a stopped run played fewer plays, so fewer fails says nothing; its lists are not judged, never kept."""
+        def stopped_after_cold(m):
+            m.update(status='stopped', stopped={'time': '2026-01-02T00:03:00.000Z', 'plays_done': 2, 'plays_planned': 4,
+                                                'during': None})
+
+        def cold_only(raw):
+            raw['visits'] = [v for v in raw['visits'] if v['phase'] == 'cold']
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=cold_only,
+                            edit_prev=lambda raw: kf(raw, 'warm', 'Beta').update(ok=False, note='failure video'))
+            edit(run, 'meta.json', stopped_after_cold)
+            _, out = run_check(run)
+        lines = judged_lines(out)
+        self.assertTrue(lines[2].startswith('KaijuFlow, hard list: fails 0 titles failed · 0 of 1 plays '
+                                            '(was 1 title failed · 1 of 2 plays), better;'), lines[2])
+        self.assertTrue(lines[1].endswith('. Not judged: this run was stopped.'), lines[1])
+        self.assertTrue(lines[2].endswith('. Not judged: this run was stopped.'), lines[2])
+        self.assertEqual(lines[3], 'Verdict against the previous run: not judged, this run was stopped.')
+
+    def test_a_short_run_is_not_judged(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            edit(run, 'meta.json', lambda m: m.update(short='KaijuFlow, 1 round, 2 titles'))
+            _, out = run_check(run)
+        lines = judged_lines(out)
+        self.assertTrue(lines[1].endswith('better; fallback time 0.00 s (was 0.00 s), same. '
+                                          'Not judged: this run is short (KaijuFlow, 1 round, 2 titles).'), lines[1])
+        self.assertEqual(lines[3], 'Verdict against the previous run: not judged, this run is short (KaijuFlow, 1 round, 2 titles).')
+
     def test_a_run_on_a_different_recording_is_not_compared(self):
         with tempdir() as tmp:
             run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
