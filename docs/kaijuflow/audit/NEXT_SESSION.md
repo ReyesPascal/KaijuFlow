@@ -10,16 +10,18 @@ KaijuFlow with AltMount as its one Backend, as fast and lean as possible; KaijuF
 
 ## The machine
 - New machine `brain` (user `brain`) since 2026-11-12. The old machine is gone, and everything that was only on it went with it: the run records up to 2026-11-10, the old test settings and templates, and the architecture review.
-- On this machine there are only the five test containers (`kaijuflow-test`, `uu-test`, `nzbdav-test`, `altmount-addon-test`, `altmount-kf-test`). No live stack (Usenet Ultimate, NzbDAV, AltMount) exists here.
+- On this machine there are only the five test containers (`kaijuflow-test`, `uu-test`, `nzbdav-test`, `altmount-addon-test`, `altmount-kf-test`). Since #187 the brain tools and `compose.test.yaml` know only `kaijuflow-test` and `altmount-kf-test`; the other three are to be stopped and kept (a live step, owner's go). No live stack (Usenet Ultimate, NzbDAV, AltMount) exists here.
 - Docker works directly for user `brain` (no wrapper; #118 closed 2026-11-14).
 - The isolated test suites run node as `nobody`: a root-owned copy sits at `/opt/node-20`, linked as `/usr/local/bin/node` (`docs/agents/testing.md`). The integration suite runs locally again (10 of 10 on 2026-11-15).
 
 ## The tracker
-The work order lives in the tracker, not here. Spec #183 is the map: its sub-issues #184 to #195 are the tickets, in order, with native blocked-by links. The next step is whatever this prints, first in map order wins:
+The work order lives in the tracker, not here. Spec #183 is the map: its sub-issues (#184 to #195, plus #200 between #188 and #189) are the tickets, in order, with native blocked-by links. The next step is whatever this prints, first in map order wins:
 
     python3 -I tools/brain/frontier.py
 
-#184 (health-check pass rule) was merged on 2026-11-20 (PR #197, CI green); rebuild `kaijuflow:test` before any run. In short: health-check pass rule (#184) and the KaijuFlow-alone harness (#185, #186, #187), then NzbDAV removed (#188), then the baseline run (#189, owner's go at each live step), then tuning one change per run (play-time check #190 first; a change stays only when fails do not rise), then the page (#195).
+Done on 2026-11-20: #184 (pass rule, PR #197), and #185 to #188 in the first `implement-spec` run (integration branch `kf-alone-183`, PR #199; reviewed by `/code-review` with Fable high and `/codex-review`, fixes merged). Rebuild `kaijuflow:test` before any run. Next: #200 (rename the NzbDAV leftovers to "play", delete the streaming-mode choice; one ticket, `/mattpocock-skills:implement 200`), then the baseline run (#189, owner's go at each live step), then tuning one change per run (play-time check #190 first; a change stays only when fails do not rise), then the page (#195).
+
+Owner's ideas waiting for a `/grill-with-docs` (not tickets): start the health check when a title is opened (after #190's run; comment on #190); redo the settings UI, its flow, first-time setup and the name "Ultimate Fallback" (after #200 is on main). Research for the UI: `~/kaijuflow-notes/reports/KF UI design.md` (16 decisions for the owner), screenshots page https://claude.ai/artifact/9uLC6XHL1c8nVW3jVLpr5U.
 
 ## Runs and recordings on this machine
 - Everything before 2026-11-20 compared three setups and is not compared with any more: Test 1 (`~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline`, never compared with, #153), the archived runs in `~/kaijuflow-notes/brain-runs/archive/`, and the 2026-11-13 baseline recording. Test 1's facts shaped spec #183: KaijuFlow already used AltMount (port 8087, container `altmount-kf-test`); its cold list took 7.1 s (about 5.8 s health check before the list) against AltMount direct's 0.8 s; click to video about 3.2 s for both.
@@ -27,7 +29,7 @@ The work order lives in the tracker, not here. Spec #183 is the map: its sub-iss
 - Speed Check page (https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD, version 8, Test 1) is not updated until #195.
 
 ## Owner's decisions
-- 2026-11-20 (spec #183, all with the owner's "yes"): the health-check pass list (ADR 0009); no fails first, then fastest cold title to video; fallback on; one fixed recording replayed every run, a new draw only when the owner asks; the stand-in passes answers untouched; comparison code deleted, not switched off; NzbDAV removed in its own ticket; other test copies stopped and kept; tuning may cut any part of the path, AltMount's settings too, one change per run.
+- 2026-11-20 (spec #183, all with the owner's "yes"): the health-check pass list (ADR 0009); no fails first, then fastest cold title to video; fallback on (in effect only from #190: Ultimate Fallback stays off for AltMount until then, so the baseline #189 plays one try per title; owner, review of PR #199); one fixed recording replayed every run, a new draw only when the owner asks; the stand-in passes answers untouched; comparison code deleted, not switched off; NzbDAV removed in its own ticket; other test copies stopped and kept; tuning may cut any part of the path, AltMount's settings too, one change per run.
 - Standard filter rules (#109), secrets outside both repos (#114, `tools/brain/backup.sh`), the third side's name "AltMount direct": as before, see git history of this note.
 - Workflow: one PR per ticket, merged on green CI; the owner runs `gh pr merge` (auto mode blocks it); stop before every live step.
 
