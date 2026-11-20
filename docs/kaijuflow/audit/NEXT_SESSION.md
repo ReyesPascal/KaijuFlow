@@ -19,7 +19,7 @@ The work order lives in the tracker, not here. Spec #183 is the map: its sub-iss
 
     python3 -I tools/brain/frontier.py
 
-In short: health-check pass rule (#184) and the KaijuFlow-alone harness (#185, #186, #187), then NzbDAV removed (#188), then the baseline run (#189, owner's go at each live step), then tuning one change per run (play-time check #190 first; a change stays only when fails do not rise), then the page (#195).
+#184 (health-check pass rule) is in PR #197: merge on green CI, then rebuild `kaijuflow:test` before any run. In short: health-check pass rule (#184) and the KaijuFlow-alone harness (#185, #186, #187), then NzbDAV removed (#188), then the baseline run (#189, owner's go at each live step), then tuning one change per run (play-time check #190 first; a change stays only when fails do not rise), then the page (#195).
 
 ## Runs and recordings on this machine
 - Everything before 2026-11-20 compared three setups and is not compared with any more: Test 1 (`~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline`, never compared with, #153), the archived runs in `~/kaijuflow-notes/brain-runs/archive/`, and the 2026-11-13 baseline recording. Test 1's facts shaped spec #183: KaijuFlow already used AltMount (port 8087, container `altmount-kf-test`); its cold list took 7.1 s (about 5.8 s health check before the list) against AltMount direct's 0.8 s; click to video about 3.2 s for both.
@@ -32,6 +32,8 @@ In short: health-check pass rule (#184) and the KaijuFlow-alone harness (#185, #
 - Workflow: one PR per ticket, merged on green CI; the owner runs `gh pr merge` (auto mode blocks it); stop before every live step.
 
 ## Gotchas
+- #184 fixed three archive-parser faults found on real archives: RAR5 compression read from the version bits (every RAR5 looked stored), RAR5 file encryption missed, 7z never reported stored. Test 1's "stored"/"compressed" health-check labels came from the old parsers, so don't trust them. Real-archive fixtures: `tests/fixtures/archives/make.sh` (RAR 7.23 and 6.24 for RAR4 at `~/.local/share/rarlab`, from rarlab.com).
+- AltMount's refusal reasons appear only in its log, not in the HTTP answer (500 "NZB processing failed"); Test 1's logs hold none, and the texts in ADR 0008 are all that's left. No disc-image text was kept.
 - `healthChecks.maxConnections` already sets the health-check worker count (#131).
 - Auto-queue (`autoQueueMode`, GLOSSARY) is what prepared about 35 imports for 20 cold plays in Test 1; #192 starts there.
 - Ultimate Fallback already health-checks Sources at play time through the Backend interface but is on for NzbDAV only (`backendCapabilities().ultimateFallback`); #190 builds the play-time check on it, and #188 keeps its engine.
