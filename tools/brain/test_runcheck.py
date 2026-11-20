@@ -205,9 +205,9 @@ class PreviousRunTests(unittest.TestCase):
         self.assertEqual(judged_lines(out), [
             'Against the previous run on the same recording (l): 2026-01-01T000000Z-before.',
             'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 1.50 s (was 2.00 s), better. Kept.',
+            'cold title to video 1.50 s (was 2.00 s), better; fallback time 0.00 s (was 0.00 s), same. Kept.',
             'KaijuFlow, hard list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 2.00 s (was 2.00 s), same. Kept.',
+            'cold title to video 2.00 s (was 2.00 s), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
             'Verdict against the previous run: kept.'])
 
     def test_a_faster_run_with_one_more_fail_is_not_kept(self):
@@ -219,10 +219,41 @@ class PreviousRunTests(unittest.TestCase):
             _, out = run_check(runs_pair(tmp, edit_this=faster_with_a_fail))
         self.assertEqual(judged_lines(out)[1:], [
             'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 1.50 s (was 2.00 s), better. Kept.',
+            'cold title to video 1.50 s (was 2.00 s), better; fallback time 0.00 s (was 0.00 s), same. Kept.',
             'KaijuFlow, hard list: fails 1 title failed · 1 of 2 plays (was 0 titles failed · 0 of 2 plays), worse; '
-            'cold title to video 1.50 s (was 2.00 s), better. Not kept.',
+            'cold title to video 1.50 s (was 2.00 s), better; fallback time 0.00 s (was 0.00 s), same. Not kept.',
             'Verdict against the previous run: not kept.'])
+
+    def fall_back(self, raw, seconds):
+        """KaijuFlow's cold Alpha play served video after its top pick's own import failed, the failed import taking
+        `seconds` (None: not known); its title to video stays 2.00 s."""
+        kf(raw, 'cold', 'Alpha').update(imports=[{'name': 'Alpha.2160p', 'ok': False, 'seconds': seconds},
+                                                 {'name': 'Alpha.1080p', 'ok': True, 'seconds': 0.5}])
+
+    def test_the_fallback_time_is_shown_against_the_previous_run_and_does_not_change_the_verdict(self):
+        """Owner, 2026-11-20 (#187): per list, the fallbacks' extra seconds added up, better, same or worse; information only."""
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: self.fall_back(raw, 1.25))
+            _, out = run_check(run)
+        self.assertEqual(judged_lines(out)[1:], [
+            'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
+            'cold title to video 2.00 s (was 2.00 s), same; fallback time 1.25 s (was 0.00 s), worse. Kept.',
+            'KaijuFlow, hard list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
+            'cold title to video 2.00 s (was 2.00 s), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
+            'Verdict against the previous run: kept.'])
+        with tempdir() as tmp:  # the other way round: the previous run fell back, this one did not
+            run = runs_pair(tmp, edit_prev=lambda raw: self.fall_back(raw, 1.25))
+            _, out = run_check(run)
+        self.assertIn('fallback time 0.00 s (was 1.25 s), better. Kept.', judged_lines(out)[1])
+
+    def test_a_fallback_whose_extra_seconds_are_not_known_makes_the_fallback_time_unknown_not_zero(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: self.fall_back(raw, None))
+            _, out = run_check(run)
+        self.assertEqual(judged_lines(out)[1],
+                         'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
+                         'cold title to video 2.00 s (was 2.00 s), same; fallback time unknown (was 0.00 s), not compared. Kept.')
+        self.assertEqual(judged_lines(out)[3], 'Verdict against the previous run: kept.')
 
     def test_a_run_on_a_different_recording_is_not_compared(self):
         with tempdir() as tmp:

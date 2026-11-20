@@ -87,10 +87,15 @@ def _against(now, was):
     return 'better' if now < was else 'worse' if now > was else 'same'
 
 
+def _fallback_secs(x):
+    return 'unknown' if x is None else f'{x:.2f} s'
+
+
 def judged_lines(run_dir, meta, visits):
     """KaijuFlow's run judged against its previous run on the same recording (#186, rules.md "Judged against the previous
     run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
-    and kept or not kept; then the verdict over every list."""
+    and kept or not kept; then the verdict over every list. Each list's line also shows its fallback time (the fallbacks'
+    extra seconds added up, brainreport.fallback_total_s) against the previous run's, which the verdict leaves out (#187)."""
     side, recording = br.JUDGED, meta.get('recording')
     prev = br.run_before(run_dir, recording)
     if prev is None:
@@ -101,6 +106,8 @@ def judged_lines(run_dir, meta, visits):
         cold = [br.side_time(vs, side, 'cold', 'video', lst=x) for vs in (visits, prev['visits'])]
         by_fails = _against(*[f['fails'] if f['counted'] else None for f in fails])
         by_cold = _against(*cold)
+        fell_back = [br.fallback_total_s(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        by_fallback = _against(*fell_back)  # shown, never part of the verdict (owner, 2026-11-20, #187)
         if by_fails == 'worse':
             verdict = NOT_KEPT
         elif by_fails is None or by_cold is None:
@@ -110,7 +117,8 @@ def judged_lines(run_dir, meta, visits):
         verdicts.append(verdict)
         out.append(f"{_side(side)}, {f'{x} list' if x else 'every title'}: fails {br.fails_words(fails[0])} "
                    f"(was {br.fails_words(fails[1])}), {by_fails or 'not compared'}; cold title to video {br._secs(cold[0])} "
-                   f"(was {br._secs(cold[1])}), {by_cold or 'not compared'}. {verdict.capitalize()}.")
+                   f"(was {br._secs(cold[1])}), {by_cold or 'not compared'}; fallback time {_fallback_secs(fell_back[0])} "
+                   f"(was {_fallback_secs(fell_back[1])}), {by_fallback or 'not compared'}. {verdict.capitalize()}.")
     overall = NOT_KEPT if NOT_KEPT in verdicts else NOT_JUDGED if NOT_JUDGED in verdicts else KEPT
     return out + [f'Verdict against the previous run: {overall}.']
 

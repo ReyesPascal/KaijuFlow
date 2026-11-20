@@ -426,6 +426,14 @@ def fallback_s(v):
     return None if any(s is None for s in secs) else round(sum(secs), 3)
 
 
+def fallback_total_s(visits, side, lst=None):
+    """The seconds one side's fallbacks added, every round of one list (or every title) together (owner, 2026-11-20, #187):
+    fallback_s of each fallback, added up; 0 when nothing fell back. None when one fallback's extra seconds are not known:
+    unknown, never counted as 0."""
+    secs = [fallback_s(v) for v in visits if v['side'] == side and lst in (None, v.get('list')) and fallbacks(v)]
+    return None if any(s is None for s in secs) else round(sum(secs), 3)
+
+
 def fallback_text(v):
     """'played after 1 fallback, 2.50 s extra': a fallback as the report and `check` name it (the extra seconds left out
     when they are not known)."""

@@ -99,7 +99,7 @@ A play whose top pick gives no video: the viewer presses it and gets an error, t
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Previous run**:
-The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
+The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its fallback time (its fallbacks' extra seconds added up) against the previous run's, which never changes the verdict. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
 _Avoid_: baseline (the baseline is one run; the previous run moves on with every run), last run (it may be on another recording)
 
 **Title to video**:
