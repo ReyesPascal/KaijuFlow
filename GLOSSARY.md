@@ -22,6 +22,10 @@ _Avoid_: result, release, NZB (when you mean the search result), "source" for co
 A Source that passed a health check, so its articles are believed to be available.
 _Avoid_: verified result, good source
 
+**Unchecked Source**:
+A Source no health check has looked at yet. It is neither healthy nor dead, and KaijuFlow never hands one to the Backend: a Source is checked before it is played.
+_Avoid_: kept result, passed (when it was never checked)
+
 **Stream**:
 The playable link a Backend produced for one Source.
 _Avoid_: tile, source (when you mean the link)
@@ -61,7 +65,7 @@ The health check run when a Source is clicked rather than before the stream list
 _Avoid_: lazy check, on-demand check, deferred check
 
 **Best entry**:
-The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source among the top few, found by a Play-time check, rather than one chosen Source.
+The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source.
 _Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a list)
 
 **Disc image**:
