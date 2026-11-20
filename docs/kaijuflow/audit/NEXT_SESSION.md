@@ -19,7 +19,7 @@ The work order lives in the tracker, not here. Spec #183 is the map: its sub-iss
 
     python3 -I tools/brain/frontier.py
 
-#184 (health-check pass rule) is in PR #197: merge on green CI, then rebuild `kaijuflow:test` before any run. In short: health-check pass rule (#184) and the KaijuFlow-alone harness (#185, #186, #187), then NzbDAV removed (#188), then the baseline run (#189, owner's go at each live step), then tuning one change per run (play-time check #190 first; a change stays only when fails do not rise), then the page (#195).
+#184 (health-check pass rule) was merged on 2026-11-20 (PR #197, CI green); rebuild `kaijuflow:test` before any run. In short: health-check pass rule (#184) and the KaijuFlow-alone harness (#185, #186, #187), then NzbDAV removed (#188), then the baseline run (#189, owner's go at each live step), then tuning one change per run (play-time check #190 first; a change stays only when fails do not rise), then the page (#195).
 
 ## Runs and recordings on this machine
 - Everything before 2026-11-20 compared three setups and is not compared with any more: Test 1 (`~/kaijuflow-notes/brain-runs/2026-11-15T115540Z-baseline`, never compared with, #153), the archived runs in `~/kaijuflow-notes/brain-runs/archive/`, and the 2026-11-13 baseline recording. Test 1's facts shaped spec #183: KaijuFlow already used AltMount (port 8087, container `altmount-kf-test`); its cold list took 7.1 s (about 5.8 s health check before the list) against AltMount direct's 0.8 s; click to video about 3.2 s for both.
