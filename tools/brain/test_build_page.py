@@ -1,7 +1,7 @@
 """Tests for build_page.py: the Speed Check page built from run folders. No Docker, no network.
 
 fixtures/run-2026-11-13 is the real 2026-11-13 baseline run (meta.json and raw.json, every visit cut down to the fields
-the targets read). Its figures were worked out by hand for the published page (test_runcheck.TargetTests).
+the targets read). Its figures were worked out by hand for the published page.
 
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
 """
@@ -17,7 +17,7 @@ import unittest
 
 import brainreport as br
 import build_page as bp
-import runcheck
+import pagetargets as pt
 from test_brainreport import TAGGED_TITLES, tagged_visit
 from test_settings import tempdir
 
@@ -93,7 +93,7 @@ class Baseline(unittest.TestCase):
 
     def test_every_target_row_shows_the_verdict_and_figures_of_target_results(self):
         with open(os.path.join(BASELINE, 'raw.json')) as f:
-            results = br.target_results(json.load(f)['visits'])
+            results = pt.target_results(json.load(f)['visits'])
         rows = [text(r) for r in re.findall(r'<li class="sl-trow">.*?</li>', self.index)]
         self.assertEqual(len(rows), len(results))
         for row, (target, _, verdict) in zip(rows, results):
@@ -353,7 +353,7 @@ class Report(unittest.TestCase):
 
     def test_the_report_and_the_page_show_the_same_verdicts(self):
         with open(os.path.join(BASELINE, 'raw.json')) as f:
-            results = br.target_results(json.load(f)['visits'])
+            results = pt.target_results(json.load(f)['visits'])
         expected = [(verdict['result'].capitalize(), target) for target, _, verdict in results]
         self.assertEqual(self.verdicts(self.report), expected)
         self.assertEqual(self.verdicts(self.report), self.verdicts(self.index))
@@ -587,7 +587,7 @@ class SpeedTest(unittest.TestCase):
         words = section(self.index, 'What the words mean')
         for term in ('Fail', 'Title to video', 'Easy list', 'Hard list', 'Final bar'):
             self.assertIn(f'<dt>{term}</dt>', words)
-        bar = br.load_speed_targets()['final_bar']  # the final bar's words come from targets.json, not the page's own copy
+        bar = pt.load_speed_targets()['final_bar']  # the final bar's words come from targets.json, not the page's own copy
         self.assertIn(html.escape(f'The goal beyond the targets: {bar[0].lower()}{bar[1:]} Shown apart'), words)
         for page in (self.index, self.report):
             self.assertIn('AltMount direct', text(page))
@@ -621,8 +621,9 @@ class SpeedTestReportStaysOnePage(unittest.TestCase):
 
 
 class SpeedTestWithATitleLeftOut(unittest.TestCase):
-    """B1 of the #159 review: a title that is not like for like is left out of a verdict, and the check, report.md, the page
-    and the one-page report all show the counts the verdict was decided on, with how many titles were left out. Old Film:
+    """B1 of the #159 review: a title that is not like for like is left out of a verdict, and the page and the one-page
+    report show the counts the verdict was decided on, with how many titles were left out (check and report.md no longer
+    judge a run against other setups, #187). Old Film:
     KaijuFlow's top pick is 1080p (the others' 2160p) and fails in both cold rounds, so the whole hard list has KaijuFlow at
     1 title failed · 2 of 8 plays, but against each other setup it is judged on Rare Show S01E01 alone."""
 
@@ -641,8 +642,6 @@ class SpeedTestWithATitleLeftOut(unittest.TestCase):
                     v['tries'][0].update(plays=False, size=None)
         with open(path, 'w') as f:
             json.dump(raw, f)
-        cls.usable, cls.check = runcheck.check_run(folder)
-        cls.md = br.render_report(br.load_run(folder), ['First speed test.'])
         cls.index, cls.report = bp.build([folder]), bp.build_report([folder])
 
     @classmethod
@@ -652,13 +651,8 @@ class SpeedTestWithATitleLeftOut(unittest.TestCase):
     NONE_ON_FOUR = '0 titles failed · 0 of 4 plays'
     LEFT_OUT = '1 title left out: not like for like'
 
-    def test_the_fails_verdict_shows_the_counts_it_was_judged_on_in_the_check_report_and_page(self):
+    def test_the_fails_verdict_shows_the_counts_it_was_judged_on_in_the_page(self):
         target = 'KaijuFlow fails no more plays than any other setup, and none on the easy list'
-        measured = (f'KaijuFlow 1 title failed · 2 of 8 plays, Usenet Ultimate {self.NONE_ON_FOUR} (KaijuFlow '
-                    f'{self.NONE_ON_FOUR} on the same titles; {self.LEFT_OUT}), AltMount direct 1 title failed · 1 of 4 '
-                    f'plays (KaijuFlow {self.NONE_ON_FOUR} on the same titles; {self.LEFT_OUT})')
-        self.assertIn(f'Target, hard list: {target}. Measured: {measured}. Met.', self.check)
-        self.assertIn(f'| hard | {target} | {measured} | Met |', self.md)
         hard = [r for r in re.findall(r'<li class="sl-trow">.*?</li>', self.index) if target in r][1]
         self.assertTrue(text(hard).startswith(
             f'Met {target} KaijuFlow 0 titles failed 0 of 4 plays Limit 0 titles failed 0 of 4 plays No more than Usenet '
@@ -671,8 +665,6 @@ class SpeedTestWithATitleLeftOut(unittest.TestCase):
     def test_the_outcome_line_is_the_same_everywhere_and_says_what_was_left_out(self):
         outcome = (f'Outcome on the hard list: KaijuFlow fails fewer plays than AltMount direct (KaijuFlow {self.NONE_ON_FOUR} '
                    f'against AltMount direct 1 title failed · 1 of 4 plays; {self.LEFT_OUT}), so tune its speed.')
-        self.assertIn(outcome, self.check)
-        self.assertIn(f'\n{outcome}\n', self.md)
         for page in (self.index, self.report):
             self.assertEqual(text(re.search(r'<p class="sl-lead">.*?</p>', page).group(0)), outcome)
 
@@ -680,15 +672,10 @@ class SpeedTestWithATitleLeftOut(unittest.TestCase):
         why = (f'Hard list: not met, Usenet Ultimate fails as few plays (KaijuFlow {self.NONE_ON_FOUR} against Usenet '
                f"Ultimate {self.NONE_ON_FOUR}; {self.LEFT_OUT}) and is as fast or faster (cold title to video 3.50 s against "
                "KaijuFlow's 3.50 s).")
-        [line] = [x for x in self.check if x.startswith('Final bar')]
-        self.assertTrue(line.endswith(why), line)
-        self.assertIn(why, self.md)
         for page in (self.index, self.report):
             self.assertTrue(text(re.search(r'<div class="sl-final">.*?</div>', page).group(0)).endswith(why))
 
     def test_the_whole_list_counts_are_named_as_the_whole_list(self):
-        self.assertIn('KaijuFlow, hard list: fails 1 title failed · 2 of 8 plays (Cold 1 Old Film; Cold 2 Old Film); '
-                      'fallbacks none; cold title to video 3.50 s; warm title to video 0.60 s.', self.check)
         heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', self.index).group(0))
         self.assertIn('Failed plays, hard list 2 of 8 1 title failed', heads)
 

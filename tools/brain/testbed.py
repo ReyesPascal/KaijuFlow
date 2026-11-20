@@ -8,9 +8,11 @@
         (tools/brain/expected-settings.json) into it and print each setting that changed (ticket #163; the owner's go)
     python3 -I tools/brain/testbed.py read-settings [side]   the settings reader's output as JSON, secrets as ***
 
-Sides: nzbdav, altmount-addon, altmount-kf (Backends), uu, kaijuflow (their health/dead caches).
+Sides: altmount-kf (KaijuFlow's AltMount copy, the Backend) and kaijuflow (its health/dead caches): the one setup a run
+plays (#185). The other test copies of the runs before #185 (Usenet Ultimate, NzbDAV, AltMount direct) stay stopped and
+on disk, but nothing here sets them up, resets or reads them any more (#187).
 Config folders (with secrets) live in TEST_DIR (default ~/kaijuflow-test), never in the repo.
-Every Docker command is pinned to compose project `kaijuflow-test` and to the five test services
+Every Docker command is pinned to compose project `kaijuflow-test` and to the two test services
 (compose_cmd), so nothing here can act on a live container.
 """
 import base64
@@ -32,14 +34,11 @@ from common import DEFAULT_TEST_DIR  # noqa: E402
 PROJECT = "kaijuflow-test"
 NETWORK = "kaijuflow-test-net"
 COMPOSE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "compose.test.yaml")
-TEST_CONTAINERS = ["kaijuflow-test", "uu-test", "nzbdav-test", "altmount-addon-test", "altmount-kf-test"]
+TEST_CONTAINERS = ["kaijuflow-test", "altmount-kf-test"]
 
 # side -> compose service, kind, config folder, template folder, port
 SIDES = {
-    "nzbdav": dict(kind="nzbdav", conf="nzbdav/config", tpl="nzbdav", port=3001),
-    "altmount-addon": dict(kind="altmount", conf="altmount-addon/config", tpl="altmount", port=8086),
     "altmount-kf": dict(kind="altmount", conf="altmount-kf/config", tpl="altmount", port=8087),
-    "uu": dict(kind="cache", conf="uu/config", tpl="uu", port=1339),
     "kaijuflow": dict(kind="cache", conf="config", tpl="kaijuflow", port=1338),
 }
 CACHE_FILES = ("healthy-nzbs.json", "dead-nzbs.json")
@@ -95,11 +94,7 @@ def _restore(test_dir, side):
     spec = SIDES[side]
     conf = os.path.join(test_dir, spec["conf"])
     tpl = os.path.join(test_dir, "templates", spec["tpl"])
-    if spec["kind"] == "nzbdav":
-        for name in ("db.sqlite", "db.sqlite-wal", "db.sqlite-shm", "blobs"):
-            _rm(os.path.join(conf, name))
-        shutil.copyfile(os.path.join(tpl, "db.sqlite"), os.path.join(conf, "db.sqlite"))
-    elif spec["kind"] == "altmount":
+    if spec["kind"] == "altmount":
         for name in ("altmount.db", "altmount.db-wal", "altmount.db-shm", ".nzbs"):
             _rm(os.path.join(conf, name))
         _empty_dir(os.path.join(conf, "metadata"))
@@ -145,35 +140,6 @@ def _ro(path):
 
 def _count(db, sql):
     return db.execute(sql).fetchone()[0]
-
-
-def _check_nzbdav(test_dir, side, http):
-    spec = SIDES[side]
-    path = os.path.join(test_dir, spec["conf"], "db.sqlite")
-    out = []
-    try:
-        db = _ro(path)
-        files = _count(db, "select count(*) from DavItems where Type != 1")
-        hist = _count(db, "select count(*) from HistoryItems")
-        queue = _count(db, "select count(*) from QueueItems")
-        cfg = dict(db.execute("select ConfigName, ConfigValue from ConfigItems").fetchall())
-        db.close()
-    except sqlite3.Error as e:
-        return ["%s: cannot read database (%s)" % (side, e)]
-    for label, n in (("DavItems files", files), ("HistoryItems", hist), ("QueueItems", queue)):
-        if n:
-            out.append("%s: database has %d %s" % (side, n, label))
-    for mode in ("history", "queue"):
-        url = "http://127.0.0.1:%d/api?mode=%s&output=json&apikey=%s" % (spec["port"], mode, cfg.get("api.key", ""))
-        try:
-            status, body = http("GET", url)
-            n = json.loads(body)[mode]["noofslots"]
-        except (OSError, ValueError, KeyError) as e:
-            out.append("%s: %s API unreadable (%s)" % (side, mode, type(e).__name__))
-            continue
-        if status != 200 or n:
-            out.append("%s: %s API shows %s entries (status %s)" % (side, mode, n, status))
-    return out
 
 
 ALTMOUNT_TABLES = ("import_queue", "import_history", "media_files", "file_health", "nzb_store_refs", "duplicate_lookup_catalog")
@@ -243,7 +209,7 @@ def check_empty(test_dir, sides=None, http=default_http):
     problems = []
     for side in (sides or list(SIDES)):
         kind = SIDES[side]["kind"]
-        fn = {"nzbdav": _check_nzbdav, "altmount": _check_altmount, "cache": _check_cache}[kind]
+        fn = {"altmount": _check_altmount, "cache": _check_cache}[kind]
         problems += fn(test_dir, side, http)
     return problems
 
@@ -257,13 +223,11 @@ STANDIN_HOST = "host.docker.internal"
 # (relative to the test folder) of the sides that have one.
 SETTINGS = {
     "kaijuflow": dict(title="KaijuFlow (1338)", short="KaijuFlow", json="config/config.json"),
-    "uu": dict(title="Usenet Ultimate (1339)", short="Usenet Ultimate", json="uu/config/config.json"),
-    "nzbdav": dict(title="NzbDAV (3001)", short="NzbDAV"),
-    "altmount-addon": dict(title="AltMount direct (8086)", short="AltMount direct"),
     "altmount-kf": dict(title="AltMount KaijuFlow (8087)", short="AltMount KaijuFlow"),
 }
 SETTINGS_SIDES = list(SETTINGS)
 JSON_CONFIGS = {side: v["json"] for side, v in SETTINGS.items() if "json" in v}
+YAML_CONFIGS = ("altmount-kf",)  # the copies whose config is AltMount's config.yaml
 
 
 def _read_json(path):
@@ -282,38 +246,13 @@ def _read_text(path):
         return None
 
 
-def nzbdav_settings(db_path):
-    """NzbDAV's stored settings (ConfigItems), secrets replaced by ***."""
-    if not os.path.exists(db_path):
-        return {}
-    db = sqlite3.connect("file:%s?mode=ro" % db_path, uri=True)
-    try:
-        rows = db.execute("select ConfigName, ConfigValue from ConfigItems").fetchall()
-    except sqlite3.Error:
-        return {}
-    finally:
-        db.close()
-    out = {}
-    for name, value in rows:
-        try:
-            parsed = json.loads(value) if value and value.strip()[:1] in "{[" else None
-        except ValueError:
-            parsed = None
-        if parsed is not None:
-            out.update(br.flatten(parsed, name))
-        else:
-            out[name] = br._scrub_value(name, value)
-    return out
-
-
 def read_settings(test_dir):
     """Settings of every test copy with secrets removed: {side: {dotted key: value}}."""
     snap = {}
     for side, rel in JSON_CONFIGS.items():
         data = _read_json(os.path.join(test_dir, rel))
         snap[side] = br.flatten(data) if data is not None else {"(file missing)": rel}
-    snap["nzbdav"] = nzbdav_settings(os.path.join(test_dir, "nzbdav/config/db.sqlite"))
-    for side in ("altmount-addon", "altmount-kf"):
+    for side in YAML_CONFIGS:
         text = _read_text(os.path.join(test_dir, side, "config/config.yaml"))
         snap[side] = br.flatten_yaml(text) if text is not None else {"(file missing)": side}
     return snap
@@ -358,7 +297,7 @@ def read_indexers(test_dir):
         if data.get("easynewsEnabled"):
             rows.append({"name": "Easynews", "url": "(Easynews)", "enabled": True})
         out[side] = rows
-    for side in ("altmount-addon", "altmount-kf"):
+    for side in YAML_CONFIGS:
         text = _read_text(os.path.join(test_dir, side, "config/config.yaml"))
         if text is None:
             out[side] = None
@@ -369,7 +308,6 @@ def read_indexers(test_dir):
             if _true(flat.get(k, "")):
                 rows.append({"name": "Prowlarr", "url": "(Prowlarr)", "enabled": True})
         out[side] = rows
-    out["nzbdav"] = []
     return out
 
 
@@ -400,22 +338,15 @@ def _altmount_indexers(flat):
     return out
 
 
-def provider_rows(flat, kind):
-    """The Usenet provider entries of a Backend as [{"host", "max", "main"}]: NzbDAV (types 1 and 2 are main providers, type 3
-    a backup login) or AltMount (enabled providers; main = not flagged as a backup provider)."""
+def provider_rows(flat):
+    """The Usenet provider entries of AltMount as [{"host", "max", "main"}]: its enabled providers; main = not flagged as a
+    backup provider."""
     rows = []
     for i in range(20):
-        if kind == "nzbdav":
-            p = "usenet.providers.Providers[%d]." % i
-            t = _int(flat.get(p + "Type"))
-            if t is None:
-                continue
-            rows.append({"host": flat.get(p + "Host"), "max": _int(flat.get(p + "MaxConnections")), "main": t in (1, 2)})
-        else:
-            p = "providers[%d]." % i
-            if _true(flat.get(p + "enabled")):
-                rows.append({"host": flat.get(p + "host"), "max": _int(flat.get(p + "max_connections")),
-                             "main": not _true(flat.get(p + "is_backup_provider"))})
+        p = "providers[%d]." % i
+        if _true(flat.get(p + "enabled")):
+            rows.append({"host": flat.get(p + "host"), "max": _int(flat.get(p + "max_connections")),
+                         "main": not _true(flat.get(p + "is_backup_provider"))})
     return rows
 
 
@@ -429,15 +360,12 @@ def counted_rows(rows):
 def connection_caps(settings):
     """NewsHosting connections each test copy may open: {side: int or None when it cannot be read}.
 
-    KaijuFlow and Usenet Ultimate: their health-check cap. NzbDAV: its main providers (types 1 and 2; a backup login,
-    type 3, has its own limit unless it is on the same host). AltMount: its enabled providers. In both, every entry on the
-    main provider's Usenet host counts, backup flag or not; an entry on another host is shown beside and not counted.
+    KaijuFlow: its health-check cap. AltMount: its enabled providers, every entry on the main provider's Usenet host counted,
+    backup flag or not; an entry on another host is shown beside and not counted.
     """
-    caps = {}
-    for side in ("kaijuflow", "uu"):
-        caps[side] = _int(settings.get(side, {}).get("healthChecks.maxConnections"))
-    for side, kind in (("nzbdav", "nzbdav"), ("altmount-addon", "altmount"), ("altmount-kf", "altmount")):
-        mine, _other = counted_rows(provider_rows(settings.get(side, {}), kind))
+    caps = {"kaijuflow": _int(settings.get("kaijuflow", {}).get("healthChecks.maxConnections"))}
+    for side in YAML_CONFIGS:
+        mine, _other = counted_rows(provider_rows(settings.get(side, {})))
         caps[side] = sum(r["max"] for r in mine) if mine and None not in [r["max"] for r in mine] else None
     return caps
 
@@ -458,7 +386,7 @@ def _cell(flat, *keys):
 
 
 def _per_indexer(flat, key, names):
-    """Name and value of each switched-on indexer of a KaijuFlow or Usenet Ultimate config."""
+    """Name and value of each switched-on indexer of a KaijuFlow config."""
     vals = []
     for k in sorted(flat):
         m = re.match(r"indexers\[(.+)\]\.%s$" % re.escape(key), k)
@@ -474,8 +402,8 @@ def _am_timeouts(flat):
 
 def _rows(rep):
     st = rep["settings"]
-    both = ("kaijuflow", "uu")
-    am = ("altmount-addon", "altmount-kf")
+    both = ("kaijuflow",)
+    am = YAML_CONFIGS
 
     def g(s):
         return st.get(s, {})
@@ -489,7 +417,7 @@ def _rows(rep):
     def conns(s):
         if rep["caps"].get(s) is None:
             return "-"
-        _mine, other = counted_rows(provider_rows(g(s), "nzbdav" if s == "nzbdav" else "altmount"))
+        _mine, other = counted_rows(provider_rows(g(s)))
         return "max %s%s" % (rep["caps"][s], "".join(" (+ other host max %s, own limit)" % r["max"] for r in other))
 
     yield "Usenet connections (NewsHosting)", {s: conns(s) for s in SETTINGS_SIDES}
@@ -502,7 +430,6 @@ def _rows(rep):
     yield "Indexer timeout (s)", {**{s: _per_indexer(g(s), "timeout", on(s)) for s in both}, **per(am, _am_timeouts)}
     yield "Enabled indexers (slugs)", {s: ", ".join(rep["enabled"].get(s) or []) or "-" for s in SETTINGS_SIDES}
     yield "Import workers (max_processor_workers)", per(am, lambda f: _cell(f, "import.max_processor_workers"))
-    yield "NzbDAV download connections / streaming priority", {"nzbdav": _cell(g("nzbdav"), "usenet.max-download-connections", "usenet.streaming-priority")}
     yield "Import samples % / health samples % / health system on", per(am, lambda f: _cell(f, "import.segment_sample_percentage", "health.segment_sample_percentage", "health.enabled"))
     yield "Prefetch: streaming.max_prefetch / import.max_download_prefetch", per(am, lambda f: _cell(f, "streaming.max_prefetch", "import.max_download_prefetch"))
     yield "In-flight per connection: normal / stat / stream", per(am, lambda f: _cell(f, "providers[0].inflight_requests", "providers[0].stat_inflight_requests", "providers[0].stream_inflight_requests"))
@@ -510,8 +437,6 @@ def _rows(rep):
     yield "Cache: search results (cacheTTL s)", per(both, lambda f: _cell(f, "cacheTTL"))
     yield "Cache: healthy NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "healthyNzbDbMode", "healthyNzbDbTTL", "healthyNzbDbMaxSizeMB"))
     yield "Cache: dead NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "deadNzbDbMode", "deadNzbDbTTL", "deadNzbDbMaxSizeMB"))
-    yield "Cache: stream buffer / pipe buffer MB / method", {"uu": _cell(g("uu"), "nzbdavStreamBufferMB", "nzbdavPipeBufferMB", "nzbdavStreamingMethod")}
-    yield "AltMount direct: fallback ms / retries / max fallback releases", per(am, lambda f: _cell(f, "stremio.fallback_timeout_ms", "stremio.max_retries", "stremio.max_fallback_releases"))
     yield "AltMount: fast_fail_header_only / skip_repair", per(am, lambda f: _cell(f, "stremio.fast_fail_header_only", "stremio.skip_repair"))
     yield "AltMount: PAR2 repair / failure masking / mount type", per(am, lambda f: _cell(f, "par2_repair.enabled", "streaming.failure_masking.enabled", "mount_type"))
 
@@ -533,8 +458,8 @@ def render_settings(rep):
 
 # --------------------------------------------------------------------------- applying the expected settings (ticket #163)
 
-# The config file of every copy the apply command can write, relative to the test folder (NzbDAV keeps its settings in a database).
-CONFIG_FILES = {**JSON_CONFIGS, "altmount-addon": "altmount-addon/config/config.yaml", "altmount-kf": "altmount-kf/config/config.yaml"}
+# The config file of every copy the apply command can write, relative to the test folder.
+CONFIG_FILES = {**JSON_CONFIGS, **{side: side + "/config/config.yaml" for side in YAML_CONFIGS}}
 BACKUP_DIR = "backups"
 YAML_STEP = 4  # AltMount writes its config.yaml four spaces per level
 

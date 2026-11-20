@@ -8,7 +8,6 @@ import io
 import json
 import os
 import shutil
-import sqlite3
 import tempfile
 import unittest
 import unittest.mock
@@ -34,25 +33,8 @@ def _put(path, text):
         f.write(text)
 
 
-ALTMOUNT_FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'altmount-v0.4.0')
-
-
-def addon_stremio(name='stremio-like-for-like.yaml'):
-    """The lines of a captured AltMount `stremio:` block (fixtures/altmount-v0.4.0) without its header and its `indexers`
-    section, which make_copies writes itself. By default the block that holds the like-for-like settings (#142)."""
-    with open(os.path.join(ALTMOUNT_FIXTURES, name)) as f:
-        lines = f.read().splitlines()[1:]
-    out, skip = [], False
-    for line in lines:
-        if line.startswith('    ') and line[4] != ' ':  # a setting directly under stremio
-            skip = line.strip().startswith('indexers:')
-        if not skip:
-            out.append(line)
-    return out
-
-
 def rules(films=3000, episodes=1000):
-    """Sort and filter rules in the shape KaijuFlow and Usenet Ultimate keep them (`movieFilters`, `tvFilters`), cut short:
+    """Sort and filter rules in the shape KaijuFlow keeps them (`movieFilters`, `tvFilters`), cut short:
     an order, switches, a size cap and one named drop rule."""
     def one(cap):
         return {'sortOrder': ['quality', 'size', 'language'], 'enabledSorts': {'quality': True, 'size': True, 'language': False},
@@ -62,17 +44,17 @@ def rules(films=3000, episodes=1000):
     return {'movieFilters': one(films), 'tvFilters': one(episodes)}
 
 
-def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 12, 25, 25, 25),
-                url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=(), backup_host='backup.example',
-                kf_rules=None, uu_rules=None, addon_lines=None, kf_fallback=True):
-    """A fake kaijuflow-test folder: KaijuFlow, UU, NzbDAV and both AltMounts, plus the key file. KaijuFlow and UU hold the
-    sort and filter rules of rules() unless others are given (kf_rules, uu_rules: what goes into the config; {} for none).
-    AltMount direct's `stremio:` block holds addon_lines, by default addon_stremio(): the like-for-like settings (#142).
-    KaijuFlow's fallback is on (ultimateFallback.enabled, #185) unless kf_fallback is False."""
+def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 25),
+                url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None,
+                altkf_off=(), backup_host='backup.example', kf_rules=None, kf_fallback=True):
+    """A fake kaijuflow-test folder: KaijuFlow and its AltMount, the one setup (#187), plus the key file. KaijuFlow holds
+    the sort and filter rules of rules() unless others are given (kf_rules: what goes into the config; {} for none), and its
+    fallback is on (ultimateFallback.enabled, #185) unless kf_fallback is False. caps: KaijuFlow's and its AltMount's
+    connection caps; altkf_off: indexers its AltMount has switched off."""
     base = base or tempdir(case)
     td = os.path.join(base, 'kaijuflow-test')
-    kf_cap, uu_cap, nz_cap, addon_cap, altkf_cap = caps
-    for rel, cap, own in (('config/config.json', kf_cap, kf_rules), ('uu/config/config.json', uu_cap, uu_rules)):
+    kf_cap, altkf_cap = caps
+    for rel, cap, own in (('config/config.json', kf_cap, kf_rules),):
         _put(os.path.join(td, rel), json.dumps({
             **(rules() if own is None else own),
             'indexers': [{'name': NAMES[s], 'url': url(s), 'apiKey': SECRET, 'enabled': s in enabled, 'maxPages': 3, 'timeout': 15}
@@ -82,30 +64,18 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
                              'providers': [{'name': 'p', 'host': 'h', 'username': SECRET, 'password': SECRET}]},
             'searchConfig': {'seasonPackAdditionalPages': 2, 'seriesPackAdditionalPages': 2},
             'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False,
-            **({'ultimateFallback': {'enabled': kf_fallback}} if rel == 'config/config.json' else {})}))
-    for side, cap in (('altmount-addon', addon_cap), ('altmount-kf', altkf_cap)):
+            'ultimateFallback': {'enabled': kf_fallback}}))
+    for side, cap in (('altmount-kf', altkf_cap),):
         lines = ['import:', '    max_processor_workers: 2', '    segment_sample_percentage: 1',
-                 'stremio:', *((addon_stremio() if addon_lines is None else addon_lines) if side == 'altmount-addon' else []),
-                 '    indexers:', '        newsnab:']
+                 'stremio:', '    indexers:', '        newsnab:']
         for s in list(enabled) + list(disabled):
             lines += ['            - id: x_%s' % s, '              name: %s' % SHORT[s], '              url: %s' % url(s).replace('/api', ''),
                       '              api_key: ' + SECRET, '              timeout_seconds: 15',
-                      '              enabled: %s' % ('true' if s in enabled and not (side == 'altmount-addon' and s in addon_off) else 'false')]
+                      '              enabled: %s' % ('true' if s in enabled and s not in altkf_off else 'false')]
         lines += ['providers:', '    - id: provider_1', '      host: news.example', '      username: ' + SECRET, '      password: ' + SECRET,
                   '      max_connections: %d' % cap, '      enabled: true', '      is_backup_provider: false',
                   '    - id: provider_2', '      host: ' + backup_host, '      max_connections: 99', '      enabled: true', '      is_backup_provider: true']
         _put(os.path.join(td, side, 'config/config.yaml'), '\n'.join(lines) + '\n')
-    p = os.path.join(td, 'nzbdav/config/db.sqlite')
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    db = sqlite3.connect(p)
-    db.execute('create table ConfigItems (ConfigName text, ConfigValue text)')
-    db.execute("insert into ConfigItems values ('api.key', ?)", (SECRET,))
-    db.execute("insert into ConfigItems values ('usenet.max-download-connections', '25')")
-    db.execute("insert into ConfigItems values ('usenet.providers', ?)", (json.dumps({'Providers': [
-        {'Type': 1, 'Host': 'news.example', 'User': SECRET, 'Pass': SECRET, 'MaxConnections': nz_cap},
-        {'Type': 3, 'Host': backup_host, 'User': SECRET, 'Pass': SECRET, 'MaxConnections': 15}]}),))
-    db.commit()
-    db.close()
     kp = os.path.join(td, 'indexers.json')
     _put(kp, json.dumps({'indexers': {s: {'url': 'https://real.example/api', 'apikey': SECRET} for s in (key_slugs or enabled)}}))
     os.chmod(kp, key_mode)
@@ -116,8 +86,8 @@ class ReaderTest(unittest.TestCase):
     def test_caps_sum_per_copy_and_no_secret_anywhere(self):
         td = make_copies(self)
         rep = testbed.settings_report(td, limit=100)
-        self.assertEqual(rep['caps'], {'kaijuflow': 12, 'uu': 12, 'nzbdav': 25, 'altmount-addon': 25, 'altmount-kf': 25})
-        self.assertEqual(rep['total'], 99)
+        self.assertEqual(rep['caps'], {'kaijuflow': 12, 'altmount-kf': 25})
+        self.assertEqual(rep['total'], 37)
         self.assertEqual(rep['limit'], 100)
         self.assertNotIn(SECRET, json.dumps(rep))
         self.assertNotIn(SECRET, testbed.render_settings(rep))
@@ -125,23 +95,19 @@ class ReaderTest(unittest.TestCase):
     def test_every_entry_on_the_main_providers_host_counts_backup_flag_or_not(self):
         td = make_copies(self, backup_host='news.example')  # the backup entries use the same Usenet host as the main provider
         rep = testbed.settings_report(td, limit=100)
-        self.assertEqual(rep['caps']['altmount-addon'], 25 + 99)
         self.assertEqual(rep['caps']['altmount-kf'], 25 + 99)
-        self.assertEqual(rep['caps']['nzbdav'], 25 + 15)
 
     def test_an_entry_on_another_host_is_shown_beside_and_not_counted(self):
         td = make_copies(self)  # backup entries on backup.example
         rep = testbed.settings_report(td, limit=100)
-        self.assertEqual(rep['caps']['nzbdav'], 25)
-        text = testbed.render_settings(rep)
-        self.assertIn('max 25 (+ other host max 15, own limit)', text)
-        self.assertIn('max 25 (+ other host max 99, own limit)', text)
+        self.assertEqual(rep['caps']['altmount-kf'], 25)
+        self.assertIn('max 25 (+ other host max 99, own limit)', testbed.render_settings(rep))
 
     def test_enabled_indexers_are_slugs_from_each_copys_own_config(self):
         rep = testbed.settings_report(make_copies(self))
-        for side in ('kaijuflow', 'uu', 'altmount-addon', 'altmount-kf'):
+        for side in ('kaijuflow', 'altmount-kf'):
             self.assertEqual(rep['enabled'][side], ['drunkenslug', 'ninjacentral'], side)
-        self.assertEqual(rep['enabled']['nzbdav'], [])
+        self.assertEqual(set(rep['enabled']), {'kaijuflow', 'altmount-kf'})  # the one setup (#187)
 
     def test_slug_ignores_api_suffix_and_rejects_other_hosts(self):
         self.assertEqual(testbed.standin_slug('http://host.docker.internal:1340/ninjacentral'), 'ninjacentral')
@@ -173,7 +139,7 @@ class CommandTest(unittest.TestCase):
         self.assertNotIn(SECRET, text)
         self.assertIn('| Setting | KaijuFlow', text)
         self.assertIn('drunkenslug, ninjacentral', text)
-        self.assertIn('Total: 99 of 100', text)
+        self.assertIn('Total: 37 of 100', text)
         self.assertIn('KaijuFlow 12', text)
 
     def test_per_indexer_rows_list_only_switched_on_indexers(self):
@@ -182,8 +148,8 @@ class CommandTest(unittest.TestCase):
         self.assertNotIn('altHUB', text)
 
     def test_limit_option_changes_the_verdict_sentence(self):
-        _code, text = self.run_cmd(make_copies(self), '--limit', '60')
-        self.assertIn('Total: 99 of 60', text)
+        _code, text = self.run_cmd(make_copies(self), '--limit', '30')
+        self.assertIn('Total: 37 of 30', text)
         self.assertIn('over the provider limit', text)
 
     def test_snapshot_of_the_runner_is_the_readers_output(self):
@@ -209,8 +175,8 @@ class ShowCommandTest(unittest.TestCase):
         self.assertIn('***', text)
 
     def test_prints_one_copy_when_named(self):
-        code, text = self.run_cmd(make_copies(self), 'uu')
-        self.assertEqual((code, list(json.loads(text))), (0, ['uu']))
+        code, text = self.run_cmd(make_copies(self), 'altmount-kf')
+        self.assertEqual((code, list(json.loads(text))), (0, ['altmount-kf']))
         self.assertNotIn(SECRET, text)
 
     def test_an_unknown_copy_says_which_exist_and_exits_2(self):

@@ -4,12 +4,9 @@
 
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
 (a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
-a recording folder, or a run folder that cannot be read). For a finished run it then prints one line per
-target of targets.json (the target, the measured values, met or not met; for a run on a tagged title list, one line per
-list and speed test target, the outcome line and the final bar apart, brainreport.speed_test_lines); for any other run one line
-says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
-The targets do not change the exit code. Before them, KaijuFlow's run is judged per list against the previous run on the
-same recording, kept or not kept (judged_lines, rules.md "Judged against the previous run"); that does not change it either.
+a recording folder, or a run folder that cannot be read). It then prints one line per side and list (list_lines) and
+judges KaijuFlow's run per list against the previous run on the same recording, kept or not kept (judged_lines, rules.md
+"Judged against the previous run"); the verdict does not change the exit code.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import json
@@ -87,10 +84,15 @@ def _against(now, was):
     return 'better' if now < was else 'worse' if now > was else 'same'
 
 
+def _fallback_secs(x):
+    return 'unknown' if x is None else f'{x:.2f} s'
+
+
 def judged_lines(run_dir, meta, visits):
     """KaijuFlow's run judged against its previous run on the same recording (#186, rules.md "Judged against the previous
     run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
-    and kept or not kept; then the verdict over every list."""
+    and kept or not kept; then the verdict over every list. Each list's line also shows its fallback time (the fallbacks'
+    extra seconds added up, brainreport.fallback_total_s) against the previous run's, which the verdict leaves out (#187)."""
     side, recording = br.JUDGED, meta.get('recording')
     prev = br.run_before(run_dir, recording)
     if prev is None:
@@ -101,6 +103,8 @@ def judged_lines(run_dir, meta, visits):
         cold = [br.side_time(vs, side, 'cold', 'video', lst=x) for vs in (visits, prev['visits'])]
         by_fails = _against(*[f['fails'] if f['counted'] else None for f in fails])
         by_cold = _against(*cold)
+        fell_back = [br.fallback_total_s(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        by_fallback = _against(*fell_back)  # shown, never part of the verdict (owner, 2026-11-20, #187)
         if by_fails == 'worse':
             verdict = NOT_KEPT
         elif by_fails is None or by_cold is None:
@@ -110,7 +114,8 @@ def judged_lines(run_dir, meta, visits):
         verdicts.append(verdict)
         out.append(f"{_side(side)}, {f'{x} list' if x else 'every title'}: fails {br.fails_words(fails[0])} "
                    f"(was {br.fails_words(fails[1])}), {by_fails or 'not compared'}; cold title to video {br._secs(cold[0])} "
-                   f"(was {br._secs(cold[1])}), {by_cold or 'not compared'}. {verdict.capitalize()}.")
+                   f"(was {br._secs(cold[1])}), {by_cold or 'not compared'}; fallback time {_fallback_secs(fell_back[0])} "
+                   f"(was {_fallback_secs(fell_back[1])}), {by_fallback or 'not compared'}. {verdict.capitalize()}.")
     overall = NOT_KEPT if NOT_KEPT in verdicts else NOT_JUDGED if NOT_JUDGED in verdicts else KEPT
     return out + [f'Verdict against the previous run: {overall}.']
 
@@ -203,10 +208,6 @@ def check_run(run_dir):
         lines += [f'- {_visit_name(v)}: {br.fallback_text(v)}' for v in fell_back]
     lines += list_lines(visits, sides)
     lines += judged_lines(run_dir, meta, visits)
-    lines += br.like_for_like_lines(visits)
-    lines += br.top_pick_table(visits)
-    if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
-        lines += br.target_lines({'status': status, 'visits': visits})
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:

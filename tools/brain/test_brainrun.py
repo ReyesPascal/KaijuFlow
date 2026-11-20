@@ -10,7 +10,6 @@ import json
 import os
 import signal
 import socket
-import sqlite3
 import time
 import unittest
 import urllib.request
@@ -71,18 +70,13 @@ class FakeIO(Copies):
         Copies.__init__(self, up)
         self.calls, self.clock, self.visits = [], datetime.datetime(2026, 11, 10, 18, 0, 0, tzinfo=UTC), 0
         self.limit_at_visit, self._marker, self.commit = limit_at_visit, marker, commit
-        self.settings = settings or {'kaijuflow': {'healthChecks.sampleCount': 3, 'altmountApiKey': '***'}, 'uu': {}}
+        self.settings = settings or {'kaijuflow': {'healthChecks.sampleCount': 3, 'altmountApiKey': '***'}}
         self.fail_http_for = fail_http_for
         self.patched = False
         self.working = 0
         self.standin_log = []
         self.lines_per_visit = {}  # visit number -> lines the stand-in writes during that visit
         self.max_working = 0
-        self.history = []  # the test NzbDAV's history slots; a Usenet Ultimate visit adds one job
-
-    def nzbdav_history(self):
-        self.calls.append(('history',))
-        return {'history': {'slots': list(self.history), 'noofslots': len(self.history)}, 'status': True, 'error': None}
 
     def takes(self, seconds):
         self.clock += datetime.timedelta(seconds=seconds)
@@ -160,8 +154,8 @@ class FakeIO(Copies):
         self.up.discard('kaijuflow')
         self.calls.append(('restore-config',))
 
-    ADDRESSES = {'kaijuflow-test': '10.0.0.2', 'uu-test': '10.0.0.3', 'altmount-addon-test': '10.0.0.4'}
-    SIDE_IP = {'kaijuflow': '10.0.0.2', 'kaijuflow-1page': '10.0.0.2', 'uu': '10.0.0.3', 'altmount-addon': '10.0.0.4'}
+    ADDRESSES = {'kaijuflow-test': '10.0.0.2'}
+    SIDE_IP = {'kaijuflow': '10.0.0.2', 'kaijuflow-1page': '10.0.0.2'}
 
     def addresses(self):
         self.calls.append(('addresses',))
@@ -176,8 +170,6 @@ class FakeIO(Copies):
         self.standin_log += [f'{x} from={self.SIDE_IP[side]} t={t}' for x in self.lines_per_visit.get(self.visits, [])]
         ok = side != self.fail_http_for
         self.takes(self.LIST_S + (self.START_S + self.SEEKS_S if ok else self.FAILED_PLAY_S))
-        if side == 'uu':
-            self.history.insert(0, {'nzo_id': f'n{self.visits}', 'nzb_name': 'R', 'status': 'Completed', 'download_time': 4})
         return dict(list_status=200, list_s=self.LIST_S, sources=5, first_try_plays=ok, start_s=self.START_S if ok else None,
                     note=None if ok else 'failure video', seeks={'50': 0.2, '90': 0.3}, tries=[{'plays': ok}])
 
@@ -188,8 +180,6 @@ class FakeIO(Copies):
             ts = self.clock.strftime('%Y-%m-%dT%H:%M:%S.000Z')
             text = (f'{t} [KF-STEP] {{"step":"nzb_fetch","source":"S","ms":100,"ok":true,"t":"{ts}","title":"R"}}\n'
                     f'{t} apikey=' + SECRET + ' fetching\n')
-        if container == 'uu-test':
-            text = f'{t} uu line apikey=' + SECRET + '\n'
         if self.limit_at_visit and self.visits == self.limit_at_visit and container != 'kaijuflow-test':
             text += f'{t} DrunkenSlug: API limit reached. Retry in 30 minutes\n'
         return text
@@ -197,7 +187,7 @@ class FakeIO(Copies):
 
 def make_cfg(tmp, **kw):
     cfg = dict(name='trial', runs_root=os.path.join(tmp, 'runs'), store=os.path.join(tmp, 'store'), listname='l',
-               test_dir=os.path.join(tmp, 'kaijuflow-test'), user_id='U', download_key='DK', one_page=False,
+               test_dir=os.path.join(tmp, 'kaijuflow-test'), user_id='U', one_page=False,
                titles=[('movie', 'tt1', 'Matrix'), ('series', 'tt2:1:1', 'Show S01E01')], tries=1, settle=0,
                indexers=['ninjacentral', 'drunkenslug'])
     cfg.update(kw)
@@ -263,7 +253,7 @@ class RunTest(unittest.TestCase):
         brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
         root = os.path.join(self.tmp, 'runs')
         first_idx = read(os.path.join(root, 'INDEX.md'))
-        io2 = FakeIO(commit='c2', settings={'kaijuflow': {'healthChecks.sampleCount': 5, 'altmountApiKey': '***'}, 'uu': {}})
+        io2 = FakeIO(commit='c2', settings={'kaijuflow': {'healthChecks.sampleCount': 5, 'altmountApiKey': '***'}})
         io2.clock += datetime.timedelta(minutes=5)
         run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
         idx = read(os.path.join(root, 'INDEX.md'))
@@ -330,7 +320,7 @@ class RunTest(unittest.TestCase):
             if k == 'reset':
                 self.assertEqual(kinds[i + 1], 'addresses')  # containers get their address when they start
         meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
-        self.assertEqual(meta['addresses'], {'kaijuflow-test': ['10.0.0.2'], 'uu-test': ['10.0.0.3'], 'altmount-addon-test': ['10.0.0.4']})
+        self.assertEqual(meta['addresses'], {'kaijuflow-test': ['10.0.0.2']})
 
     def test_one_page_side_runs_after_main_pass_and_config_restored(self):
         io = FakeIO()
@@ -869,16 +859,6 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertIn('2 of 8 plays had finished, and it stopped between two plays.',
                       read(os.path.join(run['dir'], 'report.md')).split('\n')[0])
 
-    def test_a_stopped_run_judges_no_target_in_its_report_or_its_check(self):
-        io, run = self.stopped_run(2)
-        targets = read(os.path.join(run['dir'], 'report.md')).split('## Targets\n\n')[1].split('\n## ')[0]
-        self.assertEqual(targets.strip(), 'Not judged: the run was stopped before its last play, and the targets are '
-                                          'judged on a finished run alone.')
-        out = io_module.StringIO()
-        with contextlib.redirect_stdout(out):
-            runcheck.check_command(run['dir'])
-        self.assertEqual([x for x in out.getvalue().splitlines() if x.startswith('Target')], [
-            'Targets: not judged: the run was stopped before its last play, and the targets are judged on a finished run alone.'])
 
     def test_a_stopped_run_is_not_the_previous_run(self):
         self.stopped_run(2)
@@ -1568,7 +1548,7 @@ class RecordTest(unittest.TestCase):
     def test_a_run_refuses_to_start_without_a_recording(self):
         td = test_preflight.make_copies(self)
         cfg = test_preflight.make_cfg(td, runs_root=os.path.join(self.tmp, 'runs2'), titles=[], name='x', tries=1, settle=0,
-                                      indexers=[], one_page=False, user_id='U', download_key='K')
+                                      indexers=[], one_page=False, user_id='U')
         world = test_preflight.FakeWorld(cfg)
         with self.assertRaises(brainrun.PreflightFailed) as cm:
             brainrun.run_all(cfg, world)
@@ -1595,12 +1575,10 @@ class FinalStepsTest(unittest.TestCase):
 
     def test_late_health_batch_lands_on_its_own_visit(self):
         visits = [dict(side='kaijuflow', id='tt1', t_start='2026-11-10T18:00:01.000Z', steps=[], tries=[]),
-                  dict(side='uu', id='tt1', t_start='2026-11-10T18:00:20.000Z', steps=[], tries=[]),
                   dict(side='kaijuflow', id='tt2', t_start='2026-11-10T18:01:05.000Z', steps=[], tries=[])]
         brainrun.finalize_steps(self.LateIO(), visits)
-        self.assertEqual([s['step'] for s in visits[0]['steps']], ['indexer_page', 'health_batch'])
-        self.assertEqual(visits[1]['steps'], [])  # a side without KaijuFlow step lines
-        self.assertEqual([(s['step'], s['ref']) for s in visits[2]['steps']], [('health_batch', 'tt2')])
+        self.assertEqual([s['step'] for s in visits[0]['steps']], ['indexer_page', 'health_batch'])  # 44 s after it began
+        self.assertEqual([(s['step'], s['ref']) for s in visits[1]['steps']], [('health_batch', 'tt2')])
 
     def test_diff_in_a_run_names_null_runs_between(self):
         tmp = tempdir(self)
@@ -1621,28 +1599,16 @@ class SettingsTest(unittest.TestCase):
         td = os.path.join(t, 'kaijuflow-test')
         for rel, text in (('config/config.json', json.dumps({'healthChecks': {'sampleCount': 3}, 'altmountApiKey': SECRET,
                                                               'indexers': [{'name': 'N', 'apiKey': SECRET, 'maxPages': 3}]})),
-                          ('uu/config/config.json', json.dumps({'healthChecks': {'sampleCount': 3}, 'nzbdavApiKey': SECRET})),
-                          ('altmount-addon/config/config.yaml', 'import:\n  max_processor_workers: 2\napi_key: ' + SECRET + '\n'),
-                          ('altmount-kf/config/config.yaml', 'import:\n  max_processor_workers: 2\n')):
+                          ('altmount-kf/config/config.yaml', 'import:\n  max_processor_workers: 2\napi_key: ' + SECRET + '\n')):
             p = os.path.join(td, rel)
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, 'w') as f:
                 f.write(text)
-        p = os.path.join(td, 'nzbdav/config/db.sqlite')
-        os.makedirs(os.path.dirname(p))
-        db = sqlite3.connect(p)
-        db.execute('create table ConfigItems (ConfigName text, ConfigValue text)')
-        db.execute("insert into ConfigItems values ('api.key', ?)", (SECRET,))
-        db.execute("insert into ConfigItems values ('usenet.max-download-connections', '25')")
-        db.execute("insert into ConfigItems values ('usenet.providers', ?)", (json.dumps({'Providers': [{'Host': 'h', 'Password': SECRET, 'MaxConnections': 50}]}),))
-        db.commit()
-        db.close()
         snap = brainrun.snapshot_settings(td)
-        self.assertEqual(set(snap), {'kaijuflow', 'uu', 'nzbdav', 'altmount-addon', 'altmount-kf'})
+        self.assertEqual(set(snap), {'kaijuflow', 'altmount-kf'})  # the one setup (#187)
         self.assertNotIn(SECRET, json.dumps(snap))
         self.assertEqual(snap['kaijuflow']['indexers[N].maxPages'], 3)
-        self.assertEqual(snap['nzbdav']['usenet.max-download-connections'], '25')
-        self.assertEqual(snap['altmount-addon']['import.max_processor_workers'], '2')
+        self.assertEqual(snap['altmount-kf']['import.max_processor_workers'], '2')
 
     def test_one_page_patch_is_config_only(self):
         cfg = {'indexers': [{'name': 'A', 'pagination': True, 'maxPages': 3}, {'name': 'B', 'pagination': True}],
@@ -1776,9 +1742,9 @@ class ShortRunTest(SignalGuard):
         self.assertIn('unknown side', self.bad(['run', '--sides', 'kaijuflow,nzbdav']))
         self.assertIn('unknown side', self.bad(['run', '--sides', 'uu']))  # one setup: the other test copies are no side (#185)
         self.assertIn('--rounds', self.bad(['run', '--rounds', '3']))
-        self.assertIn('--quick', self.bad(['run', '--quick', '--sides', 'uu']))
+        self.assertIn('--quick', self.bad(['run', '--quick', '--sides', 'kaijuflow']))
         self.assertIn('--quick', self.bad(['run', '--quick', '--rounds', '1']))
-        self.assertIn('--one-page', self.bad(['run', '--one-page', '--sides', 'uu']))
+        self.assertIn('--one-page', self.bad(['run', '--one-page', '--sides', 'kaijuflow']))
         self.assertIn('only for run', self.bad(['record', '--quick']))
         self.assertIn('only for run', self.bad(['smoke', '--rounds', '1']))
 

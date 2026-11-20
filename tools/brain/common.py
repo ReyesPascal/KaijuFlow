@@ -1,13 +1,13 @@
-"""Shared pieces of the Brain tools: the ten titles, the timed HTTP read and the table helpers.
+"""Shared pieces of the Brain tools: the ten titles, the timed HTTP read, a Stream play and search.py's table helpers.
 
-parity.py and search.py both import this, so their tables stay comparable: change the title list here only.
+Change the title list here only.
 The scripts run under `python3 -I`, which leaves the script's folder off sys.path; each one adds it before importing.
 """
 import hashlib, json, os, re, statistics, sys, time, urllib.request, urllib.error
 
 DEFAULT_TEST_DIR = os.path.expanduser('~/kaijuflow-test')  # config folders with secrets; outside the repo (env TEST_DIR overrides in the tools)
 LISTS = ('easy', 'hard')  # the lists of a tagged title list (#165), in the order the report and the pool show them
-FAILURE_SIZE = 1242455  # UU/KaijuFlow failure video, served when a Source cannot play
+FAILURE_SIZE = 1242455  # KaijuFlow's failure video, served when a Source cannot play
 TITLES = [
     ('movie', 'tt1375666', 'Inception'), ('movie', 'tt0816692', 'Interstellar'),
     ('movie', 'tt15398776', 'Oppenheimer'), ('movie', 'tt0133093', 'The Matrix'),
@@ -55,11 +55,6 @@ def get(url, rng=None, timeout=330, limit=70000):
     except Exception as e:  # noqa: BLE001
         timings.setdefault('ready', time.time() - t)
         return None, {'error': str(e)}, b'', timings
-
-
-def took(t):
-    """Total time of a get(), or the time to the headers when the body read did not finish."""
-    return t.get('total', t['ready'])
 
 
 def total_size(st, h):

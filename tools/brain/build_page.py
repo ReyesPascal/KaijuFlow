@@ -13,8 +13,8 @@ under each headline number), and every timed run given gets a row in "Every run 
 
 Where things come from, never typed into the page by hand:
 
-  numbers      raw.json of each run, through brainreport (the same medians the targets are judged on)
-  verdicts     brainreport.target_results and targets.json; for a speed test (a tagged run, #171) brainreport.speed_test_judgement:
+  numbers      raw.json of each run, through brainreport (the same medians pagetargets judges the targets on)
+  verdicts     pagetargets.target_results and targets.json; for a speed test (a tagged run, #171) pagetargets.speed_test_judgement:
                its three targets on each list, the outcome line and the final bar
   what changed meta.json "changes" of the newest run (brainrun's diff against the run before it)
   findings     findings.html in the newest run's folder, written by hand: the findings and the next step
@@ -32,6 +32,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
+import pagetargets as pt  # noqa: E402
 import startline  # noqa: E402
 
 DEFAULT_OUT = os.path.expanduser('~/kaijuflow-notes/brain-1338/page/')
@@ -122,24 +123,24 @@ class Run:
 
     def judgement(self):
         """A speed test's judgement (#169): its targets per list, the outcome line and the final bar."""
-        return br.speed_test_judgement(self.visits)
+        return pt.speed_test_judgement(self.visits)
 
     def targets(self):
         """The targets judged on this run: target_results with each entry's measure, side and margin beside its verdict;
         for a speed test, its three targets on each list (never the final bar), each with its list and measured words."""
         if self.tagged:
-            measures = [t['measure'] for t in br.load_speed_targets()['targets']]
+            measures = [t['measure'] for t in pt.load_speed_targets()['targets']]
             out = []
             for r in self.judgement()['targets']:
                 t = {'text': r['target'], 'measure': measures[r['number'] - 1], 'list': r['list'], 'measured': r['measured'],
                      'against': None, 'margin': 0, **r['verdict']}
-                if t['measure'] == 'fails' and t['result'] != br.NOT_MEASURED:  # the two fail figures it was judged on
+                if t['measure'] == 'fails' and t['result'] != pt.NOT_MEASURED:  # the two fail figures it was judged on
                     t.update(value=fails(t['value']), limit=fails(t['limit']))
                 out.append(t)
             return out
-        entries = br.load_targets()
+        entries = pt.load_targets()
         out = []
-        for entry, (text, _, verdict) in zip(entries, br.target_results(self.visits)):
+        for entry, (text, _, verdict) in zip(entries, pt.target_results(self.visits)):
             out.append({'text': text, 'measure': entry['measure'], 'against': entry.get('against'), 'margin': entry['margin'],
                         **verdict})
         return out
@@ -206,11 +207,11 @@ def read_findings(run):
 
 def history_row(run):
     kf = run.numbers(startline.KAIJUFLOW)
-    judged = br.targets_not_judged(run.status) is None
+    judged = pt.targets_not_judged(run.status) is None
     targets = run.targets() if judged else []
     changes = run.meta.get('changes') or []
     return {'label': run.label, 'date': run.date(), 'changed': changes[0] if changes else '',
-            'met': sum(1 for t in targets if t['result'] == br.MET) if judged else None, 'total': len(targets),
+            'met': sum(1 for t in targets if t['result'] == pt.MET) if judged else None, 'total': len(targets),
             'cold_start': kf['cold_start'], 'warm_start': kf['warm_start'], 'plays': kf['plays']}
 
 
@@ -238,7 +239,7 @@ def speed_model(run):
 def page_model(runs):
     """Everything the page shows, as plain values, from runs (newest first). The newest must be finished."""
     run = runs[0]
-    why = br.targets_not_judged(run.status)
+    why = pt.targets_not_judged(run.status)
     if why:
         raise SystemExit(f'{run.folder}: no page for this run: {why}.')
     # A speed test is compared with a speed test, a run without tags with one without: their titles are not alike.
@@ -252,8 +253,8 @@ def page_model(runs):
         'run': {'label': run.label, 'date_long': run.date_long(), 'titles': len(run.titles)},
         'prev': {'label': prev.label, 'date_long': prev.date_long()} if prev else None,
         'targets': targets,
-        'met': sum(1 for t in targets if t['result'] == br.MET), 'total': len(targets),
-        'prev_met': sum(1 for t in prev_targets if t['result'] == br.MET) if prev else None,
+        'met': sum(1 for t in targets if t['result'] == pt.MET), 'total': len(targets),
+        'prev_met': sum(1 for t in prev_targets if t['result'] == pt.MET) if prev else None,
         'setups': setups,
         'kaijuflow': run.numbers(startline.KAIJUFLOW),
         'prev_kaijuflow': prev.numbers(startline.KAIJUFLOW) if prev else None,
