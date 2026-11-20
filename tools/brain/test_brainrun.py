@@ -275,6 +275,16 @@ class RunTest(unittest.TestCase):
         rep = read(os.path.join(root, os.path.basename(run2['dir']), 'report.md'))
         self.assertIn('healthChecks.sampleCount: 3 -> 5', rep.split('Steps every side shares')[0])
 
+    def test_a_run_is_judged_against_the_previous_run_on_its_recording(self):
+        run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
+        io2 = FakeIO()
+        io2.clock += datetime.timedelta(minutes=5)
+        run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
+        self.assertEqual(json.loads(read(os.path.join(run2['dir'], 'meta.json')))['recording'], 'l')
+        lines = runcheck.check_run(run2['dir'])[1]
+        self.assertIn(f"Against the previous run on the same recording (l): {os.path.basename(run1['dir'])}.", lines)
+        self.assertIn('Verdict against the previous run: kept.', lines)  # the same fake world plays the same
+
     def test_cap_rule_aborts_and_records_null(self):
         io = FakeIO(limit_at_visit=3)
         run = brainrun.run_all(make_cfg(self.tmp), io)

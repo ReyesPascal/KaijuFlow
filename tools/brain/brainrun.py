@@ -945,7 +945,7 @@ def run_all(cfg, io):
     logs_dir = os.path.join(run_dir, 'logs')
     os.makedirs(logs_dir)
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
-           'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
+           'error': None, 'recording': cfg['listname'], 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
            'sides': run_sides(cfg), 'rounds': cfg.get('rounds', 2), 'short': short_run(cfg), 'standin_misses': 0,
            'settings': {}, 'commit': None, 'head': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
@@ -1032,7 +1032,7 @@ def write_run_ending(cfg, io, run, started, logbuf):
         result = f"short: {run['short']}" if result == 'ok' else f"{result} (short: {run['short']})"
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
-    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
+    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
                                     'standin_misses', 'changes', 'timing')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
