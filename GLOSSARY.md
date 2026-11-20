@@ -48,6 +48,14 @@ _Avoid_: reorder, repair, fix names
 KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (setting `autoQueueMode`: the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
 _Avoid_: pre-warm, preload, prefetch
 
+**Play-time check**:
+The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then (spec #183). Replaces checking a whole list before it is shown.
+_Avoid_: lazy check, on-demand check, deferred check
+
+**Best entry**:
+The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source among the top few, found by a Play-time check, rather than one chosen Source.
+_Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a list)
+
 **Disc image**:
 A Source whose content is a disc image file (`.iso`, `.img`) that the Backends cannot play; the health check blocks it.
 _Avoid_: ISO release, Blu-ray rip

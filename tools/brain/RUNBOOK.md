@@ -40,7 +40,7 @@ Works for `record` too (a play that does not play reads `does not play`). Never 
 
 Other commands: `smoke --store <EMPTY folder> --list smoke` (reachability only), `python3 -I tools/brain/testbed.py settings|status|stop`, `python3 -I tools/brain/testbed.py apply <copy>` (step 2; the owner's go).
 
-What to work on next: `python3 -I tools/brain/frontier.py` prints the tickets that can start now, the open sub-issues of the map #159 with no open blocker and no assignee, in map order, each with all its labels. It reads the tracker only.
+What to work on next: `python3 -I tools/brain/frontier.py` prints the tickets that can start now, the open sub-issues of the map #183 with no open blocker and no assignee, in map order, each with all its labels. It reads the tracker only.
 
 ## Flags that matter
 

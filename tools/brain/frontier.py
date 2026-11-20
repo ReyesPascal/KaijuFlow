@@ -2,7 +2,7 @@
 
     python3 -I tools/brain/frontier.py [parent]
 
-Prints the open sub-issues of the parent (default #159, the map) that have no open blocker and no assignee,
+Prints the open sub-issues of the parent (default #183, the map) that have no open blocker and no assignee,
 in the parent's sub-issue order, one line each: number, all its labels (e.g. `[bug, ready-for-agent]`), title; a
 `ready-for-human` ticket gets one more line (run in this session by the runbook, the owner's go per live step, never a
 parallel build). Issues labelled `spec` are maps, not tickets: left out, and one warning on stderr names any open one that
@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 
-DEFAULT_PARENT = 159  # the map (spec #159; #58 was closed on 2026-11-15)
+DEFAULT_PARENT = 183  # the map (spec #183 since 2026-11-20; #159 before, #58 before that)
 # One page is the whole list: GitHub allows at most 100 sub-issues per parent.
 BLOCKED_BY_IN_BODY = re.compile(r'^\s*(#+\s*Blocked by\s*$|Blocked by\s*:)', re.IGNORECASE | re.MULTILINE)
 TRIAGE_LABELS = ('needs-triage', 'needs-info', 'ready-for-agent', 'ready-for-human', 'wontfix')
