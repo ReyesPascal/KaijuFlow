@@ -6,7 +6,7 @@
  * fetched from AltMount's file route with the download key kept server side.
  * #21: TV. Season and episode go to AltMount as form fields, so a season pack
  * plays the requested episode.
- * Not yet: library reuse, cancel.
+ * Not yet: cancel.
  */
 
 import { config as globalConfig } from '../config/index.js';
@@ -144,7 +144,7 @@ export function offeredPathsOf(raw: string, base: string): string[] {
 /**
  * Season and episode numbers behind a Source's episode selection. The stream
  * route builds `episodePattern` from them (buildEpisodePattern, optionally
- * wrapped with a date alternative); read them back the same way the NzbDAV
+ * wrapped with a date alternative); read them back the same way the old NzbDAV
  * file picker does: first S<digits>, first E<digits> (the chain-aware
  * pattern's `E\d+` has no digits, so it is skipped).
  */
@@ -226,7 +226,7 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
     label: 'AltMount',
     capabilities: ALTMOUNT_CAPABILITIES,
 
-    // No search-time library for AltMount yet: always prepare.
+    // AltMount keeps no library KaijuFlow can look up: always prepare.
     findPrepared: async () => null,
 
     async stillPrepared(mediaPath) {
@@ -245,7 +245,7 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
       if (!settings.apiKey) throw configError('API key');
       const apiKey = settings.apiKey;
       // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
-      // tracking) through the shared step, exactly as for NzbDAV, and uploads it.
+      // tracking) through the shared step, and uploads it.
       const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
       if (isCancelled?.()) throw new PrepareCancelledError();
       // The setting is the ceiling; a shorter attempt budget from the caller wins.

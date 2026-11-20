@@ -105,7 +105,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [testQuery, setTestQuery] = useState<Record<string, string>>({});
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ show: boolean; indexerName: string }>({ show: false, indexerName: '' });
   const [directModeWarning, setDirectModeWarning] = useState<{ show: boolean }>({ show: false });
-  const [libraryDeleteWarning, setLibraryDeleteWarning] = useState<{ show: boolean; toggleType: 'all' | 'perStream' | null }>({ show: false, toggleType: null });
   const [activeOverlay, setActiveOverlay] = useState<OverlayType>(null);
   const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
   const [showApiKey, setShowApiKey] = useState<{ new: boolean; edit: boolean }>({ new: false, edit: false });
@@ -115,7 +114,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
 
   // ─── Streaming & Index Manager ──────────────────────────────────────
   const [streamingMode, setStreamingMode] = useState<'nzbdav' | 'stremio'>('nzbdav');
-  const [backend, setBackend] = useState<'nzbdav' | 'altmount'>('nzbdav');
   const [altmountUrl, setAltmountUrl] = useState('');
   const [altmountApiKey, setAltmountApiKey] = useState('');
   const [altmountCategory, setAltmountCategory] = useState('kaijuflow');
@@ -144,17 +142,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [indexerPriorityDedup, setIndexerPriorityDedup] = useState(false);
   const [urlDedup, setUrlDedup] = useState(true);
   const [junkFilter, setJunkFilter] = useState(true);
-  const [librarySearchThreshold, setLibrarySearchThreshold] = useState(0);
-  const [libraryApplyToMovies, setLibraryApplyToMovies] = useState(true);
-  const [libraryApplyToSeries, setLibraryApplyToSeries] = useState(true);
-  const [librarySearchScanUncategorized, setLibrarySearchScanUncategorized] = useState(true);
-  const [libraryRunOnCacheHit, setLibraryRunOnCacheHit] = useState(false);
   const [cacheEmptyResults, setCacheEmptyResults] = useState(true);
-  const [displayLibraryInResults, setDisplayLibraryInResults] = useState(true);
-  const [libraryDeleteAllTile, setLibraryDeleteAllTile] = useState(false);
-  const [libraryDeletePerStreamTile, setLibraryDeletePerStreamTile] = useState(false);
-  const [librarySkipTilePosition, setLibrarySkipTilePosition] = useState<'second' | 'last'>('second');
-  const [libraryDeleteAllPackScope, setLibraryDeleteAllPackScope] = useState<'episode' | 'pack'>('episode');
   const [absoluteEpisodeFallback, setAbsoluteEpisodeFallback] = useState(true);
   const [parallelAlternateTitleSearch, setParallelAlternateTitleSearch] = useState(false);
   const [aliasTitleFallback, setAliasTitleFallback] = useState(true);
@@ -183,28 +171,10 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [nzbhydraTimeoutEnabled, setNzbhydraTimeoutEnabled] = useState(true);
   const [nzbhydraTimeout, setNzbhydraTimeout] = useState(30);
 
-  // ─── NzbDAV ─────────────────────────────────────────────────────────
-  const [nzbdavUrl, setNzbdavUrl] = useState('http://localhost:3000');
-  const [nzbdavApiKey, setNzbdavApiKey] = useState('');
-  const [nzbdavWebdavUrl, setNzbdavWebdavUrl] = useState('http://localhost:3000');
-  const [nzbdavWebdavUser, setNzbdavWebdavUser] = useState('');
-  const [nzbdavWebdavPassword, setNzbdavWebdavPassword] = useState('');
-  const [nzbdavMoviesCategory, setNzbdavMoviesCategory] = useState('Usenet-Ultimate-Movies');
-  const [nzbdavTvCategory, setNzbdavTvCategory] = useState('Usenet-Ultimate-TV');
-  const [nzbdavCacheTimeouts, setNzbdavCacheTimeouts] = useState(true);
-  const [filterDeadNzbs, setFilterDeadNzbs] = useState(true);
   const [nzbdavStreamBufferMB, setNzbdavStreamBufferMB] = useState(128);
   const [nzbdavPipeBufferMB, setNzbdavPipeBufferMB] = useState(8);
   const [nzbdavStreamingMethod, setNzbdavStreamingMethod] = useState<'pipe' | 'proxy' | 'direct'>('proxy');
-  const [healthyNzbDbMode, setHealthyNzbDbMode] = useState<'time' | 'storage'>('time');
-  const [healthyNzbDbTTL, setHealthyNzbDbTTL] = useState(259200);
-  const [healthyNzbDbMaxSizeMB, setHealthyNzbDbMaxSizeMB] = useState(50);
-  const [deadNzbDbMode, setDeadNzbDbMode] = useState<'time' | 'storage'>('storage');
-  const [deadNzbDbTTL, setDeadNzbDbTTL] = useState(86400);
-  const [deadNzbDbMaxSizeMB, setDeadNzbDbMaxSizeMB] = useState(50);
   const [nzbdavConnectionStatus, setNzbdavConnectionStatus] = useState<'connected' | 'disconnected' | 'unconfigured' | 'checking' | null>(null);
-  const [nzbdavTestNzbStatus, setNzbdavTestNzbStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
-  const [nzbdavTestNzbMessage, setNzbdavTestNzbMessage] = useState('');
 
   // ─── EasyNews ───────────────────────────────────────────────────────
   const [easynewsEnabled, setEasynewsEnabled] = useState(false);
@@ -233,7 +203,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [userAgents, setUserAgents] = useState({
     indexerSearch: 'Prowlarr/2.3.0.5236 (alpine 3.22.2)',
     nzbDownload: 'SABnzbd/4.5.5',
-    nzbdavOperations: 'SABnzbd/4.5.5',
     webdavOperations: 'SABnzbd/4.5.5',
     general: defaultChromeUA
   });
@@ -281,7 +250,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
 
   // ─── Refs ───────────────────────────────────────────────────────────
   const initialLoadDone = useRef(false);
-  const nzbdavFieldsChanged = useRef(false);
   const editFormRef = useRef(editForm);
   editFormRef.current = editForm;
 
@@ -358,7 +326,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     const timer = setTimeout(() => saveSettings({ healthChecks: { ...healthCheckSettings, providers: undefined } }), 500);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [healthChecks.enabled, healthChecks.archiveInspection, healthChecks.sampleCount, healthChecks.nzbsToInspect, healthChecks.inspectionMethod, healthChecks.smartBatchSize, healthChecks.smartAdditionalRuns, healthChecks.smartMinHealthy, healthChecks.maxConnections, healthChecks.maxTotalConnections, healthChecks.verifyTlsCertificates, healthChecks.autoQueueMode, healthChecks.hideBlocked, healthChecks.libraryPreCheck, healthChecks.healthCheckIndexers, saveSettings]);
+  }, [healthChecks.enabled, healthChecks.archiveInspection, healthChecks.sampleCount, healthChecks.nzbsToInspect, healthChecks.inspectionMethod, healthChecks.smartBatchSize, healthChecks.smartAdditionalRuns, healthChecks.smartMinHealthy, healthChecks.maxConnections, healthChecks.maxTotalConnections, healthChecks.verifyTlsCertificates, healthChecks.autoQueueMode, healthChecks.hideBlocked, healthChecks.healthCheckIndexers, saveSettings]);
 
   // Auto-save: Ultimate-Fallback settings
   useEffect(() => {
@@ -375,24 +343,14 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     return () => clearTimeout(timer);
   }, [addonEnabled, saveSettings]);
 
-  // Auto-save: streaming/nzbdav settings
+  // Auto-save: streaming and Backend (AltMount) settings
   useEffect(() => {
     if (!initialLoadDone.current) return;
     const timer = setTimeout(() => saveSettings({
-      streamingMode, backend, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod,
+      streamingMode, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod,
     }), 500);
     return () => clearTimeout(timer);
-  }, [streamingMode, backend, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword, nzbdavMoviesCategory, nzbdavTvCategory, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod, saveSettings]);
-
-  // Auto-save: NZB database settings
-  useEffect(() => {
-    if (!initialLoadDone.current) return;
-    const timer = setTimeout(() => saveSettings({
-      healthyNzbDbMode, healthyNzbDbTTL, healthyNzbDbMaxSizeMB,
-      deadNzbDbMode, deadNzbDbTTL, deadNzbDbMaxSizeMB, nzbdavCacheTimeouts, filterDeadNzbs,
-    }), 500);
-    return () => clearTimeout(timer);
-  }, [healthyNzbDbMode, healthyNzbDbTTL, healthyNzbDbMaxSizeMB, deadNzbDbMode, deadNzbDbTTL, deadNzbDbMaxSizeMB, nzbdavCacheTimeouts, filterDeadNzbs, saveSettings]);
+  }, [streamingMode, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod, saveSettings]);
 
   // Auto-save: index manager type
   useEffect(() => {
@@ -435,16 +393,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
         indexerPriorityDedup,
         urlDedup,
         junkFilter,
-        librarySearchThreshold,
-        libraryApplyToMovies,
-        libraryApplyToSeries,
-        librarySearchScanUncategorized,
-        libraryRunOnCacheHit,
-        displayLibraryInResults,
-        libraryDeleteAllTile,
-        libraryDeletePerStreamTile,
-        librarySkipTilePosition,
-        libraryDeleteAllPackScope,
         absoluteEpisodeFallback,
         parallelAlternateTitleSearch,
         aliasTitleFallback,
@@ -454,7 +402,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       indexerPriority: indexerPriorityDedup ? indexerPriority : undefined,
     }), 300);
     return () => clearTimeout(timer);
-  }, [tmdbApiKey, tvdbApiKey, includeSeasonPacks, includeMultiSeasonPacks, seasonPackPagination, seasonPackAdditionalPages, seriesPackKeywords, seriesPackPagination, seriesPackAdditionalPages, indexerPriorityDedup, urlDedup, junkFilter, librarySearchThreshold, libraryApplyToMovies, libraryApplyToSeries, librarySearchScanUncategorized, libraryRunOnCacheHit, displayLibraryInResults, libraryDeleteAllTile, libraryDeletePerStreamTile, librarySkipTilePosition, libraryDeleteAllPackScope, absoluteEpisodeFallback, parallelAlternateTitleSearch, aliasTitleFallback, tvdbPreferEnglishTitle, cacheEmptyResults, indexerPriority, saveSettings]);
+  }, [tmdbApiKey, tvdbApiKey, includeSeasonPacks, includeMultiSeasonPacks, seasonPackPagination, seasonPackAdditionalPages, seriesPackKeywords, seriesPackPagination, seriesPackAdditionalPages, indexerPriorityDedup, urlDedup, junkFilter, absoluteEpisodeFallback, parallelAlternateTitleSearch, aliasTitleFallback, tvdbPreferEnglishTitle, cacheEmptyResults, indexerPriority, saveSettings]);
 
   // Keep indexer priority list in sync when indexers or EasyNews change
   useEffect(() => {
@@ -561,15 +509,16 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editForm.name, editForm.url, editForm.apiKey, editForm.enabled, JSON.stringify(editForm.movieSearchMethod), JSON.stringify(editForm.tvSearchMethod), JSON.stringify(editForm.animeMovieSearchMethod), JSON.stringify(editForm.animeTvSearchMethod), editForm.caps, editForm.website, editForm.logo, editForm.pagination, editForm.maxPages, editForm.timeoutEnabled, editForm.timeout, expandedIndexer]);
 
-  // Reset NzbDAV connection status when fields change after initial load
+  // Reset the Backend connection status when its fields change after initial load
+  const backendFieldsChanged = useRef(false);
   useEffect(() => {
     if (!initialLoadDone.current) return;
-    if (!nzbdavFieldsChanged.current) {
-      nzbdavFieldsChanged.current = true;
+    if (!backendFieldsChanged.current) {
+      backendFieldsChanged.current = true;
       return;
     }
     setNzbdavConnectionStatus(null);
-  }, [streamingMode, backend, altmountUrl, altmountApiKey, altmountCategory, nzbdavUrl, nzbdavApiKey, nzbdavWebdavUrl, nzbdavWebdavUser, nzbdavWebdavPassword]);
+  }, [streamingMode, altmountUrl, altmountApiKey, altmountCategory]);
 
   // Check proxy when proxy mode changes
   useEffect(() => {
@@ -617,16 +566,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setIndexerPriorityDedup(sc?.indexerPriorityDedup ?? false);
       setUrlDedup(sc?.urlDedup !== false);
       setJunkFilter(sc?.junkFilter !== false);
-      setLibrarySearchThreshold(Math.max(0, Math.min(10, sc?.librarySearchThreshold ?? 0)));
-      setLibraryApplyToMovies(sc?.libraryApplyToMovies !== false);
-      setLibraryApplyToSeries(sc?.libraryApplyToSeries !== false);
-      setLibrarySearchScanUncategorized(sc?.librarySearchScanUncategorized !== false);
-      setLibraryRunOnCacheHit(sc?.libraryRunOnCacheHit === true);
-      setDisplayLibraryInResults(sc?.displayLibraryInResults !== false);
-      setLibraryDeleteAllTile(sc?.libraryDeleteAllTile === true);
-      setLibraryDeletePerStreamTile(sc?.libraryDeletePerStreamTile === true);
-      setLibrarySkipTilePosition(sc?.librarySkipTilePosition === 'last' ? 'last' : 'second');
-      setLibraryDeleteAllPackScope(sc?.libraryDeleteAllPackScope === 'pack' ? 'pack' : 'episode');
       setAbsoluteEpisodeFallback(sc?.absoluteEpisodeFallback !== false);
       setParallelAlternateTitleSearch(sc?.parallelAlternateTitleSearch === true);
       setAliasTitleFallback(sc?.aliasTitleFallback !== false);
@@ -707,12 +646,8 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
           order = [...order, 'zyclops'];
         }
       }
-      if (!order.includes('nzbDatabase')) {
-        const healthIdx = order.indexOf('healthChecks');
-        order = healthIdx !== -1
-          ? [...order.slice(0, healthIdx + 1), 'nzbDatabase', ...order.slice(healthIdx + 1)]
-          : [...order, 'nzbDatabase'];
-      }
+      // The NZB database card went with NzbDAV (#188).
+      order = order.filter((c: string) => c !== 'nzbDatabase');
       if (!order.includes('ultimateFallback')) {
         const zyclopsIdx = order.indexOf('zyclops');
         order = zyclopsIdx !== -1
@@ -751,8 +686,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setUserAgents(data.userAgents || {
         indexerSearch: 'Prowlarr/2.3.0.5236 (alpine 3.22.2)',
         nzbDownload: 'SABnzbd/4.5.5',
-        nzbdavOperations: 'SABnzbd/4.5.5',
-        webdavOperations: 'SABnzbd/4.5.5',
+            webdavOperations: 'SABnzbd/4.5.5',
         general: defaultChromeUA
       });
 
@@ -899,20 +833,10 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setNzbhydraPassword(data.nzbhydraPassword || '');
       setNzbhydraTimeoutEnabled(data.nzbhydraTimeoutEnabled !== false);
       setNzbhydraTimeout(data.nzbhydraTimeout ?? DEFAULT_INDEXER_TIMEOUT_SECONDS);
-      setBackend(data.backend === 'altmount' ? 'altmount' : 'nzbdav');
       setAltmountUrl(data.altmountUrl || '');
       setAltmountApiKey(data.altmountApiKey || '');
       setAltmountCategory(data.altmountCategory || 'kaijuflow');
       setAltmountPrepareTimeout(data.altmountPrepareTimeout ?? 300);
-      setNzbdavUrl(data.nzbdavUrl || 'http://localhost:3000');
-      setNzbdavApiKey(data.nzbdavApiKey || '');
-      setNzbdavWebdavUrl(data.nzbdavWebdavUrl || 'http://localhost:3000');
-      setNzbdavWebdavUser(data.nzbdavWebdavUser || '');
-      setNzbdavWebdavPassword(data.nzbdavWebdavPassword || '');
-      setNzbdavMoviesCategory(data.nzbdavMoviesCategory || 'Usenet-Ultimate-Movies');
-      setNzbdavTvCategory(data.nzbdavTvCategory || 'Usenet-Ultimate-TV');
-      setNzbdavCacheTimeouts(data.nzbdavCacheTimeouts !== false);
-      setFilterDeadNzbs(data.filterDeadNzbs !== false);
       setNzbdavStreamBufferMB(data.nzbdavStreamBufferMB ?? 128);
       setNzbdavPipeBufferMB(data.nzbdavPipeBufferMB ?? 8);
       // Belt-and-braces: backend accessor already migrates, but fall back to legacy field if the API response
@@ -921,55 +845,28 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
         data.nzbdavStreamingMethod
           ?? (data.nzbdavProxyEnabled === false ? 'direct' : data.nzbdavProxyEnabled === true ? 'proxy' : 'proxy')
       );
-      setHealthyNzbDbMode(data.healthyNzbDbMode || 'time');
-      setHealthyNzbDbTTL(data.healthyNzbDbTTL ?? 259200);
-      setHealthyNzbDbMaxSizeMB(data.healthyNzbDbMaxSizeMB ?? 50);
-      setDeadNzbDbMode(data.deadNzbDbMode || 'storage');
-      setDeadNzbDbTTL(data.deadNzbDbTTL ?? 86400);
-      setDeadNzbDbMaxSizeMB(data.deadNzbDbMaxSizeMB ?? 50);
       // Mark initial load as done so auto-save hooks don't fire on load.
       // setTimeout defers past React's useEffect cycle — effects from the setState
       // batch above see initialLoadDone.current === false and skip the save.
-      // Also auto-test NzbDAV connection on startup (inline to avoid stale closure)
+      // Also auto-test the Backend connection on startup (inline to avoid stale closure)
       setTimeout(async () => {
         initialLoadDone.current = true;
-        if ((data.streamingMode || 'nzbdav') === 'nzbdav' && data.backend === 'altmount') {
-          if (!data.altmountUrl) {
-            setNzbdavConnectionStatus('unconfigured');
-          } else {
-            setNzbdavConnectionStatus('checking');
-            try {
-              const testResp = await apiFetch('/api/nzbdav/test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ backend: 'altmount' }),
-                signal: AbortSignal.timeout(20_000),
-              });
-              setNzbdavConnectionStatus(testResp.ok ? 'connected' : 'disconnected');
-            } catch {
-              setNzbdavConnectionStatus('disconnected');
-            }
-          }
-        } else if ((data.streamingMode || 'nzbdav') === 'nzbdav' && data.nzbdavUrl) {
-          setNzbdavConnectionStatus('checking');
-          try {
-            const testResp = await apiFetch('/api/nzbdav/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                backend: 'nzbdav',
-                url: data.nzbdavUrl,
-                apiKey: data.nzbdavApiKey || '',
-                webdavUrl: data.nzbdavWebdavUrl || '',
-                webdavUser: data.nzbdavWebdavUser || '',
-                webdavPassword: data.nzbdavWebdavPassword || '',
-              }),
-              signal: AbortSignal.timeout(20_000),
-            });
-            setNzbdavConnectionStatus(testResp.ok ? 'connected' : 'disconnected');
-          } catch {
-            setNzbdavConnectionStatus('disconnected');
-          }
+        if ((data.streamingMode || 'nzbdav') !== 'nzbdav') return;
+        if (!data.altmountUrl) {
+          setNzbdavConnectionStatus('unconfigured');
+          return;
+        }
+        setNzbdavConnectionStatus('checking');
+        try {
+          const testResp = await apiFetch('/api/nzbdav/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+            signal: AbortSignal.timeout(20_000),
+          });
+          setNzbdavConnectionStatus(testResp.ok ? 'connected' : 'disconnected');
+        } catch {
+          setNzbdavConnectionStatus('disconnected');
         }
       });
     } catch (error) {
@@ -1028,85 +925,25 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setNzbdavConnectionStatus(null);
       return;
     }
-
-    if (backend === 'altmount') {
-      if (!altmountUrl) {
-        setNzbdavConnectionStatus('unconfigured');
-        setBackendMessage('AltMount URL is required');
-        return;
-      }
-      setNzbdavConnectionStatus('checking');
-      setBackendMessage('');
-      try {
-        const response = await apiFetch('/api/nzbdav/test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ backend: 'altmount', altmountUrl, altmountApiKey, altmountCategory }),
-        });
-        const body = await response.json().catch(() => ({ message: '' }));
-        setBackendMessage(body.message || '');
-        setNzbdavConnectionStatus(response.ok ? 'connected' : 'disconnected');
-      } catch {
-        setBackendMessage('Connection failed');
-        setNzbdavConnectionStatus('disconnected');
-      }
-      return;
-    }
-
-    if (!nzbdavUrl) {
+    if (!altmountUrl) {
       setNzbdavConnectionStatus('unconfigured');
+      setBackendMessage('AltMount URL is required');
       return;
     }
-
     setNzbdavConnectionStatus('checking');
+    setBackendMessage('');
     try {
       const response = await apiFetch('/api/nzbdav/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          backend: 'nzbdav',
-          url: nzbdavUrl,
-          apiKey: nzbdavApiKey,
-          webdavUrl: nzbdavWebdavUrl,
-          webdavUser: nzbdavWebdavUser,
-          webdavPassword: nzbdavWebdavPassword
-        })
+        body: JSON.stringify({ altmountUrl, altmountApiKey, altmountCategory }),
       });
-
+      const body = await response.json().catch(() => ({ message: '' }));
+      setBackendMessage(body.message || '');
       setNzbdavConnectionStatus(response.ok ? 'connected' : 'disconnected');
     } catch {
+      setBackendMessage('Connection failed');
       setNzbdavConnectionStatus('disconnected');
-    }
-  };
-
-  const sendNzbdavTestNzb = async () => {
-    setNzbdavTestNzbStatus('sending');
-    setNzbdavTestNzbMessage('');
-    try {
-      const response = await apiFetch('/api/nzbdav/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: nzbdavUrl,
-          apiKey: nzbdavApiKey,
-          webdavUrl: nzbdavWebdavUrl,
-          webdavUser: nzbdavWebdavUser,
-          webdavPassword: nzbdavWebdavPassword,
-          moviesCategory: nzbdavMoviesCategory,
-          sendTestNzb: true
-        })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setNzbdavTestNzbStatus('success');
-        setNzbdavTestNzbMessage(data.message || 'Test NZB accepted');
-      } else {
-        setNzbdavTestNzbStatus('error');
-        setNzbdavTestNzbMessage(data.message || 'Test NZB failed');
-      }
-    } catch (error) {
-      setNzbdavTestNzbStatus('error');
-      setNzbdavTestNzbMessage(`Failed: ${(error as Error).message}`);
     }
   };
 
@@ -1337,7 +1174,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const setZyclopsConfirmDialogWithSentinel = useSentinelSetter(zyclopsConfirmDialog, setZyclopsConfirmDialog, v => v.show);
   const setSingleIpConfirmDialogWithSentinel = useSentinelSetter(singleIpConfirmDialog, setSingleIpConfirmDialog, v => v.show);
   const setDirectModeWarningWithSentinel = useSentinelSetter(directModeWarning, setDirectModeWarning, v => v.show);
-  const setLibraryDeleteWarningWithSentinel = useSentinelSetter(libraryDeleteWarning, setLibraryDeleteWarning, v => v.show);
   const setActiveTabWithSentinel = useSentinelSetter(activeTab, setActiveTab, v => v !== 'dashboard');
 
   // ═══════════════════════════════════════════════════════════════════
@@ -1365,7 +1201,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     testQuery, setTestQuery,
     deleteConfirmation, setDeleteConfirmation: setDeleteConfirmationWithSentinel,
     directModeWarning, setDirectModeWarning: setDirectModeWarningWithSentinel,
-    libraryDeleteWarning, setLibraryDeleteWarning: setLibraryDeleteWarningWithSentinel,
     activeOverlay, setActiveOverlay: setActiveOverlayWithSentinel,
     failedLogos, setFailedLogos,
     showApiKey, setShowApiKey,
@@ -1398,16 +1233,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     indexerPriorityDedup, setIndexerPriorityDedup,
     urlDedup, setUrlDedup,
     junkFilter, setJunkFilter,
-    librarySearchThreshold, setLibrarySearchThreshold,
-    libraryApplyToMovies, setLibraryApplyToMovies,
-    libraryApplyToSeries, setLibraryApplyToSeries,
-    librarySearchScanUncategorized, setLibrarySearchScanUncategorized,
-    libraryRunOnCacheHit, setLibraryRunOnCacheHit,
-    displayLibraryInResults, setDisplayLibraryInResults,
-    libraryDeleteAllTile, setLibraryDeleteAllTile,
-    libraryDeletePerStreamTile, setLibraryDeletePerStreamTile,
-    librarySkipTilePosition, setLibrarySkipTilePosition,
-    libraryDeleteAllPackScope, setLibraryDeleteAllPackScope,
     absoluteEpisodeFallback, setAbsoluteEpisodeFallback,
     parallelAlternateTitleSearch, setParallelAlternateTitleSearch,
     aliasTitleFallback, setAliasTitleFallback,
@@ -1437,34 +1262,15 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     nzbhydraTimeout, setNzbhydraTimeout,
 
     // Backend
-    backend, setBackend,
     altmountUrl, setAltmountUrl,
     altmountApiKey, setAltmountApiKey,
     altmountCategory, setAltmountCategory,
     altmountPrepareTimeout, setAltmountPrepareTimeout,
     backendMessage,
-    // NzbDAV
-    nzbdavUrl, setNzbdavUrl,
-    nzbdavApiKey, setNzbdavApiKey,
-    nzbdavWebdavUrl, setNzbdavWebdavUrl,
-    nzbdavWebdavUser, setNzbdavWebdavUser,
-    nzbdavWebdavPassword, setNzbdavWebdavPassword,
-    nzbdavMoviesCategory, setNzbdavMoviesCategory,
-    nzbdavTvCategory, setNzbdavTvCategory,
-    nzbdavCacheTimeouts, setNzbdavCacheTimeouts,
-    filterDeadNzbs, setFilterDeadNzbs,
     nzbdavStreamBufferMB, setNzbdavStreamBufferMB,
     nzbdavPipeBufferMB, setNzbdavPipeBufferMB,
     nzbdavStreamingMethod, setNzbdavStreamingMethod,
-    healthyNzbDbMode, setHealthyNzbDbMode,
-    healthyNzbDbTTL, setHealthyNzbDbTTL,
-    healthyNzbDbMaxSizeMB, setHealthyNzbDbMaxSizeMB,
-    deadNzbDbMode, setDeadNzbDbMode,
-    deadNzbDbTTL, setDeadNzbDbTTL,
-    deadNzbDbMaxSizeMB, setDeadNzbDbMaxSizeMB,
     nzbdavConnectionStatus, setNzbdavConnectionStatus,
-    nzbdavTestNzbStatus, setNzbdavTestNzbStatus,
-    nzbdavTestNzbMessage, setNzbdavTestNzbMessage,
 
     // EasyNews
     easynewsEnabled, setEasynewsEnabled,
@@ -1545,7 +1351,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     fetchLocalIp,
     checkProxyStatus,
     checkNzbdavConnection,
-    sendNzbdavTestNzb,
     testTmdbKey,
     testTvdbKey,
     handleElementDrop,

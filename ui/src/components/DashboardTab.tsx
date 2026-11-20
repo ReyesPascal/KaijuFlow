@@ -2,7 +2,7 @@
 //   Renders the Dashboard tab content: a grid of draggable cards for addon controls,
 //   indexer management, streaming, proxy, cache, filters, health checks, stats, and more.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import {
   Power,
   Database,
@@ -39,22 +39,18 @@ export interface DashboardTabProps {
   config: Config;
   addonEnabled: boolean;
   setAddonEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  activeOverlay: OverlayType;
   setActiveOverlay: (overlay: OverlayType) => void;
   indexManager: 'newznab' | 'prowlarr' | 'nzbhydra';
   easynewsEnabled: boolean;
   enabledIndexersCount: number;
   syncedIndexers: SyncedIndexer[];
   nzbdavConnectionStatus: 'connected' | 'disconnected' | 'unconfigured' | 'checking' | null;
-  backend: 'nzbdav' | 'altmount';
   nzbdavStreamingMethod: 'pipe' | 'proxy' | 'direct';
-  streamingMode: 'nzbdav' | 'stremio';
   proxyMode: 'disabled' | 'http';
   proxyStatus: 'connected' | 'disconnected' | 'checking' | null;
   userAgents: {
     indexerSearch: string;
     nzbDownload: string;
-    nzbdavOperations: string;
     webdavOperations: string;
     general: string;
   };
@@ -78,23 +74,19 @@ export interface DashboardTabProps {
   handleCardDragOver: (e: React.DragEvent, cardId: string) => void;
   handleCardDrop: (e: React.DragEvent, cardId: string) => void;
   handleCardDragEnd: () => void;
-  apiFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
 export function DashboardTab({
   config,
   addonEnabled,
   setAddonEnabled,
-  activeOverlay,
   setActiveOverlay,
   indexManager,
   easynewsEnabled,
   enabledIndexersCount,
   syncedIndexers,
   nzbdavConnectionStatus,
-  backend,
   nzbdavStreamingMethod,
-  streamingMode,
   proxyMode,
   proxyStatus,
   userAgents,
@@ -113,30 +105,11 @@ export function DashboardTab({
   handleCardDragOver,
   handleCardDrop,
   handleCardDragEnd,
-  apiFetch,
 }: DashboardTabProps) {
-  const [nzbDbReady, setNzbDbReady] = useState(0);
-  const [nzbDbFailed, setNzbDbFailed] = useState(0);
-  const prevOverlayRef = useRef<typeof activeOverlay | undefined>(undefined);
-  // NzbDAV-only screens (NZB database, Ultimate Fallback) need NzbDAV streaming mode AND the NzbDAV Backend.
-  const nzbdavOnly = streamingMode === 'nzbdav' && backend === 'nzbdav';
-  const ufActive = ultimateFallback.enabled && nzbdavOnly;
-  const libraryEnabled = (config.searchConfig?.librarySearchThreshold ?? 0) > 0;
+  // Ultimate Fallback needs the Backend's capability: off for AltMount until the play-time check (#190).
+  const ufAvailable = false;
+  const ufActive = ultimateFallback.enabled && ufAvailable;
 
-  useEffect(() => {
-    if (!nzbdavOnly) return;
-    const prev = prevOverlayRef.current;
-    prevOverlayRef.current = activeOverlay;
-    // Only refetch on mount or when the nzbDatabase overlay closes
-    if (prev !== undefined && !(prev === 'nzbDatabase' && activeOverlay !== 'nzbDatabase')) return;
-    apiFetch('/api/nzbdav/cache').then(r => r.ok ? r.json() : null).then(stats => {
-      if (stats) {
-        setNzbDbReady(stats.ready ?? 0);
-        setNzbDbFailed(stats.failed ?? 0);
-      }
-    }).catch(() => {
-    });
-  }, [nzbdavOnly, activeOverlay, apiFetch]);
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 animate-fade-in-up">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -194,19 +167,14 @@ export function DashboardTab({
                     onDragEnd={handleCardDragEnd}
                     className={clsx(
                       "card p-4 cursor-move group transition-all relative overflow-hidden",
-                      libraryEnabled
-                        ? "hover:!border-amber-400/50 hover:!shadow-amber-500/30 active:!border-amber-400/50 active:!shadow-amber-500/30 !border-amber-500/30"
-                        : "hover:!border-blue-400/50 hover:!shadow-blue-400/30 active:!border-blue-400/50 active:!shadow-blue-400/30",
+                      "hover:!border-blue-400/50 hover:!shadow-blue-400/30 active:!border-blue-400/50 active:!shadow-blue-400/30",
                       isDragging && "opacity-50 scale-95",
-                      isOver && (libraryEnabled ? "ring-2 ring-amber-400 scale-105" : "ring-2 ring-blue-400 scale-105")
+                      isOver && "ring-2 ring-blue-400 scale-105"
                     )}
                     onClick={() => {
                       if (!draggedCard) setActiveOverlay('indexManager');
                     }}
                   >
-                    {libraryEnabled && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 via-transparent to-yellow-500/5" />
-                    )}
                     <div className="relative flex items-center gap-3 mb-2">
                       <GripVertical className="w-4 h-4 text-slate-600" />
                       <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:scale-110 group-active:scale-110 transition-transform">
@@ -218,8 +186,7 @@ export function DashboardTab({
                       {indexManager === 'newznab' && 'Newznab'}
                       {indexManager === 'prowlarr' && 'Prowlarr'}
                       {indexManager === 'nzbhydra' && 'NZBHydra2'}
-                      {easynewsEnabled && <span className="text-lg font-normal text-blue-400 ml-2">+ {libraryEnabled ? 'EN' : 'EasyNews'}</span>}
-                      {libraryEnabled && <span className="text-lg font-normal text-amber-400 ml-2">+ Ultimate Library</span>}
+                      {easynewsEnabled && <span className="text-lg font-normal text-blue-400 ml-2">+ EasyNews</span>}
                     </div>
                     <div className="relative text-xs text-slate-500 mt-1 group-hover:text-slate-400 group-active:text-slate-400 transition-colors">
                       {indexManager === 'newznab' && (() => {
@@ -265,7 +232,7 @@ export function DashboardTab({
                     </div>
                     <div className="text-3xl font-bold group-hover:text-purple-400 group-active:text-purple-400 transition-colors">
                       {config.streamingMode === 'nzbdav'
-                        ? <>{backend === 'altmount' ? 'AltMount' : 'NzbDAV'}<span className="text-lg font-normal text-purple-400 ml-2">+ {!ufActive && backend !== 'altmount' ? 'Dual-Stage Proxy' : nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
+                        ? <>AltMount<span className="text-lg font-normal text-purple-400 ml-2">+ {nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
                         : 'Native'}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -301,43 +268,6 @@ export function DashboardTab({
                         <span className="text-xs text-slate-500 group-hover:text-slate-400 group-active:text-slate-400 transition-colors">Click to configure &rarr;</span>
                       )}
                     </div>
-                  </div>
-                ),
-                nzbDatabase: (
-                  <div
-                    key="nzbDatabase"
-                    draggable
-                    onDragStart={() => handleCardDragStart('nzbDatabase')}
-                    onDragOver={(e) => handleCardDragOver(e, 'nzbDatabase')}
-                    onDrop={(e) => handleCardDrop(e, 'nzbDatabase')}
-                    onDragEnd={handleCardDragEnd}
-                    className={clsx(
-                      "card p-4 cursor-move group hover:!border-amber-400/50 hover:!shadow-amber-400/30 active:!border-amber-400/50 active:!shadow-amber-400/30 transition-all",
-                      isDragging && "opacity-50 scale-95",
-                      isOver && "ring-2 ring-amber-400 scale-105",
-                      !nzbdavOnly && "opacity-50 pointer-events-none"
-                    )}
-                    onClick={() => {
-                      if (!draggedCard && nzbdavOnly) setActiveOverlay('nzbDatabase');
-                    }}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <GripVertical className="w-4 h-4 text-slate-600" />
-                      <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center group-hover:scale-110 group-active:scale-110 transition-transform">
-                        <Database className="w-4 h-4 text-amber-400" />
-                      </div>
-                      <span className="text-slate-400 text-sm">NZB Database</span>
-                    </div>
-                    <div className="text-3xl font-bold group-hover:text-amber-400 group-active:text-amber-400 transition-colors">
-                      <span className="text-emerald-400">{nzbDbReady}</span>
-                      <span className="text-slate-300 text-2xl mx-1">Healthy</span>
-                      <span className="text-slate-600 text-2xl">·</span>
-                      <span className="text-red-400 ml-1">{nzbDbFailed}</span>
-                      <span className="text-slate-300 text-2xl ml-1">Dead</span>
-                    </div>
-                    {!nzbdavOnly && (
-                      <span className="text-xs text-slate-600 mt-1">NZB Database is only available with the NzbDAV Backend in NzbDAV streaming mode</span>
-                    )}
                   </div>
                 ),
                 proxy: (
@@ -751,15 +681,15 @@ export function DashboardTab({
                     onDragEnd={handleCardDragEnd}
                     className={clsx(
                       "card p-4 group transition-all relative overflow-hidden",
-                      !nzbdavOnly
+                      !ufAvailable
                         ? "opacity-50 cursor-not-allowed"
                         : "cursor-move hover:!border-amber-400/50 hover:!shadow-amber-500/30 active:!border-amber-400/50 active:!shadow-amber-500/30",
                       isDragging && "opacity-50 scale-95",
                       isOver && "ring-2 ring-amber-400 scale-105",
-                      ufActive && nzbdavOnly && "!border-amber-500/30"
+                      ufActive && "!border-amber-500/30"
                     )}
                     onClick={() => {
-                      if (!draggedCard && nzbdavOnly) setActiveOverlay('ultimateFallback');
+                      if (!draggedCard && ufAvailable) setActiveOverlay('ultimateFallback');
                     }}
                   >
                     {ufActive && (
@@ -790,12 +720,12 @@ export function DashboardTab({
                     )}>
                       {ufActive
                         ? <>Enabled{ultimateFallback.desiredBackups > 0 && <span className="text-lg font-normal text-amber-400 ml-2">+ {ultimateFallback.desiredBackups} NZB Backup{ultimateFallback.desiredBackups === 1 ? '' : 's'}</span>}</>
-                        : backend === 'altmount' ? 'Unavailable' : 'Disabled'}
+                        : ufAvailable ? 'Disabled' : 'Unavailable'}
                     </div>
                     <div className="relative text-xs text-slate-500 mt-1">
                       {ufActive
                         ? `${ultimateFallback.candidateCount} candidate${ultimateFallback.candidateCount !== 1 ? 's' : ''} · ${ultimateFallback.preferenceMode === 'priority' ? 'Priority' : 'Speed'} mode`
-                        : backend === 'altmount' ? 'Unavailable with the AltMount Backend' : 'Click to configure \u2192'}
+                        : ufAvailable ? 'Click to configure \u2192' : 'Not available with AltMount yet'}
                     </div>
                   </div>
                 ),

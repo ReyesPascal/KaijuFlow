@@ -87,11 +87,6 @@ export interface SearchConfig {
   seriesPackKeywords?: string[];
   seriesPackPagination?: boolean;
   seriesPackAdditionalPages?: number;
-  librarySearchThreshold?: number;
-  libraryApplyToMovies?: boolean;
-  libraryApplyToSeries?: boolean;
-  librarySearchScanUncategorized?: boolean;
-  displayLibraryInResults?: boolean;
   absoluteEpisodeFallback?: boolean;
   parallelAlternateTitleSearch?: boolean;
   tvdbPreferEnglishTitle?: boolean;
@@ -143,7 +138,6 @@ export interface Config {
   userAgents?: {
     indexerSearch?: string;
     nzbDownload?: string;
-    nzbdavOperations?: string;
     webdavOperations?: string;
     general?: string;
   };
@@ -167,18 +161,10 @@ export interface Config {
   nzbhydraPassword?: string;
   nzbhydraTimeoutEnabled?: boolean;
   nzbhydraTimeout?: number;
-  backend?: 'nzbdav' | 'altmount';
   altmountUrl?: string;
   altmountApiKey?: string;
   altmountCategory?: string;
   altmountPrepareTimeout?: number;
-  nzbdavUrl?: string;
-  nzbdavApiKey?: string;
-  nzbdavWebdavUrl?: string;
-  nzbdavWebdavUser?: string;
-  nzbdavWebdavPassword?: string;
-  nzbdavMoviesCategory?: string;
-  nzbdavTvCategory?: string;
   nzbdavStreamBufferMB?: number;
   nzbdavPipeBufferMB?: number;
   nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';
@@ -207,7 +193,7 @@ export interface IndexerPreset {
 export type Tab = 'dashboard' | 'install';
 
 
-export type OverlayType = 'indexManager' | 'streaming' | 'nzbDatabase' | 'cache' | 'stats' | 'userAgent' | 'filters' | 'healthChecks' | 'ultimateFallback' | 'proxy' | 'logs' | 'autoPlay' | 'streamDisplay' | 'zyclops' | null;
+export type OverlayType = 'indexManager' | 'streaming' | 'cache' | 'stats' | 'userAgent' | 'filters' | 'healthChecks' | 'ultimateFallback' | 'proxy' | 'logs' | 'autoPlay' | 'streamDisplay' | 'zyclops' | null;
 
 export interface LogEntry {
   timestamp: string;
@@ -230,7 +216,6 @@ export interface HealthChecksState {
   verifyTlsCertificates: boolean;
   autoQueueMode: 'off' | 'top' | 'all';
   hideBlocked: boolean;
-  libraryPreCheck: boolean;
   healthCheckIndexers: Record<string, boolean>;
 }
 
@@ -264,7 +249,6 @@ export interface FiltersState {
   editionPriority: string[];
   preferNonStandardEdition?: boolean;
   preferSeasonPacks?: boolean;
-  preferLibraryResults?: boolean;
   enableRemakeFiltering?: boolean;
   allowMultiEpisodeFiles?: boolean;
   rules?: RulesBlock;
@@ -346,7 +330,6 @@ export interface ElementDragOverState {
 export interface UserAgents {
   indexerSearch: string;
   nzbDownload: string;
-  nzbdavOperations: string;
   webdavOperations: string;
   general: string;
 }

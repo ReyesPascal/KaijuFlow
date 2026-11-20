@@ -1,11 +1,9 @@
 /**
- * NZBDav Shared Utilities
- * Common helpers used across the NZBDav module.
+ * Stream handling shared utilities (episode patterns, media paths, delivery log,
+ * dead-mark helpers).
  */
 
 import { config as globalConfig } from '../config/index.js';
-import { hasSeriesPackKeyword, extractSeasonTokens } from '../parsers/titleMatching.js';
-import type { NZBDavConfig } from './types.js';
 import { backendCapabilities } from '../backends/capabilities.js';
 
 /**
@@ -39,86 +37,11 @@ export function buildDateEpisodePattern(episodeAired: string | undefined): strin
 }
 
 /**
- * Folder-name season filter. A folder is only worth scanning if its name
- * doesn't carry a season marker that contradicts the requested season.
- * Conservative: if the name has no season hint at all, or carries a range
- * / "complete" indicator, allow scanning. Reject only when the name
- * specifies a definite season (Sxx or SxxExx) that doesn't include the target.
- *
- * Used at the top level by the library scan (rejects whole pack folders that
- * can't contain the season) and recursively by findVideoFile (rejects
- * per-season subdirectories inside a multi-season pack).
- */
-export function folderCouldContainSeason(basename: string, season: number): boolean {
-  // Multi-season indicators — assume the folder could span the target.
-  // Shared with the indexer-result filter via hasSeriesPackKeyword.
-  if (hasSeriesPackKeyword(basename)) return true;
-
-  // Collect every Sxx (with or without an Exx suffix) marker in the name.
-  const seasonsFound = extractSeasonTokens(basename);
-  if (seasonsFound.length === 0) return true;        // No marker, allow
-  if (seasonsFound.includes(season)) return true;    // Direct match
-
-  // Range form: S01-S04, S01-04, S01_S04. Hyphen or underscore allow the
-  // second S to be omitted.
-  for (const m of basename.matchAll(/S(\d{1,2})[-_]S?(\d{1,2})/gi)) {
-    const a = parseInt(m[1], 10);
-    const b = parseInt(m[2], 10);
-    if (Math.min(a, b) <= season && season <= Math.max(a, b)) return true;
-  }
-  // Range form: S01.S04, S01 S04. Dot or whitespace allowed only when both
-  // endpoints start with S, so quality markers like "S02.1080p" cannot read
-  // as a bogus range S02 to S10 (1080 has no leading S).
-  for (const m of basename.matchAll(/S(\d{1,2})[._\s]+S(\d{1,2})/gi)) {
-    const a = parseInt(m[1], 10);
-    const b = parseInt(m[2], 10);
-    if (Math.min(a, b) <= season && season <= Math.max(a, b)) return true;
-  }
-
-  return false;
-}
-
-/**
- * Build an NZBDavConfig from the global config.
- * Centralizes the config → NZBDavConfig mapping used by routes and auto-resolve.
- */
-export function buildNzbdavConfig(): NZBDavConfig {
-  return {
-    url: globalConfig.nzbdavUrl || 'http://localhost:3000',
-    apiKey: globalConfig.nzbdavApiKey || '',
-    webdavUrl: globalConfig.nzbdavWebdavUrl || globalConfig.nzbdavUrl || 'http://localhost:3000',
-    webdavUser: globalConfig.nzbdavWebdavUser || '',
-    webdavPassword: globalConfig.nzbdavWebdavPassword || '',
-    moviesCategory: globalConfig.nzbdavMoviesCategory || 'Usenet-Ultimate-Movies',
-    tvCategory: globalConfig.nzbdavTvCategory || 'Usenet-Ultimate-TV',
-    scanUncategorized: globalConfig.searchConfig?.librarySearchScanUncategorized ?? true,
-  };
-}
-
-/** True when the active Backend has a library (library screens, search and cleanup need this). */
-export function isLibraryBackendActive(): boolean {
-  return backendCapabilities().library;
-}
-
-/**
- * Ultimate Fallback needs the Backend's ultimateFallback capability (NzbDAV only): with AltMount active it acts as off even
- * if the saved setting is enabled. Use instead of reading `ultimateFallback.enabled`.
+ * Ultimate Fallback needs the Backend's ultimateFallback capability (off for AltMount until #190): until then it acts as
+ * off even if the saved setting is enabled. Use instead of reading `ultimateFallback.enabled`.
  */
 export function isUltimateFallbackActive(): boolean {
   return globalConfig.ultimateFallback?.enabled === true && backendCapabilities().ultimateFallback;
-}
-
-/**
- * Check whether NZBDav library infrastructure is configured for use.
- * Encodes streamingMode + WebDAV URL + WebDAV user — does NOT include any
- * feature toggles. Each caller applies its own toggle (e.g.
- * `healthChecks.libraryPreCheck` or `searchConfig.displayLibraryInResults`).
- */
-export function isNzbdavLibraryConfigured(): boolean {
-  return globalConfig.streamingMode === 'nzbdav'
-    && isLibraryBackendActive()
-    && !!globalConfig.nzbdavWebdavUrl
-    && !!globalConfig.nzbdavWebdavUser;
 }
 
 /**
@@ -134,11 +57,6 @@ export function encodeWebdavPath(rawPath: string): string {
     .join('/');
 }
 
-/**
- * Create an Error with the `isNzbdavFailure` flag set.
- * The stream cache uses this flag to distinguish permanent failures
- * (cached as 'failed') from transient errors (deleted, allowing retry).
- */
 // ── Delivery log ──────────────────────────────────────────────────────
 // Tracks last logged delivery mode per video path to avoid repeating
 // the same log line on every range request during active playback.
@@ -159,19 +77,6 @@ export function clearDeliveryLog(): void {
 
 /** Error message stored when an episode is only found in a combined multi-episode file */
 export const MULTI_EPISODE_BLOCKED_ERROR = 'Episode only found in combined multi-episode file';
-
-/** Error message stored when the job completed but no video was at the expected
- *  WebDAV path. The one-time stale-folder migration clears dead-NZB entries
- *  carrying this message (false-positives of the orphaned-folder bug). */
-export const VIDEO_NOT_FOUND_ERROR = 'Video file not found in WebDAV after job completed';
-
-export function nzbdavError(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
-  const err = new Error(message) as Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };
-  err.isNzbdavFailure = true;
-  err.isTimeout = isTimeout;
-  err.isEpisodeSpecific = isEpisodeSpecific;
-  return err;
-}
 
 /**
  * Transport-layer error thrown when WebDAV returns an error status (404, 410, etc.)

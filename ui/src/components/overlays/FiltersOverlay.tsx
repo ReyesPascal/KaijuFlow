@@ -491,35 +491,6 @@ export default function FiltersOverlay({
             );
           })()}
 
-          {/* Prefer Library Results (rendered on all tabs since the library covers both content types) */}
-          {(() => {
-            const preferLibrary = activeFilters.preferLibraryResults ?? false;
-            return (
-              <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4">
-                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-700/50 bg-slate-800/30">
-                  <div>
-                    <div className="text-sm font-medium text-slate-300">Prefer Library Results</div>
-                    <div className="text-xs text-slate-500 mt-0.5">Sort indexer results that are already in your WebDAV library to the top of the list in priority order. Requires Display Library In Results to be enabled.</div>
-                  </div>
-                  <button
-                    aria-label="Prefer Library Results"
-                    aria-pressed={preferLibrary}
-                    onClick={() => updateActiveFilters(prev => ({ ...prev, preferLibraryResults: !(prev.preferLibraryResults ?? false) }))}
-                    className={clsx(
-                      "relative w-10 h-6 rounded-full transition-colors flex-shrink-0",
-                      preferLibrary ? "bg-purple-500" : "bg-slate-600"
-                    )}
-                  >
-                    <div className={clsx(
-                      "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
-                      preferLibrary ? "left-5" : "left-1"
-                    )} />
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-
           {/* Sort Order Priority */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">

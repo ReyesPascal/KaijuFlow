@@ -1,5 +1,5 @@
 // A4 additional coordinator integration smoke tests; imported only after fail-closed gate.
-// All candidate health statuses are synthetic/pre-existing; no external NNTP/WebDAV calls.
+// All candidate health statuses are synthetic/pre-existing; no external NNTP or Backend calls.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,34 +19,32 @@ const run=async(id,fn)=>{try{const measurements=await fn();results.push({id,stat
 const items=()=>[
   {link:'https://127.0.0.1/fixture-a.nzb',title:'A4 Coordinator A',indexerName:'Synthetic'},
   {link:'https://127.0.0.1/fixture-b.nzb',title:'A4 Coordinator B',indexerName:'Synthetic'},
-  {link:'https://127.0.0.1/fixture-c.nzb',title:'A4 Coordinator C',indexerName:'Synthetic',zyclopsVerified:true},
-  {link:'library:synthetic',title:'A4 Local Library',origin:'library'}
+  {link:'https://127.0.0.1/fixture-c.nzb',title:'A4 Coordinator C',indexerName:'Synthetic',zyclopsVerified:true}
 ];
 const pre=arr=>new Map(arr.slice(0,2).map(r=>[r.link,{status:'verified',message:'Synthetic cached result',playable:true}]));
 try{
   configData.streamingMode='none'; configData.indexManager='manual'; configData.easynewsHealthCheck=false;
-  configData.healthChecks={...configData.healthChecks,enabled:true,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture'}],inspectionMethod:'smart',smartBatchSize:2,smartAdditionalRuns:2,smartMinHealthy:1,libraryPreCheck:false,hideBlocked:false};
+  configData.healthChecks={...configData.healthChecks,enabled:true,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture'}],inspectionMethod:'smart',smartBatchSize:2,smartAdditionalRuns:2,smartMinHealthy:1,hideBlocked:false};
   await run('A4-COORD-SMART-018',async()=>{
     const arr=items(), r=await coordinateHealthChecks({allResults:arr,type:'movie',preExistingHealth:pre(arr)});
     assert.equal(r.healthResults.get(arr[0].link)?.status,'verified');
     assert.equal(r.healthResults.get(arr[2].link)?.message,'Zyclops');
-    assert.equal(r.filteredResults.length,4);
-    assert.ok(r.filteredResults.some(result=>result.origin==='library'));
-    return {verified:r.healthResults.size,retained:r.filteredResults.length,libraryKept:true};
+    assert.equal(r.filteredResults.length,3);
+    return {verified:r.healthResults.size,retained:r.filteredResults.length};
   });
   await run('A4-COORD-FIXED-019',async()=>{
     configData.healthChecks.inspectionMethod='fixed';configData.healthChecks.nzbsToInspect=2;
     const arr=items(),r=await coordinateHealthChecks({allResults:arr,type:'movie',preExistingHealth:pre(arr)});
     assert.equal(r.healthResults.get(arr[1].link)?.status,'verified');
     assert.equal(r.healthResults.get(arr[2].link)?.message,'Zyclops');
-    assert.equal(r.filteredResults.length,4);
+    assert.equal(r.filteredResults.length,3);
     return {topN:2,verified:r.healthResults.size,retained:r.filteredResults.length};
   });
   await run('A4-COORD-DISABLED-020',async()=>{
     configData.healthChecks.enabled=false;
     const arr=items(),r=await coordinateHealthChecks({allResults:arr,type:'movie',preExistingHealth:pre(arr)});
     assert.equal(r.healthResults.get(arr[2].link)?.message,'Zyclops');
-    assert.equal(r.filteredResults.length,4);
+    assert.equal(r.filteredResults.length,3);
     return {autoMarked:true,retained:r.filteredResults.length};
   });
 } finally {

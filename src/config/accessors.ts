@@ -9,7 +9,6 @@
  *   env var > config.json > hardcoded default
  */
 
-import { BACKEND_IDS, type BackendId } from '../backends/types.js';
 import type { Config, SearchConfig, HealthCheckConfig, AutoPlayConfig, StreamDisplayConfig, SyncedIndexer, UltimateFallbackConfig } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { getLatestVersions } from '../versionFetcher.js';
@@ -64,9 +63,6 @@ export const config: Config = {
   get indexManager() {
     return envEnum('INDEX_MANAGER', ['newznab', 'prowlarr', 'nzbhydra']) || configData.indexManager;
   },
-  get backend(): BackendId {
-    return envEnum('BACKEND', [...BACKEND_IDS]) || configData.backend || 'nzbdav';
-  },
   get altmountUrl() {
     return envStr('ALTMOUNT_URL') || configData.altmountUrl;
   },
@@ -78,27 +74,6 @@ export const config: Config = {
   },
   get altmountPrepareTimeout() {
     return Math.max(1, configData.altmountPrepareTimeout ?? 300);
-  },
-  get nzbdavUrl() {
-    return envStr('NZBDAV_URL') || configData.nzbdavUrl;
-  },
-  get nzbdavApiKey() {
-    return envStr('NZBDAV_API_KEY') || configData.nzbdavApiKey;
-  },
-  get nzbdavWebdavUrl() {
-    return envStr('NZBDAV_WEBDAV_URL') || configData.nzbdavWebdavUrl;
-  },
-  get nzbdavWebdavUser() {
-    return envStr('NZBDAV_WEBDAV_USER') || configData.nzbdavWebdavUser;
-  },
-  get nzbdavWebdavPassword() {
-    return envStr('NZBDAV_WEBDAV_PASS') || configData.nzbdavWebdavPassword;
-  },
-  get nzbdavMoviesCategory() {
-    return configData.nzbdavMoviesCategory;
-  },
-  get nzbdavTvCategory() {
-    return configData.nzbdavTvCategory;
   },
   get nzbdavCacheTimeouts() {
     const env = envBool('INCLUDE_TIMEOUTS_AS_DEAD_NZBS');
@@ -161,32 +136,18 @@ export const config: Config = {
   get searchConfig(): SearchConfig {
     const sc = configData.searchConfig || { includeSeasonPacks: true };
     const urlDedupEnv = envBool('URL_DEDUP');
-    const displayLibraryEnv = envBool('DISPLAY_LIBRARY_IN_RESULTS');
     const absoluteEpFallbackEnv = envBool('ABSOLUTE_EPISODE_FALLBACK');
     const parallelAltTitleEnv = envBool('PARALLEL_ALTERNATE_TITLE_SEARCH');
     const junkFilterEnv = envBool('JUNK_FILTER');
     const cacheEmptyResultsEnv = envBool('CACHE_EMPTY_RESULTS');
-    const libraryThresholdEnv = envInt('LIBRARY_SEARCH_THRESHOLD');
-    const scanUncategorizedEnv = envBool('LIBRARY_SEARCH_SCAN_UNCATEGORIZED');
     const tvdbEnglishEnv = envBool('TVDB_PREFER_ENGLISH_TITLE');
     const aliasTitleFallbackEnv = envBool('ALIAS_TITLE_FALLBACK');
     return {
       ...sc,
-      // Always present in the response (default true). Other 3 fields below
-      // remain conditionally spread because they default to undefined.
-      displayLibraryInResults: displayLibraryEnv ?? sc.displayLibraryInResults ?? true,
       absoluteEpisodeFallback: absoluteEpFallbackEnv ?? sc.absoluteEpisodeFallback ?? true,
       parallelAlternateTitleSearch: parallelAltTitleEnv ?? sc.parallelAlternateTitleSearch ?? false,
       tvdbPreferEnglishTitle: tvdbEnglishEnv ?? sc.tvdbPreferEnglishTitle ?? true,
       aliasTitleFallback: aliasTitleFallbackEnv ?? sc.aliasTitleFallback ?? true,
-      // Library short-circuit threshold (0 = disabled, 1-10 = active). Clamped on read so a
-      // bad config.json or env var can't push it out of range; settings updater also clamps on writes.
-      librarySearchThreshold: Math.max(0, Math.min(10, libraryThresholdEnv ?? sc.librarySearchThreshold ?? 0)),
-      librarySearchScanUncategorized: scanUncategorizedEnv ?? sc.librarySearchScanUncategorized ?? true,
-      libraryDeleteAllTile: sc.libraryDeleteAllTile ?? false,
-      libraryDeletePerStreamTile: sc.libraryDeletePerStreamTile ?? false,
-      libraryDeleteAllPackScope: sc.libraryDeleteAllPackScope === 'pack' ? 'pack' : 'episode',
-      librarySkipTilePosition: sc.librarySkipTilePosition === 'last' ? 'last' : 'second',
       ...(urlDedupEnv !== undefined && { urlDedup: urlDedupEnv }),
       ...(junkFilterEnv !== undefined && { junkFilter: junkFilterEnv }),
       ...(cacheEmptyResultsEnv !== undefined && { cacheEmptyResults: cacheEmptyResultsEnv }),
@@ -208,7 +169,6 @@ export const config: Config = {
     const defaults = {
       indexerSearch: versions.prowlarr,
       nzbDownload: versions.sabnzbd,
-      nzbdavOperations: versions.sabnzbd,
       webdavOperations: versions.sabnzbd,
       general: versions.chrome
     };
@@ -221,7 +181,6 @@ export const config: Config = {
     return {
       indexerSearch: useLatest(configData.userAgents.indexerSearch, /^Prowlarr\//, defaults.indexerSearch),
       nzbDownload: useLatest(configData.userAgents.nzbDownload, /^SABnzbd\//, defaults.nzbDownload),
-      nzbdavOperations: useLatest(configData.userAgents.nzbdavOperations, /^SABnzbd\//, defaults.nzbdavOperations),
       webdavOperations: useLatest(configData.userAgents.webdavOperations, /^SABnzbd\//, defaults.webdavOperations),
       general: useLatest(configData.userAgents.general, /Chrome\/[\d.]+/, defaults.general),
     };
@@ -294,7 +253,6 @@ export const config: Config = {
         verifyTlsCertificates: true,
         autoQueueMode: 'all' as const,
         hideBlocked: true,
-        libraryPreCheck: true,
       };
       // Inject env-based NNTP provider if configured
       const envHost = envStr('HEALTH_CHECK_NNTP_HOST');
@@ -337,7 +295,6 @@ export const config: Config = {
       maxTotalConnections: hc.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
       verifyTlsCertificates: hc.verifyTlsCertificates !== false,
       autoQueueMode: hc.autoQueueMode ?? 'all',
-      libraryPreCheck: hc.libraryPreCheck !== false,
     };
 
     // Inject env-based NNTP provider (prepended so it takes priority)

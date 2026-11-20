@@ -1,7 +1,7 @@
 // What this does:
 //   User-Agent configuration overlay for different request types
 
-import { Globe, X, Search, Download, Server, FolderOpen } from 'lucide-react';
+import { Globe, X, Search, Download, FolderOpen } from 'lucide-react';
 import type { UserAgents } from '../../types';
 
 const DEFAULT_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -72,25 +72,8 @@ export function UserAgentOverlay({
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
               <span className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-purple-400" />
-                NzbDAV Operations
-              </span>
-            </label>
-            <input
-              type="text"
-              value={userAgents.nzbdavOperations}
-              onChange={(e) => setUserAgents({ ...userAgents, nzbdavOperations: e.target.value })}
-              className="input w-full"
-              placeholder="User agent string"
-            />
-            <p className="text-xs text-slate-500 mt-1">Used for NzbDAV API operations (connection tests, NZB submissions)</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              <span className="flex items-center gap-2">
                 <FolderOpen className="w-4 h-4 text-orange-400" />
-                WebDAV Operations
+                Backend Media Fetch
               </span>
             </label>
             <input
@@ -100,7 +83,7 @@ export function UserAgentOverlay({
               className="input w-full"
               placeholder="User agent string"
             />
-            <p className="text-xs text-slate-500 mt-1">Used for WebDAV file operations and connections</p>
+            <p className="text-xs text-slate-500 mt-1">Used when KaijuFlow fetches video from the Backend (AltMount) for the stream proxy</p>
           </div>
 
           <div>
@@ -133,7 +116,6 @@ export function UserAgentOverlay({
                     setUserAgents({
                       indexerSearch: 'Prowlarr/2.3.0.5236 (alpine 3.22.2)',
                       nzbDownload: 'SABnzbd/4.5.5',
-                      nzbdavOperations: 'SABnzbd/4.5.5',
                       webdavOperations: 'SABnzbd/4.5.5',
                       general: DEFAULT_CHROME_UA
                     });
@@ -144,7 +126,6 @@ export function UserAgentOverlay({
                   setUserAgents({
                     indexerSearch: 'Prowlarr/2.3.0.5236 (alpine 3.22.2)',
                     nzbDownload: 'SABnzbd/4.5.5',
-                    nzbdavOperations: 'SABnzbd/4.5.5',
                     webdavOperations: 'SABnzbd/4.5.5',
                     general: DEFAULT_CHROME_UA
                   });

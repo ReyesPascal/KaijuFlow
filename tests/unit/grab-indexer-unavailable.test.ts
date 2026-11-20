@@ -6,7 +6,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { grabNzb } from '../../src/nzbdav/nzbdavApi.ts';
+import { grabNzb } from '../../src/backends/nzbGrab.ts';
 import { isIndexerUnavailableMessage, pruneIndexerUnavailableMarks } from '../../src/nzbdav/utils.ts';
 import { captureLogs } from './capture-logs.ts';
 import { isSourceFailure } from '../../src/backends/types.ts';

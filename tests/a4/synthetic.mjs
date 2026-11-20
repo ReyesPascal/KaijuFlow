@@ -121,104 +121,7 @@ try {
   } finally { await s.close(); }
 } catch(e) { record('A4-SDK-002','fail',{error:String(e)},'SDK routing fixture failed, or manifest key setup unavailable'); }
 
-try {
-  assert.ok(manifestKey,'auth fixture required');
-  const { createNzbdavStreamRoutes } = await src('routes/nzbdav.js');
-  const deletes=[];
-  const fake=await serve((req,res)=>{
-    if(req.method==='DELETE'){
-      deletes.push({url:req.url,depth:req.headers.depth||null});
-      // KaijuFlow: also fail FailAllPack; 'FailAllPack' does not contain 'FailPack', so delete-all never saw a 503.
-      res.writeHead(/Fail(All)?Pack/.test(req.url)?503:204);res.end();return;
-    }
-    res.writeHead(200,{'Content-Type':'application/json'});res.end('{"history":{"slots":[]}}');
-  });
-  const app=express();
-  const deps={
-    config,handleStream:async(_req,res)=>res.end(),
-    getCacheStats:()=>({}),clearStreamCache:()=>{},clearReadyCache:()=>0,
-    clearFailedCache:()=>0,deleteCacheEntry:()=>false,getCacheEntries:()=>[],
-    isStreamCached:()=>false,getLatestVersions:()=>({chrome:'synthetic'})
-  };
-  configData.nzbdavUrl='http://127.0.0.1:'+fake.port;
-  configData.nzbdavWebdavUrl='http://127.0.0.1:'+fake.port;
-  configData.nzbdavWebdavUser='';configData.nzbdavWebdavPassword='';
-  app.use('/stremio/:manifestKey/nzbdav',authMw.validateManifestKey,createNzbdavStreamRoutes(deps));
-  const server=await serve(app);
-  const tile=(p,scope='pack')=>'?t='+encodeURIComponent(Buffer.from(JSON.stringify({sk:'synthetic-key',p,scope})).toString('base64url'));
-  const endpoint='/stremio/'+manifestKey+'/nzbdav/library-delete';
-  try {
-    const invalid=await request(server.port,endpoint+tile('/notcontent/Movie'));
-    assert.equal(deletes.length,0);
-    const head=await request(server.port,endpoint+tile('/content/movies/TestPack'),{method:'HEAD'});
-    const afterHEAD=deletes.length;
-    await request(server.port,endpoint+tile('/content/movies/TestPack'),{method:'GET'});
-    const afterReplay=deletes.length;
-    await request(server.port,endpoint+tile('/content/movies/FailPack'),{method:'GET'});
-    const failCount1=deletes.filter(x=>x.url?.includes('FailPack')).length;
-    await request(server.port,endpoint+tile('/content/movies/FailPack'),{method:'GET'});
-    const failCount2=deletes.filter(x=>x.url?.includes('FailPack')).length;
-    // Bounded, loopback-only regression expansion. Unique paths avoid the existing 30s dedup window.
-    const priorInvalid = deletes.length;
-    await request(server.port,endpoint+tile('/content/movies/../CrossRoot'));
-    await request(server.port,endpoint+tile('/content/movies/Bad/Deep','pack'));
-    await request(server.port,endpoint+'?t=not-valid-json-base64');
-    const invalidAdditional = deletes.length-priorInvalid;
-    const unauthorizedBefore=deletes.length;
-    const unauthorized = await request(server.port,'/stremio/invalid-manifest-key/nzbdav/library-delete'+tile('/content/movies/Unauthorized'));
-    const unauthorizedDeletes=deletes.length-unauthorizedBefore;
-
-    const concurrentPath='/content/movies/ConcurrentPack';
-    const concurrentBefore=deletes.filter(x=>x.url?.includes('ConcurrentPack')).length;
-    await Promise.all(Array.from({length:4},()=>request(server.port,endpoint+tile(concurrentPath))));
-    const concurrentDeletes=deletes.filter(x=>x.url?.includes('ConcurrentPack')).length-concurrentBefore;
-
-    // A4-DELETEALL-007: the token store and original delete-all handler are exercised,
-    // not reimplemented. All targets and endpoints are disposable synthetic loopback.
-    const { registerDeleteAllTargets } = await src('nzbdav/deleteAllTargetsStore.js');
-    const allEndpoint='/stremio/'+manifestKey+'/nzbdav/library-delete-all';
-    const allTile = (tk,id='a4-deleteall-failure') => '?t='+encodeURIComponent(Buffer.from(JSON.stringify({
-      sk:'synthetic-key',type:'movie',id,tk
-    })).toString('base64url'));
-    const missBefore=deletes.length;
-    const missing=await request(server.port,allEndpoint+allTile('not-registered','a4-deleteall-invalid-token'));
-    const missDeletes=deletes.length-missBefore;
-    const allToken=registerDeleteAllTargets([{path:'/content/movies/FailAllPack',scope:'pack'}]);
-    const allUrl=allEndpoint+allTile(allToken);
-    const allBefore=deletes.filter(x=>x.url?.includes('FailAllPack')).length;
-    const allFirst=await request(server.port,allUrl,{method:'GET'});
-    const allCountFirst=deletes.filter(x=>x.url?.includes('FailAllPack')).length-allBefore;
-    const allReplay=await request(server.port,allUrl,{method:'GET'});
-    const allCountReplay=deletes.filter(x=>x.url?.includes('FailAllPack')).length-allBefore;
-    const invalidAllBefore=deletes.length;
-    const invalidAll=await request(server.port,'/stremio/invalid-manifest-key/nzbdav/library-delete-all'+allTile(allToken));
-    const invalidAllDeletes=deletes.length-invalidAllBefore;
-    const allMetrics={missingTokenResponse:missing.status,missingTokenDeletes:missDeletes,
-      firstResponse:allFirst.status,replayResponse:allReplay.status,
-      firstAttemptCount:allCountFirst,replayAttemptCount:allCountReplay,
-      invalidManifestResponse:invalidAll.status,invalidManifestDeletes:invalidAllDeletes};
-    const allViolations=[];
-    if(missDeletes!==0) allViolations.push('missing token caused DELETE');
-    if(allCountFirst!==1) allViolations.push('first delete-all did not attempt one DELETE');
-    if(allCountReplay!==2) allViolations.push('failed delete-all 503 did not retry');
-    if(invalidAll.status!==404 || invalidAllDeletes!==0) allViolations.push('unauthorized delete-all reached WebDAV');
-    record('A4-DELETEALL-007',allViolations.length?'fail':'pass',allMetrics,
-      allViolations.length?allViolations.join('; '):'Original delete-all handler and token registry, failed WebDAV 503 replay');
-
-    // Existing handler treats 404/410 as a successful absence; 503 is not success.
-    const metrics={invalidDeletes:0,headResponse:head.status,headRemoteDeletes:afterHEAD,replayRemoteDeletes:afterReplay,failedFirst:failCount1,failedReplay:failCount2,invalidAdditional,unauthorizedStatus:unauthorized.status,unauthorizedDeletes,concurrentDeletes};
-    const violations=[];
-    if(afterHEAD!==0) violations.push('HEAD initiated WebDAV DELETE');
-    if(afterReplay!==1) violations.push('dedup/replay count differs from one');
-    if(failCount2!==2) violations.push('failed DELETE is deduped instead of retried');
-    if(invalidAdditional!==0) violations.push('invalid/traversal/deep-pack envelope remotely deleted');
-    if(unauthorized.status!==404 || unauthorizedDeletes!==0) violations.push('invalid manifest reached deletion');
-    if(concurrentDeletes!==1) violations.push('concurrent same-key delete was not coalesced');
-    record('A4-DELETE-003',violations.length?'fail':'pass',metrics,violations.length?violations.join('; '):'Original imported handler; no live WebDAV; remote side-effect count measured');
-
-
-  } finally { await server.close();await fake.close(); }
-} catch(e) { record('A4-DELETE-003','fail',{error:String(e)},'Original deletion route could not complete sandbox fixture'); }
+// A4-DELETE-003 and A4-DELETEALL-007 (library delete routes) were removed with NzbDAV (#188).
 
 try {
   const { createSettingsRoutes } = await src('routes/settings.js');
@@ -409,7 +312,7 @@ try {
   }
 }catch(e){record('A4-YENC-011','fail',{error:String(e)},'Original yEnc BODY fixture failed');}
 
-// Original /v WebDAV proxy. Fake upstream returns exact 200/206/416 and
+// Original /v media proxy, pointed at the Backend (AltMount). Fake upstream returns exact 200/206/416 and
 // 404 on loopback. Tests forwarding, 416 recovery and same-origin fallback.
 try {
   assert.ok(manifestKey,'auth fixture required');
@@ -432,10 +335,9 @@ try {
       'Content-Range':'bytes '+start+'-'+end+'/10','Accept-Ranges':'bytes'});
     res.end(payload);
   });
-  configData.nzbdavWebdavUrl='http://127.0.0.1:'+fake.port;
-  configData.nzbdavUrl='http://127.0.0.1:'+fake.port;
+  configData.altmountUrl='http://127.0.0.1:'+fake.port;
+  configData.altmountApiKey='synthetic-key';
   configData.nzbdavStreamingMethod='pipe';
-  configData.nzbdavWebdavUser='';configData.nzbdavWebdavPassword='';
   const deps={
     config,handleStream:async(_req,res)=>res.end(),getCacheStats:()=>({}),
     clearStreamCache:()=>{},clearReadyCache:()=>0,clearFailedCache:()=>0,
@@ -549,13 +451,8 @@ try {
   assert.equal(cache.isVideoPathBroken(video),true);
   cache.clearVideoPathBroken(video);
   assert.equal(cache.isVideoPathBroken(video),false);
-  const key='a4-test-manifest:movie:tt9999999::';
-  assert.equal(cache.consumeLibraryBypass(key),false);
-  cache.markLibraryBypass(key);
-  assert.equal(cache.consumeLibraryBypass(key),true);
-  assert.equal(cache.consumeLibraryBypass(key),false);
-  record('A4-CACHE-015','pass',{brokenPathMarkClear:true,bypassOneShot:true},
-    'Original broken-video-path and library bypass cache marker state, no persisted stream/cache parity claimed');
+  record('A4-CACHE-015','pass',{brokenPathMarkClear:true},
+    'Original broken-video-path cache marker state, no persisted stream/cache parity claimed');
 }catch(e){record('A4-CACHE-015','fail',{error:String(e)},'Original cache marker fixture failed');}
 
 // Real health-check pipeline with cached fabricated NZB XML and a local STAT

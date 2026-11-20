@@ -6,7 +6,7 @@
  *   - Fixed: checks a fixed number of top results
  *
  * Also handles auto-marking EasyNews/Zyclops results as verified,
- * filtering blocked results, and auto-queuing to NZBDav.
+ * filtering blocked results, and auto-queuing to the Backend.
  */
 
 import { config } from '../config/index.js';
@@ -17,81 +17,13 @@ import { buildStreamFilename } from '../parsers/metadataParsers.js';
 import { getActiveBackend } from '../backends/index.js';
 import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../nzbdav/streamCache.js';
 import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
-import { buildEpisodePattern, buildDateEpisodePattern, isLibraryBackendActive, isUltimateFallbackActive } from '../nzbdav/utils.js';
-import { getTvAllowMultiEpisode } from '../config/accessors.js';
-import type { NZBDavConfig } from '../nzbdav/types.js';
+import { isUltimateFallbackActive } from '../nzbdav/utils.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
 
 // Internal self-requests (auto-queue) hit loopback directly to avoid
 // cross-origin redirect errors from reverse proxies / external BASE_URL.
 // KaijuFlow: 127.0.0.1, not localhost (see utils/selfUrl.ts).
 const SELF_URL = getSelfUrl();
-
-/**
- * Mark candidates that already exist in the NZBDav library by calling
- * the active Backend's already-prepared lookup in parallel. Skips entries already in healthResults so
- * concurrent callers (libraryPreCheck + displayLibraryInResults) don't
- * double-probe the same URL. Library hits are tagged
- * `{status:'verified', message:'Library', playable:true}` so the existing
- * streamBuilder maps them to the 📚 status badge. Returns the hit count.
- */
-export async function markLibraryHits(
-  candidates: any[],
-  healthResults: Map<string, HealthCheckResult>,
-  nzbdavConfig: NZBDavConfig,
-  episodePattern: string | undefined,
-  contentType: 'movie' | 'series',
-  episodesInSeason: number | undefined,
-  episodeAired?: string,
-): Promise<number> {
-  // Re-check entries whose existing health entry is a Library tag — the file
-  // may have been deleted from WebDAV since the cached search ran, so trusting
-  // the prior `Library` verdict on cache hit leaves a stale 📚 icon on tiles
-  // pointing at files that no longer exist. Non-library health results
-  // (NNTP/Zyclops verdicts) are stable; skip those.
-  const unchecked = candidates.filter(r => {
-    const h = healthResults.get(r.link);
-    return !h || h.message === 'Library';
-  });
-  if (unchecked.length === 0) return 0;
-  // Pass 2 fallback: daily/talk-show files in the library are date-named, so
-  // SxxExx-only matching misses them. When the search context carries an
-  // aired date, fall back to a date-pattern check after Pass 1 returns null.
-  // Mirrors the search-side alias-fallback gate.
-  const datePattern = buildDateEpisodePattern(episodeAired);
-  let hits = 0;
-  const backend = getActiveBackend(nzbdavConfig);
-  await Promise.all(unchecked.map(async (r) => {
-    try {
-      const source = { nzbUrl: r.link, title: r.title, contentType, episodesInSeason };
-      let result = await backend.findPrepared({ ...source, episodePattern }, { quiet: true });
-      if (!result && datePattern) {
-        result = await backend.findPrepared({ ...source, episodePattern: datePattern }, { quiet: true });
-      }
-      if (result) {
-        healthResults.set(r.link, { status: 'verified', message: 'Library', playable: true });
-        // Local flag consumed by sortResults' preferLibraryResults tier-zero
-        // comparator. Mutating the result here keeps the sort phase from needing
-        // to thread the healthResults Map through its signature.
-        r.inLibrary = true;
-        hits++;
-      } else if (r.inLibrary) {
-        // Was in the library on the prior run but isn't now (file deleted via
-        // the delete tile, manually removed from WebDAV, etc). Clear the stale
-        // flag and drop the cached Library health entry so downstream sort and
-        // streamBuilder stop painting the 📚 badge.
-        r.inLibrary = false;
-        if (healthResults.get(r.link)?.message === 'Library') {
-          healthResults.delete(r.link);
-        }
-      }
-    } catch {
-      // Non-fatal — findPrepared only re-throws errors flagged isNzbdavFailure;
-      // transient WebDAV blips don't break the search response.
-    }
-  }));
-  return hits;
-}
 
 /**
  * Number of Sources health-checked at once: `healthChecks.maxConnections`.
@@ -120,12 +52,6 @@ export async function coordinateHealthChecks(
   ctx: HealthCheckContext
 ): Promise<{ healthResults: Map<string, HealthCheckResult>; filteredResults: any[] }> {
   let { allResults } = ctx;
-  // Library-origin results are pre-extracted files on disk; skip NNTP/Zyclops/dead-NZB
-  // checks (they'd crash on `library:`-prefixed URLs and are semantically meaningless
-  // for already-resolved files). Library results pass through with no health status,
-  // treated as inherently healthy by downstream stages.
-  const libraryResults = allResults.filter(r => r?.origin === 'library');
-  allResults = allResults.filter(r => r?.origin !== 'library');
   const healthResults = new Map<string, HealthCheckResult>();
   // Pre-populate with existing health data (from cached results) so smart mode
   // sees already-checked results and doesn't re-check them
@@ -137,7 +63,7 @@ export async function coordinateHealthChecks(
   if (!config.healthChecks?.enabled || enabledProviders.length === 0) {
     // No NNTP health checks — still auto-mark EasyNews/Zyclops
     autoMarkRemainingResults(allResults, healthResults);
-    return { healthResults, filteredResults: [...libraryResults, ...allResults] };
+    return { healthResults, filteredResults: allResults };
   }
 
   // Build health-check-enabled set based on index manager mode
@@ -209,50 +135,6 @@ export async function coordinateHealthChecks(
   const isVerifiedStatus = (s: string) =>
     s === 'verified' || s === 'verified_stored' || s === 'verified_archive';
 
-  // ── Library Pre-Check ──────────────────────────────────────────────
-  // If NZBDav is configured and library pre-check is enabled, scan the
-  // WebDAV library for each candidate before running expensive NNTP checks.
-  // Content already downloaded is marked as verified ('Library') instantly.
-  const libraryPreCheckEnabled = (config.healthChecks?.libraryPreCheck !== false)
-    && config.streamingMode === 'nzbdav'
-    && isLibraryBackendActive()
-    && config.nzbdavWebdavUrl
-    && config.nzbdavWebdavUser;
-
-  let nzbdavConfig: NZBDavConfig | null = null;
-  let libraryEpisodePattern: string | undefined;
-  if (libraryPreCheckEnabled) {
-    nzbdavConfig = {
-      url: config.nzbdavUrl || 'http://localhost:3000',
-      apiKey: config.nzbdavApiKey || '',
-      webdavUrl: config.nzbdavWebdavUrl || config.nzbdavUrl || 'http://localhost:3000',
-      webdavUser: config.nzbdavWebdavUser || '',
-      webdavPassword: config.nzbdavWebdavPassword || '',
-      moviesCategory: config.nzbdavMoviesCategory || 'Usenet-Ultimate-Movies',
-      tvCategory: config.nzbdavTvCategory || 'Usenet-Ultimate-TV',
-      scanUncategorized: config.searchConfig?.librarySearchScanUncategorized ?? true,
-    };
-    if (ctx.season !== undefined && ctx.episode !== undefined) {
-      libraryEpisodePattern = buildEpisodePattern(ctx.season, ctx.episode, getTvAllowMultiEpisode(config));
-    }
-  }
-
-  const libraryContentType = ctx.type === 'movie' ? 'movie' : 'series';
-
-  /** Check a batch of candidates against the NZBDav library (concurrent). */
-  async function preCheckLibrary(candidates: any[]): Promise<number> {
-    if (!nzbdavConfig) return 0;
-    return markLibraryHits(
-      candidates,
-      healthResults,
-      nzbdavConfig,
-      libraryEpisodePattern,
-      libraryContentType,
-      ctx.episodesInSeason,
-      ctx.episodeAired,
-    );
-  }
-
   if (inspectionMethod === 'smart') {
     // --- SMART: Stop on Healthy ---
     const batchSize = config.healthChecks.smartBatchSize || 3;
@@ -280,18 +162,6 @@ export async function coordinateHealthChecks(
       if (zyclopsCount > 0) {
         console.log(`🤖 Auto-verified ${zyclopsCount} Zyclops result(s) in batch ${batch + 1}`);
       }
-      // Library pre-check: skip NNTP for candidates already in NZBDav
-      if (nzbdavConfig && toCheck.length > 0) {
-        const libHits = await preCheckLibrary(toCheck);
-        if (libHits > 0) {
-          console.log(`📚 ${libHits} result(s) found in NZBDav library (batch ${batch + 1}), skipping NNTP`);
-          // Remove library hits from NNTP queue
-          const remaining = toCheck.filter(r => !healthResults.has(r.link));
-          toCheck.length = 0;
-          toCheck.push(...remaining);
-        }
-      }
-
       // NZB Database pre-check: skip NNTP for known-bad NZBs
       if (toCheck.length > 0) {
         let nzbDbHits = 0;
@@ -391,17 +261,6 @@ export async function coordinateHealthChecks(
     if (zyclopsCount > 0) {
       console.log(`🤖 Auto-verified ${zyclopsCount} Zyclops result(s) in top ${topN.length}`);
     }
-    // Library pre-check: skip NNTP for candidates already in NZBDav
-    if (nzbdavConfig && nonEasynewsToCheck.length > 0) {
-      const libHits = await preCheckLibrary(nonEasynewsToCheck);
-      if (libHits > 0) {
-        console.log(`📚 ${libHits} result(s) found in NZBDav library, skipping NNTP`);
-        const remaining = nonEasynewsToCheck.filter(r => !healthResults.has(r.link));
-        nonEasynewsToCheck.length = 0;
-        nonEasynewsToCheck.push(...remaining);
-      }
-    }
-
     // NZB Database pre-check: skip NNTP for known-bad NZBs
     if (nonEasynewsToCheck.length > 0) {
       let nzbDbHits = 0;
@@ -513,8 +372,7 @@ export async function coordinateHealthChecks(
     }
   }
 
-  // Re-merge library-origin results so they reach the downstream sort/stream-builder.
-  return { healthResults, filteredResults: [...libraryResults, ...allResults] };
+  return { healthResults, filteredResults: allResults };
 }
 
 /**
@@ -538,7 +396,7 @@ export function autoMarkRemainingResults(
 
 
 /**
- * Auto-queue verified results to NZBDav cache.
+ * Auto-queue verified results to the Backend (prepare ahead of the click).
  * Mode 'top': queue only the first verified result.
  * Mode 'all': queue all verified results in order.
  * Reuses NZB content cached during health checks to avoid extra indexer grabs.
@@ -614,11 +472,7 @@ export function autoQueueToNzbdav(
   const isEligible = (r: any) => {
     if (r.easynewsMeta && config.easynewsMode !== 'nzb') return false;
     const health = healthResults.get(r.link);
-    if (!health || !isVerifiedStatus(health.status)) return false;
-    // Library hits are already on disk — auto-queueing them would re-grab
-    // content the user already has. Skip.
-    if (health.message === 'Library') return false;
-    return true;
+    return !!health && isVerifiedStatus(health.status);
   };
 
   if (mode === 'all') {

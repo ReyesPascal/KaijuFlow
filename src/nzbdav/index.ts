@@ -1,16 +1,16 @@
 /**
- * NZBDav Module
- * Re-exports all public symbols from the nzbdav submodules.
+ * Stream handling module (historical folder name; NzbDAV itself is gone, #188).
+ * Re-exports the public symbols of the stream handler, caches and Ultimate Fallback.
  */
 
 // Types
-export type { NZBDavConfig, FallbackCandidate } from './types.js';
+export type { FallbackCandidate } from './types.js';
 
 // Fallback management
 export { createFallbackGroup, getFallbackGroup, clearFallbackGroups } from './fallbackManager.js';
 
 // Stream cache
-export { getOrCreateStream, getCacheKey, getDeadCacheKey, isStreamCached, isDeadNzbByUrl, addDeadNzbByUrl, evictReadyByVideoPath, evictReadyByVideoPathPrefix, clearVideoPathState, clearTimeoutEntries, setReadyCacheEntry, setDeadNzbEntry } from './streamCache.js';
+export { getOrCreateStream, getCacheKey, getDeadCacheKey, isStreamCached, isDeadNzbByUrl, addDeadNzbByUrl, evictReadyByVideoPath, clearTimeoutEntries, setReadyCacheEntry, setDeadNzbEntry } from './streamCache.js';
 
 // Cache utilities
 export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries, saveCacheToDisk } from './cacheUtils.js';
@@ -19,7 +19,7 @@ export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, del
 export { ultimateFallbackFromCandidates, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';
 
 // Shared utilities
-export { buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isNzbdavLibraryConfigured, isLibraryBackendActive, isUltimateFallbackActive } from './utils.js';
+export { buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
 
 // Stream handler (Express endpoint)
 export { handleStream } from './streamHandler.js';

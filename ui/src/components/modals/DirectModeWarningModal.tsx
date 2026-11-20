@@ -1,7 +1,7 @@
 // What this does:
 //   Confirmation dialog shown when the user enables direct streaming mode.
-//   Direct mode redirects the player to a WebDAV URL with credentials embedded,
-//   so the modal lists the two best practices that mitigate that exposure.
+//   Direct mode redirects the player to AltMount's file URL with its download key embedded,
+//   so the modal lists the best practices that mitigate that exposure.
 
 import { AlertTriangle } from 'lucide-react';
 
@@ -23,12 +23,12 @@ export function DirectModeWarningModal({ directModeWarning, setDirectModeWarning
           <h3 className="text-xl font-semibold text-slate-200">Direct Mode - Best Practices</h3>
         </div>
         <p className="text-slate-300 mb-3">
-          Direct mode redirects the player straight to the WebDAV URL with WebDAV credentials embedded.
+          Direct mode redirects the player straight to AltMount's file URL with AltMount's download key embedded.
         </p>
-        <p className="text-slate-300 mb-2">If your NzbDAV is accessible remotely, you'll want to follow the following best practices:</p>
+        <p className="text-slate-300 mb-2">If your AltMount is accessible remotely, you'll want to follow the following best practices:</p>
         <ol className="text-sm text-slate-400 list-decimal list-inside space-y-1 mb-6">
-          <li>Use different credentials for your NzbDAV admin login and WebDAV user.</li>
-          <li>Keep NzbDAV's "Enforce Read Only" WebDAV option on (this is the default).</li>
+          <li>Use direct mode only when the player is on a trusted network.</li>
+          <li>Change AltMount's API key if a link with its download key was shared.</li>
         </ol>
         <div className="flex justify-end gap-2">
           <button
