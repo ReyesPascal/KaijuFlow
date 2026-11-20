@@ -25,15 +25,13 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildNzbdavConfig, buildEpisodePattern, buildDateEpisodePattern, isNzbdavLibraryConfigured, isUltimateFallbackActive, clearResolvedSessions } from '../nzbdav/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../nzbdav/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
-import { runLibraryGate } from './libraryGate.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
-import { sortResults } from './sort.js';
-import { coordinateHealthChecks, autoMarkRemainingResults, autoQueueToNzbdav, markLibraryHits } from './healthCheckCoordinator.js';
+import { coordinateHealthChecks, autoMarkRemainingResults, autoQueueToNzbdav } from './healthCheckCoordinator.js';
 import { buildStreams } from './streamBuilder.js';
-import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey, consumeLibraryBypass } from '../nzbdav/streamCache.js';
+import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../nzbdav/streamCache.js';
 import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
 import { isDatabaseLoaded } from '../anime/animeDatabase.js';
@@ -56,7 +54,7 @@ const manifest = {
   id: 'com.usenetultimate.addon',
   version: APP_VERSION,
   name: 'Usenet Ultimate',
-  description: 'Search Usenet indexers and EasyNews for media content. Supports Newznab, Prowlarr, and NZBHydra with NZB health checking, quality-based sorting, and direct streaming via NZBDav or EasyNews.',
+  description: 'Search Usenet indexers and EasyNews for media content. Supports Newznab, Prowlarr, and NZBHydra with NZB health checking, quality-based sorting, and direct streaming via AltMount or EasyNews.',
   logo: '/pwa-512x512.png',
   resources: ['stream'],           // We only provide streams
   types: ['movie', 'series'],      // Support movies and TV shows
@@ -71,18 +69,9 @@ const manifest = {
 const builder = addonBuilder(manifest);
 
 /**
- * Build the manifest-scoped search cache key. Single source of truth for the
- * key composition used by the search-time write (this file) and the bypass-
- * time delete (routes/nzbdav.ts library-bypass endpoint). Manifest-scoping
- * prevents cross-manifest cache collisions in multi-tenant deployments.
+ * Build the manifest-scoped search cache key. Manifest-scoping prevents
+ * cross-manifest cache collisions in multi-tenant deployments.
  */
-/** Drop a search cache entry by its full key. Used by the library-bypass
- *  endpoint to clear stale results before the user re-searches. */
-export function deleteSearchCacheEntry(cacheKey: string): boolean {
-  return cache.del(cacheKey) > 0;
-}
-
-
 export function buildSearchCacheKey(manifestKey: string, type: string, id: string, cfg: typeof config): string {
   const easynewsSuffix = cfg.easynewsEnabled ? ':en' : '';
   const packsSuffix = cfg.searchConfig?.includeSeasonPacks ? ':packs' : '';
@@ -105,9 +94,7 @@ export function buildSearchCacheKey(manifestKey: string, type: string, id: strin
 
 /**
  * Resolve title metadata and assemble the SearchContext used by all downstream
- * searchers (indexer, EasyNews, library). Centralized so the fresh-search and
- * cache-hit paths build the same searchCtx; the cache-hit path needs it when
- * libraryRunOnCacheHit is on so the library scan has full title info.
+ * searchers (indexer, EasyNews).
  *
  * Anime via Kitsu/MAL/AniList/AniDB without IMDB mappings uses a synthetic
  * titleInfo (no Cinemeta lookup) and only augments via TVDB when a TVDB ID is
@@ -282,21 +269,9 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       episode = parts[2] ? parseInt(parts[2], 10) : undefined;
     }
 
-    // Manifest-scoped cache + bypass key. Both share the same manifestKey so a
-    // bypass-tile click under manifest A doesn't affect manifest B.
+    // Manifest-scoped cache key.
     const requestManifestKey = requestContext.getStore()?.manifestKey || '';
     const cacheKey = buildSearchCacheKey(requestManifestKey, type, id, config);
-
-    // Pre-search bypass check — fires FIRST, before the cache-hit gate below.
-    // Set when the user clicks the "Query indexers on next search" tile after a
-    // library short-circuit. One-shot consumption: the marker clears the moment
-    // we read it. When set, library scan is skipped for THIS search and
-    // indexer/EasyNews flow runs instead.
-    const bypassKey = `${requestManifestKey}:${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
-    const libraryBypassed = consumeLibraryBypass(bypassKey);
-    if (libraryBypassed) {
-      console.log(`📚 Ultimate Library bypassed for this search (user-armed via tile)`);
-    }
 
     // === SHARED: Filter dead NZBs from raw results ===
     const filterDeadFromRaw = (results: any[]) => {
@@ -338,7 +313,6 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       const contentKey = `${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
       const ufManifestKey = requestContext.getStore()?.manifestKey || '';
       const sessionKey = `${ufManifestKey}:${contentKey}`;
-      const nzbdavConfig = buildNzbdavConfig();
       let cachePattern: string | undefined;
       let filePattern: string | undefined;
       if (type === 'series' && season !== undefined && episode !== undefined) {
@@ -347,8 +321,8 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         filePattern = datePattern ? `(?:${cachePattern}|${datePattern})` : cachePattern;
       }
 
-      // Ultimate-Fallback takes priority — handles health checking + nzbdav internally.
-      // Guarded by streamingMode=nzbdav: UF resolves via NZBDav, so running it for other modes
+      // Ultimate-Fallback takes priority — handles health checking + the Backend hand-off internally.
+      // Guarded by streamingMode=nzbdav (the Backend mode): running it for other modes
       // wastes cycles and produces a tile URL the handler can't serve.
       if (isUltimateFallbackActive() && config.ultimateFallback && config.streamingMode === 'nzbdav') {
         // On-tile-selection: defer UF until the user clicks the lobby tile.
@@ -356,7 +330,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
         const ur = config.ultimateFallback;
         ultimateFallbackFromCandidates(
-          sessionKey, fallbackCandidates, nzbdavConfig,
+          sessionKey, fallbackCandidates,
           { candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, archiveInspection: ur.archiveInspection, sampleCount: ur.sampleCount, maxAttempts: ur.maxAttempts, desiredBackups: ur.desiredBackups, backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds, priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds, speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds, speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers },
           cachePattern, filePattern, type, episodesInSeason,
         ).catch(err => console.error('❌ Ultimate-Fallback error:', err));
@@ -366,7 +340,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     };
 
     // === SHARED: Process from raw results → streams (filter, sort, health check, build) ===
-    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], healthMap: Map<string, any>, titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number; shortCircuited?: boolean }) => {
+    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], healthMap: Map<string, any>, titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
       // season packs of remade shows take the deprioritized path (applyRemakeFilter)
       // and would otherwise bypass the dead-NZB DB.
@@ -395,40 +369,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // Auto-mark EasyNews and Zyclops results as verified
       autoMarkRemainingResults(allResults, healthMap);
 
-      // Display library in results: mark search results that already exist in
-      // the WebDAV library with the 📚 icon. Runs after auto-mark + before
-      // auto-queue so library hits aren't auto-queued (auto-queue's isEligible
-      // also rejects message='Library' as a defensive guard).
-      if (config.searchConfig?.displayLibraryInResults && isNzbdavLibraryConfigured()) {
-        const epPattern = (titleMeta.type === 'series' && titleMeta.season !== undefined && titleMeta.episode !== undefined)
-          ? buildEpisodePattern(titleMeta.season, titleMeta.episode, getTvAllowMultiEpisode(config))
-          : undefined;
-        const contentType: 'movie' | 'series' = titleMeta.type === 'movie' ? 'movie' : 'series';
-        const hits = await markLibraryHits(
-          allResults,
-          healthMap,
-          buildNzbdavConfig(),
-          epPattern,
-          contentType,
-          titleMeta.episodesInSeason,
-          titleMeta.episodeAired,
-        );
-        if (hits > 0) console.log(`📚 Display-library: marked ${hits}/${allResults.length} result(s) as in-library`);
-      }
-
-      // Re-sort when preferLibraryResults is on. The inLibrary flag is mutated
-      // by markLibraryHits during health checks AND the displayLibraryInResults
-      // block above, both of which run AFTER applyUserFilters' initial sort.
-      // On a fresh search the flag isn't visible to the first sort pass; the
-      // re-sort here applies it. On cache-hit the rawResults already carry the
-      // flag (set last run), so the initial sort already saw it and this pass
-      // is effectively a no-op.
-      const filterCfg = (titleMeta.type === 'movie' ? config.movieFilters : config.tvFilters) ?? config.filters;
-      if (filterCfg?.preferLibraryResults) {
-        allResults = sortResults(allResults, filterCfg, titleMeta.now, titleMeta.runtime);
-      }
-
-      // Auto-queue to NZBDav if enabled. Safe alongside Ultimate Fallback in
+      // Auto-queue to the Backend if enabled. Safe alongside Ultimate Fallback in
       // on-tile-selection mode (UF defers submit until click). Skipped when UF
       // is in on-results mode — UF already submits at search time and would
       // race auto-queue on the same NZBs.
@@ -450,7 +391,6 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         episodeAired: titleMeta.episodeAired,
         now: titleMeta.now,
         runtime: titleMeta.runtime,
-        shortCircuited: titleMeta.shortCircuited,
       });
 
       return { streams, fallbackGroupId, fallbackCandidates, allResults };
@@ -462,39 +402,8 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       if (cached) {
         console.log(`💾 Cache hit for ${type} ${imdbId}`);
 
-        // libraryRunOnCacheHit: when on, scan the WebDAV library before serving
-        // cached results. The cached entry is never re-queried; we only short-
-        // circuit to library results when the post-filter library scan meets
-        // threshold. Below threshold, the cached entry is returned untouched.
-        // The bypass marker still wins (one-shot user action overrides standing
-        // preference). Library short-circuits skip both the cache.set update
-        // and triggerAutoResolve below because (a) the cached indexer entry is
-        // the source of truth for indexer state and must not be overwritten,
-        // and (b) library hits are already-resolved files, so UF/auto-queue
-        // would attempt to re-grab content that already exists in the library.
-        let chShortCircuit = false;
-        let chLibResults: any[] = [];
-        if (config.searchConfig?.libraryRunOnCacheHit && !libraryBypassed) {
-          const { titleInfo: chTitleInfo, searchCtx: chSearchCtx } = await resolveTitleAndBuildSearchCtx({
-            type, imdbId, season, episode, animeId, animeResolved, tvdbIdFromRequest,
-          });
-          const chGate = await runLibraryGate(chSearchCtx, chTitleInfo, buildNzbdavConfig);
-          chShortCircuit = chGate.shortCircuited;
-          chLibResults = chGate.libraryResults;
-        }
-
         const now = Date.now();
         const healthMap = new Map<string, any>(Object.entries(cached.healthMap || {}));
-
-        if (chShortCircuit) {
-          // Library met threshold on cache hit: serve library-only results.
-          // Do NOT update the cached indexer entry, do NOT triggerAutoResolve.
-          const { streams } = await processFromRaw(
-            chLibResults, [], healthMap,
-            { type, season, episode, episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime, shortCircuited: true },
-          );
-          return { streams };
-        }
 
         // Re-apply filters, sort, health checks, and build streams with current settings
         const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
@@ -534,36 +443,21 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       type, imdbId, season, episode, animeId, animeResolved, tvdbIdFromRequest,
     });
 
-    // Optional pre-search: scan the WebDAV library first. Bypass marker (one-shot
-    // user action via the Skip tile) takes precedence over the standing config; when
-    // armed, the gate is skipped for this request. All threshold/type/streaming-mode
-    // checks live inside runLibraryGate.
-    const freshGate = !libraryBypassed
-      ? await runLibraryGate(searchCtx, titleInfo, buildNzbdavConfig)
-      : { shortCircuited: false, libraryResults: [] as any[] };
-    let libraryResults: any[] = freshGate.libraryResults;
-    let shortCircuited = freshGate.shortCircuited;
-
-    let allRawResults: any[];
-    if (shortCircuited) {
-      allRawResults = libraryResults;
-    } else {
-      const [indexManagerResults, easynewsResults] = await Promise.all([
-        indexManagerSearch(searchCtx),
-        easynewsSearch(searchCtx),
-      ]);
-      // Tag indexer/easynews results with origin so downstream code can route correctly.
-      // (Searchers don't currently emit origin natively; we tag at orchestrator level.)
-      const tagOrigin = (r: any, origin: 'indexer' | 'easynews'): any =>
-        r.origin ? r : { ...r, origin };
-      allRawResults = [
-        ...indexManagerResults.map(r => tagOrigin(r, 'indexer')),
-        ...easynewsResults.map(r => tagOrigin(r, 'easynews')),
-      ];
-      console.log('');
-      console.log('═══ Results Processing ' + '═'.repeat(40));
-      console.log(`📊 Found ${allRawResults.length} total results (indexer: ${indexManagerResults.length}, easynews: ${easynewsResults.length})`);
-    }
+    const [indexManagerResults, easynewsResults] = await Promise.all([
+      indexManagerSearch(searchCtx),
+      easynewsSearch(searchCtx),
+    ]);
+    // Tag indexer/easynews results with origin so downstream code can route correctly.
+    // (Searchers don't currently emit origin natively; we tag at orchestrator level.)
+    const tagOrigin = (r: any, origin: 'indexer' | 'easynews'): any =>
+      r.origin ? r : { ...r, origin };
+    const allRawResults: any[] = [
+      ...indexManagerResults.map(r => tagOrigin(r, 'indexer')),
+      ...easynewsResults.map(r => tagOrigin(r, 'easynews')),
+    ];
+    console.log('');
+    console.log('═══ Results Processing ' + '═'.repeat(40));
+    console.log(`📊 Found ${allRawResults.length} total results (indexer: ${indexManagerResults.length}, easynews: ${easynewsResults.length})`);
 
     // === STEP 3: DEDUP + CONTENT-DEPENDENT PRE-FILTERING (cacheable) ===
     const { results: rawResults, deprioritizedPacks } = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
@@ -573,14 +467,12 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     const healthMap = new Map<string, any>();
     const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
       rawResults, deprioritizedPacks, healthMap,
-      { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime, shortCircuited }
+      { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime }
     );
 
     // Cache raw results + deprioritized packs + health map (filters/sorts reapply on cache hits).
-    // Short-circuited library-only results bypass the cache: library state can change between
-    // searches, and the user explicitly chose live-scan-per-search behavior.
     const skipEmptyCache = config.searchConfig?.cacheEmptyResults === false && rawResults.length === 0;
-    if (config.cacheEnabled && config.cacheTTL > 0 && !skipEmptyCache && !shortCircuited) {
+    if (config.cacheEnabled && config.cacheTTL > 0 && !skipEmptyCache) {
       cache.set(cacheKey, {
         rawResults,
         deprioritizedPacks,

@@ -1,20 +1,18 @@
-// Pins what each Backend declares it can do (R1, #16). A new Backend (e.g.
-// InfiniDysk) adds its own row here instead of touching callers.
+// Pins what the Backend declares it can do (R1, #16). AltMount is the only
+// Backend (#188); Ultimate Fallback stays off for it until #190 turns it on.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createNzbdavBackend } from '../../src/backends/nzbdav.js';
 import { createAltmountBackend, buildAltmountSettings } from '../../src/backends/altmount.js';
-import { buildNzbdavConfig } from '../../src/nzbdav/utils.js';
+import { getActiveBackend } from '../../src/backends/index.js';
 import { backendCapabilities } from '../../src/backends/capabilities.js';
 
-test('NzbDAV has a library and Ultimate Fallback', () => {
-  const b = createNzbdavBackend(buildNzbdavConfig());
-  assert.deepEqual({ ...b.capabilities }, { library: true, ultimateFallback: true });
-  assert.deepEqual({ ...backendCapabilities('nzbdav') }, { ...b.capabilities });
+test('the Backend is AltMount', () => {
+  assert.equal(getActiveBackend().id, 'altmount');
+  assert.equal(getActiveBackend().label, 'AltMount');
 });
 
-test('AltMount has neither a library nor Ultimate Fallback', () => {
+test('AltMount has no Ultimate Fallback yet', () => {
   const b = createAltmountBackend(buildAltmountSettings());
-  assert.deepEqual({ ...b.capabilities }, { library: false, ultimateFallback: false });
-  assert.deepEqual({ ...backendCapabilities('altmount') }, { ...b.capabilities });
+  assert.deepEqual({ ...b.capabilities }, { ultimateFallback: false });
+  assert.deepEqual({ ...backendCapabilities() }, { ...b.capabilities });
 });

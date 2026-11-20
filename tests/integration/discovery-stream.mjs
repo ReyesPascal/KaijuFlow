@@ -49,7 +49,7 @@ try {
   });
   const {config,configData}=await load('config/index');
   Object.assign(configData,{streamingMode:'nzbdav',indexManager:'manual',easynewsHealthCheck:false,nzbdavUrl:fake,nzbdavWebdavUrl:fake,nzbdavApiKey:'synthetic-key',nzbdavWebdavUser:'fixture',nzbdavWebdavPassword:'fixture',nzbdavMoviesCategory:'Movies',nzbdavStreamingMethod:'proxy',ultimateFallback:{...configData.ultimateFallback,enabled:false}});
-  configData.healthChecks={...configData.healthChecks,enabled:true,inspectionMethod:'fixed',nzbsToInspect:1,libraryPreCheck:false,hideBlocked:false,autoQueue:false,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture',type:'pool'}]};
+  configData.healthChecks={...configData.healthChecks,enabled:true,inspectionMethod:'fixed',nzbsToInspect:1,hideBlocked:false,autoQueue:false,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture',type:'pool'}]};
   const {parseNewznabXmlWithMeta}=await load('parsers/newznabClient');
   const parsed=await parseNewznabXmlWithMeta(await (await fetch(fake+'/search')).text());
   assert.equal(parsed.total,1);assert.equal(parsed.results[0].title,title);assert.equal(parsed.results[0].size,advertisedSize);
@@ -76,7 +76,7 @@ try {
   assert.equal(url.origin,base);assert.match(url.pathname,/\/stremio\/synthetic-manifest\/nzbdav\/stream\//);
   const envelope=JSON.parse(Buffer.from(url.searchParams.get('t'),'base64url'));
   assert.equal(envelope.url,fake+'/fixture.nzb');assert.equal(envelope.title,title);assert.equal(tile.behaviorHints.notWebReady,false);assert.ok(tile.name && tile.title);
-  report.stages.push('original stream builder generates metadata and NzbDAV tile envelope');
+  report.stages.push('original stream builder generates metadata and the Backend tile envelope');
   const response=await fetch(tile.url,{signal:AbortSignal.timeout(20000)});
   const delivered=Buffer.from(await response.arrayBuffer());
   assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'video/x-matroska');assert.equal(Number(response.headers.get('content-length')),64);assertBytes(delivered,media);

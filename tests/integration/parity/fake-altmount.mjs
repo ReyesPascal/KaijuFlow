@@ -1,6 +1,6 @@
 // Fake AltMount Backend for the Parity suite (contract: docs/kaijuflow/research/ALTMOUNT_INTEGRATION.md, v0.4.0).
 // POST /api/nzb/streams (multipart, nzb_url) + GET/HEAD /api/files/stream. Synthetic NZBs and media only.
-// Same contract as fake NzbDAV: { name, requests[], addMovie(tag,title,media)->nzbUrl, submitsFor(tag), configure(configData) }.
+// Contract: { name, requests[], addMovie(tag,title,media)->nzbUrl, submitsFor(tag), configure(configData) }.
 import crypto from 'node:crypto';
 import { serveBytes } from './serve-bytes.mjs';
 import { fault } from './first-byte-fault.mjs';
@@ -212,7 +212,7 @@ export async function createFakeAltmount(listen) {
     /** KaijuFlow settings that point the AltMount Backend at this fake. */
     configure(configData) {
       Object.assign(configData, {
-        streamingMode: 'nzbdav', indexManager: 'manual', backend: 'altmount',
+        streamingMode: 'nzbdav', indexManager: 'manual',
         altmountUrl: base, altmountApiKey: API_KEY, altmountCategory: 'kaijuflow', altmountPrepareTimeout: 20,
         nzbdavStreamingMethod: 'proxy',
         ultimateFallback: { ...configData.ultimateFallback, enabled: false },

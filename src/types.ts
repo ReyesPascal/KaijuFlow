@@ -87,18 +87,16 @@ export const ZYCLOPS_BACKBONES = [
   'usenetexpress', 'uzo-reto'
 ] as const;
 
-// Raw result origin discriminator. Library results bypass NZB-specific code paths
-// (submitNzb, getCacheKey, dead-NZB checks, health checks) — handlers gate on this.
-export type ResultOrigin = 'indexer' | 'easynews' | 'library';
+// Raw result origin discriminator.
+export type ResultOrigin = 'indexer' | 'easynews';
 
 // Shape used by dedup, sort, score, and stream-builder. Indexer/EasyNews searchers
-// return loosely-typed objects today; this interface documents the contract and is
-// enforced for library-origin results emitted by searchLibrary().
+// return loosely-typed objects today; this interface documents the contract.
 export interface RawResult {
   origin: ResultOrigin;
   title: string;
   link: string;          // dedup key — see src/addon/dedup.ts
-  nzbUrl: string;        // for indexer/easynews: same as link; for library: 'library:<videoPath>'
+  nzbUrl: string;        // same as link
   size: number;
   indexerName: string;
   pubDate?: string;
@@ -111,14 +109,8 @@ export interface RawResult {
   releaseGroup?: string;
   language?: string;
   isSeasonPack?: boolean;
-  /** Set only when origin === 'library' AND the inner file is a per-episode file inside a pack folder.
-   *  Pack-total size filters skip these entries since `size` is the per-episode size, not the pack total.
-   *  Per-episode-in-pack filters still apply via the existing isSeasonPack branch. */
-  extractedFromPack?: boolean;
   duration?: string;
   easynewsMeta?: any;
-  /** Set only when origin === 'library' — direct WebDAV path; handleStream uses this for the fast-path serve. */
-  libraryVideoPath?: string;
 }
 
 // Search configuration - global API keys and settings shared across all indexers
@@ -133,7 +125,6 @@ export interface SearchConfig {
   indexerPriorityDedup?: boolean;  // Deduplicate results across indexers, keeping only the copy from the highest-priority indexer (default false)
   urlDedup?: boolean;  // Remove duplicate results with identical download URLs (default true)
   junkFilter?: boolean;  // Strip bare archive parts and NZB containers from search results (default true)
-  displayLibraryInResults?: boolean;  // Mark search results that exist in the WebDAV library with the 📚 icon (default true)
   cacheEmptyResults?: boolean;  // Cache search responses that returned zero results (default true)
   absoluteEpisodeFallback?: boolean;  // Series text-search: retry with absolute episode numbering (Title E31) when the SxxExx query returns zero results. UTS only. (default true)
   parallelAlternateTitleSearch?: boolean;  // Run primary + alt-title searches in parallel from the start instead of using alts only as a zero-result fallback. UTS only. (default false)
@@ -143,15 +134,6 @@ export interface SearchConfig {
   seriesPackKeywords?: string[];  // Each enabled keyword fires a '<Title> <Keyword>' indexer query to catch keyword-only releases without Sxx tokens. Empty array means no keyword queries fire. Allowed values come from SERIES_PACK_KEYWORDS.
   seriesPackPagination?: boolean;  // Enable pagination for series-pack queries (multi-season fanout + keyword queries). Independent of seasonPackPagination. (default true)
   seriesPackAdditionalPages?: number;  // Additional pages for series-pack queries (1-10).
-  librarySearchThreshold?: number;  // 0 = disabled, 1-10 = WebDAV library short-circuit: when scan returns ≥ threshold matches, skip indexer queries entirely
-  libraryApplyToMovies?: boolean;  // When false, Ultimate Library is skipped for movie requests (default true)
-  libraryApplyToSeries?: boolean;  // When false, Ultimate Library is skipped for series requests (default true)
-  librarySearchScanUncategorized?: boolean;  // Include `/content/uncategorized` as a second scan root so manually uploaded NZBDav content is searchable (default true)
-  libraryRunOnCacheHit?: boolean;  // When true, Ultimate Library runs on cache hits and short-circuits to UL-only results when the post-filter threshold is met. Below threshold, cached results are returned unchanged. The one-shot Skip tile bypass still wins. (default false)
-  libraryDeleteAllTile?: boolean;  // Show one "Delete All Ultimate Library Results" tile near the top of the list. Two-step click-confirm. Scoped to the current request only. (default false)
-  libraryDeletePerStreamTile?: boolean;  // Show a delete tile after each library result. Pack results get two tiles (delete file + delete whole pack); non-pack results get one. Two-step click-confirm. (default false)
-  libraryDeleteAllPackScope?: 'episode' | 'pack';  // For series/season pack results, the "Delete All" tile deletes the per-episode file ('episode', default) or the entire release folder ('pack')
-  librarySkipTilePosition?: 'second' | 'last';  // Where the "Skip Ultimate Library" stream tile appears in the results list (default 'second')
   // Legacy fields - migrated to per-indexer settings, kept for migration
   movieSearchMethod?: 'imdb' | 'tmdb' | 'tvdb' | 'text';
   tvSearchMethod?: 'imdb' | 'tvdb' | 'tvmaze' | 'text';
@@ -199,22 +181,14 @@ export interface Config {
   nzbhydraTimeoutEnabled: boolean;
   nzbhydraTimeout: number;
   zyclopsEndpoint?: string;            // Zyclops API endpoint URL (default: https://zyclops.elfhosted.com)
-  backend: import('./backends/types.js').BackendId;             // Backend used in the Backend streaming mode (default nzbdav)
   altmountUrl?: string;
   altmountApiKey?: string;
   altmountCategory: string;                   // Accessor default 'kaijuflow'
   altmountPrepareTimeout: number;             // Seconds, accessor default 300
-  nzbdavUrl?: string;
-  nzbdavApiKey?: string;
-  nzbdavWebdavUrl?: string;
-  nzbdavWebdavUser?: string;
-  nzbdavWebdavPassword?: string;
-  nzbdavMoviesCategory?: string;
-  nzbdavTvCategory?: string;
   nzbdavCacheTimeouts?: boolean;              // Store timed-out NZBs in dead cache (default true)
   nzbdavStreamBufferMB?: number;              // Dual-stage proxy buffer size in MB (default 128, range 8-256)
   nzbdavPipeBufferMB?: number;                // Pipe mode buffer size in MB (default 8, range 1-16)
-  nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';  // Streaming delivery: proxy (default, dual-stage buffer), pipe, or direct (WebDAV redirect)
+  nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';  // Streaming delivery: proxy (default, dual-stage buffer), pipe, or direct (redirect to the Backend)
   healthyNzbDbMode?: 'time' | 'storage';      // Database limit mode for successful streams (default 'time')
   healthyNzbDbTTL?: number;                   // TTL in seconds for successful streams when mode is 'time' (default 259200 / 3 days)
   healthyNzbDbMaxSizeMB?: number;             // Max storage in MB for successful streams when mode is 'storage' (default 50)
@@ -273,8 +247,7 @@ export interface StreamDisplayConfig {
 export interface UserAgentConfig {
   indexerSearch?: string;    // For indexer API searches
   nzbDownload?: string;      // For downloading NZB files
-  nzbdavOperations?: string; // For NZBDav API operations
-  webdavOperations?: string; // For WebDAV operations
+  webdavOperations?: string; // For fetching media from the Backend (the /v proxy)
   general?: string;          // For general requests (favicon, etc.)
 }
 
@@ -311,7 +284,6 @@ export interface FilterConfig {
   editionPriority?: string[];                // Edition priority order for sorting (Extended, DC, etc)
   preferNonStandardEdition?: boolean;        // Prioritize all enabled non-standard editions equally over Standard
   preferSeasonPacks?: boolean;               // TV-only. Sort season packs above non-packs; secondary sort still applies within each group.
-  preferLibraryResults?: boolean;            // Sort indexer/EasyNews results flagged as in-library above the rest. Library short-circuit case is unaffected (all results are library).
   enableRemakeFiltering?: boolean;           // TV-only. Cross-reference TVDB to filter wrong-version results for shows with remakes. Default true. Env: ENABLE_REMAKE_DETECTION.
   allowMultiEpisodeFiles?: boolean;          // TV-only. Allow multi-episode files (e.g. S01E01E02.mkv). Default true. Env: ALLOW_MULTI_EPISODE_FILES.
   rules?: {
@@ -371,7 +343,6 @@ export interface HealthCheckConfig {
   autoQueueMode: 'off' | 'top' | 'all';  // Auto-queue mode: off, top verified result, or all verified results
   hideBlocked: boolean;          // Filter out blocked NZBs from results
   verifyTlsCertificates: boolean; // Reject NNTP servers with invalid TLS certificates (finding 7; default on)
-  libraryPreCheck: boolean;      // Check NZBDav library before NNTP checks — skip checking content already downloaded
   healthCheckIndexers?: Record<string, boolean>; // Per-indexer health check enable/disable
 }
 

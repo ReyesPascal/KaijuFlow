@@ -9,7 +9,7 @@
  */
 
 import { config } from '../config/index.js';
-import { grabNzb } from '../nzbdav/nzbdavApi.js';
+import { grabNzb } from './nzbGrab.js';
 import { unscrambleNzb } from '../archive/unscramble.js';
 import { setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 import { logStep, timeStep } from '../utils/stepTiming.js';

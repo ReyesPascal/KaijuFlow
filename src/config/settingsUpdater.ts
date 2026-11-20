@@ -10,7 +10,6 @@ import { DEFAULT_INDEXER_TIMEOUT_SECONDS, SERIES_PACK_KEYWORDS } from '../types.
 import { configData, saveConfigFile } from './schema.js';
 import { enforceZyclopsEnabled } from './indexerCrud.js';
 import { validateRulesBlock } from '../rules/importers.js';
-import { isBackendId, type BackendId } from '../backends/types.js';
 
 // Clamp a timeout value to the integer-seconds domain. Rejects non-finite/non-number input.
 function coerceTimeoutSeconds(raw: unknown): number | undefined {
@@ -56,18 +55,10 @@ export function updateSettings(settings: {
   nzbhydraTimeoutEnabled?: boolean;
   nzbhydraTimeout?: number;
   zyclopsEndpoint?: string;
-  backend?: BackendId;
   altmountUrl?: string;
   altmountApiKey?: string;
   altmountCategory?: string;
   altmountPrepareTimeout?: number;
-  nzbdavUrl?: string;
-  nzbdavApiKey?: string;
-  nzbdavWebdavUrl?: string;
-  nzbdavWebdavUser?: string;
-  nzbdavWebdavPassword?: string;
-  nzbdavMoviesCategory?: string;
-  nzbdavTvCategory?: string;
   nzbdavStreamBufferMB?: number;
   nzbdavPipeBufferMB?: number;
   nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';
@@ -89,7 +80,6 @@ export function updateSettings(settings: {
   userAgents?: {
     indexerSearch?: string;
     nzbDownload?: string;
-    nzbdavOperations?: string;
     webdavOperations?: string;
     general?: string;
   };
@@ -208,10 +198,6 @@ export function updateSettings(settings: {
   if (settings.zyclopsEndpoint !== undefined) {
     configData.zyclopsEndpoint = settings.zyclopsEndpoint;
   }
-  if (settings.backend !== undefined) {
-    if (!isBackendId(settings.backend)) throw new Error('backend must be nzbdav or altmount');
-    configData.backend = settings.backend;
-  }
   if (settings.altmountUrl !== undefined) {
     configData.altmountUrl = settings.altmountUrl;
   }
@@ -223,27 +209,6 @@ export function updateSettings(settings: {
   }
   if (settings.altmountPrepareTimeout !== undefined) {
     configData.altmountPrepareTimeout = Math.max(1, Math.round(Number(settings.altmountPrepareTimeout)) || 300);
-  }
-  if (settings.nzbdavUrl !== undefined) {
-    configData.nzbdavUrl = settings.nzbdavUrl;
-  }
-  if (settings.nzbdavApiKey !== undefined) {
-    configData.nzbdavApiKey = settings.nzbdavApiKey;
-  }
-  if (settings.nzbdavWebdavUrl !== undefined) {
-    configData.nzbdavWebdavUrl = settings.nzbdavWebdavUrl;
-  }
-  if (settings.nzbdavWebdavUser !== undefined) {
-    configData.nzbdavWebdavUser = settings.nzbdavWebdavUser;
-  }
-  if (settings.nzbdavWebdavPassword !== undefined) {
-    configData.nzbdavWebdavPassword = settings.nzbdavWebdavPassword;
-  }
-  if (settings.nzbdavMoviesCategory !== undefined) {
-    configData.nzbdavMoviesCategory = settings.nzbdavMoviesCategory;
-  }
-  if (settings.nzbdavTvCategory !== undefined) {
-    configData.nzbdavTvCategory = settings.nzbdavTvCategory;
   }
   if (settings.nzbdavStreamBufferMB !== undefined) {
     configData.nzbdavStreamBufferMB = settings.nzbdavStreamBufferMB;
@@ -329,23 +294,6 @@ export function updateSettings(settings: {
     if (prevPreferEnglish !== nextPreferEnglish) {
       console.log('🔗 TVDB English-title preference changed, clearing cached titles');
       import('../idResolver.js').then(m => m.clearTvdbTitleCache?.()).catch(() => {});
-    }
-    // Clamp librarySearchThreshold on write so a bad frontend payload or manual edit
-    // can't round-trip out-of-range values to disk. Accessor also clamps on read.
-    if (settings.searchConfig.librarySearchThreshold !== undefined) {
-      settings.searchConfig.librarySearchThreshold = Math.max(
-        0,
-        Math.min(10, settings.searchConfig.librarySearchThreshold)
-      );
-    }
-    if (settings.searchConfig.libraryApplyToMovies !== undefined) {
-      settings.searchConfig.libraryApplyToMovies = !!settings.searchConfig.libraryApplyToMovies;
-    }
-    if (settings.searchConfig.libraryApplyToSeries !== undefined) {
-      settings.searchConfig.libraryApplyToSeries = !!settings.searchConfig.libraryApplyToSeries;
-    }
-    if (settings.searchConfig.libraryRunOnCacheHit !== undefined) {
-      settings.searchConfig.libraryRunOnCacheHit = !!settings.searchConfig.libraryRunOnCacheHit;
     }
     if (settings.searchConfig.includeMultiSeasonPacks !== undefined) {
       settings.searchConfig.includeMultiSeasonPacks = !!settings.searchConfig.includeMultiSeasonPacks;

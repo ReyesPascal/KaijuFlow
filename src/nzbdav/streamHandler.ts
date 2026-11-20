@@ -14,23 +14,21 @@ import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
 import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
-import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, buildNzbdavConfig, isLibraryBackendActive, isUltimateFallbackActive } from './utils.js';
-import { backendCapabilities } from '../backends/capabilities.js';
+import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
 import { resolveBaseUrl } from '../utils/urlHelpers.js';
-import { getCachedTitleByImdb } from '../idResolver.js';
-import type { NZBDavConfig, StreamData, FallbackCandidate } from './types.js';
+import type { StreamData, FallbackCandidate } from './types.js';
 
 const pipelineAsync = promisify(pipeline);
 
 // Register prepareStream into the cache to break the circular import
 // (streamCache needs to call prepareStream, but importing it directly would create a cycle)
 setPrepareFn(
-  (nzbUrl, title, config, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp) =>
-    prepareStream(nzbUrl, title, config, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp)
+  (nzbUrl, title, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp) =>
+    prepareStream(nzbUrl, title, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp)
 );
 
 // ============================================================================
@@ -172,15 +170,13 @@ function getAttemptBudgetMs(_contentType?: string, _isSeasonPack?: boolean): num
 
 /**
  * Complete stream preparation pipeline:
- * 0. Check NZB library for existing video (skip grab if found)
- * 1. Submit NZB to NZBDav
- * 2. Poll history for completion/failure
- * 3. Find video file in WebDAV
+ * 0. Already prepared on the Backend, or remembered ready (and its first byte still served)?
+ * 1. Hand the Source to the Backend and wait for its video
+ * 2. Probe the first byte
  */
 export async function prepareStream(
   nzbUrl: string,
   title: string,
-  config: NZBDavConfig,
   episodePattern?: string,
   contentType?: string,
   episodesInSeason?: number,
@@ -189,7 +185,7 @@ export async function prepareStream(
   indexerName?: string,
   searchExitIp?: string,
 ): Promise<StreamData> {
-  const backend = getActiveBackend(config);
+  const backend = getActiveBackend();
   const source: BackendSource = { nzbUrl, title, contentType, episodePattern, episodesInSeason, isSeasonPack, indexerName, searchExitIp };
   const budgetStart = Date.now();
 
@@ -203,28 +199,24 @@ export async function prepareStream(
   const existing = await backend.findPrepared(source, { logPrefix });
   if (existing) {
     if (isVideoPathBroken(existing.videoPath)) {
-      console.log(`${logPrefix}\u{1F6AB} Library hit skipped (video path broken): ${existing.videoPath}`);
+      console.log(`${logPrefix}\u{1F6AB} Prepared video skipped (video path broken): ${existing.videoPath}`);
     } else {
-      console.log(`${logPrefix}\u2705 Stream ready (${backend.label} library): ${title}\n`);
+      console.log(`${logPrefix}\u2705 Stream ready (${backend.label}, already prepared): ${title}\n`);
       return existing;
     }
   }
 
-  // Backends without a library (AltMount) have nothing to look up, so reuse what
-  // this Backend already made for the Source (ready cache) when it is still there.
-  // The probe below still runs. NzbDAV is unchanged: its library lookup above is authoritative.
-  if (!backend.capabilities.library) {
-    const ready = findReadyStream(nzbUrl, title, episodePattern, backend.id);
-    if (ready && !isVideoPathBroken(ready.videoPath)) {
-      // The probe is the freshness check here (stillPrepared would send the same request).
-      try {
-        await backend.probe(ready, { logPrefix, title, source: indexerName });
-        console.log(`${logPrefix}\u2705 Stream ready (${backend.label}, reused): ${title}\n`);
-        return ready;
-      } catch (err) {
-        markVideoPathBroken(ready.videoPath);
-        if (!isSourceFailure(err)) throw err;
-      }
+  // Reuse what the Backend already made for the Source (ready cache) when it is still there.
+  // The probe is the freshness check here (stillPrepared would send the same request).
+  const ready = findReadyStream(nzbUrl, title, episodePattern);
+  if (ready && !isVideoPathBroken(ready.videoPath)) {
+    try {
+      await backend.probe(ready, { logPrefix, title, source: indexerName });
+      console.log(`${logPrefix}\u2705 Stream ready (${backend.label}, reused): ${title}\n`);
+      return ready;
+    } catch (err) {
+      markVideoPathBroken(ready.videoPath);
+      if (!isSourceFailure(err)) throw err;
     }
   }
 
@@ -258,27 +250,6 @@ const FAILURE_VIDEO_PATH = path.resolve(
     ? 'ui/dist/nzb_failure_video.mp4'
     : 'ui/public/nzb_failure_video.mp4'
 );
-
-const LIBRARY_BYPASS_VIDEO_PATH = path.resolve(
-  fs.existsSync(path.resolve('ui/dist/library_bypass_armed_video.mp4'))
-    ? 'ui/dist/library_bypass_armed_video.mp4'
-    : 'ui/public/library_bypass_armed_video.mp4'
-);
-
-// Library-delete success placeholders. Each falls back to the bypass-armed
-// MP4 when the dedicated asset isn't on disk yet so the route keeps working
-// until the new assets are produced. Drop the new MP4s into ui/public/ with
-// the matching filenames and the asset is picked up on next start.
-function resolveDeleteVideoPath(filename: string): string {
-  const distPath = path.resolve(`ui/dist/${filename}`);
-  if (fs.existsSync(distPath)) return distPath;
-  const publicPath = path.resolve(`ui/public/${filename}`);
-  if (fs.existsSync(publicPath)) return publicPath;
-  return LIBRARY_BYPASS_VIDEO_PATH;
-}
-const DELETE_ALL_VIDEO_PATH = resolveDeleteVideoPath('library_delete_all_video.mp4');
-const DELETE_FILE_VIDEO_PATH = resolveDeleteVideoPath('library_delete_file_video.mp4');
-const DELETE_PACK_VIDEO_PATH = resolveDeleteVideoPath('library_delete_pack_video.mp4');
 
 /**
  * Serve the failure video (a 3-hour static "Stream Unavailable" screen).
@@ -339,167 +310,18 @@ async function sendFailureVideo(req: Request, res: ExpressResponse): Promise<voi
   }
 }
 
-/**
- * Serve the library-bypass-armed video. Played when the user clicks the
- * "Query indexers on next search" tile after Ultimate Library short-circuits.
- * Conveys "bypass is armed; back out and search again to see indexer results."
- * Mirrors sendFailureVideo's Range handling so external players stream cleanly.
- */
-export async function sendLibraryBypassArmedVideo(req: Request, res: ExpressResponse): Promise<void> {
-  try {
-    const stat = fs.statSync(LIBRARY_BYPASS_VIDEO_PATH);
-    const fileSize = stat.size;
-
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Accept-Ranges', 'bytes');
-
-    if (req.headers.range) {
-      const match = req.headers.range.match(/bytes=(\d+)-(\d*)/);
-      if (match) {
-        const start = parseInt(match[1]);
-        if (start >= fileSize) {
-          res.status(416);
-          res.setHeader('Content-Range', `bytes */${fileSize}`);
-          res.end();
-          return;
-        }
-        const end = match[2] ? Math.min(parseInt(match[2]), fileSize - 1) : fileSize - 1;
-        res.status(206);
-        res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-        res.setHeader('Content-Length', end - start + 1);
-        const readStream = fs.createReadStream(LIBRARY_BYPASS_VIDEO_PATH, { start, end });
-        try {
-          await pipelineAsync(readStream, res);
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-            console.error('\u274C Library bypass video stream error:', err);
-          }
-        }
-        return;
-      }
-    }
-
-    res.status(200);
-    res.setHeader('Content-Length', fileSize);
-    const readStream = fs.createReadStream(LIBRARY_BYPASS_VIDEO_PATH);
-    try {
-      await pipelineAsync(readStream, res);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-        console.error('\u274C Library bypass video stream error:', err);
-      }
-    }
-  } catch (fileErr) {
-    console.error('\u274C Failed to serve library bypass video:', fileErr);
-    if (!res.headersSent) res.status(500).end();
-  }
-}
-
-/**
- * Serve a placeholder MP4 for the library-delete tile flow. Range-aware so
- * Stremio can scrub. No-cache headers stop Stremio from serving a cached
- * body across repeat clicks.
- */
-async function sendDeletePlaceholderVideo(req: Request, res: ExpressResponse, videoPath: string, errLabel: string): Promise<void> {
-  try {
-    const stat = fs.statSync(videoPath);
-    const fileSize = stat.size;
-
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-
-    if (req.headers.range) {
-      const match = req.headers.range.match(/bytes=(\d+)-(\d*)/);
-      if (match) {
-        const start = parseInt(match[1]);
-        if (start >= fileSize) {
-          res.status(416);
-          res.setHeader('Content-Range', `bytes */${fileSize}`);
-          res.end();
-          return;
-        }
-        const end = match[2] ? Math.min(parseInt(match[2]), fileSize - 1) : fileSize - 1;
-        res.status(206);
-        res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-        res.setHeader('Content-Length', end - start + 1);
-        const readStream = fs.createReadStream(videoPath, { start, end });
-        try {
-          await pipelineAsync(readStream, res);
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-            console.error(`\u274C Delete ${errLabel} video stream error:`, err);
-          }
-        }
-        return;
-      }
-    }
-
-    res.status(200);
-    res.setHeader('Content-Length', fileSize);
-    const readStream = fs.createReadStream(videoPath);
-    try {
-      await pipelineAsync(readStream, res);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-        console.error(`\u274C Delete ${errLabel} video stream error:`, err);
-      }
-    }
-  } catch (fileErr) {
-    console.error(`\u274C Failed to serve delete ${errLabel} video:`, fileErr);
-    if (!res.headersSent) res.status(500).end();
-  }
-}
-
-export async function sendDeleteAllSuccessVideo(req: Request, res: ExpressResponse): Promise<void> {
-  return sendDeletePlaceholderVideo(req, res, DELETE_ALL_VIDEO_PATH, 'all-success');
-}
-
-export async function sendDeleteFileSuccessVideo(req: Request, res: ExpressResponse): Promise<void> {
-  return sendDeletePlaceholderVideo(req, res, DELETE_FILE_VIDEO_PATH, 'file-success');
-}
-
-export async function sendDeletePackSuccessVideo(req: Request, res: ExpressResponse): Promise<void> {
-  return sendDeletePlaceholderVideo(req, res, DELETE_PACK_VIDEO_PATH, 'pack-success');
-}
-
-export async function sendDeleteFailedVideo(req: Request, res: ExpressResponse): Promise<void> {
-  // Failures reuse the existing nzb_failure_video.mp4 (already a "something
-  // went wrong" asset) so we don't need a fourth dedicated file.
-  return sendDeletePlaceholderVideo(req, res, FAILURE_VIDEO_PATH, 'failed');
-}
-
 // ============================================================================
 // Express Handler
 // ============================================================================
-
-// Per-path log dedupe for Ultimate Library streams. The player (libmpv etc.)
-// fires multiple range requests against /stream during a single playback;
-// each hits the library-origin fast path and would otherwise emit the same
-// log line repeatedly. Track recently-logged paths and suppress duplicates
-// within a 30s window. Entries auto-prune via setTimeout (unref'd so timers
-// don't block process exit).
-const recentLoggedUltimateLibraryStreams = new Set<string>();
-function logUltimateLibraryStream(decoded: string): void {
-  if (recentLoggedUltimateLibraryStreams.has(decoded)) return;
-  console.log(`📚 Ultimate Library stream: ${decoded}`);
-  recentLoggedUltimateLibraryStreams.add(decoded);
-  setTimeout(() => recentLoggedUltimateLibraryStreams.delete(decoded), 30_000).unref?.();
-}
 
 /** Key for Stremio request dedup: Backend + Source + episode pattern. */
 function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }, pattern?: string): string {
   return `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (pattern ? `:${pattern}` : '');
 }
 
-/**
- * Delivery method for the first response of a Stream. NzbDAV with Ultimate
- * Fallback off keeps forcing proxy (unchanged); AltMount honours the setting.
- */
+/** Delivery method for the first response of a Stream: the streaming-method setting. */
 function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
-  const method = globalConfig.nzbdavStreamingMethod ?? 'proxy';
-  return isUltimateFallbackActive() || !backendCapabilities().ultimateFallback ? method : 'proxy';
+  return globalConfig.nzbdavStreamingMethod ?? 'proxy';
 }
 
 /**
@@ -510,47 +332,15 @@ function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
 export async function handleStream(
   req: Request,
   res: ExpressResponse,
-  config: NZBDavConfig,
   proxyFn?: (req: Request, res: ExpressResponse, videoPath: string, usePipe: boolean) => Promise<void>
 ): Promise<void> {
-  const backend = getActiveBackend(config);
+  const backend = getActiveBackend();
   // Express returns string[] for repeated query keys (`?t=a&t=b`). Take the
   // most recent so the decoder treats it as a single string. Catches
   // accidental client double-set; not expected on the happy path.
   if (Array.isArray(req.query.t)) {
     const arr = req.query.t as unknown[];
     req.query.t = arr[arr.length - 1] as any;
-  }
-
-  // Library-origin fast path: search-time library scan emitted a tile pointing
-  // at a pre-extracted file on WebDAV. Skip the whole NZB grab cycle (submit,
-  // wait, find video) and dispatch directly via the existing /v proxy/direct/pipe
-  // logic. Tile URL uses libraryVideoPath as the sole query param so it survives
-  // Infuse's iOS handoff (which strips everything after the first '&'). The
-  // /content/ prefix check below is the security boundary; only library tiles
-  // emit this query param so no other source can spoof it.
-  const libraryVideoPathParam = req.query.libraryVideoPath as string | undefined;
-  if (libraryVideoPathParam) {
-    if (!isLibraryBackendActive()) { res.status(404).end(); return; } // Library needs the library capability
-    const decoded = decodeURIComponent(libraryVideoPathParam);
-    if (!decoded.startsWith('/content/')) {
-      console.warn(`⚠️ Rejected library stream — path not under /content/: ${libraryVideoPathParam}`);
-      res.status(400).end();
-      return;
-    }
-    logUltimateLibraryStream(decoded);
-    const lobbyFallbackOn = isUltimateFallbackActive();
-    const mode = deliveryMethod();
-    if (mode === 'direct') {
-      res.redirect(302, backend.directUrl(decoded));
-    } else if (proxyFn && !lobbyFallbackOn) {
-      await proxyFn(req, res, decoded, mode !== 'proxy');
-    } else {
-      const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-      proxyUrl.searchParams.set('path', decoded);
-      res.redirect(302, proxyUrl.href);
-    }
-    return;
   }
 
   // Tile URL is a single base64url-JSON envelope under `?t=`. iOS / Infuse
@@ -775,7 +565,7 @@ export async function handleStream(
   // ── Ultimate-Fallback Lobby ─────────────────────────────────────────
   // When Ultimate-Fallback is active and the user didn't explicitly pick a
   // stream tile (user_pick=1), await its session promise instead of starting
-  // our own nzbdav submission. Self-redirect keeps ExoPlayer alive.
+  // our own Backend submission. Self-redirect keeps ExoPlayer alive.
   if (!userPick && isUltimateFallbackActive() && sessionKey) {
     // On-tile-selection mode: UF didn't fire on search; trigger it here so
     // the existing await-flow below picks up the new session promise.
@@ -796,7 +586,7 @@ export async function handleStream(
         // Group envelope does not carry aired, so file pattern matches cache pattern here.
         const onTileFilePattern = onTileCachePattern;
         ultimateFallbackFromCandidates(
-          sessionKey, group.candidates, buildNzbdavConfig(),
+          sessionKey, group.candidates,
           { candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, archiveInspection: ur.archiveInspection, sampleCount: ur.sampleCount, maxAttempts: ur.maxAttempts, desiredBackups: ur.desiredBackups, backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds, priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds, speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds, speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers },
           onTileCachePattern, onTileFilePattern, group.type, group.episodesInSeason,
         ).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
@@ -819,8 +609,7 @@ export async function handleStream(
             }),
           ]).finally(() => clearTimeout(stremioTimer!));
 
-          // Library is the source of truth — verify the cached primary still
-          // exists in NZBDav before serving. The broken-path marker short-circuits
+          // Verify the cached primary still exists on the Backend before serving. The broken-path marker short-circuits
           // when /v has just observed a 4xx/5xx (PROPFIND lies for evicted content
           // whose directory entry persists). Falls through to UF backups / fresh
           // resolution if either signal says the file is gone.
@@ -890,7 +679,7 @@ export async function handleStream(
 
   // UF tile request (no nzb/title in URL). If the Lobby's primary is unavailable,
   // iterate the session's UF-vetted backup streams and serve the first whose
-  // videoPath still exists in NZBDav — no candidate loop, no re-submit, no TTL
+  // videoPath still exists on the Backend — no candidate loop, no re-submit, no TTL
   // coupling. /v's _fb param bounces back to this tile URL on mid-stream break,
   // which re-enters here and picks the next backup (previous now missing).
   if (isUfTileRequest) {
@@ -957,55 +746,6 @@ export async function handleStream(
 
     const backupCount = ufBackups?.backupStreams?.length ?? 0;
     const sessionExists = sessionKey ? getSessionPromise(sessionKey) !== null : false;
-    // Library check ONLY when session is gone (the post-clearSearchCache
-    // state). clearSearchCache wipes session/group memory but the resolved
-    // file is still on the WebDAV mount; do one check before giving up.
-    // Other UF failure modes (backups all broken, session active but no
-    // backups) keep current behavior since UF actively decided there's no
-    // usable file.
-    if (!sessionExists) {
-      const parts = (sessionKey ?? '').split(':');
-      // sk format: <manifestKey>:<type>:<imdbId>:<season>:<episode>
-      // Parsing from the tail handles anime IDs (kitsu:12345, mal:67890)
-      // which contain colons. Episode is always last; season second-to-last.
-      if (parts.length >= 5) {
-        const skType = parts[1];
-        const imdbId = parts.slice(2, -2).join(':');
-        const seasonStr = parts[parts.length - 2];
-        const episodeStr = parts[parts.length - 1];
-        const title = getCachedTitleByImdb(imdbId);
-        const isSupportedType = skType === 'movie' || skType === 'series';
-        const libraryTypeAllowed = skType === 'movie'
-          ? globalConfig.searchConfig?.libraryApplyToMovies !== false
-          : globalConfig.searchConfig?.libraryApplyToSeries !== false;
-        if (title && isSupportedType && libraryTypeAllowed) {
-          const season = seasonStr && !Number.isNaN(+seasonStr) ? +seasonStr : undefined;
-          const episode = episodeStr && !Number.isNaN(+episodeStr) ? +episodeStr : undefined;
-          try {
-            const hits = await (backend.library?.search({
-              type: skType,
-              imdbId,
-              title,
-              season,
-              episode,
-              isAnime: false,
-            }) ?? []);
-            const hitPath = hits[0]?.libraryVideoPath;
-            if (hitPath) {
-              console.log(`📚 UF tile: library check hit (sk=${sessionKey}) — serving ${hitPath}`);
-              const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-              proxyUrl.searchParams.set('path', hitPath);
-              proxyUrl.searchParams.set('_fb', req.originalUrl);
-              if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-              res.redirect(302, proxyUrl.href);
-              return;
-            }
-          } catch (err) {
-            console.warn(`⚠️ UF tile library check failed: ${(err as Error).message}`);
-          }
-        }
-      }
-    }
     if (backupCount > 0) {
       console.log(`👑 UF tile: ${backupCount} backup(s) checked but all broken — serving failure video`);
     } else if (sessionExists) {
@@ -1078,7 +818,7 @@ export async function handleStream(
       if (elapsed + attemptBudgetMs + STREMIO_SAFETY_MARGIN_MS > STREMIO_TIMEOUT_MS) {
         const pendingKey = getCacheKey(candidate.nzbUrl, candidate.title) + (cachePattern ? `:${cachePattern}` : '');
         if (!streamCacheMap.has(pendingKey) && !isDeadNzb(deadKey)) {
-          getOrCreateStream(candidate.nzbUrl, candidate.title, config, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp).catch(() => {});
+          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp).catch(() => {});
         }
         // Site 2 of 6: rc and ci carried inside `t` so iOS handoff doesn't
         // truncate them. Without ci, the next request would restart at
@@ -1105,7 +845,7 @@ export async function handleStream(
         const waitMs = Math.max(1000, EXO_PLAYER_BUDGET_MS - requestElapsed);
         let exoTimerId: ReturnType<typeof setTimeout>;
         streamData = await Promise.race([
-          getOrCreateStream(candidate.nzbUrl, candidate.title, config, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
             .finally(() => clearTimeout(exoTimerId)),
           new Promise<never>((_, reject) => {
             exoTimerId = setTimeout(() => reject(Object.assign(new Error('ExoPlayer safety timeout'), { isExoTimeout: true })), waitMs);
@@ -1124,7 +864,7 @@ export async function handleStream(
         const switchWaitMs = Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime));
         let switchTimerId: ReturnType<typeof setTimeout>;
         streamData = await Promise.race([
-          getOrCreateStream(candidate.nzbUrl, candidate.title, config, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
             .finally(() => clearTimeout(switchTimerId)),
           new Promise<never>((_, reject) => {
             switchTimerId = setTimeout(() => reject(Object.assign(new Error('First-source switch'), { isSourceSwitch: true })), switchWaitMs);
@@ -1139,7 +879,7 @@ export async function handleStream(
         if (attemptBudgetMs > stremioRemainingMs && stremioRemainingMs > 0 && !req.socket.destroyed) {
           let stremioTimerId: ReturnType<typeof setTimeout>;
           streamData = await Promise.race([
-            getOrCreateStream(candidate.nzbUrl, candidate.title, config, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+            getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
               .finally(() => clearTimeout(stremioTimerId)),
             new Promise<never>((_, reject) => {
               stremioTimerId = setTimeout(() => reject(Object.assign(new Error('Stremio timeout redirect'), { isExoTimeout: true })), stremioRemainingMs);
@@ -1147,7 +887,7 @@ export async function handleStream(
           ]);
         } else {
           streamData = await getOrCreateStream(
-            candidate.nzbUrl, candidate.title, config, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp
+            candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp
           );
         }
       }

@@ -25,7 +25,6 @@ import { requireAuth, validateManifestKey } from './auth/authMiddleware.js';
 import { requestContext } from './requestContext.js';
 import { resolveBaseUrl } from './utils/urlHelpers.js';
 import { initAnimeDatabase, startDailyRefresh, stopDailyRefresh, getDatabaseStatus } from './anime/animeDatabase.js';
-import { runStaleLibraryFolderCleanup } from './nzbdav/staleFolderCleanup.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'node:module';
@@ -118,7 +117,7 @@ app.use('/api/manifests', createManifestRoutes({
 
 // --- Protected API routes ---
 
-// Shared NZBDav deps (used by both API routes and key-protected stream proxy)
+// Shared stream deps (used by both API routes and key-protected stream proxy)
 const nzbdavDeps = {
   config,
   handleStream,
@@ -251,9 +250,6 @@ process.on('SIGINT', () => {
 
   // One-time best-effort migration. Fire-and-forget so it never blocks
   // listening; gated internally by a config version flag.
-  runStaleLibraryFolderCleanup().catch(err =>
-    console.error('Stale library folder cleanup error:', err)
-  );
   runStaleIndexerStatsCleanup().catch(err =>
     console.error('Stale indexer stats cleanup error:', err)
   );

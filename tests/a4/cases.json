@@ -45,7 +45,7 @@
     },
     {
       "id": "A4-DELETE-003",
-      "status": "verified-safety-failure",
+      "status": "removed",
       "goal": "GET/HEAD library delete guarded with deterministic replay",
       "stub": "webdav-delete",
       "assertion": "HEAD and invalid path must not remote-delete; replay/fail counter observed",
@@ -53,7 +53,7 @@
         "A4-ISO-000"
       ],
       "data_policy": "synthetic-only",
-      "actual_observation": "HEAD led to WebDAV DELETE, failed 503 deletion was deduped; finding F-KF-A4-DELETE-001",
+      "actual_observation": "Removed with NzbDAV (#188): the library delete routes no longer exist. Earlier: HEAD led to WebDAV DELETE, failed 503 deletion was deduped; finding F-KF-A4-DELETE-001",
       "ci_run": 42366142956
     },
     {
