@@ -8,7 +8,8 @@ a recording folder, or a run folder that cannot be read). For a finished run it 
 target of targets.json (the target, the measured values, met or not met; for a run on a tagged title list, one line per
 list and speed test target, the outcome line and the final bar apart, brainreport.speed_test_lines); for any other run one line
 says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
-The targets do not change the exit code.
+The targets do not change the exit code. Before them, KaijuFlow's run is judged per list against the previous run on the
+same recording, kept or not kept (judged_lines, rules.md "Judged against the previous run"); that does not change it either.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import json

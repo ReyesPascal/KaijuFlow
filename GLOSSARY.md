@@ -98,6 +98,10 @@ _Avoid_: first result, winner
 A play whose top pick gives no video: the viewer presses it and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail (#185). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
+**Previous run**:
+The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
+_Avoid_: baseline (the baseline is one run; the previous run moves on with every run), last run (it may be on another recording)
+
 **Title to video**:
 Seconds from asking for a title until its video arrives: the list and the start, on one clock for every side, so checking before the list and checking at play time cost the same. A fail has no title-to-video time.
 _Avoid_: total time, end-to-end time
