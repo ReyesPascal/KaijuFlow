@@ -420,8 +420,7 @@ class Command(unittest.TestCase):
 
 SPEED_SIDES = ('kaijuflow', 'uu', 'altmount-addon')
 FAILED = {('kaijuflow', 'cold', 1, 'Old Film'), ('altmount-addon', 'cold', 2, 'Matrix'), ('uu', 'cold', 1, 'Old Film'),
-          ('uu', 'cold', 2, 'Old Film')}
-FALLBACK = ('altmount-addon', 'cold', 1, 'Rare Show S01E01')  # video only after its top pick's own import failed
+          ('uu', 'cold', 2, 'Old Film'), ('altmount-addon', 'cold', 1, 'Rare Show S01E01')}
 
 
 def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
@@ -430,9 +429,9 @@ def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
 
     Every top pick plays with list 2.0 s and start 1.5 s (3.5 s title to video), except: KaijuFlow lists in 1.0 s on the
     easy list (2.5 s) and plays warm in 0.4 + 0.2 s (0.6 s); AltMount direct lists in 0.5 s (2.0 s); the plays in FAILED
-    give no video and FALLBACK plays after a fallback. So the easy list has KaijuFlow 0 failed plays, Usenet Ultimate 0,
+    give no video (a fallback counts as played since #185, so none is here). So the easy list has KaijuFlow 0 failed plays, Usenet Ultimate 0,
     AltMount direct 1 (Matrix, Cold 2); the hard list KaijuFlow 1 (Old Film, Cold 1), Usenet Ultimate 2 (one title, Old
-    Film, in both cold rounds), AltMount direct 1 (Rare Show S01E01, Cold 1, after a fallback). Worked out by hand: 5 of 6 targets met (the
+    Film, in both cold rounds), AltMount direct 1 (Rare Show S01E01, Cold 1). Worked out by hand: 5 of 6 targets met (the
     hard list's cold title to video is not: KaijuFlow 3.50 s, AltMount direct 2.00 s with as few fails), the outcome is
     "try KaijuFlow without its own pre-list check", and the final bar is met on the easy list and not on the hard one."""
     visits = [tagged_visit(side, phase, rnd, t[2]) for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in SPEED_SIDES]
@@ -446,8 +445,6 @@ def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
             v['list_s'] = 0.5
         if key in FAILED:
             v.update(ok=False, start_s=None, note='failure video', tries=[{'plays': False, 'size': None, 'title': v['title']}])
-        if key == FALLBACK:
-            v['imports'] = [{'name': 'Rare Show S01E01.2160p.WEB-DL-GRP', 'ok': False}, {'name': 'Rare.Show.S01E01.720p-OTHER', 'ok': True}]
     folder = os.path.join(root, folder_name)
     os.makedirs(folder)
     m = dict(name='speed', label='Test 2', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z',
@@ -559,14 +556,14 @@ class SpeedTest(unittest.TestCase):
     def table_rows(self, sec):
         return [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', sec)]
 
-    def test_the_page_has_a_table_per_list_of_every_title_marking_each_setups_fails_and_fallbacks(self):
+    def test_the_page_has_a_table_per_list_of_every_title_marking_each_setups_fails(self):
         easy, hard = section(self.index, 'Easy list, title by title'), section(self.index, 'Hard list, title by title')
         for sec in (easy, hard):
             self.assertEqual(re.findall(r'<th scope="col" class="sl-r[^"]*"><span>([^<]*)</span>', sec),
                              ['KaijuFlow', 'Usenet Ultimate', 'AltMount direct'])
         self.assertEqual(self.table_rows(easy), ['Matrix 2.50 3.50 2.00 Failed: Cold 2', 'Dune 2.50 3.50 2.00'])
         self.assertEqual(self.table_rows(hard), ['Old Film 3.50 Failed: Cold 1 – Failed: Cold 1, Cold 2 2.00',
-                                                 'Rare Show S01E01 3.50 3.50 2.00 Failed: Cold 1 after a fallback'])
+                                                 'Rare Show S01E01 3.50 3.50 2.00 Failed: Cold 1'])
         self.assertEqual(lanes(hard), [('Old Film', '3.50 s'), ('Rare Show S01E01', '3.50 s')])
         self.assertIn('<b>3.50 s</b><small>Failed: Cold 1</small>', hard)
 
@@ -576,14 +573,14 @@ class SpeedTest(unittest.TestCase):
             'KaijuFlow None 1 title failed · 1 of 8 plays: Old Film (Cold 1)',
             'Usenet Ultimate None 1 title failed · 2 of 8 plays: Old Film (Cold 1, Cold 2)',
             'AltMount direct 1 title failed · 1 of 8 plays: Matrix (Cold 2) 1 title failed · 1 of 8 plays: Rare Show S01E01 '
-            '(Cold 1 after a fallback)'])
+            '(Cold 1)'])
         self.assertEqual(re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', fails), ['Setup', 'Easy list', 'Hard list'])
         self.assertNotIn('List, warm', text(self.report))
 
     def test_the_words_say_what_title_to_video_and_a_fail_are_and_name_the_setups_in_the_pages_words(self):
         foot = text(re.search(r'<footer.*?</footer>', self.report).group(0))
         self.assertIn('Title to video: seconds from asking for a title until its video starts, the list and the start on one clock.', foot)
-        self.assertIn('Fail: a play whose top pick does not play on its one try; video after a fallback is a fail too. '
+        self.assertIn('Fail: a play whose top pick gives no video; video after a fallback is played, not a fail. '
                       'A count names the titles and the plays.', foot)
         self.assertIn('Medians over the 2 titles of each list.', foot)
         self.assertIn('Page 1 of 1', foot)
@@ -690,8 +687,8 @@ class SpeedTestWithATitleLeftOut(unittest.TestCase):
             self.assertTrue(text(re.search(r'<div class="sl-final">.*?</div>', page).group(0)).endswith(why))
 
     def test_the_whole_list_counts_are_named_as_the_whole_list(self):
-        self.assertIn('Fails, KaijuFlow: easy 0 titles failed · 0 of 8 plays; hard 1 title failed · 2 of 8 plays '
-                      '(Cold 1 Old Film; Cold 2 Old Film).', self.check)
+        self.assertIn('KaijuFlow, hard list: fails 1 title failed · 2 of 8 plays (Cold 1 Old Film; Cold 2 Old Film); '
+                      'fallbacks none; cold title to video 3.50 s; warm title to video 0.60 s.', self.check)
         heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', self.index).group(0))
         self.assertIn('Failed plays, hard list 2 of 8 1 title failed', heads)
 

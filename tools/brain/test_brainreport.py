@@ -522,30 +522,36 @@ def played_visit(imports, **kw):
 
 
 class FirstTryTest(unittest.TestCase):
-    """A top pick plays only when its own import is the one that played: video served after the top pick's import failed is
-    a fallback, counted as not played and shown apart (#143)."""
+    """Video served after the top pick's own import failed is a fallback (#143): counted as played since #185, and shown as
+    one."""
 
-    def test_video_after_the_top_picks_import_failed_is_not_a_play(self):
+    def test_video_after_the_top_picks_import_failed_is_played_after_a_fallback(self):
         top = 'Chernobyl.S01E02.Please.Remain.Calm.1080p-onlyfaffs.mkv-6632d89ee069de68'
-        fallback = played_visit([{'name': top, 'ok': False}, {'name': 'Chernobyl - S01E02 - Bluray-2160p-fcecc767e7065bed', 'ok': True}])
+        fallback = played_visit([{'name': top, 'ok': False, 'seconds': 1.25},
+                                 {'name': 'Chernobyl - S01E02 - Bluray-2160p-fcecc767e7065bed', 'ok': True, 'seconds': 2.0}])
         first_try = played_visit([{'name': top, 'ok': True}])
-        self.assertEqual(br.side_plays([fallback, first_try], 'altmount-addon'), (1, 2))
+        self.assertEqual(br.side_plays([fallback, first_try], 'altmount-addon'), (2, 2))
+        self.assertEqual((br.fallbacks(fallback), br.fallback_s(fallback), br.fallbacks(first_try)), (1, 1.25, 0))
+        self.assertEqual(br.title_to_video(fallback), 10.0)  # its 1.0 s list and 9.0 s start, the fallback's seconds in them
 
-    def test_the_2026_11_13_baseline_gives_altmount_direct_36_of_40(self):
+    def test_the_2026_11_13_baseline_shows_altmount_directs_four_fallbacks_and_none_of_the_others(self):
         visits = baseline_run()['visits']
-        self.assertEqual(br.side_plays(visits, 'altmount-addon'), (36, 40))  # Chernobyl S01E02 fell back in all four rounds
+        self.assertEqual(br.side_plays(visits, 'altmount-addon'), (40, 40))
+        self.assertEqual([(v['phase'], v['round'], v['title']) for v in visits if br.fallbacks(v)],  # every round, one title
+                         [(p, r, 'Chernobyl S01E02') for p, r in br.RUN_ORDER])
+        self.assertEqual({v['side'] for v in visits if br.fallbacks(v)}, {'altmount-addon'})
         # KaijuFlow and Usenet Ultimate queue their next Sources too; a failed one of those is no fallback
         self.assertEqual(br.side_plays(visits, 'kaijuflow'), (39, 40))
         self.assertEqual(br.side_plays(visits, 'uu'), (38, 40))
 
-    def test_the_report_shows_a_fallback_apart_from_the_plays(self):
+    def test_the_report_counts_a_fallback_as_played_and_shows_it(self):
         text = br.render_report(baseline_run(), ['x'])
         self.assertIn('| Side | Run | Top pick plays | Fallback | Indexer limit |', text)
-        self.assertIn("| AltMount direct | Cold 1 | 9 of 10 | 1 | 0 | 0 | 0 | 0 | 0 |", text)
+        self.assertIn("| AltMount direct | Cold 1 | 10 of 10 | 1 | 0 | 0 | 0 | 0 | 0 |", text)
         self.assertIn("| KaijuFlow | Cold 1 | 10 of 10 | 0 | 0 | 0 | 0 | 0 | 0 |", text)
         [row] = [r for r in per_title_rows(text)
                  if (r['Title'], r['Side'], r['Run']) == ('Chernobyl S01E02', "AltMount direct", 'Cold 1')]
-        self.assertEqual(row['Result'], 'played after 3 fallbacks')
+        self.assertEqual(row['Result'], 'played after 3 fallbacks')  # this run's failed imports kept no time
 
 
 def picks_run(altmount_dune='Dune.2021.1080p.WEB-DL-GRP', altmount_dune_size=5_000_000_000):
@@ -1167,6 +1173,57 @@ def tagged_report(case, changed=None):
     return br.render_report(br.load_run(tagged_run_folder(case, changed)), ['First run.'])
 
 
+class KaijuFlowAloneTest(unittest.TestCase):
+    """#185: a run of KaijuFlow alone, its fallback on. A fallback counts as played: `check` and the report say "played
+    after N fallbacks" and the seconds its failed imports took, and those seconds are in its title to video."""
+
+    CHANGED = {
+        ('kaijuflow', 'cold', 1, 'Old Film'): dict(  # its top pick's import failed after 2.5 s; the next Source played
+            start_s=6.0, played_source='Old Film.2160p.WEB-DL-GRP', imports=[
+                {'name': 'Old Film.2160p.WEB-DL-GRP-0123456789abcdef', 'ok': False, 'seconds': 2.5},
+                {'name': 'Old.Film.1080p.BluRay-OTHER-fedcba9876543210', 'ok': True, 'seconds': 2.0}]),
+        ('kaijuflow', 'cold', 1, 'Rare Show S01E01'): dict(start_s=4.0),  # 6.0 s title to video
+        ('kaijuflow', 'cold', 2, 'Rare Show S01E01'): dict(ok=False)}     # no video: a fail
+
+    def setUp(self):
+        self.folder = tagged_run_folder(self, self.CHANGED, sides=('kaijuflow',))
+
+    def test_check_counts_a_fallback_as_played_and_says_its_extra_seconds(self):
+        usable, lines = runcheck.check_run(self.folder)
+        self.assertIn('Top picks played, KaijuFlow: cold 7 of 8, warm 8 of 8.', lines)
+        start = lines.index('Played after a fallback (1), counted as played:')
+        self.assertEqual(lines[start + 1], '- KaijuFlow, cold 1, Old Film: played after 1 fallback, 2.50 s extra')
+        self.assertIn('- KaijuFlow, cold 2, Rare Show S01E01: failure video', lines)  # the fail is still a failure
+
+    def test_check_gives_per_list_the_fails_the_fallbacks_and_the_cold_and_warm_title_to_video(self):
+        usable, lines = runcheck.check_run(self.folder)
+        self.assertIn('KaijuFlow, easy list: fails 0 titles failed · 0 of 8 plays; fallbacks none; '
+                      'cold title to video 3.50 s; warm title to video 3.50 s.', lines)
+        # hard, cold: Old Film 8.0 (2.0 + 6.0, after the fallback) and 3.5, Rare Show 6.0, its Cold 2 a fail: median 6.0
+        self.assertIn('KaijuFlow, hard list: fails 1 title failed · 1 of 8 plays (Cold 2 Rare Show S01E01); '
+                      'fallbacks 1 (Cold 1 Old Film, played after 1 fallback, 2.50 s extra); '
+                      'cold title to video 6.00 s; warm title to video 3.50 s.', lines)
+
+    def test_a_run_without_tags_gets_one_such_line_for_every_title(self):
+        with open(os.path.join(self.folder, 'raw.json')) as f:
+            raw = json.load(f)
+        for v in raw['visits']:
+            v.pop('list')
+        with open(os.path.join(self.folder, 'raw.json'), 'w') as f:
+            json.dump(raw, f)
+        usable, lines = runcheck.check_run(self.folder)
+        self.assertIn('KaijuFlow, every title: fails 1 title failed · 1 of 16 plays (Cold 2 Rare Show S01E01); '
+                      'fallbacks 1 (Cold 1 Old Film, played after 1 fallback, 2.50 s extra); '
+                      'cold title to video 3.50 s; warm title to video 3.50 s.', lines)
+
+    def test_the_report_shows_the_fallback_as_played_with_its_title_to_video(self):
+        text = br.render_report(br.load_run(self.folder), ['First run.'])
+        [row] = [r for r in per_title_rows(text) if (r['Title'], r['Side'], r['Run']) == ('Old Film', 'KaijuFlow', 'Cold 1')]
+        self.assertEqual((row['Title to video'], row['Result']), ('8', 'played after 1 fallback, 2.50 s extra'))
+        self.assertIn('| KaijuFlow | Cold 1 | 4 of 4 | 1 | 0 | 0 | 0 | 0 | 0 |', text)  # played, and shown as a fallback
+        self.assertIn('| KaijuFlow | Cold 2 | 3 of 4 | 0 |', text)
+
+
 class TaggedRunTest(unittest.TestCase):
     """#167: a run on a tagged title list (easy and hard) is judged on title to video and fails, per list."""
 
@@ -1202,7 +1259,7 @@ class TaggedRunTest(unittest.TestCase):
                  {'name': 'Rare Show S01E01.2160p.WEB-DL-GRP', 'ok': False}, {'name': 'Rare.Show.S01E01.720p-OTHER', 'ok': True}]),
              ('altmount-addon', 'cold', 2, 'Matrix'): dict(ok=False)}
 
-    def test_a_title_with_no_video_or_with_video_only_after_a_fallback_is_a_fail_counted_per_side_round_and_list(self):
+    def test_a_title_with_no_video_is_a_fail_counted_per_side_round_and_list_and_a_fallback_is_played(self):
         text = tagged_report(self, self.FAILS)
         rows = self.list_rows(text)
         self.assertEqual(rows['KaijuFlow', 'hard', 'Cold']['Fails'],
@@ -1212,40 +1269,43 @@ class TaggedRunTest(unittest.TestCase):
         self.assertEqual(rows['KaijuFlow', 'easy', 'Cold']['Fails'],
                          '0 titles failed · 0 of 4 plays: 0 of 2 in Cold 1, 0 of 2 in Cold 2')
         self.assertEqual(rows["AltMount direct", 'hard', 'Cold']['Fails'],
-                         '1 title failed · 1 of 4 plays: 1 of 2 in Cold 1, 0 of 2 in Cold 2')
+                         '0 titles failed · 0 of 4 plays: 0 of 2 in Cold 1, 0 of 2 in Cold 2')  # its fallback played (#185)
         self.assertEqual(rows["AltMount direct", 'easy', 'Cold']['Fails'],
                          '1 title failed · 1 of 4 plays: 0 of 2 in Cold 1, 1 of 2 in Cold 2')
         fallback = self.row(text, 'Rare Show S01E01', "AltMount direct", 'Cold 1')
-        self.assertEqual((fallback['Result'], fallback['Title to video']), ('played after 1 fallback', '-'))  # a fail has none
+        self.assertEqual((fallback['Result'], fallback['Title to video']), ('played after 1 fallback', '3.5'))  # no import time kept
         self.assertEqual(self.row(text, 'Old Film', 'KaijuFlow', 'Warm 1')['Result'], 'plays')
 
     def test_the_check_names_the_fails_of_each_setup_per_list(self):
         usable, lines = runcheck.check_run(tagged_run_folder(self, self.FAILS))
-        self.assertIn('Fails, KaijuFlow: easy 0 titles failed · 0 of 8 plays; hard 1 title failed · 1 of 8 plays '
-                      '(Cold 1 Old Film).', lines)
-        self.assertIn('Fails, AltMount direct: easy 1 title failed · 1 of 8 plays (Cold 2 Matrix); hard 1 title failed · '
-                      '1 of 8 plays (Cold 1 Rare Show S01E01, played after 1 fallback).', lines)
+        times = 'cold title to video 3.50 s; warm title to video 3.50 s.'
+        self.assertEqual([x for x in lines if ' list: fails ' in x], [
+            f'KaijuFlow, easy list: fails 0 titles failed · 0 of 8 plays; fallbacks none; {times}',
+            f'KaijuFlow, hard list: fails 1 title failed · 1 of 8 plays (Cold 1 Old Film); fallbacks none; {times}',
+            f'AltMount direct, easy list: fails 1 title failed · 1 of 8 plays (Cold 2 Matrix); fallbacks none; {times}',
+            'AltMount direct, hard list: fails 0 titles failed · 0 of 8 plays; '
+            f'fallbacks 1 (Cold 1 Rare Show S01E01, played after 1 fallback); {times}'])
 
     def test_a_title_that_fails_in_both_cold_rounds_is_one_title_and_two_plays(self):
         usable, lines = runcheck.check_run(tagged_run_folder(self, {**fail('kaijuflow', 'Old Film'), **fail('kaijuflow', 'Old Film', 2)}))
-        self.assertIn('Fails, KaijuFlow: easy 0 titles failed · 0 of 8 plays; hard 1 title failed · 2 of 8 plays '
-                      '(Cold 1 Old Film; Cold 2 Old Film).', lines)
+        self.assertIn('KaijuFlow, hard list: fails 1 title failed · 2 of 8 plays (Cold 1 Old Film; Cold 2 Old Film); '
+                      'fallbacks none; cold title to video 3.50 s; warm title to video 3.50 s.', lines)
 
     def test_the_report_of_a_tagged_run_opens_on_fails_then_title_to_video_and_start_times_stay_as_detail(self):
         run = br.load_run(speed_run_folder(self, self.FAILS, video('kaijuflow', 'hard', 5.0), sides=('kaijuflow', 'altmount-addon')))
         first = br.render_report(run, ['First run.']).splitlines()[0]
         self.assertEqual(first, 'Across 4 titles (2 easy, 2 hard), each round done twice. Fails, every round: KaijuFlow '
                                 'easy 0 titles failed · 0 of 8 plays, hard 1 title failed · 1 of 8 plays; AltMount direct '
-                                'easy 1 title failed · 1 of 8 plays, hard 1 title failed · 1 of 8 plays. Median cold title '
+                                'easy 1 title failed · 1 of 8 plays, hard 0 titles failed · 0 of 8 plays. Median cold title '
                                 'to video: KaijuFlow easy 3.5 s, hard 5 s; AltMount direct easy 3.5 s, hard 3.5 s.')
         self.assertEqual(br.headline(run), 'KaijuFlow fails easy 0 titles failed · 0 of 8 plays, hard 1 title failed · 1 of 8 '
                                            'plays, cold title to video 3.5 s / 5 s; AltMount direct fails easy 1 title failed · '
-                                           '1 of 8 plays, hard 1 title failed · 1 of 8 plays, cold title to video 3.5 s / 3.5 s')
+                                           '1 of 8 plays, hard 0 titles failed · 0 of 8 plays, cold title to video 3.5 s / 3.5 s')
         self.assertNotIn('pressing play', first)
 
-    def test_the_replayed_2026_11_13_run_read_untagged_still_gives_altmount_direct_36_of_40_and_no_lists(self):
+    def test_the_replayed_2026_11_13_run_read_untagged_gives_altmount_direct_40_of_40_and_no_lists(self):
         run = br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports'))
-        self.assertEqual(br.side_plays(run['visits'], 'altmount-addon'), (36, 40))
+        self.assertEqual(br.side_plays(run['visits'], 'altmount-addon'), (40, 40))  # four of them after a fallback (#185)
         self.assertEqual(br.run_lists(run['visits']), [])
         text = br.render_report(run, ['x'])
         self.assertNotIn(br.LIST_SECTION, text)

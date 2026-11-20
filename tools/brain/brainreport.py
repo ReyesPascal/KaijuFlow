@@ -52,10 +52,11 @@ COLUMN_HELP = {
                 'indexer took when it was recorded; indexers are asked at the same time, so the slowest one counts). '
                 '"-" means no stand-in log line was matched to the visit; 0 means the replay wait was off.',
     "Side's own work": 'Search minus Indexers: what the side itself added to the list time (health checks, merging, its own requests).',
-    'Top pick plays': 'titles where the first Source in the list played on the first try, out of the titles in the round. A '
+    'Top pick plays': 'titles whose top pick played, out of the titles in the round: on the first try or after a fallback. A '
                       'top pick that failed only because a request was not recorded is left out of both numbers (see Not recorded).',
     'Fallback': 'titles where video arrived only after the top pick\'s own import failed (the side fell back to another Source '
-                'or to a file it already held). They count as not played.',
+                'or to a file it already held). They count as played (#185), with the seconds the fallback took in their '
+                'title to video.',
     'Indexer limit': 'failures caused by an indexer saying its limit was reached (such a run is stopped, so this '
                      'should stay 0 in a finished run).',
     'Backend rejection': 'failures where the Backend (AltMount or NzbDAV) refused or could not import the NZB, or took the import '
@@ -71,8 +72,9 @@ COLUMN_HELP = {
             'did not play it is the size the side states in its list, marked "listed": the indexer\'s figure for the post, '
             'not the measured size of the file (KaijuFlow counts it in GB of 1024 x 1024 x 1024 bytes).',
     'Sources': 'how many Sources the side listed.',
-    'Result': '"plays" when the top pick delivered video on the first try; "played after N fallbacks" when video arrived only '
-              'after N imports failed, the top pick\'s own among them; otherwise the failure kind and a short note.',
+    'Result': '"plays" when the top pick delivered video on the first try; "played after N fallbacks, S s extra" when video '
+              'arrived only after N imports failed, the top pick\'s own among them, and S seconds is what those imports took; '
+              'otherwise the failure kind and a short note.',
 }
 SHARED_COLS = ['Side', 'Run', 'Search', 'Indexers', "Side's own work", 'NZB fetch', 'Import', 'First byte']
 EXTRA_COLS = ['Side', 'Run', 'Indexer wait', 'Health checks', 'Unscramble', 'Backend probe']
@@ -82,8 +84,8 @@ TITLE_COLS = ['Title', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', '
 LIST_COLUMN_HELP = {
     'List': 'the title list the title is on: easy (popular, well kept) or hard (older releases, takedown-prone shows, less '
             'popular titles).',
-    'Title to video': 'seconds from asking for the title until video arrived: Search plus First byte. "-" for a fail: no '
-                      'video, or video only after a fallback.',
+    'Title to video': 'seconds from asking for the title until video arrived: Search plus First byte, a fallback\'s seconds '
+                      'included. "-" for a fail: no video.',
 }
 TAGGED_TITLE_COLS = ['Title', 'List', 'Side', 'Run', 'Top pick', 'Size', 'Sources', 'Search', 'First byte', 'Title to video',
                      'Result']
@@ -411,20 +413,35 @@ def pick_imports(v):
 
 def fallbacks(v):
     """How many imports failed in a visit that served video only after its top pick's own import failed (a fallback, such as
-    AltMount's max_fallback_releases); 0 for a first-try play and for a visit that served no video."""
+    KaijuFlow's Ultimate Fallback); 0 for a first-try play and for a visit that served no video."""
     if not v.get('ok') or not any(i.get('ok') is False for i in pick_imports(v)):
         return 0
     return sum(1 for i in v.get('imports') or [] if i.get('ok') is False)
 
 
+def fallback_s(v):
+    """The seconds a fallback added to its visit's title to video (#185): what the visit's failed imports took, added up.
+    None for a visit that is no fallback, or when a failed import's time is not known."""
+    secs = [i.get('seconds') for i in v.get('imports') or [] if i.get('ok') is False] if fallbacks(v) else [None]
+    return None if any(s is None for s in secs) else round(sum(secs), 3)
+
+
+def fallback_text(v):
+    """'played after 1 fallback, 2.50 s extra': a fallback as the report and `check` name it (the extra seconds left out
+    when they are not known)."""
+    n, extra = fallbacks(v), fallback_s(v)
+    return f"played after {n} fallback{'' if n == 1 else 's'}" + ('' if extra is None else f', {extra:.2f} s extra')
+
+
 def plays(v):
-    """Whether a visit's top pick played on the first try: video arrived, and not after a fallback (#143)."""
-    return bool(v.get('ok')) and not fallbacks(v)
+    """Whether a visit's top pick played: video arrived, on the first try or after a fallback. A fallback counts as played
+    (#185, KaijuFlow's fallback on, as at home); fallbacks() and fallback_s() say how many and how slow (rules.md)."""
+    return bool(v.get('ok'))
 
 
 def title_to_video(v):
-    """Seconds from asking for the title until video arrived (#167): the list time plus the start time. None for a fail
-    (no video, or video only after a fallback: GLOSSARY.md, "a fail has no title-to-video time") and without both times."""
+    """Seconds from asking for the title until video arrived (#167): the list time plus the start time, a fallback's seconds
+    included. None for a fail (no video: GLOSSARY.md, "a fail has no title-to-video time") and without both times."""
     if not plays(v) or v.get('list_s') is None or v.get('start_s') is None:
         return None
     return round(v['list_s'] + v['start_s'], 3)
@@ -669,8 +686,6 @@ def attribute_steps(visit, steps, end=None):
 def classify_failure(v):
     if plays(v):
         return None
-    if v.get('ok'):
-        return 'fallback'
     if v.get('limit'):
         return 'indexer_limit'
     if v.get('not_recorded'):  # a miss that can be the cause (see assign_standin): not a verdict on the side or the Source
@@ -931,8 +946,8 @@ def side_time(visits, side, phase, what, lst=None):
 
 def side_fails(visits, side, phase=None, rnd=None, lst=None):
     """How many of one side's counted top picks failed (#167): every round, one phase or one round; every title, or the
-    titles of one list. A fail is a top pick that did not play on its one try: no video, the failure video, a refusal, or
-    video only after a fallback. Each visit counts on its own, so a cold fail stays a fail when the warm play after it works."""
+    titles of one list. A fail is a top pick that gave no video: the failure video, a refusal or an error (video after a
+    fallback is played, #185). Each visit counts on its own, so a cold fail stays a fail when the warm play after it works."""
     played, counted = _plays(visits, side, phase, rnd, lst)
     return counted - played
 
@@ -1503,8 +1518,9 @@ def tagged(visits):
 
 LISTS = common.LISTS
 LIST_SECTION = '## Fails and title to video per list'
-LIST_HELP = ('Fails = plays whose top pick did not play on its one try: no video, the failure video, a refusal, or video '
-             'only after a fallback ("played after N fallbacks"). "1 title failed · 2 of 20 plays" names the titles with a failed '
+LIST_HELP = ('Fails = plays whose top pick gave no video: the failure video, a refusal or an error. Video after a fallback '
+             '("played after N fallbacks") is played, not a fail, and its extra seconds are in its title to video (#185). '
+             '"1 title failed · 2 of 20 plays" names the titles with a failed '
              'play and the failed plays out of the plays of the list in the phase, then each round. A warm play that works '
              'after a cold fail is a warm play; the cold fail stays a fail. Title to video = seconds from asking for the title '
              'until video arrived (list time plus start time), the median over the top picks that played in both rounds of the phase.')
@@ -1566,7 +1582,7 @@ def render_report(run, changes, opening=None):
             causes = [classify_failure(v) for v in vs]
             counted = _counted(vs)
             fail.append([SIDE_NAMES[s], lab, f"{sum(1 for v in counted if plays(v))} of {len(counted)}",
-                         sum(1 for c in causes if c == 'fallback')] + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
+                         sum(1 for v in vs if fallbacks(v))] + [sum(1 for c in causes if c == k) for k, _ in CAUSES])
     lines += ['## Steps every side shares', ''] + _table(SHARED_COLS, shared) + [''] + _defs(SHARED_COLS) + ['']
     lines += ['## Extras (steps only some sides have)', ''] + _table(EXTRA_COLS, extra) + [''] + _defs(EXTRA_COLS[2:]) + ['']
     lines += list_section(run)
@@ -1580,7 +1596,7 @@ def render_report(run, changes, opening=None):
                         continue
                     m = visit_metrics(v)
                     cause = classify_failure(v)
-                    res = 'plays' if plays(v) else failed_result(v, cause)
+                    res = (fallback_text(v) if fallbacks(v) else 'plays') if plays(v) else failed_result(v, cause)
                     if lists:
                         rows.append([t, v.get('list') or '-', SIDE_NAMES[s], _run_label(phase, rnd)] + _pick_cells(top_pick(v))
                                     + [v.get('sources', '-'), _cell(m['search_s']), _cell(m['start_s']),
@@ -1637,11 +1653,7 @@ def visit_wall_s(v):
 
 
 def failed_result(v, cause):
-    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took.
-    A fallback says how many imports failed before the video arrived."""
-    if cause == 'fallback':
-        n = fallbacks(v)
-        return f"played after {n} fallback{'' if n == 1 else 's'}"
+    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took."""
     text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
     took = visit_wall_s(v)
     return text if took is None else f'{text} (the whole visit took {took:.1f} s)'
