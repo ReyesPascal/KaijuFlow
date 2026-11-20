@@ -22,6 +22,10 @@ _Avoid_: result, release, NZB (when you mean the search result), "source" for co
 A Source that passed a health check, so its articles are believed to be available.
 _Avoid_: verified result, good source
 
+**Unchecked Source**:
+A Source no health check has looked at yet. It is neither healthy nor dead, and KaijuFlow never hands one to the Backend: a Source is checked before it is played.
+_Avoid_: kept result, passed (when it was never checked)
+
 **Stream**:
 The playable link a Backend produced for one Source.
 _Avoid_: tile, source (when you mean the link)
@@ -55,13 +59,18 @@ _Avoid_: reorder, repair, fix names
 **Auto-queue**:
 KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
 _Avoid_: pre-warm, preload, prefetch
+To be replaced by Head start (owner, 2026-11-20).
+
+**Head start**:
+The Play-time check of the Best entry's Sources and the prepare of the first Healthy one, begun in the background as soon as any player asks for a title's stream list, so a press of Best finds the check done and the video ready. In Stremio the list is asked for when a film's page opens or an episode is picked. Only the newest list request has a Head start: a new one stops what is unfinished for the one before.
+_Avoid_: prefetch, pre-warm, auto-queue (once built)
 
 **Play-time check**:
 The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then. Replaces checking a whole list before it is shown.
 _Avoid_: lazy check, on-demand check, deferred check
 
 **Best entry**:
-The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source among the top few, found by a Play-time check, rather than one chosen Source.
+The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source.
 _Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a list)
 
 **Disc image**:
@@ -94,6 +103,10 @@ _Avoid_: partial run, quick run
 The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of KaijuFlow and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
 _Avoid_: batch, phase (cold or warm is the phase)
 
+**Browse pause**:
+The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video.
+_Avoid_: think time, settle (the settle is the pause after a play)
+
 **Round**:
 Every title played once, cold or warm, on every side of a pass. A timed run plays four rounds: cold, warm, cold, warm. A side's figures for a round are made of its own plays in it; the time a round takes covers every side of the pass.
 _Avoid_: iteration, lap
@@ -111,7 +124,7 @@ The run a run of KaijuFlow is judged against: the newest earlier finished run on
 _Avoid_: baseline (the baseline is one run; the previous run moves on with every run), last run (it may be on another recording)
 
 **Title to video**:
-Seconds from asking for a title until its video arrives: the list and the start, on one clock for every side, so checking before the list and checking at play time cost the same. A fail has no title-to-video time.
+Seconds from asking for a title until its video arrives: the list and the start, on one clock for every side, so checking before the list and checking at play time cost the same. The Browse pause between them is not counted. A fail has no title-to-video time.
 _Avoid_: total time, end-to-end time
 
 **Easy list**:
