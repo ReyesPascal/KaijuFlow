@@ -210,6 +210,40 @@ class PreviousRunTests(unittest.TestCase):
             'cold title to video 2.00 s (was 2.00 s), same. Kept.',
             'Verdict against the previous run: kept.'])
 
+    def test_a_faster_run_with_one_more_fail_is_not_kept(self):
+        def faster_with_a_fail(raw):
+            kf(raw, 'cold', 'Alpha').update(start_s=0.5)
+            kf(raw, 'cold', 'Beta').update(start_s=0.5)
+            kf(raw, 'warm', 'Beta').update(ok=False, note='failure video')
+        with tempdir() as tmp:
+            _, out = run_check(runs_pair(tmp, edit_this=faster_with_a_fail))
+        self.assertEqual(judged_lines(out)[1:], [
+            'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
+            'cold title to video 1.50 s (was 2.00 s), better. Kept.',
+            'KaijuFlow, hard list: fails 1 title failed · 1 of 2 plays (was 0 titles failed · 0 of 2 plays), worse; '
+            'cold title to video 1.50 s (was 2.00 s), better. Not kept.',
+            'Verdict against the previous run: not kept.'])
+
+    def test_a_run_on_a_different_recording_is_not_compared(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            edit(run, 'meta.json', lambda m: m.update(recording='another'))
+            _, out = run_check(run)
+        lines = out.splitlines()
+        self.assertIn('Against the previous run: not compared, no earlier run on the same recording (another).', lines)
+        self.assertFalse([x for x in lines if x.startswith('Verdict against the previous run')], out)
+
+    def test_an_earlier_run_marked_never_compared_with_or_archived_is_passed_over(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            root = os.path.dirname(run)
+            between = os.path.join(root, '2026-01-01T120000Z-between')
+            shutil.copytree(run, between)
+            edit(between, 'meta.json', lambda m: m.update(never_compared=True, label='Test 1'))
+            shutil.copytree(run, os.path.join(root, 'archive', '2026-01-01T180000Z-archived'))
+            _, out = run_check(run)
+        self.assertEqual(judged_lines(out)[0], 'Against the previous run on the same recording (l): 2026-01-01T000000Z-before.')
+
 
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13')
 
