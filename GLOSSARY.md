@@ -27,7 +27,7 @@ The playable link a Backend produced for one Source.
 _Avoid_: tile, source (when you mean the link)
 
 **Backend**:
-A separate service that takes one Source, prepares it, and serves its video file to the player. AltMount is KaijuFlow's only Backend (NzbDAV was removed in #188; InfiniDysk stays unbuilt).
+A separate service that takes one Source, prepares it, and serves its video file to the player. AltMount is KaijuFlow's only Backend.
 _Avoid_: streamer, engine, provider (providers are Usenet servers)
 
 **Parity**:
@@ -45,11 +45,11 @@ Renaming the parts of a Scrambled RAR set into a normal RAR volume series in the
 _Avoid_: reorder, repair, fix names
 
 **Auto-queue**:
-KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (setting `autoQueueMode`: the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
+KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
 _Avoid_: pre-warm, preload, prefetch
 
 **Play-time check**:
-The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then (spec #183). Replaces checking a whole list before it is shown.
+The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then. Replaces checking a whole list before it is shown.
 _Avoid_: lazy check, on-demand check, deferred check
 
 **Best entry**:
@@ -71,16 +71,16 @@ A later play of a Source the Backend already holds, so the video starts from wha
 _Avoid_: cached play, repeat play
 
 **Side**:
-One setup that is played in a timed run: KaijuFlow, or KaijuFlow with one page per indexer (`--one-page`), both on KaijuFlow's test copy and its AltMount (#185). The runs before #185 also had Usenet Ultimate and AltMount direct as sides; the brain tools name them only to read those runs (#187).
+One setup that is played in a timed run: KaijuFlow with its AltMount, or the same with one page asked of each indexer. Earlier runs also had Usenet Ultimate and AltMount direct as sides.
 _Avoid_: variant, candidate, contestant
 
 **AltMount direct**:
-History (before #185): the side where the player got its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it. No longer a side (#187); its test copy stays stopped.
+The setup where the player gets its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it. A side of earlier runs only; KaijuFlow's runs no longer play it.
 _Avoid_: AltMount's own addon, addon, AltMount alone
 
 **Short run**:
-A timed run that is not the full plan: without KaijuFlow's own pass (`--sides kaijuflow-1page`), one round instead of two, or fewer titles than the list. Made with `--sides`, `--rounds`, `--quick` or a title subset, for a quick check while tuning. Its report, `meta.json`, INDEX.md row and `check` say what it played, and it is never a baseline.
-_Avoid_: partial run, quick run (`--quick` is one way to make one)
+A timed run that is not the full plan: without KaijuFlow's own pass, one round instead of two, or fewer titles than the list, for a quick check while tuning. It says what it played, and it is never a baseline or a previous run.
+_Avoid_: partial run, quick run
 
 **Pass**:
 The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of KaijuFlow and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
@@ -91,15 +91,15 @@ Every title played once, cold or warm, on every side of a pass. A timed run play
 _Avoid_: iteration, lap
 
 **Top pick**:
-The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. Video that arrives after the top pick's own import failed is a **fallback**: counted as played since #185, shown as "played after N fallbacks" with its extra seconds, which stay in its title to video (until #185 it counted as not played, #143).
+The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. Video that arrives only after the top pick's own import failed is a **fallback**: counted as played, with its extra seconds in its title to video.
 _Avoid_: first result, winner
 
 **Fail**:
-A play whose top pick gives no video: the viewer presses it and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail (#185). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
+A play whose top pick gives no video: the viewer presses it and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Previous run**:
-The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its fallback time (its fallbacks' extra seconds added up) against the previous run's, which never changes the verdict. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
+The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its warm title to video, its fallbacks and their extra seconds against the previous run's, which never change the verdict. A run that was stopped or is short is not judged. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
 _Avoid_: baseline (the baseline is one run; the previous run moves on with every run), last run (it may be on another recording)
 
 **Title to video**:
@@ -115,7 +115,7 @@ A title list of the kinds where dead Sources are common (older releases, titles 
 _Avoid_: stress list, fail list
 
 **Speed test**:
-A timed run on an easy list and a hard list of titles KaijuFlow has not played before, new for every speed test. Until #187 it said how KaijuFlow compared with the other setups; a run is now judged against the previous run on its Recording. The first speed test that works is the baseline.
+A timed run on an easy list and a hard list drawn from the pool, titles KaijuFlow has not played before. The first speed test that works is the baseline.
 _Avoid_: baseline, benchmark
 
 **Tuning test**:
@@ -123,19 +123,19 @@ A timed run that plays a title list again, so a change to KaijuFlow or its AltMo
 _Avoid_: speed test (when the titles are reused), rerun
 
 **Target**:
-One of the goals the Speed Check page holds KaijuFlow to, most of them against the other setups of the runs before #185, kept in `tools/brain/targets.json` and judged by `pagetargets.py` (page code until #195): met, not met, or not measured when the run holds no figure for it. A time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by. `check` and the report no longer judge targets (#187); see Previous run.
+A goal the Speed Check page holds KaijuFlow to, most of them against another setup: met, not met, or not measured when the run holds no figure for it; a time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by. A run itself is judged against the previous run, not on targets.
 _Avoid_: goal, KPI, threshold
 
 **Final bar**:
-The owner's goal for a speed test beyond its three targets, held against the other setups and shown apart from the targets (spec #159, #169). Only the Speed Check page still shows it, until #195 (`tools/brain/docs/rules.md`, "Deleted with the comparison of setups"); its words are in `tools/brain/targets.json`.
+The owner's goal for a speed test beyond its targets, held against the other setups and shown apart from the targets.
 _Avoid_: final target, end goal
 
 **Expected settings**:
-The sort and filter rules every test copy must have, kept in `tools/brain/expected-settings.json`. The preflight fails when a copy differs.
+The settings every test copy must have, its sort and filter rules among them. The preflight fails when a copy differs.
 _Avoid_: baseline settings, golden config
 
 **Like for like**:
-History (#142 to #187): the one rule set every side of a timed run played by when KaijuFlow was measured beside other setups (the stand-in's filtered list of Sources, 4K first, one try per play), and the per-title comparison of KaijuFlow's top pick with each other setup's. Deleted in #187 (the stand-in passes answers untouched since #185); only the Speed Check page code still applies it to its targets, until #195. `tools/brain/docs/rules.md`, "Deleted with the comparison of setups".
+One rule set for every side of a comparison of setups (the same list of Sources, 4K first, one try per play), and KaijuFlow's top pick compared per title with each other setup's. KaijuFlow's runs alone need neither.
 _Avoid_: fair run, same settings
 
 **Recording**:
