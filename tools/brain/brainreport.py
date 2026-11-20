@@ -416,7 +416,7 @@ def fallback_text(v):
 
 def plays(v):
     """Whether a visit's top pick played: video arrived, on the first try or after a fallback. A fallback counts as played
-    (#185, KaijuFlow's fallback on, as at home); fallbacks() and fallback_s() say how many and how slow (rules.md)."""
+    (#185; KaijuFlow with AltMount falls back only once #190 turns Ultimate Fallback on); fallbacks() and fallback_s() say how many and how slow (rules.md)."""
     return bool(v.get('ok'))
 
 
