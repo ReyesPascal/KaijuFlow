@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 from brainreport import (  # noqa: E402
-    JUDGED, LISTS, NO_FIGURE, RUN_ORDER, SIDE_NAMES, _plays, _run_label, _secs, _time, fail_figure, fails_words, run_lists,
+    JUDGED, LISTS, NO_FIGURE, RUN_ORDER, SIDE_NAMES, _plays, _run_label, secs_text, _time, fail_figure, fails_words, run_lists,
     top_pick)
 
 # The setups as the page's verdicts name them (GLOSSARY), the other setups of the runs before #185 among them.
@@ -147,12 +147,12 @@ def verdict_text(verdict):
     """The Result words of a verdict, as the report's table and the check's lines show them."""
     text = verdict['result'].capitalize()
     if verdict['result'] == NOT_MET and verdict['slower_s'] is not None:
-        text += f" ({_secs(verdict['slower_s'])} slower)"
+        text += f" ({secs_text(verdict['slower_s'])} slower)"
     noise = verdict['noise']
     if noise:
         a, b = noise['rounds']
-        text += (f", inside the noise: {SIDE_NAMES[JUDGED]}'s two {noise['phase']} rounds differ by {_secs(abs(a - b))} "
-                 f"({a:.2f} and {b:.2f} s), more than the {_secs(noise['by'])} the target is "
+        text += (f", inside the noise: {SIDE_NAMES[JUDGED]}'s two {noise['phase']} rounds differ by {secs_text(abs(a - b))} "
+                 f"({a:.2f} and {b:.2f} s), more than the {secs_text(noise['by'])} the target is "
                  f"{'missed' if verdict['result'] == NOT_MET else 'met'} by")
     return text
 
@@ -191,7 +191,7 @@ def _measure_target(visits, t, unlike=None):
     phase, what = t['measure'].split()
     mine = _time(visits, JUDGED, phase, what)
     ref = t['limit'] if 'limit' in t else _time(visits, t['against'], phase, what)
-    measured = f'{me} {_secs(mine)}' + ('' if 'limit' in t else f", {SIDE_NAMES[t['against']]} {_secs(ref)}")
+    measured = f'{me} {secs_text(mine)}' + ('' if 'limit' in t else f", {SIDE_NAMES[t['against']]} {secs_text(ref)}")
     if mine is None or ref is None:
         return measured, _verdict(NOT_MEASURED)
     over = round(mine - ref - margin, 2)  # above 0: the target is missed by this much; below: met by this much
@@ -300,7 +300,7 @@ def _fails_part(f):
 
 
 def _video_part(f):
-    return [_secs(f['video']), fails_words(f)]
+    return [secs_text(f['video']), fails_words(f)]
 
 
 def _part_text(part):
@@ -382,7 +382,7 @@ def _judge_cold_video(visits, lst, pairs, entry):
 def _judge_warm_video(visits, lst, pairs, entry):
     """Target 3 on one list: KaijuFlow's median warm title to video is under the limit (1.00 s is not under 1 s)."""
     mine = _time(visits, JUDGED, 'warm', 'video', lst=lst)
-    measured = f'{SHORT_NAMES[JUDGED]} {_secs(mine)}'
+    measured = f'{SHORT_NAMES[JUDGED]} {secs_text(mine)}'
     if mine is None:
         return measured, _verdict(NOT_MEASURED)
     rounds = tuple(_time(visits, JUDGED, 'warm', 'video', r, lst) for r in (1, 2))
@@ -415,11 +415,11 @@ def _outcome(visits, unlike):
     if a['video'] is None or b['video'] is None:
         return {'outcome': None, 'text': f'{OUTCOME_HEAD}not named: {me} and {them} fail as many plays ({_vs(p)}), and one '
                                          'of them has no cold title to video.'}
-    video = f"cold title to video {_secs(a['video'])} against {_secs(b['video'])}"
+    video = f"cold title to video {secs_text(a['video'])} against {secs_text(b['video'])}"
     if b['video'] < a['video']:
         return {'outcome': OUTCOME_NO_PRE_LIST_CHECK, 'text': (
             f"{OUTCOME_HEAD}{me} and {them} fail as many plays ({_vs(p)}) and {them} is faster (cold title to video "
-            f"{_secs(b['video'])} against {_secs(a['video'])}), so try {me} without its own pre-list check, behind AltMount.")}
+            f"{secs_text(b['video'])} against {secs_text(a['video'])}), so try {me} without its own pre-list check, behind AltMount.")}
     return {'outcome': OUTCOME_TUNE, 'text': f'{OUTCOME_HEAD}{me} is as reliable and no slower: tune its speed ({_vs(p)}; {video}).'}
 
 
@@ -438,9 +438,9 @@ def _bar_on_list(visits, lst, pairs):
         a, b = p['mine'], p['theirs']
         if a['video'] is None or (b['video'] is not None and b['video'] <= a['video']):
             return {'result': NOT_MET, 'why': f"{SHORT_NAMES[p['side']]} fails as few plays ({_vs(p)}) and is as fast or "
-                                              f"faster (cold title to video {_secs(b['video'])} against {me}'s {_secs(a['video'])})"}
-    speed = ('; '.join(f"cold title to video {_secs(p['mine']['video'])} against {SHORT_NAMES[p['side']]}'s "
-                       f"{_secs(p['theirs']['video'])}" for p in tied) if tied else 'no other setup fails as few plays')
+                                              f"faster (cold title to video {secs_text(b['video'])} against {me}'s {secs_text(a['video'])})"}
+    speed = ('; '.join(f"cold title to video {secs_text(p['mine']['video'])} against {SHORT_NAMES[p['side']]}'s "
+                       f"{secs_text(p['theirs']['video'])}" for p in tied) if tied else 'no other setup fails as few plays')
     closest = min(pairs, key=lambda p: (p['theirs']['fails'] - p['mine']['fails'], p['left_out']))  # the next fewest
     return {'result': MET, 'why': f"{me} fails the fewest plays ({_vs(closest)}) and is the fastest among setups with as "
                                   f'few ({speed})'}

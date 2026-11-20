@@ -202,9 +202,11 @@ class PreviousRunTests(unittest.TestCase):
         self.assertEqual(judged_lines(out), [
             'Against the previous run on the same recording (l): 2026-01-01T000000Z-before.',
             'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 1.50 s (was 2.00 s), better; fallback time 0.00 s (was 0.00 s), same. Kept.',
+            'cold title to video 1.50 s (was 2.00 s), better; '
+            'warm title to video 2.00 s (was 2.00 s), same; fallbacks 0 (was 0), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
             'KaijuFlow, hard list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 2.00 s (was 2.00 s), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
+            'cold title to video 2.00 s (was 2.00 s), same; '
+            'warm title to video 2.00 s (was 2.00 s), same; fallbacks 0 (was 0), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
             'Verdict against the previous run: kept.'])
 
     def test_a_faster_run_with_one_more_fail_is_not_kept(self):
@@ -216,9 +218,11 @@ class PreviousRunTests(unittest.TestCase):
             _, out = run_check(runs_pair(tmp, edit_this=faster_with_a_fail))
         self.assertEqual(judged_lines(out)[1:], [
             'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 1.50 s (was 2.00 s), better; fallback time 0.00 s (was 0.00 s), same. Kept.',
+            'cold title to video 1.50 s (was 2.00 s), better; '
+            'warm title to video 2.00 s (was 2.00 s), same; fallbacks 0 (was 0), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
             'KaijuFlow, hard list: fails 1 title failed · 1 of 2 plays (was 0 titles failed · 0 of 2 plays), worse; '
-            'cold title to video 1.50 s (was 2.00 s), better; fallback time 0.00 s (was 0.00 s), same. Not kept.',
+            'cold title to video 1.50 s (was 2.00 s), better; '
+            'warm title to video no figure (was 2.00 s), not compared; fallbacks 0 (was 0), same; fallback time 0.00 s (was 0.00 s), same. Not kept.',
             'Verdict against the previous run: not kept.'])
 
     def fall_back(self, raw, seconds):
@@ -228,20 +232,23 @@ class PreviousRunTests(unittest.TestCase):
                                                  {'name': 'Alpha.1080p', 'ok': True, 'seconds': 0.5}])
 
     def test_the_fallback_time_is_shown_against_the_previous_run_and_does_not_change_the_verdict(self):
-        """Owner, 2026-11-20 (#187): per list, the fallbacks' extra seconds added up, better, same or worse; information only."""
+        """Per list, how many plays fell back (spec #183) and their extra seconds added up (owner, 2026-11-20, #187), each
+        better, same or worse; information only."""
         with tempdir() as tmp:
             run = runs_pair(tmp, edit_this=lambda raw: self.fall_back(raw, 1.25))
             _, out = run_check(run)
         self.assertEqual(judged_lines(out)[1:], [
             'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 2.00 s (was 2.00 s), same; fallback time 1.25 s (was 0.00 s), worse. Kept.',
+            'cold title to video 2.00 s (was 2.00 s), same; '
+            'warm title to video 2.00 s (was 2.00 s), same; fallbacks 1 (was 0), worse; fallback time 1.25 s (was 0.00 s), worse. Kept.',
             'KaijuFlow, hard list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-            'cold title to video 2.00 s (was 2.00 s), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
+            'cold title to video 2.00 s (was 2.00 s), same; '
+            'warm title to video 2.00 s (was 2.00 s), same; fallbacks 0 (was 0), same; fallback time 0.00 s (was 0.00 s), same. Kept.',
             'Verdict against the previous run: kept.'])
         with tempdir() as tmp:  # the other way round: the previous run fell back, this one did not
             run = runs_pair(tmp, edit_prev=lambda raw: self.fall_back(raw, 1.25))
             _, out = run_check(run)
-        self.assertIn('fallback time 0.00 s (was 1.25 s), better. Kept.', judged_lines(out)[1])
+        self.assertIn('fallbacks 0 (was 1), better; fallback time 0.00 s (was 1.25 s), better. Kept.', judged_lines(out)[1])
 
     def test_a_fallback_whose_extra_seconds_are_not_known_makes_the_fallback_time_unknown_not_zero(self):
         with tempdir() as tmp:
@@ -249,8 +256,26 @@ class PreviousRunTests(unittest.TestCase):
             _, out = run_check(run)
         self.assertEqual(judged_lines(out)[1],
                          'KaijuFlow, easy list: fails 0 titles failed · 0 of 2 plays (was 0 titles failed · 0 of 2 plays), same; '
-                         'cold title to video 2.00 s (was 2.00 s), same; fallback time unknown (was 0.00 s), not compared. Kept.')
+                         'cold title to video 2.00 s (was 2.00 s), same; '
+                         'warm title to video 2.00 s (was 2.00 s), same; fallbacks 1 (was 0), worse; fallback time unknown (was 0.00 s), not compared. Kept.')
         self.assertEqual(judged_lines(out)[3], 'Verdict against the previous run: kept.')
+
+    def test_the_warm_title_to_video_is_shown_against_the_previous_run_and_does_not_change_the_verdict(self):
+        """Spec #183: per list, the median warm title to video better, same or worse; information only, the verdict is
+        fails and cold title to video."""
+        def slower_warm(raw):
+            kf(raw, 'warm', 'Alpha').update(start_s=0.5)
+            kf(raw, 'warm', 'Beta').update(start_s=3.0)
+        with tempdir() as tmp:
+            _, out = run_check(runs_pair(tmp, edit_this=slower_warm))
+        lines = judged_lines(out)
+        self.assertIn('; cold title to video 2.00 s (was 2.00 s), same; warm title to video 1.50 s (was 2.00 s), better;',
+                      lines[1])
+        self.assertTrue(lines[1].endswith('. Kept.'), lines[1])
+        self.assertIn('; cold title to video 2.00 s (was 2.00 s), same; warm title to video 4.00 s (was 2.00 s), worse;',
+                      lines[2])
+        self.assertTrue(lines[2].endswith('. Kept.'), lines[2])
+        self.assertEqual(lines[3], 'Verdict against the previous run: kept.')
 
     def test_a_stopped_run_with_fewer_fails_is_not_judged(self):
         """Spec #183: a stopped run played fewer plays, so fewer fails says nothing; its lists are not judged, never kept."""
@@ -278,7 +303,7 @@ class PreviousRunTests(unittest.TestCase):
             edit(run, 'meta.json', lambda m: m.update(short='KaijuFlow, 1 round, 2 titles'))
             _, out = run_check(run)
         lines = judged_lines(out)
-        self.assertTrue(lines[1].endswith('better; fallback time 0.00 s (was 0.00 s), same. '
+        self.assertTrue(lines[1].endswith('better; warm title to video 2.00 s (was 2.00 s), same; fallbacks 0 (was 0), same; fallback time 0.00 s (was 0.00 s), same. '
                                           'Not judged: this run is short (KaijuFlow, 1 round, 2 titles).'), lines[1])
         self.assertEqual(lines[3], 'Verdict against the previous run: not judged, this run is short (KaijuFlow, 1 round, 2 titles).')
 

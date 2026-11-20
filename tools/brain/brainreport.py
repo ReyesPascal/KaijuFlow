@@ -399,6 +399,11 @@ def fallback_s(v):
     return None if any(s is None for s in secs) else round(sum(secs), 3)
 
 
+def fallback_count(visits, side, lst=None):
+    """How many of one side's plays fell back, every round of one list (or every title) together (spec #183)."""
+    return sum(1 for v in visits if v['side'] == side and lst in (None, v.get('list')) and fallbacks(v))
+
+
 def fallback_total_s(visits, side, lst=None):
     """The seconds one side's fallbacks added, every round of one list (or every title) together (owner, 2026-11-20, #187):
     fallback_s of each fallback, added up; 0 when nothing fell back. None when one fallback's extra seconds are not known:
@@ -783,7 +788,8 @@ JUDGED = 'kaijuflow'  # the side a run is judged on: KaijuFlow
 NO_FIGURE = 'no figure'  # the run holds no visit to make the figure from (a side or a round is not in it)
 
 
-def _secs(x):
+def secs_text(x):
+    """Seconds as `check`, the report and the page print them ('1.50 s'), or 'no figure'."""
     return NO_FIGURE if x is None else f'{x:.2f} s'
 
 
