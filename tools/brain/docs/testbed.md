@@ -1,34 +1,33 @@
 # Brain tools: test copies and the 1338 container
 
-The test copies of every side and the 1338 test container. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+The test copies of the one setup and the 1338 test container. Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
-## Test copies of every side (spec #58)
+## Test copies of the one setup (spec #58, #187)
 
-`compose.test.yaml` starts a test copy of every side in its own compose project `kaijuflow-test` (own container names, own network `kaijuflow-test-net`, own config folders), so no compose command on it can reach a live container:
+`compose.test.yaml` starts the test copies of the one setup a run plays (#185), KaijuFlow and its AltMount, in their own compose project `kaijuflow-test` (own container names, own network `kaijuflow-test-net`, own config folders), so no compose command on it can reach a live container:
 
 | Service | Container | Port | Role |
 |---|---|---|---|
 | `kaijuflow` | `kaijuflow-test` | 1338 | KaijuFlow, Backend = `altmount-kf` |
-| `uu` | `uu-test` | 1339 | Usenet Ultimate v1.4.1, Backend = `nzbdav` (alias `nzbdav` on the test network) |
-| `nzbdav` | `nzbdav-test` | 3001 | NzbDAV for the UU copy (`LOG_LEVEL: information`) |
-| `altmount-addon` | `altmount-addon-test` | 8086 | AltMount for the addon side |
 | `altmount-kf` | `altmount-kf-test` | 8087 | AltMount for KaijuFlow |
 
-All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`, `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). Every side's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59). Settings per side: `python3 -I tools/brain/testbed.py settings` (the hand-written `SETTINGS.md` was lost with the old machine). `python3 -I tools/brain/testbed.py apply <copy>` writes the expected settings into one copy, its config backed up into `backups/` first ([formats.md](formats.md#expected-settings-expected-settingsjson); the owner's go, [runbook](../RUNBOOK.md) step 2).
+The test copies of the runs before #185 (`uu-test`, `nzbdav-test`, `altmount-addon-test`, with their config folders `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`) stay stopped and on disk, kept, not deleted; since #187 neither `compose.test.yaml` nor `testbed.py` sets them up, resets or reads them. Their compose entries are in git history (`compose.test.yaml` before #187).
+
+All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). Every copy's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59). Settings per copy: `python3 -I tools/brain/testbed.py settings` (the hand-written `SETTINGS.md` was lost with the old machine). `python3 -I tools/brain/testbed.py apply <copy>` writes the expected settings into one copy, its config backed up into `backups/` first ([formats.md](formats.md#expected-settings-expected-settingsjson); the owner's go, [runbook](../RUNBOOK.md) step 2).
 
 Recipe (from the repo root; `testbed.py` runs every Docker command through the test project and refuses any other service):
 
 1. Rebuild KaijuFlow's image from the commit under test: `docker build -t kaijuflow:test .`
-2. Start: `python3 -I tools/brain/testbed.py up` (all five) or `... up uu nzbdav` (named services). Wait until `status` shows them healthy.
-3. Cold reset before a cold run: `python3 -I tools/brain/testbed.py reset` (all sides) or `... reset altmount-kf kaijuflow`. It stops each side, restores it from `templates/` (NzbDAV database and blobs, AltMount database, metadata, `.nzbs` and segment cache, UU and KaijuFlow health/dead caches and stats), starts it again and runs the emptiness check. Settings, logins and users are kept. Exit code 0 and the line `EMPTY: ...` mean every checked Backend holds no imported item.
+2. Start: `python3 -I tools/brain/testbed.py up` (both) or `... up kaijuflow` (named services). Wait until `status` shows them healthy.
+3. Cold reset before a cold run: `python3 -I tools/brain/testbed.py reset` (both) or `... reset altmount-kf`. It stops each copy, restores it from `templates/` (AltMount's database, metadata, `.nzbs` and segment cache, KaijuFlow's health/dead caches and stats), starts it again and runs the emptiness check. Settings, logins and users are kept. Exit code 0 and the line `EMPTY: ...` mean every checked Backend holds no imported item.
 4. Emptiness check alone: `python3 -I tools/brain/testbed.py check [side ...]` (database tables, the Backend's own API/WebDAV listing, leftover files, cache files). Exit 1 and `NOT EMPTY: ...` lines otherwise.
 5. Stop when done: `python3 -I tools/brain/testbed.py stop`. `status` lists the test containers.
 
-Never run two test Backends at the same time (connection budget: [rules.md](rules.md#settings-table-and-preflight-spec-72-ticket-74), `testbed.py settings`). Tests of the scripts (no Docker): `npm run check:brain`, as CI runs them.
+Never start a stopped test copy of before #185 beside them (connection budget: [rules.md](rules.md#settings-table-and-preflight-spec-72-ticket-74), `testbed.py settings`). Tests of the scripts (no Docker): `npm run check:brain`, as CI runs them.
 
 ## The 1338 test container
 
-`~/kaijuflow-test/config` is the container's own copy of UU's config (`backend: altmount`, AltMount `http://<HOST_IP>:8087`, category `kaijuflow`). To use it:
+`~/kaijuflow-test/config` is the container's own config, first copied from Usenet Ultimate's (`backend: altmount`, AltMount `http://<HOST_IP>:8087`, category `kaijuflow`). To use it:
 
 (Its compose file is now part of `compose.test.yaml` above, pointing at the KaijuFlow-side test AltMount on 8087 instead of the live AltMount; the old live-AltMount settings are in `config.bak-60-*`.)
 

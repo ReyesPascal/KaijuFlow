@@ -71,19 +71,19 @@ A later play of a Source the Backend already holds, so the video starts from wha
 _Avoid_: cached play, repeat play
 
 **Side**:
-One setup that is played in a timed run: KaijuFlow, Usenet Ultimate, AltMount direct, or KaijuFlow with one page per indexer. Each side has its own test copy.
+One setup that is played in a timed run: KaijuFlow, or KaijuFlow with one page per indexer (`--one-page`), both on KaijuFlow's test copy and its AltMount (#185). The runs before #185 also had Usenet Ultimate and AltMount direct as sides; the brain tools name them only to read those runs (#187).
 _Avoid_: variant, candidate, contestant
 
 **AltMount direct**:
-The side where the player gets its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it.
+History (before #185): the side where the player got its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it. No longer a side (#187); its test copy stays stopped.
 _Avoid_: AltMount's own addon, addon, AltMount alone
 
 **Short run**:
-A timed run that is not the full plan: fewer than the three main sides, one round instead of two, or fewer titles than the list. Made with `--sides`, `--rounds`, `--quick` or a title subset, for a quick check while tuning. Its report, `meta.json`, INDEX.md row and `check` say what it played, and it is never a baseline.
+A timed run that is not the full plan: without KaijuFlow's own pass (`--sides kaijuflow-1page`), one round instead of two, or fewer titles than the list. Made with `--sides`, `--rounds`, `--quick` or a title subset, for a quick check while tuning. Its report, `meta.json`, INDEX.md row and `check` say what it played, and it is never a baseline.
 _Avoid_: partial run, quick run (`--quick` is one way to make one)
 
 **Pass**:
-The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of the three main sides and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
+The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of KaijuFlow and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
 _Avoid_: batch, phase (cold or warm is the phase)
 
 **Round**:
@@ -115,19 +115,19 @@ A title list of the kinds where dead Sources are common (older releases, titles 
 _Avoid_: stress list, fail list
 
 **Speed test**:
-A timed run on an easy list and a hard list of titles no side has played before, new for every speed test, played like for like. It says how KaijuFlow compares with the other setups. The first speed test that works is the baseline.
+A timed run on an easy list and a hard list of titles KaijuFlow has not played before, new for every speed test. Until #187 it said how KaijuFlow compared with the other setups; a run is now judged against the previous run on its Recording. The first speed test that works is the baseline.
 _Avoid_: baseline, benchmark
 
 **Tuning test**:
-A timed run that plays a title list again, so a change to one setup can be compared with the tuning test before it on the same titles.
+A timed run that plays a title list again, so a change to KaijuFlow or its AltMount can be judged against the run before it on the same titles.
 _Avoid_: speed test (when the titles are reused), rerun
 
 **Target**:
-One of the goals KaijuFlow is measured against, kept in `tools/brain/targets.json` and judged on a finished run only: met, not met, or not measured when the run holds no figure for it. A time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by.
+One of the goals the Speed Check page holds KaijuFlow to, most of them against the other setups of the runs before #185, kept in `tools/brain/targets.json` and judged by `pagetargets.py` (page code until #195): met, not met, or not measured when the run holds no figure for it. A time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by. `check` and the report no longer judge targets (#187); see Previous run.
 _Avoid_: goal, KPI, threshold
 
 **Final bar**:
-The owner's goal for a speed test beyond its three targets, shown apart from them and never counted with them or towards "usable" (spec #159, #169). The rule lives in `tools/brain/docs/rules.md` ("A speed test's targets, outcome and final bar"); its words are in `tools/brain/targets.json`.
+The owner's goal for a speed test beyond its three targets, held against the other setups and shown apart from the targets (spec #159, #169). Only the Speed Check page still shows it, until #195 (`tools/brain/docs/rules.md`, "Deleted with the comparison of setups"); its words are in `tools/brain/targets.json`.
 _Avoid_: final target, end goal
 
 **Expected settings**:
@@ -135,7 +135,7 @@ The sort and filter rules every test copy must have, kept in `tools/brain/expect
 _Avoid_: baseline settings, golden config
 
 **Like for like**:
-The one rule set every side of a timed run plays by (#142): the same list of Sources from the stand-in (no post over 30 GB for a film or 10 GB for an episode, no disc images, the first 100 results, no later pages), 4K first, the same indexer and Backend connections, and one try per play with no fallback for every side, in every timed run (ADR 0007). A comparison between sides counts only when the run was like for like. Per title, the report and `check` compare KaijuFlow's top pick with each setup's (#143): a different resolution, or a served file over the cap or a disc image, makes that title not like for like, and it is left out of the targets against that setup.
+History (#142 to #187): the one rule set every side of a timed run played by when KaijuFlow was measured beside other setups (the stand-in's filtered list of Sources, 4K first, one try per play), and the per-title comparison of KaijuFlow's top pick with each other setup's. Deleted in #187 (the stand-in passes answers untouched since #185); only the Speed Check page code still applies it to its targets, until #195. `tools/brain/docs/rules.md`, "Deleted with the comparison of setups".
 _Avoid_: fair run, same settings
 
 **Recording**:
@@ -151,7 +151,7 @@ The first "limit reached" from any indexer stops the pass at once, and its resul
 _Avoid_: rate-limit handling
 
 **Stopped run**:
-A timed run that was stopped by Ctrl-C, or by SIGTERM as `timeout` sends it, before its last play. Its record keeps the plays that finished and says where it stopped; it is not a baseline, its targets are not judged, and it is never the previous run of a comparison. A record command is stopped the same way.
+A timed run that was stopped by Ctrl-C, or by SIGTERM as `timeout` sends it, before its last play. Its record keeps the plays that finished and says where it stopped; it is not a baseline, and it is never the previous run of a comparison. A record command is stopped the same way.
 _Avoid_: aborted run, cancelled run, null run (null is the cap rule's result)
 
 **Archived run**:
