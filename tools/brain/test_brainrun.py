@@ -161,7 +161,8 @@ class FakeIO(Copies):
         self.calls.append(('addresses',))
         return dict(self.ADDRESSES)
 
-    def visit_http(self, side, kind, vid, tries):
+    def visit_http(self, side, kind, vid, tries, browse_pause_s=0):
+        """A visit built the way the real one is (brainrun.visit_answer): the list of five Sources, the Browse pause, the play."""
         self.visits += 1
         self.calls.append(('visit', side, vid))
         if not self.is_up(side):
@@ -169,9 +170,17 @@ class FakeIO(Copies):
         t = int(self.clock.timestamp() * 1000) + 300  # a moment after the visit began
         self.standin_log += [f'{x} from={self.SIDE_IP[side]} t={t}' for x in self.lines_per_visit.get(self.visits, [])]
         ok = side != self.fail_http_for
-        self.takes(self.LIST_S + (self.START_S + self.SEEKS_S if ok else self.FAILED_PLAY_S))
-        return dict(list_status=200, list_s=self.LIST_S, sources=5, first_try_plays=ok, start_s=self.START_S if ok else None,
-                    note=None if ok else 'failure video', seeks={'50': 0.2, '90': 0.3}, tries=[{'plays': ok}])
+        self.takes(self.LIST_S)
+        body = json.dumps({'streams': [{'url': f'http://kaijuflow/{vid}/{n}'} for n in range(5)]}).encode()
+
+        def play(stream):
+            self.takes(self.START_S if ok else self.FAILED_PLAY_S)
+            return {'plays': ok, 'first_byte_s': self.START_S, 'size': 1000, 'note': None if ok else 'failure video'}
+
+        def seek(url, size):
+            self.takes(self.SEEKS_S)
+            return {'50': 0.2, '90': 0.3}
+        return brainrun.visit_answer((200, {}, body, {'ready': self.LIST_S, 'total': self.LIST_S}), tries, play, seek, browse_pause_s, self.sleep)
 
     def logs(self, container, since):
         t = self.clock.strftime('%Y-%m-%dT%H:%M:%S.000000000Z')
@@ -189,7 +198,7 @@ def make_cfg(tmp, **kw):
     cfg = dict(name='trial', runs_root=os.path.join(tmp, 'runs'), store=os.path.join(tmp, 'store'), listname='l',
                test_dir=os.path.join(tmp, 'kaijuflow-test'), user_id='U', one_page=False,
                titles=[('movie', 'tt1', 'Matrix'), ('series', 'tt2:1:1', 'Show S01E01')], tries=1, settle=0,
-               indexers=['ninjacentral', 'drunkenslug'])
+               browse_pause=0, indexers=['ninjacentral', 'drunkenslug'])
     cfg.update(kw)
     return cfg
 
@@ -341,7 +350,7 @@ class RunTest(unittest.TestCase):
 
     def test_error_leaves_a_failed_record_and_still_stops_everything(self):
         io = FakeIO()
-        io.visit_http = lambda *a: (_ for _ in ()).throw(RuntimeError('boom'))
+        io.visit_http = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError('boom'))
         with self.assertRaises(RuntimeError):
             brainrun.run_all(make_cfg(self.tmp), io)
         self.assertEqual([c[0] for c in io.calls][-2:], ['standin-stop', 'stop-all'])
@@ -516,8 +525,8 @@ class PickIO(FakeIO):
         FakeIO.__init__(self, **kw)
         self.text, self.size = text, size
 
-    def visit_http(self, side, kind, vid, tries):
-        out = FakeIO.visit_http(self, side, kind, vid, tries)
+    def visit_http(self, side, kind, vid, tries, **kw):
+        out = FakeIO.visit_http(self, side, kind, vid, tries, **kw)
         for t in out.get('tries', [])[:1]:
             t.update(title=self.text, size=self.size if t['plays'] else common.FAILURE_SIZE)
         return out
@@ -550,11 +559,11 @@ def interrupt_at(io, n):
     """Ctrl-C during the n-th visit: the visit raises KeyboardInterrupt, as the real one does inside its HTTP read."""
     inner = io.visit_http
 
-    def visit(side, kind, vid, tries):
+    def visit(side, kind, vid, tries, **kw):
         if io.visits == n - 1:
             io.visits += 1
             raise KeyboardInterrupt
-        return inner(side, kind, vid, tries)
+        return inner(side, kind, vid, tries, **kw)
     io.visit_http = visit
     return io
 
@@ -563,12 +572,12 @@ def terminate_at(io, n):
     """SIGTERM during the n-th visit, sent to this process as `timeout` sends it; the visit waits for it to land."""
     inner = io.visit_http
 
-    def visit(side, kind, vid, tries):
+    def visit(side, kind, vid, tries, **kw):
         if io.visits == n - 1:
             io.visits += 1
             os.kill(os.getpid(), signal.SIGTERM)
             time.sleep(5)  # cut short by the signal
-        return inner(side, kind, vid, tries)
+        return inner(side, kind, vid, tries, **kw)
     io.visit_http = visit
     return io
 
@@ -892,8 +901,8 @@ class InterruptedRunTest(unittest.TestCase):
         first = lines[lines.index(f'stopped: {folder}') + 1]
         self.assertEqual(read(os.path.join(folder, 'CHECK.txt')).splitlines()[0], first)
         self.assertFalse(lines[-1].startswith('done in'))  # that line is the mark of a finished run
-        self.assertTrue(first.startswith(  # the command's own --settle: a 3 s pause after the one play
-            "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:29.000Z in the pass of the "
+        self.assertTrue(first.startswith(  # the command's own pauses: the 5 s Browse pause in the one play, the 3 s --settle after it
+            "Not usable as a baseline: the run was stopped by Ctrl-C (SIGINT) at 2026-11-10T18:00:34.000Z in the pass of the "
             "main sides: 1 of 8 plays had finished, and it stopped during the next one (KaijuFlow, cold 1, "
             "Show S01E01)"), first)
 
@@ -906,7 +915,7 @@ class WaitSwitchTest(unittest.TestCase):
         io = FakeIO()
         run = brainrun.run_all(make_cfg(self.tmp), io)
         self.assertIn(('standin-start', 'replay', True), io.calls)
-        facts = {'stand-in replay wait': 'on', 'one-page side': 'no'}
+        facts = {'stand-in replay wait': 'on', 'browse pause': '0 s', 'one-page side': 'no'}
         self.assertEqual(run['facts'], facts)
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['facts'], facts)
         # run-level facts are not part of the settings snapshot (which equals the settings reader's output)
@@ -962,6 +971,32 @@ class BrowsePauseVisitTest(unittest.TestCase):
         out, events = self.visit({'streams': [{'url': 'http://x/a'}]}, pause_s=0)
         self.assertEqual(events, [('play', 'http://x/a')])
         self.assertEqual(out['browse_pause_s'], 0)
+
+
+class BrowsePauseRunTest(unittest.TestCase):
+    """#205: every visit of a run waits the run's Browse pause before its play, and meta.json says how long it is."""
+
+    def setUp(self):
+        self.tmp = tempdir(self)
+
+    def test_every_visit_of_a_run_waits_the_browse_pause_and_title_to_video_leaves_it_out(self):
+        io = FakeIO()
+        run = brainrun.run_all(make_cfg(self.tmp, browse_pause=5, settle=3), io)
+        calls = [c for c in io.calls if c[0] in ('visit', 'sleep')]
+        # each visit: the Browse pause inside it (between list and play), then the settle after it
+        self.assertEqual(calls[:6], [('visit', 'kaijuflow', 'tt1'), ('sleep', 5), ('sleep', 3),
+                                     ('visit', 'kaijuflow', 'tt2:1:1'), ('sleep', 5), ('sleep', 3)])
+        v = run['visits'][0]
+        self.assertEqual((v['list_s'], v['start_s'], v['browse_pause_s']), (2.0, 1.5, 5))
+        self.assertEqual(br.visit_wall_s(v), 9.0)  # list 2 s, pause 5 s, start 1.5 s, seeks 0.5 s
+        self.assertEqual(br.side_time(run['visits'], 'kaijuflow', 'cold', 'video'), 3.5)  # list and start alone
+        meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
+        self.assertEqual(meta['browse_pause_s'], 5)
+        self.assertEqual(meta['facts']['browse pause'], '5 s')
+
+    def test_the_browse_pause_is_5_s_unless_the_command_says_otherwise(self):
+        self.assertEqual(brainrun.build_parser().parse_args(['run']).browse_pause, 5)
+        self.assertEqual(brainrun.build_parser().parse_args(['run', '--browse-pause', '0']).browse_pause, 0)
 
 
 class MissMatchingTest(unittest.TestCase):

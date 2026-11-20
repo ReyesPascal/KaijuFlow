@@ -699,6 +699,7 @@ def _settings_and_facts(meta):
         if (old.get('stand-in') or {}).get('replay wait'):
             facts['stand-in replay wait'] = old['stand-in']['replay wait']
         facts['one-page side'] = 'yes' if 'kaijuflow-1page' in old or 'kaijuflow-1page' in (meta.get('sides') or []) else 'no'
+    facts.setdefault('browse pause', pause_text(browse_pause_of(meta)))  # a run from before #205 waited none
     return settings, facts
 
 
@@ -786,6 +787,16 @@ def null_runs_between(root, since, exclude=None):
 
 JUDGED = 'kaijuflow'  # the side a run is judged on: KaijuFlow
 NO_FIGURE = 'no figure'  # the run holds no visit to make the figure from (a side or a round is not in it)
+
+
+def browse_pause_of(meta):
+    """The Browse pause of a run, in seconds (#205, rules.md "Browse pause"); a run from before #205 waited none."""
+    return meta.get('browse_pause_s') or 0
+
+
+def pause_text(x):
+    """A Browse pause as meta.json's facts and `check` print it: '5 s', '0 s'."""
+    return f'{x:g} s'
 
 
 def secs_text(x):
