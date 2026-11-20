@@ -29,11 +29,11 @@ import { readRar5VolumeNumber } from './rar5Parser.js';
 
 /** Why the NZB came back unchanged. */
 export type UnscrambleReason =
-  | 'not-scrambled'     // no Scrambled RAR set in the NZB (no reads made)
+  | 'not-scrambled'     // no Scrambled RAR set in the NZB, from names alone (no reads made; a 7z set too, #193)
   | 'no-provider'       // no enabled health-check provider
   | 'missing-article'   // a part's first article is on no provider
   | 'read-error'        // a first article couldn't be read (connection errors on every provider)
-  | 'not-rar5'          // a part isn't RAR5 (RAR4, 7z/other split, encrypted headers)
+  | 'not-rar5'          // a part isn't RAR5 (RAR4, a hash-named 7z/other split, encrypted headers)
   | 'duplicate-volume'  // two parts claim the same volume number
   | 'volume-gap'        // the real volume numbers don't cover 0..N-1
   | 'timeout';          // the time limit ran out first
@@ -81,6 +81,8 @@ interface ScrambledSet {
 type ReadFailure = 'missing-article' | 'read-error' | 'not-rar5';
 
 const NUMBER_NAMED = /^(.+)\.(\d{2,3})$/;
+/** A 7z set's parts (`<name>.7z.001` ...): named as 7z, not by numbers alone, so never read (#193). */
+const SEVEN_ZIP_BASE = /\.7z$/i;
 
 /**
  * Unscramble the NZB's Scrambled RAR set(s). Waits for its turn first;
@@ -186,7 +188,7 @@ async function unscrambleSet(set: ScrambledSet, reader: FirstArticleReader): Pro
   return new Map(set.parts.map((p, i) => [p, `${set.base}.part${String(volumes[i] + 1).padStart(width, '0')}.rar`]));
 }
 
-/** Number-named files grouped by base name; groups of at least two parts. */
+/** Number-named files grouped by base name (a 7z set's parts left out); groups of at least two parts. */
 function findScrambledSets(nzb: string): ScrambledSet[] {
   const groups = new Map<string, Part[]>();
   const fileRe = /<file\b[^>]*?\bsubject\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/file>/dg;
@@ -194,7 +196,7 @@ function findScrambledSets(nzb: string): ScrambledSet[] {
     const rawSubject = m[1];
     const name = extractFilename(xmlUnescape(rawSubject)).trim();
     const numbered = NUMBER_NAMED.exec(name);
-    if (!numbered) continue;
+    if (!numbered || SEVEN_ZIP_BASE.test(numbered[1])) continue;
     const first = firstSegment(m[2]);
     if (!first) continue;
     const [subjectStart, subjectEnd] = m.indices![1];
