@@ -57,6 +57,6 @@ export async function nzbWithNews(files: F[], { served = true, password, missing
 }
 
 /** A real archive from tests/fixtures/archives (see make.sh there). */
-export function archiveFixture(name: string): Buffer {
+export function archiveFixture(name: string): Buffer<ArrayBuffer> {
   return readFileSync(new URL(`../fixtures/archives/${name}`, import.meta.url));
 }
