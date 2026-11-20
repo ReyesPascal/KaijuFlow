@@ -125,7 +125,7 @@ export default function HealthChecksOverlay({
               {/* Sub-options */}
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Auto-queue to NzbDAV</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Auto-queue to the Backend</label>
                   <select
                     value={healthChecks.autoQueueMode}
                     onChange={(e) => setHealthChecks({ ...healthChecks, autoQueueMode: e.target.value as 'off' | 'top' | 'all' })}
@@ -136,7 +136,7 @@ export default function HealthChecksOverlay({
                     <option value="all">All Healthy</option>
                   </select>
                   <p className="text-xs text-slate-500 mt-1">
-                    Automatically queue verified results to NzbDAV for caching. Uses cached NZB data from health checks to save indexer grabs. (NzbDAV streaming mode only)
+                    Automatically hand verified results to AltMount ahead of the click. Uses cached NZB data from health checks to save indexer grabs. (Backend streaming mode only)
                   </p>
                   <p className="text-xs text-amber-400 mt-1">
                     ⚠️ Suppressed when Ultimate Fallback is set to "On Search".
@@ -160,7 +160,7 @@ export default function HealthChecksOverlay({
                       Disabled: EasyNews results auto-marked as healthy.
                     </p>
                     <p className="text-xs text-amber-400 mt-1 ml-7">
-                      ⚠️ With EasyNews bypassing health checks and auto-queue set to "All Healthy", this will queue all EasyNews results to NzbDAV. In this case, consider "Top Result" to avoid flooding your download client.
+                      ⚠️ With EasyNews bypassing health checks and auto-queue set to "All Healthy", this will queue all EasyNews results to AltMount. In this case, consider "Top Result" to avoid flooding your download client.
                     </p>
                   </div>
                 )}
@@ -176,20 +176,6 @@ export default function HealthChecksOverlay({
                   </label>
                   <p className="text-xs text-slate-500 mt-1 ml-7">
                     Remove blocked and errored results so only verified healthy streams are shown
-                  </p>
-                </div>
-                <div>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={healthChecks.libraryPreCheck}
-                      onChange={(e) => setHealthChecks({ ...healthChecks, libraryPreCheck: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-pink-500 focus:ring-pink-500 focus:ring-offset-slate-800"
-                    />
-                    <span className="text-sm font-medium text-slate-300">Library Pre-Check</span>
-                  </label>
-                  <p className="text-xs text-slate-500 mt-1 ml-7">
-                    Check the NzbDAV library before running NNTP health checks. Content already downloaded is instantly marked as verified, skipping expensive segment checks. (NzbDAV streaming mode only)
                   </p>
                 </div>
                 <div>
@@ -219,13 +205,6 @@ export default function HealthChecksOverlay({
                   <div>
                     <div className="font-medium text-green-400">Healthy</div>
                     <div className="text-slate-400 text-xs">Articles confirmed available on usenet. Expected to play.</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-lg leading-none mt-0.5">📚</span>
-                  <div>
-                    <div className="font-medium text-blue-400">In Library</div>
-                    <div className="text-slate-400 text-xs">Already downloaded and available in your NzbDAV library. Skipped NNTP health check.</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -379,7 +358,7 @@ export default function HealthChecksOverlay({
                       <p className="text-xs text-slate-500 mt-1">
                         Health checks never hold more Usenet connections than this, across all checks and providers combined (default {DEFAULT_HEALTH_CHECKS.maxTotalConnections}, max 100). Extra checks wait their turn; results are the same, only slower.
                         {' '}Without the cap they would use up to {wanted} ({batchCount} {healthChecks.inspectionMethod === 'smart' ? 'batch' : 'NZBs'} × {Math.max(1, poolProviderCount)} pool provider{poolProviderCount !== 1 ? 's' : ''}){typeof cap === 'number' && wanted > cap ? `, so ${wanted - cap} will queue` : ''}.
-                        {' '}<span className="text-amber-400/80">This number plus your NzbDAV or AltMount connections must not exceed your provider's maximum allowed connections.</span>
+                        {' '}<span className="text-amber-400/80">This number plus AltMount's connections must not exceed your provider's maximum allowed connections.</span>
                       </p>
                     </>
                   );
@@ -490,7 +469,6 @@ export default function HealthChecksOverlay({
                     verifyTlsCertificates: DEFAULT_HEALTH_CHECKS.verifyTlsCertificates,
                     autoQueueMode: 'all',
                     hideBlocked: true,
-                    libraryPreCheck: true,
                     healthCheckIndexers: {},
                   }));
                 }}

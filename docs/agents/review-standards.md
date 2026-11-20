@@ -12,7 +12,7 @@ Example: the fake world answered a visit to a stopped copy, so a test passed tha
 
 Why: lines we invent look the way we expect them to look; real output does not.
 
-Example: the NzbDAV import reader was tested on invented lines. It should have been tested on a real captured sample, kept as a scrubbed fixture.
+Example: the NzbDAV import reader (deleted since, #187) was tested on invented lines. It should have been tested on a real captured sample, kept as a scrubbed fixture, as AltMount's import reader is (`tools/brain/fixtures/2026-11-10/`).
 
 ## 3. Two commands that need the same setup share one path for it
 

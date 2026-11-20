@@ -1,4 +1,4 @@
-// Each fake Backend must answer in the real Backend's reply layout. Fixtures in
+// The fake AltMount must answer in the real AltMount's reply layout. Fixtures in
 // tests/fixtures/backends/ are replies captured from the real Backends on Brain;
 // only the layout (fields, nesting, types) is compared, never values.
 import test from 'node:test';
@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { createFakeAltmount, API_KEY } from '../integration/parity/fake-altmount.mjs';
-import { createFakeNzbdav } from '../integration/parity/fake-nzbdav.mjs';
 
 type Shape = string | Shape[] | { [k: string]: Shape };
 
@@ -17,19 +16,6 @@ function shapeOf(v: unknown): Shape {
     return Object.fromEntries(Object.keys(v).sort().map(k => [k, shapeOf((v as Record<string, unknown>)[k])]));
   }
   return v === null ? 'null' : typeof v;
-}
-
-/**
- * Paths where the fake sends something the real Backend does not: a field it
- * lacks or a different type. The fake may leave real fields out.
- */
-function extraInFake(fake: Shape, real: Shape, path = '$'): string[] {
-  if (typeof fake === 'string' || typeof real === 'string') return fake === real ? [] : [`${path}: fake ${JSON.stringify(fake)}, real ${JSON.stringify(real)}`];
-  if (Array.isArray(fake) || Array.isArray(real)) {
-    if (!Array.isArray(fake) || !Array.isArray(real)) return [`${path}: array in only one`];
-    return fake.length && real.length ? extraInFake(fake[0], real[0], `${path}[0]`) : [];
-  }
-  return Object.keys(fake).flatMap(k => k in real ? extraInFake(fake[k], real[k], `${path}.${k}`) : [`${path}.${k}: not in the real reply`]);
 }
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`../fixtures/backends/${name}`, import.meta.url), 'utf8')).reply;
@@ -109,25 +95,4 @@ test('fake AltMount files an .mkv-named upload as a folder, like the captured re
   const asFile = await get(`${offered}/${title}`);
   assert.equal(asFile.status, file.status);
   await asFile.arrayBuffer();
-});
-
-test('fake NzbDAV queue and history replies use only real NzbDAV fields', async () => {
-  const fake = await createFakeNzbdav(listen);
-  // One Completed and one Failed job, so both history slot kinds are compared.
-  const links: string[] = [fake.addMovie('done', 'Shape.Done.2026.1080p', Buffer.from('synthetic')), fake.addRejected('failed', 'Shape.Failed.2026.1080p')];
-  const base = new URL(links[0]).origin;
-  for (const link of links) {
-    const form = new FormData();
-    form.append('name', new Blob([await (await fetch(link)).text()], { type: 'application/x-nzb' }), 'shape.nzb');
-    await fetch(`${base}/api?mode=addfile&cat=Movies&output=json`, { method: 'POST', body: form });
-  }
-  for (const mode of ['queue', 'history']) {
-    const reply = (await (await fetch(`${base}/api?mode=${mode}&output=json`)).json()) as Record<string, any>;
-    const real = shapeOf(fixture(`nzbdav-${mode}.json`));
-    const slots = (reply[mode]?.slots ?? []) as unknown[];
-    for (const slot of slots.length ? slots : [undefined]) {
-      // Compare every slot, not only the first one shapeOf keeps.
-      assert.deepEqual(extraInFake(shapeOf({ ...reply, [mode]: { ...reply[mode], slots: slot ? [slot] : [] } }), real), [], mode);
-    }
-  }
 });

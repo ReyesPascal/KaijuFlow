@@ -1,4 +1,4 @@
-"""The one command that runs every side cold, then warm, twice, and writes the run record (spec #58, ticket #62).
+"""The one command that runs the setup (KaijuFlow with its AltMount copy, #185) cold, then warm, twice, and writes the run record (spec #58, ticket #62).
 
     python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list>
            [--runs-root DIR] [--one-page | --quick | --sides LIST --rounds 1|2] [--titles-file titles.json] [--user-id ID] [--tries 1]
@@ -29,7 +29,6 @@ import argparse
 import contextlib
 import copy
 import datetime
-import hashlib
 import json
 import os
 import re
@@ -37,7 +36,6 @@ import shlex
 import shutil
 import signal
 import socket
-import sqlite3
 import subprocess
 import sys
 import time
@@ -55,21 +53,10 @@ from common import DEFAULT_TEST_DIR  # noqa: E402
 DEFAULT_RUNS_ROOT = os.path.expanduser('~/kaijuflow-notes/brain-runs')
 PLAN = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 RECORD_ROUNDS = ('cold', 'warm')  # a record pass: a cold round, then a warm round on the same state (#79)
-MAIN_SIDES = ['kaijuflow', 'uu', 'altmount-addon']
-ALL_TESTBED = ['nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow']
-ONE_PAGE_TESTBED = ['kaijuflow', 'altmount-kf']  # the test copies the one-page side uses
-# side -> the test copy (testbed service) that answers its list address
-SIDE_SERVICE = {'kaijuflow': 'kaijuflow', 'kaijuflow-1page': 'kaijuflow', 'uu': 'uu', 'altmount-addon': 'altmount-addon'}
-# side -> (KaijuFlow container with [KF-STEP] lines or None, Backend container, how its log is read)
-SIDE_LOGS = {
-    'kaijuflow': ('kaijuflow-test', 'altmount-kf-test', 'altmount'),
-    'kaijuflow-1page': ('kaijuflow-test', 'altmount-kf-test', 'altmount'),
-    'uu': (None, 'nzbdav-test', 'nzbdav'),
-    'altmount-addon': (None, 'altmount-addon-test', 'altmount'),
-}
-# side -> the side's own test copy whose log is kept in the run folder (its Backend's log is kept anyway)
-SIDE_COPY_LOG = {'uu': 'uu-test'}
-NZBDAV_PORT = 3001
+MAIN_SIDES = ['kaijuflow']  # one setup (#185): KaijuFlow with its AltMount copy; the other test copies stay stopped
+ALL_TESTBED = ['altmount-kf', 'kaijuflow']  # the test copies a record or a run resets, the one-page side's too: the setup's own
+# every side's containers: KaijuFlow's, with the [KF-STEP] lines, and its AltMount's, whose log holds the imports
+KF_CONTAINER, ALTMOUNT_CONTAINER = br.CLIENT_CONTAINER, 'altmount-kf-test'
 GRACE_S = 5
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
 EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
@@ -162,7 +149,7 @@ def run_plan(cfg):
 
 
 def short_run(cfg):
-    """What a short run played (see brainreport.short_run_text), or None when the run is the full plan: the three main sides,
+    """What a short run played (see brainreport.short_run_text), or None when the run is the full plan: the setup,
     two rounds and every title of the list."""
     sides, rounds = run_sides(cfg), cfg.get('rounds', 2)
     if all(s in sides for s in MAIN_SIDES) and rounds == 2 and not cfg.get('partial_titles'):
@@ -171,7 +158,7 @@ def short_run(cfg):
 
 
 def planned_sides(cfg):
-    """The sides a run, a record pass or a smoke check uses: the three main sides, then the one-page side when asked for."""
+    """The sides a run, a record pass or a smoke check uses: KaijuFlow, then the one-page side when asked for."""
     return list(MAIN_SIDES) + (['kaijuflow-1page'] if cfg['one_page'] else [])
 
 
@@ -180,7 +167,7 @@ def switch_to_one_page(io, log=print):
     it. The config is patched while the copy is stopped, then KaijuFlow and its AltMount are reset and come up again (cold).
     io.restore_config() undoes it. `log` gets the reset's lines."""
     io.apply_one_page()
-    io.reset(ONE_PAGE_TESTBED, log)
+    io.reset(ALL_TESTBED, log)
 
 
 def visit_answer(got, tries, play=None, seek=None):
@@ -368,20 +355,8 @@ class RealIO:
             os.remove(self.backup)
 
     def visit_http(self, side, kind, vid, tries):
-        base = side_base(self.cfg, side)
+        base = list_base(self.cfg)
         return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries)
-
-    def nzbdav_history(self):
-        """The test NzbDAV's history answer (port 3001, parsed), or None when it cannot be read. Read-only."""
-        try:
-            db = testbed._ro(os.path.join(self.cfg['test_dir'], testbed.SIDES['nzbdav']['conf'], 'db.sqlite'))
-            row = db.execute("select ConfigValue from ConfigItems where ConfigName = 'api.key'").fetchone()
-            db.close()
-            url = f'http://127.0.0.1:{NZBDAV_PORT}/api?mode=history&output=json&start=0&limit=50&apikey={row[0]}'
-            status, _h, body, _t = common.get(url, timeout=30, limit=0)
-            return json.loads(body) if status == 200 else None
-        except (OSError, ValueError, TypeError, sqlite3.Error):
-            return None
 
     def logs(self, container, since):
         if container not in self.testbed.TEST_CONTAINERS:
@@ -415,7 +390,7 @@ def read_addresses(run=subprocess.run):
     """{test container: its address on the test network}, read with `docker inspect` (read-only); a container that is not up
     or has no address is left out."""
     out = {}
-    for container in sorted(set(br.CLIENT_CONTAINER.values())):
+    for container in [KF_CONTAINER]:
         if container not in testbed.TEST_CONTAINERS:
             raise ValueError('not a test container: ' + container)
         fmt = '{{with index .NetworkSettings.Networks "%s"}}{{.IPAddress}}{{end}}' % testbed.NETWORK
@@ -453,11 +428,9 @@ def shelve_marker(store):
     return new
 
 
-def side_base(cfg, side):
-    u = cfg['user_id']
-    return {'kaijuflow': f'http://localhost:1338/{u}', 'kaijuflow-1page': f'http://localhost:1338/{u}',
-            'uu': f'http://localhost:1339/{u}',
-            'altmount-addon': f"http://localhost:8086/stremio/{cfg['download_key']}"}[side]
+def list_base(cfg):
+    """The address every side's list is asked of: KaijuFlow's test copy (the one-page side is the same copy, patched)."""
+    return f"http://localhost:1338/{cfg['user_id']}"
 
 
 # --------------------------------------------------------------------------- the preflight (spec #72, ticket #74)
@@ -577,7 +550,7 @@ def _whole_gap(key, name, other):
 
 
 # The copies whose config is YAML (AltMount's config.yaml), read by br.flatten_yaml: every value as text, list entries by position.
-YAML_COPIES = ('altmount-addon', 'altmount-kf')
+YAML_COPIES = testbed.YAML_CONFIGS
 
 
 def _as_yaml_read(value, prefix):
@@ -682,7 +655,7 @@ def preflight(mode, cfg, io):
 
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
     titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
-    indexer_sides = [s for s in testbed.SETTINGS_SIDES if s != 'nzbdav']
+    indexer_sides = testbed.SETTINGS_SIDES
     unreadable = [s for s in indexer_sides if rep['indexers'].get(s) is None]
     for s in unreadable:
         problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder.")
@@ -785,28 +758,21 @@ def partial_titles(titles, titles_file):
 
 def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     kind, vid, label = title[:3]
-    kf_c, be_c, be_kind = SIDE_LOGS[side]
-    hist_before = io.nzbdav_history() if be_kind == 'nzbdav' else None
+    kf_c, be_c = KF_CONTAINER, ALTMOUNT_CONTAINER
     t0 = io.now()
     http = io.visit_http(side, kind, vid, cfg['tries'])
     t1 = io.now()
     since = br.iso(t0 - datetime.timedelta(seconds=1))
     lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
-    kf_text = io.logs(kf_c, since) if kf_c else ''
+    kf_text = io.logs(kf_c, since)
     be_text = io.logs(be_c, since)
-    copy_c = SIDE_COPY_LOG.get(side)
-    copy_text = io.logs(copy_c, since) if copy_c else ''
-    for c, text in ((kf_c, kf_text), (be_c, be_text), (copy_c, copy_text)):
-        if c:
-            logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
+    for c, text in ((kf_c, kf_text), (be_c, be_text)):
+        logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
     # provisional; finalize_steps() re-attributes once the whole run is read (late lines, next visit of the side)
     played = br.played_source(kf_text)
     steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', []), 'played_source': played},
                                br.parse_step_lines(kf_text))
-    if be_kind == 'altmount':
-        imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
-    else:  # NzbDAV: its own job time from its history answer, read after the round's visit
-        imports = br.nzbdav_job_imports(hist_before, io.nzbdav_history())
+    imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
     limit = br.limit_event(kf_text + '\n' + be_text, cfg['indexers'])
     ok = bool(http.get('first_try_plays'))
     return {'side': side, 'phase': phase, 'round': rnd, 'title': label, 'id': vid, 'kind': kind, 'ok': ok,
@@ -825,9 +791,7 @@ def finalize_steps(io, visits):
     """
     by_container = {}
     for v in visits:
-        kf = SIDE_LOGS[v['side']][0]
-        if kf:
-            by_container.setdefault(kf, []).append(v)
+        by_container.setdefault(KF_CONTAINER, []).append(v)
     for container, vs in by_container.items():
         vs.sort(key=lambda v: br.parse_ts(v['t_start']))
         first = br.parse_ts(vs[0]['t_start']) - datetime.timedelta(seconds=1)
@@ -945,7 +909,7 @@ def run_all(cfg, io):
     logs_dir = os.path.join(run_dir, 'logs')
     os.makedirs(logs_dir)
     run = {'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir, 'visits': [], 'null': None,
-           'error': None, 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
+           'error': None, 'recording': cfg['listname'], 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
            'sides': run_sides(cfg), 'rounds': cfg.get('rounds', 2), 'short': short_run(cfg), 'standin_misses': 0,
            'settings': {}, 'commit': None, 'head': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
            'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
@@ -967,7 +931,7 @@ def run_all(cfg, io):
             if main_sides:
                 do_pass(cfg, io, run, logbuf, 'main sides', main_sides, ALL_TESTBED)
             if 'kaijuflow-1page' in run_sides(cfg):
-                do_pass(cfg, io, run, logbuf, 'one-page side', ['kaijuflow-1page'], ONE_PAGE_TESTBED,
+                do_pass(cfg, io, run, logbuf, 'one-page side', ['kaijuflow-1page'], ALL_TESTBED,
                         first_reset=switch_to_one_page)
         except CapReached as e:
             run['status'] = 'null'
@@ -1032,7 +996,7 @@ def write_run_ending(cfg, io, run, started, logbuf):
         result = f"short: {run['short']}" if result == 'ok' else f"{result} (short: {run['short']})"
     _write(os.path.join(run_dir, 'report.md'), report)
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
-    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'titles', 'indexers',
+    meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
                                     'standin_misses', 'changes', 'timing')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
@@ -1319,7 +1283,7 @@ def smoke(cfg, io=None):
             http = io.visit_http(side, 'movie', os.environ.get('SMOKE_IMDB', 'tt0133093'), 0)
             io.sleep(1)
             new = [x for x in io.standin_lines()[before:] if x.startswith('MISS ')]
-            container = br.CLIENT_CONTAINER[side]
+            container = KF_CONTAINER
             results[side] = dict(http=http.get('list_status'), container=container,
                                  **smoke_side_result(new, addresses.get(container)))
     finally:
@@ -1418,11 +1382,10 @@ def main(argv):
             ap.error('--store and --list are needed')
     td = a.test_dir
     users = (_read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
-    key = (_read_text(os.path.join(td, 'templates/altmount.key')) or '').strip()
     titles = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
     listdir = os.path.join(a.store or '', a.listname or '')
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
-               user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')), download_key=hashlib.sha256(key.encode()).hexdigest(),
+               user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),
                one_page=a.one_page, sides=sides, rounds=rounds, titles=titles,
                partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],

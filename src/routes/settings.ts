@@ -62,18 +62,10 @@ function buildConfigResponse(config: Config) {
     nzbhydraPassword: config.nzbhydraPassword,
     nzbhydraTimeoutEnabled: config.nzbhydraTimeoutEnabled,
     nzbhydraTimeout: config.nzbhydraTimeout,
-    backend: config.backend,
     altmountUrl: config.altmountUrl,
     altmountApiKey: config.altmountApiKey,
     altmountCategory: config.altmountCategory,
     altmountPrepareTimeout: config.altmountPrepareTimeout,
-    nzbdavUrl: config.nzbdavUrl,
-    nzbdavApiKey: config.nzbdavApiKey,
-    nzbdavWebdavUrl: config.nzbdavWebdavUrl,
-    nzbdavWebdavUser: config.nzbdavWebdavUser,
-    nzbdavWebdavPassword: config.nzbdavWebdavPassword,
-    nzbdavMoviesCategory: config.nzbdavMoviesCategory,
-    nzbdavTvCategory: config.nzbdavTvCategory,
     nzbdavStreamBufferMB: config.nzbdavStreamBufferMB,
     nzbdavPipeBufferMB: config.nzbdavPipeBufferMB,
     nzbdavStreamingMethod: config.nzbdavStreamingMethod,
@@ -161,7 +153,6 @@ export function createSettingsRoutes(deps: SettingsDeps): Router {
       res.json({
         indexerSearch: versions.prowlarr,
         nzbDownload: versions.sabnzbd,
-        nzbdavOperations: versions.sabnzbd,
         webdavOperations: versions.sabnzbd,
         general: versions.chrome
       });

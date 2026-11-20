@@ -25,7 +25,6 @@ import { ProxyOverlay } from './components/overlays/ProxyOverlay';
 import { CacheTTLOverlay } from './components/overlays/CacheTTLOverlay';
 import { UserAgentOverlay } from './components/overlays/UserAgentOverlay';
 import { StreamingOverlay } from './components/overlays/StreamingOverlay';
-import { NzbDatabaseOverlay } from './components/overlays/NzbDatabaseOverlay';
 import { AutoPlayOverlay } from './components/overlays/AutoPlayOverlay';
 import { StatsOverlay } from './components/overlays/StatsOverlay';
 import FiltersOverlay from './components/overlays/FiltersOverlay';
@@ -38,7 +37,6 @@ import { LogsOverlay } from './components/overlays/LogsOverlay';
 // Modals
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
 import { DirectModeWarningModal } from './components/modals/DirectModeWarningModal';
-import { LibraryDeleteWarningModal } from './components/modals/LibraryDeleteWarningModal';
 import { AddIndexerModal } from './components/modals/AddIndexerModal';
 import { EditIndexerModal } from './components/modals/EditIndexerModal';
 
@@ -512,19 +510,6 @@ function App() {
         />
       )}
 
-      {/* Library Delete Warning Modal */}
-      {ac.libraryDeleteWarning.show && (
-        <LibraryDeleteWarningModal
-          libraryDeleteWarning={ac.libraryDeleteWarning}
-          setLibraryDeleteWarning={ac.setLibraryDeleteWarning}
-          handleEnableLibraryDelete={() => {
-            if (ac.libraryDeleteWarning.toggleType === 'all') ac.setLibraryDeleteAllTile(true);
-            else if (ac.libraryDeleteWarning.toggleType === 'perStream') ac.setLibraryDeletePerStreamTile(true);
-            ac.setLibraryDeleteWarning({ show: false, toggleType: null });
-          }}
-        />
-      )}
-
       {/* Add Indexer Modal */}
       {ac.showAddIndexer && (
         <AddIndexerModal
@@ -584,7 +569,6 @@ function App() {
       {/* Indexer Manager Overlay */}
       {ac.activeOverlay === 'indexManager' && (
         <IndexManagerOverlay
-          backend={ac.backend}
           onClose={() => ac.setActiveOverlay(null)}
           config={ac.config}
           setConfig={ac.setConfig}
@@ -621,27 +605,6 @@ function App() {
           setSeriesPackAdditionalPages={ac.setSeriesPackAdditionalPages}
           urlDedup={ac.urlDedup}
           setUrlDedup={ac.setUrlDedup}
-          librarySearchThreshold={ac.librarySearchThreshold}
-          setLibrarySearchThreshold={ac.setLibrarySearchThreshold}
-          libraryApplyToMovies={ac.libraryApplyToMovies}
-          setLibraryApplyToMovies={ac.setLibraryApplyToMovies}
-          libraryApplyToSeries={ac.libraryApplyToSeries}
-          setLibraryApplyToSeries={ac.setLibraryApplyToSeries}
-          librarySearchScanUncategorized={ac.librarySearchScanUncategorized}
-          setLibrarySearchScanUncategorized={ac.setLibrarySearchScanUncategorized}
-          libraryRunOnCacheHit={ac.libraryRunOnCacheHit}
-          setLibraryRunOnCacheHit={ac.setLibraryRunOnCacheHit}
-          displayLibraryInResults={ac.displayLibraryInResults}
-          setDisplayLibraryInResults={ac.setDisplayLibraryInResults}
-          libraryDeleteAllTile={ac.libraryDeleteAllTile}
-          setLibraryDeleteAllTile={ac.setLibraryDeleteAllTile}
-          libraryDeletePerStreamTile={ac.libraryDeletePerStreamTile}
-          setLibraryDeletePerStreamTile={ac.setLibraryDeletePerStreamTile}
-          setLibraryDeleteWarning={ac.setLibraryDeleteWarning}
-          librarySkipTilePosition={ac.librarySkipTilePosition}
-          setLibrarySkipTilePosition={ac.setLibrarySkipTilePosition}
-          libraryDeleteAllPackScope={ac.libraryDeleteAllPackScope}
-          setLibraryDeleteAllPackScope={ac.setLibraryDeleteAllPackScope}
           absoluteEpisodeFallback={ac.absoluteEpisodeFallback}
           setAbsoluteEpisodeFallback={ac.setAbsoluteEpisodeFallback}
           parallelAlternateTitleSearch={ac.parallelAlternateTitleSearch}
@@ -747,8 +710,6 @@ function App() {
           setConfig={ac.setConfig}
           streamingMode={ac.streamingMode}
           setStreamingMode={ac.setStreamingMode}
-          backend={ac.backend}
-          setBackend={ac.setBackend}
           altmountUrl={ac.altmountUrl}
           setAltmountUrl={ac.setAltmountUrl}
           altmountApiKey={ac.altmountApiKey}
@@ -758,56 +719,14 @@ function App() {
           altmountPrepareTimeout={ac.altmountPrepareTimeout}
           setAltmountPrepareTimeout={ac.setAltmountPrepareTimeout}
           backendMessage={ac.backendMessage}
-          nzbdavUrl={ac.nzbdavUrl}
-          setNzbdavUrl={ac.setNzbdavUrl}
-          nzbdavApiKey={ac.nzbdavApiKey}
-          setNzbdavApiKey={ac.setNzbdavApiKey}
-          nzbdavWebdavUrl={ac.nzbdavWebdavUrl}
-          setNzbdavWebdavUrl={ac.setNzbdavWebdavUrl}
-          nzbdavWebdavUser={ac.nzbdavWebdavUser}
-          setNzbdavWebdavUser={ac.setNzbdavWebdavUser}
-          nzbdavWebdavPassword={ac.nzbdavWebdavPassword}
-          setNzbdavWebdavPassword={ac.setNzbdavWebdavPassword}
-          nzbdavMoviesCategory={ac.nzbdavMoviesCategory}
-          setNzbdavMoviesCategory={ac.setNzbdavMoviesCategory}
-          nzbdavTvCategory={ac.nzbdavTvCategory}
-          setNzbdavTvCategory={ac.setNzbdavTvCategory}
           nzbdavConnectionStatus={ac.nzbdavConnectionStatus}
-          nzbdavTestNzbStatus={ac.nzbdavTestNzbStatus}
-          nzbdavTestNzbMessage={ac.nzbdavTestNzbMessage}
           nzbdavStreamBufferMB={ac.nzbdavStreamBufferMB}
           setNzbdavStreamBufferMB={ac.setNzbdavStreamBufferMB}
           nzbdavPipeBufferMB={ac.nzbdavPipeBufferMB}
           setNzbdavPipeBufferMB={ac.setNzbdavPipeBufferMB}
           nzbdavStreamingMethod={ac.nzbdavStreamingMethod}
           setNzbdavStreamingMethod={ac.setNzbdavStreamingMethod}
-          ultimateFallbackEnabled={ac.ultimateFallback.enabled && ac.backend === 'nzbdav'}
           checkNzbdavConnection={ac.checkNzbdavConnection}
-          sendNzbdavTestNzb={ac.sendNzbdavTestNzb}
-        />
-      )}
-
-      {/* NZB Database Overlay */}
-      {ac.activeOverlay === 'nzbDatabase' && (
-        <NzbDatabaseOverlay
-          onClose={() => ac.setActiveOverlay(null)}
-          healthyNzbDbMode={ac.healthyNzbDbMode}
-          setHealthyNzbDbMode={ac.setHealthyNzbDbMode}
-          healthyNzbDbTTL={ac.healthyNzbDbTTL}
-          setHealthyNzbDbTTL={ac.setHealthyNzbDbTTL}
-          healthyNzbDbMaxSizeMB={ac.healthyNzbDbMaxSizeMB}
-          setHealthyNzbDbMaxSizeMB={ac.setHealthyNzbDbMaxSizeMB}
-          deadNzbDbMode={ac.deadNzbDbMode}
-          setDeadNzbDbMode={ac.setDeadNzbDbMode}
-          deadNzbDbTTL={ac.deadNzbDbTTL}
-          setDeadNzbDbTTL={ac.setDeadNzbDbTTL}
-          deadNzbDbMaxSizeMB={ac.deadNzbDbMaxSizeMB}
-          setDeadNzbDbMaxSizeMB={ac.setDeadNzbDbMaxSizeMB}
-          nzbdavCacheTimeouts={ac.nzbdavCacheTimeouts}
-          setNzbdavCacheTimeouts={ac.setNzbdavCacheTimeouts}
-          filterDeadNzbs={ac.filterDeadNzbs}
-          setFilterDeadNzbs={ac.setFilterDeadNzbs}
-          apiFetch={apiFetch}
         />
       )}
 
@@ -1084,16 +1003,13 @@ function App() {
             config={ac.config}
             addonEnabled={ac.addonEnabled}
             setAddonEnabled={ac.setAddonEnabled}
-            activeOverlay={ac.activeOverlay}
             setActiveOverlay={ac.setActiveOverlay}
             indexManager={ac.indexManager}
             easynewsEnabled={ac.easynewsEnabled}
             enabledIndexersCount={enabledIndexersCount}
             syncedIndexers={ac.syncedIndexers}
             nzbdavConnectionStatus={ac.nzbdavConnectionStatus}
-            backend={ac.backend}
             nzbdavStreamingMethod={ac.nzbdavStreamingMethod}
-            streamingMode={ac.streamingMode}
             proxyMode={ac.proxyMode}
             proxyStatus={ac.proxyStatus}
             userAgents={ac.userAgents}
@@ -1112,7 +1028,6 @@ function App() {
             handleCardDragOver={ac.handleCardDragOver}
             handleCardDrop={ac.handleCardDrop}
             handleCardDragEnd={ac.handleCardDragEnd}
-            apiFetch={apiFetch}
           />
         )}
 

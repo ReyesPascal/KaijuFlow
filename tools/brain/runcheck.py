@@ -4,11 +4,9 @@
 
 Prints about a dozen plain lines and exits 0 when the run is usable, 1 when it is not
 (a request the recording did not hold, a planned side that is absent, a null, stopped or failed run,
-a recording folder, or a run folder that cannot be read). For a finished run it then prints one line per
-target of targets.json (the target, the measured values, met or not met; for a run on a tagged title list, one line per
-list and speed test target, the outcome line and the final bar apart, brainreport.speed_test_lines); for any other run one line
-says why the targets are not judged (brainreport.targets_not_judged, the gate the report uses too).
-The targets do not change the exit code.
+a recording folder, or a run folder that cannot be read). It then prints one line per side and list (list_lines) and
+judges KaijuFlow's run per list against the previous run on the same recording, kept or not kept (judged_lines, rules.md
+"Judged against the previous run"); the verdict does not change the exit code.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import json
@@ -51,6 +49,111 @@ def _step_gap(v):
     return round(abs(total - v['start_s']), 2)
 
 
+def _round_title(v):
+    return f"{v['phase'].capitalize()} {v['round']} {v['title']}"
+
+
+def _line_head(side, lst):
+    """'KaijuFlow, hard list', or 'KaijuFlow, every title' for a run without tags: how a per-list line starts."""
+    return f"{_side(side)}, {f'{lst} list' if lst else 'every title'}"
+
+
+def list_lines(visits, sides):
+    """Per side and list (#185), one line: the fails (titles and plays, each failed play named), the fallbacks (each named
+    with its extra seconds) and the median cold and warm title to video. A run without tags gets one line for every title."""
+    out = []
+    for s in sides:
+        for x in br.run_lists(visits) or [None]:
+            vs = [v for v in visits if v['side'] == s and x in (None, v.get('list'))]
+            if not vs:
+                continue
+            failed = [_round_title(v) for v in br.fail_visits(vs, s)]
+            fell_back = [f'{_round_title(v)}, {br.fallback_text(v)}' for v in vs if br.fallbacks(v)]
+            out.append(f"{_line_head(s, x)}: fails {br.fails_words(br.fail_figure(vs, s))}"
+                       + (f" ({'; '.join(failed)})" if failed else '')
+                       + (f"; fallbacks {len(fell_back)} ({'; '.join(fell_back)})" if fell_back else '; fallbacks none')
+                       + ''.join(f'; {phase} title to video {br.secs_text(br.side_time(vs, s, phase, "video"))}' for phase in ('cold', 'warm'))
+                       + '.')
+    return out
+
+
+KEPT, NOT_KEPT, NOT_JUDGED = 'kept', 'not kept', 'not judged'
+
+
+def _against(now, was):
+    """'better', 'same' or 'worse' for a figure where less is better (failed plays, seconds), or None when either is
+    missing. Seconds are compared as printed, to the hundredth."""
+    if now is None or was is None:
+        return None
+    now, was = round(now, 2), round(was, 2)
+    return 'better' if now < was else 'worse' if now > was else 'same'
+
+
+def _fallback_secs(x):
+    return 'unknown' if x is None else f'{x:.2f} s'
+
+
+def _why_not_judged(meta):
+    """Why this run's lists cannot be judged (a run that did not finish, or a short run, played fewer plays than the
+    previous run, so fewer fails says nothing), or None when they can (spec #183)."""
+    status = meta.get('status')
+    if status == 'stopped':
+        return 'this run was stopped'
+    if status != 'ok':
+        return f'this run did not finish (status {status})'
+    if meta.get('short'):
+        return f"this run is short ({meta['short']})"
+    return None
+
+
+def _compared(name, now, was, words, by):
+    """'cold title to video 1.50 s (was 2.00 s), better': one figure of this run against the previous run's."""
+    return f"{name} {words(now)} (was {words(was)}), {by or 'not compared'}"
+
+
+def judged_lines(run_dir, meta, visits):
+    """KaijuFlow's run judged against its previous run on the same recording (#186, rules.md "Judged against the previous
+    run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
+    and kept or not kept; then the verdict over every list. Each list's line also shows, against the previous run's, its
+    median warm title to video (spec #183) and its fallback time (the fallbacks' extra seconds added up,
+    brainreport.fallback_total_s, #187); the verdict leaves those out."""
+    side, recording = br.JUDGED, meta.get('recording')
+    prev = br.run_before(run_dir, recording)
+    if prev is None:
+        return [f'Against the previous run: not compared, no earlier run on the same recording ({recording}).']
+    out, verdicts = [f"Against the previous run on the same recording ({recording}): {prev['folder']}."], []
+    why_not = _why_not_judged(meta)
+    for x in br.run_lists(visits) or [None]:
+        fails = [br.fail_figure(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        cold, warm = ([br.side_time(vs, side, phase, 'video', lst=x) for vs in (visits, prev['visits'])]
+                      for phase in ('cold', 'warm'))
+        by_fails = _against(*[f['fails'] if f['counted'] else None for f in fails])
+        by_cold = _against(*cold)
+        fell_back = [br.fallback_count(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        fallback_secs = [br.fallback_total_s(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        if why_not:
+            verdict = NOT_JUDGED
+        elif by_fails == 'worse':
+            verdict = NOT_KEPT
+        elif by_fails is None or by_cold is None:
+            verdict = NOT_JUDGED
+        else:
+            verdict = KEPT if by_cold != 'worse' else NOT_KEPT
+        verdicts.append(verdict)
+        figures = [_compared('fails', *fails, br.fails_words, by_fails),
+                   _compared('cold title to video', *cold, br.secs_text, by_cold),
+                   # shown, never part of the verdict (spec #183; owner, 2026-11-20, #187)
+                   _compared('warm title to video', *warm, br.secs_text, _against(*warm)),
+                   _compared('fallbacks', *fell_back, str, _against(*fell_back)),
+                   _compared('fallback time', *fallback_secs, _fallback_secs, _against(*fallback_secs))]
+        out.append(f"{_line_head(side, x)}: {'; '.join(figures)}. {verdict.capitalize()}"
+                   + (f': {why_not}.' if why_not else '.'))
+    if why_not:
+        return out + [f'Verdict against the previous run: {NOT_JUDGED}, {why_not}.']
+    overall = NOT_KEPT if NOT_KEPT in verdicts else NOT_JUDGED if NOT_JUDGED in verdicts else KEPT
+    return out + [f'Verdict against the previous run: {overall}.']
+
+
 def check_run(run_dir):
     """Returns (usable, lines) for one run folder."""
     meta, err = _load(run_dir, 'meta.json')
@@ -84,7 +187,7 @@ def check_run(run_dir):
     absent = [s for s in sides if s not in seen]
     if absent and status == 'ok':
         reasons.append('planned side absent: ' + ', '.join(_side(s) for s in absent))
-    # top picks played per side, cold and warm (a top pick "played" when its visit served video on the first try, br.plays)
+    # top picks played per side, cold and warm (a top pick "played" when its visit served video, a fallback too: br.plays)
     for s in sides:
         by = {}
         for phase in ('cold', 'warm'):
@@ -134,22 +237,11 @@ def check_run(run_dir):
     else:
         lines.append('Failures: none.')
     fell_back = [v for v in visits if br.fallbacks(v)]
-    if fell_back:
-        lines.append(f'Played after a fallback ({len(fell_back)}), not counted as played:')
-        lines += [f'- {_visit_name(v)}: {br.failed_result(v, "fallback")}' for v in fell_back]
-    for s in sides:  # a run on a tagged title list (#167): the fails of each setup per list
-        parts = []
-        for x in br.run_lists(visits):
-            failed = br.fail_visits(visits, s, x)
-            names = [f"{v['phase'].capitalize()} {v['round']} {v['title']}"
-                     + (f", {br.failed_result(v, 'fallback')}" if br.fallbacks(v) else '') for v in failed]
-            parts.append(f"{x} {br.fails_words(br.fail_figure(visits, s, lst=x))}" + (f" ({'; '.join(names)})" if names else ''))
-        if parts:
-            lines.append(f"Fails, {_side(s)}: " + '; '.join(parts) + '.')
-    lines += br.like_for_like_lines(visits)
-    lines += br.top_pick_table(visits)
-    if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict
-        lines += br.target_lines({'status': status, 'visits': visits})
+    if fell_back:  # a fallback counts as played, its extra seconds in its title to video (#185)
+        lines.append(f'Played after a fallback ({len(fell_back)}), counted as played:')
+        lines += [f'- {_visit_name(v)}: {br.fallback_text(v)}' for v in fell_back]
+    lines += list_lines(visits, sides)
+    lines += judged_lines(run_dir, meta, visits)
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:

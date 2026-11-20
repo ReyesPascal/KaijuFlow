@@ -1,25 +1,7 @@
 /**
- * NZBDav Service Types
- * Shared interfaces, type aliases, and constants used across all NZBDav modules.
+ * Stream handling types shared by the stream handler, the caches and Ultimate
+ * Fallback. (The folder keeps its historical name; NzbDAV itself is gone, #188.)
  */
-
-// ── Shared constants ──────────────────────────────────────────────────
-
-/** Timeout per WebDAV directory listing / file request — prevents hang if NZBDav is overwhelmed */
-export const WEBDAV_REQUEST_TIMEOUT_MS = 10_000;
-
-// ── Interfaces ────────────────────────────────────────────────────────
-
-export interface NZBDavConfig {
-  url: string;
-  apiKey: string;
-  webdavUrl: string;
-  webdavUser: string;
-  webdavPassword: string;
-  moviesCategory: string;
-  tvCategory: string;
-  scanUncategorized: boolean;
-}
 
 export interface StreamData {
   nzoId: string;
@@ -39,27 +21,12 @@ export interface CacheEntry {
   expiresAt: number;
 }
 
-export interface HistorySlot {
-  nzo_id?: string;
-  nzoId?: string;
-  status?: string;
-  Status?: string;
-  fail_message?: string;
-  failMessage?: string;
-  name?: string;
-}
-
 export interface FallbackCandidate {
   nzbUrl: string;
   title: string;
   indexerName: string;
   size?: number;
   isSeasonPack?: boolean;
-  /** Full WebDAV path, set only for library-origin candidates (mirrors
-   *  RawResult.libraryVideoPath). Lets UF probe the exact file regardless of
-   *  which root it lives under, including /content/uncategorized/... where
-   *  resolveCategory would otherwise reconstruct the wrong path. */
-  libraryVideoPath?: string;
   /** Proxy exit IP captured at search time. verifyProxyCircuit compares against
    *  this when grabbing the NZB, so a rotation+new-search between search and
    *  grab cannot silently pass verification. Persisted with the group (it's a

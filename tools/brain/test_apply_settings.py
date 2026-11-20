@@ -13,7 +13,7 @@ import brainreport as br
 import brainrun
 import testbed
 from test_preflight import FakeWorld, make_cfg, run_command
-from test_settings import SECRET, addon_stremio, make_copies, rules, tempdir
+from test_settings import SECRET, make_copies, rules, tempdir
 
 STAMP = '20261115T120000Z'
 
@@ -55,7 +55,7 @@ class ApplyJsonCopyTest(unittest.TestCase):
         want['movieFilters']['maxFileSize'] = 9000
         want['movieFilters']['sortOrder'] = ['size', 'quality', 'language']
         want['tvFilters']['enabledSorts']['language'] = True
-        self.expected = write_expected(self, [{'copies': ['kaijuflow', 'uu'], 'settings': want}])
+        self.expected = write_expected(self, [{'copies': ['kaijuflow'], 'settings': want}])
 
     def test_the_copy_is_backed_up_the_values_written_and_the_changes_printed_one_by_one(self):
         code, text = apply(self.td, 'kaijuflow', self.expected)
@@ -80,9 +80,6 @@ class ApplyJsonCopyTest(unittest.TestCase):
         names = ['movieFilters', 'tvFilters']
         self.assertEqual(testbed.outside_named(br.flatten(data), names), testbed.outside_named(br.flatten(json.loads(self.before)), names))
         self.assertEqual(data['indexers'][0]['apiKey'], SECRET)  # the real values are written back, not the reader's ***
-        uu = json.loads(read(os.path.join(self.td, 'uu/config/config.json')))
-        self.assertEqual(uu['movieFilters']['maxFileSize'], 3000)  # only the named copy
-
 
     def test_a_missing_rule_and_an_extra_setting_are_named_once_each(self):
         mine = rules()
@@ -113,43 +110,61 @@ class ApplyJsonCopyTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.td, 'backups')))
 
 
-class ApplyCommittedFileTest(unittest.TestCase):
-    """The committed expected settings file, read as it is (so a change to it, such as AltMount direct's formats, is picked up)."""
+class ApplyYamlCopyTest(unittest.TestCase):
+    """KaijuFlow's AltMount copy (config.yaml, four spaces a level): the way its settings change (spec #183, AltMount tuning)."""
+
+    SETTINGS = {'import.max_processor_workers': 4, 'streaming.max_prefetch': 8, 'segment_cache.enabled': True}
 
     def setUp(self):
-        self.td = make_copies(self, addon_lines=addon_stremio('stremio-as-found.yaml'))
-        self.yaml = os.path.join(self.td, 'altmount-addon/config/config.yaml')
+        self.td = make_copies(self)
+        self.yaml = os.path.join(self.td, 'altmount-kf/config/config.yaml')
+        self.expected = write_expected(self, [{'copies': ['altmount-kf'], 'settings': self.SETTINGS}])
 
-    def test_altmount_direct_as_captured_gets_its_three_settings_and_nothing_else(self):
+    def test_a_changed_setting_and_two_new_sections_are_written_and_nothing_else(self):
         before = read(self.yaml)
-        code, text = apply(self.td, 'altmount-addon')
+        code, text = apply(self.td, 'altmount-kf', self.expected)
         self.assertEqual(code, 0, text)
         backups = os.listdir(os.path.join(self.td, 'backups'))
         self.assertEqual(read(os.path.join(self.td, 'backups', backups[0])), before)
         self.assertEqual(text.splitlines()[1:], [
-            'AltMount direct: stremio.max_fallback_releases: "2" -> "0"',
-            'AltMount direct: stremio.include_library_streams: "null" -> "false"',
-            'AltMount direct: stremio.scoring.custom_formats: added',
-            'AltMount direct: 3 settings changed in altmount-addon/config/config.yaml.'])
-        names = list(brainrun.load_expected_settings()[1]['settings'])
-        self.assertEqual(testbed.outside_named(br.flatten_yaml(read(self.yaml)), names), testbed.outside_named(br.flatten_yaml(before), names))
-        self.assertEqual(read(self.yaml).count('api_key: ' + SECRET), before.count('api_key: ' + SECRET))
+            'AltMount KaijuFlow: import.max_processor_workers: "2" -> "4"',
+            'AltMount KaijuFlow: streaming.max_prefetch: added, "8"',
+            'AltMount KaijuFlow: segment_cache.enabled: added, "true"',
+            'AltMount KaijuFlow: 3 settings changed in altmount-kf/config/config.yaml.'])
+        after = br.flatten_yaml(read(self.yaml))
+        self.assertEqual(testbed.outside_named(after, list(self.SETTINGS)), testbed.outside_named(br.flatten_yaml(before), list(self.SETTINGS)))
+        self.assertEqual(read(self.yaml).count('password: ' + SECRET), before.count('password: ' + SECRET))
         self.assertNotIn(SECRET, text)
-        self.assertEqual(apply(self.td, 'altmount-addon')[1],
-                         'AltMount direct: nothing changed; altmount-addon/config/config.yaml already holds the expected settings.\n')
+        self.assertEqual(brainrun.setting_differences(brainrun.load_expected_settings(self.expected), {'altmount-kf': after}), [])
+        self.assertEqual(apply(self.td, 'altmount-kf', self.expected)[1],
+                         'AltMount KaijuFlow: nothing changed; altmount-kf/config/config.yaml already holds the expected settings.\n')
+
+
+class ApplyCommittedFileTest(unittest.TestCase):
+    """The committed expected settings file, read as it is (so a change to it is picked up)."""
+
+    def setUp(self):
+        self.td = make_copies(self)
+
+    def test_kaijuflow_with_its_fallback_off_gets_it_switched_on(self):
+        td = make_copies(self, kf_fallback=False, kf_rules=brainrun.load_expected_settings()[0]['settings'])
+        code, text = apply(td, 'kaijuflow')
+        self.assertEqual(code, 0, text)
+        self.assertEqual(text.splitlines()[1:], ['KaijuFlow: ultimateFallback.enabled: false -> true',
+                                                 'KaijuFlow: 1 setting changed in config/config.json.'])
+        self.assertIs(json.loads(read(os.path.join(td, 'config/config.json')))['ultimateFallback']['enabled'], True)
 
     def test_after_applying_to_every_copy_the_preflight_finds_no_difference(self):
         cfg = make_cfg(self.td, expected_settings=None)
         code, text = run_command('record', cfg, FakeWorld(cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('the expected settings file', text)
-        for copy in ('kaijuflow', 'uu', 'altmount-addon'):
-            code, out = apply(self.td, copy)
-            self.assertEqual(code, 0, out)
-            self.assertNotIn(SECRET, out)
+        code, out = apply(self.td, 'kaijuflow')
+        self.assertEqual(code, 0, out)
+        self.assertNotIn(SECRET, out)
         code, text = run_command('record', cfg, FakeWorld(cfg))
         self.assertEqual(code, 0, text)
-        self.assertEqual(testbed.settings_report(self.td)['caps']['altmount-addon'], 25)  # the rest of the copy still reads
+        self.assertEqual(testbed.settings_report(self.td)['caps']['kaijuflow'], 12)  # the rest of the copy still reads
 
 
 if __name__ == '__main__':

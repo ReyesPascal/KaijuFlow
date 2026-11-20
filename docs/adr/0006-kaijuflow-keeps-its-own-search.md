@@ -22,3 +22,5 @@ The addon lists faster because it checks nothing, and that is the whole differen
 - The Stremio addon settings of a Backend (AltMount's `stremio.indexers`, its `fallback_timeout_ms`) have no part in KaijuFlow's behaviour; they only matter for Brain comparisons.
 - The search side of `tools/brain/search.py` stays as a yardstick: any future Backend's own search is compared the same way before it is considered.
 - Faster lists come from KaijuFlow's own health checks (the benchmark plan), not from delegating the search.
+
+**Amended 2026-11-20.** The yardstick is gone: `tools/brain/search.py` was removed with #187 (spec #183, owner's decision on #187), when KaijuFlow with AltMount became the only setup the Brain tools run. The decision itself stands. A future Backend's own search would need a new side-by-side tool before it is considered.

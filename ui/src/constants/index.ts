@@ -128,7 +128,6 @@ export const DEFAULT_HEALTH_CHECKS = {
   verifyTlsCertificates: true,
   autoQueueMode: 'all' as 'off' | 'top' | 'all',
   hideBlocked: true,
-  libraryPreCheck: true,
   healthCheckIndexers: {} as Record<string, boolean>,
 };
 
@@ -176,12 +175,11 @@ export const DEFAULT_FILTERS = {
   editionPriority: ['Extended Edition', "Director's Cut", 'Superfan', 'Unrated', 'Uncensored', 'Uncut', 'Theatrical', 'IMAX', 'Special Edition', "Collector's Edition", 'Criterion Collection', 'Ultimate Edition', 'Anniversary Edition', 'Diamond Edition', 'Dragon Box', 'Color Corrected', 'Remastered', 'Standard'] as string[],
   preferNonStandardEdition: false,
   preferSeasonPacks: false,
-  preferLibraryResults: false,
   enableRemakeFiltering: true,
   allowMultiEpisodeFiles: true,
 };
 
-export const DEFAULT_CARD_ORDER = ['streaming', 'indexManager', 'proxy', 'zyclops', 'ultimateFallback', 'healthChecks', 'nzbDatabase', 'autoPlay', 'streamDisplay', 'cache', 'filters', 'userAgent', 'status', 'stats', 'power'];
+export const DEFAULT_CARD_ORDER = ['streaming', 'indexManager', 'proxy', 'zyclops', 'ultimateFallback', 'healthChecks', 'autoPlay', 'streamDisplay', 'cache', 'filters', 'userAgent', 'status', 'stats', 'power'];
 
 export const DEFAULT_ULTIMATE_FALLBACK = {
   enabled: false,

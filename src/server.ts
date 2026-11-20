@@ -16,7 +16,7 @@ import { config, getIndexers, addIndexer, updateIndexer, deleteIndexer, reorderI
 import { getLogBuffer, subscribeToLogs } from './logBuffer.js';
 import { getAllStats, getIndexerStats, resetIndexerStats, resetAllStats, runStaleIndexerStatsCleanup } from './statsTracker.js';
 import { fetchLatestVersions, getLatestVersions } from './versionFetcher.js';
-import { handleStream, getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries, isStreamCached, saveCacheToDisk } from './nzbdav/index.js';
+import { handleStream, isStreamCached, saveCacheToDisk } from './nzbdav/index.js';
 import { proxyFetch, testProxyConnection } from './proxy.js';
 import { fetchIndexerCaps } from './parsers/newznabClient.js';
 import { hasAnyUsers, createUser, authenticateUser, generateToken, verifyToken, getUserById, getManifests, createManifest, updateManifest, regenerateManifest, deleteManifest } from './auth/auth.js';
@@ -25,7 +25,6 @@ import { requireAuth, validateManifestKey } from './auth/authMiddleware.js';
 import { requestContext } from './requestContext.js';
 import { resolveBaseUrl } from './utils/urlHelpers.js';
 import { initAnimeDatabase, startDailyRefresh, stopDailyRefresh, getDatabaseStatus } from './anime/animeDatabase.js';
-import { runStaleLibraryFolderCleanup } from './nzbdav/staleFolderCleanup.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'node:module';
@@ -118,16 +117,10 @@ app.use('/api/manifests', createManifestRoutes({
 
 // --- Protected API routes ---
 
-// Shared NZBDav deps (used by both API routes and key-protected stream proxy)
+// Shared stream deps (used by both API routes and key-protected stream proxy)
 const nzbdavDeps = {
   config,
   handleStream,
-  getCacheStats,
-  clearStreamCache,
-  clearReadyCache,
-  clearFailedCache,
-  deleteCacheEntry,
-  getCacheEntries,
   isStreamCached,
   getLatestVersions,
 };
@@ -251,9 +244,6 @@ process.on('SIGINT', () => {
 
   // One-time best-effort migration. Fire-and-forget so it never blocks
   // listening; gated internally by a config version flag.
-  runStaleLibraryFolderCleanup().catch(err =>
-    console.error('Stale library folder cleanup error:', err)
-  );
   runStaleIndexerStatsCleanup().catch(err =>
     console.error('Stale indexer stats cleanup error:', err)
   );

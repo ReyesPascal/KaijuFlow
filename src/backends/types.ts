@@ -2,23 +2,18 @@
  * Backend slot (spec #16, ADR 0001).
  *
  * A Backend turns one chosen Source into a Stream KaijuFlow can serve. Every
- * caller (stream handling, Ultimate Fallback, auto-queue, library pre-check,
- * dashboard status) talks to the active Backend through this interface and
- * never calls a Backend's own code directly. KaijuFlow streams through
- * exactly one Backend at a time.
+ * caller (stream handling, Ultimate Fallback, auto-queue, dashboard status)
+ * talks to the Backend through this interface and never calls a Backend's own
+ * code directly. AltMount is KaijuFlow's only Backend (#188).
  */
 
 import type { StreamData } from '../nzbdav/types.js';
-import type { RawResult } from '../types.js';
-import type { SearchContext } from '../addon/searchOrchestrator.js';
 import type { BackendCapabilities } from './capabilities.js';
 
-export const BACKEND_IDS = ['nzbdav', 'altmount'] as const;
-export type BackendId = (typeof BACKEND_IDS)[number];
+export type BackendId = 'altmount';
 
-export function isBackendId(v: unknown): v is BackendId {
-  return (BACKEND_IDS as readonly unknown[]).includes(v);
-}
+/** The id of the one Backend; ready entries are tagged with it. */
+export const BACKEND_ID: BackendId = 'altmount';
 
 /** A prepared video: the Backend's media reference, its size and job id. */
 export type PreparedVideo = StreamData;
@@ -35,9 +30,6 @@ export interface BackendSource {
   indexerName?: string;
   /** Proxy exit IP hash from search time, checked when grabbing the NZB. */
   searchExitIp?: string;
-  /** Exact media reference already known from a search-time library scan. */
-  knownMediaPath?: string;
-  knownSize?: number;
 }
 
 export interface PrepareOptions {
@@ -76,7 +68,7 @@ export interface BackendStatus {
 export interface Backend {
   readonly id: BackendId;
   readonly label: string;
-  /** What this Backend supports beyond prepare/probe/stream (library, Ultimate Fallback). */
+  /** What this Backend supports beyond prepare/probe/stream (Ultimate Fallback). */
   readonly capabilities: BackendCapabilities;
 
   /** Already prepared: existing prepared media for this Source, or null. Never prepares. */
@@ -104,12 +96,6 @@ export interface Backend {
   /** URL handed to the player in direct (redirect) mode. May carry Backend credentials. */
   directUrl(mediaPath: string): string;
 
-  /**
-   * Library: search the Backend's already-prepared media by title (Ultimate
-   * Library). Only Backends that keep a browsable library have it (NzbDAV).
-   */
-  readonly library?: { search(ctx: SearchContext): Promise<RawResult[]> };
-
   /** Reachability/config check. `settings` are unsaved values from the UI form; defaults to the saved ones. */
   status(settings?: Record<string, unknown>): Promise<BackendStatus>;
 }
@@ -124,7 +110,7 @@ export class PrepareCancelledError extends Error {
 
 /**
  * Build the error a Backend throws when the Source itself is bad (isSourceFailure
- * is true for it). The flag keeps its historical NzbDAV name for compatibility.
+ * is true for it). The flag keeps its historical name `isNzbdavFailure`: saved dead marks carry it.
  */
 export function sourceFailure(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
   const err = new Error(message) as Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };

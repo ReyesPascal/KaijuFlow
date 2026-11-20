@@ -12,10 +12,9 @@ import re
 import subprocess
 import unittest
 
-import brainreport as br
 import brainrun
 import testbed
-from test_settings import ALTMOUNT_FIXTURES, SECRET, addon_stremio, make_copies, rules, tempdir
+from test_settings import SECRET, make_copies, rules, tempdir
 
 COMMIT = 'a' * 40
 OLDER = 'b' * 40
@@ -96,10 +95,10 @@ def make_repo(case):
 
 
 def write_expected(td, entries=None):
-    """Writes the expected settings file of a fixture folder (by default: both copies hold rules()) and returns its path."""
+    """Writes the expected settings file of a fixture folder (by default: KaijuFlow holds rules()) and returns its path."""
     path = os.path.join(os.path.dirname(td), 'expected-settings.json')
     with open(path, 'w') as f:
-        json.dump({'expected': [{'copies': ['kaijuflow', 'uu'], 'settings': rules()}] if entries is None else entries}, f)
+        json.dump({'expected': [{'copies': ['kaijuflow'], 'settings': rules()}] if entries is None else entries}, f)
     return path
 
 
@@ -224,9 +223,9 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(code, 0, text)
 
     def test_copies_must_agree_on_enabled_indexers(self):
-        # AltMount's addon copy has DrunkenSlug switched off; the key file and the other copies use it
-        self.cfg = make_cfg(make_copies(self, addon_off=('drunkenslug',)))
-        self.assert_stops('record', self.world(), 'AltMount direct', 'drunkenslug')
+        # KaijuFlow's AltMount copy has DrunkenSlug switched off; the key file and KaijuFlow use it
+        self.cfg = make_cfg(make_copies(self, altkf_off=('drunkenslug',)))
+        self.assert_stops('record', self.world(), 'AltMount KaijuFlow', 'drunkenslug')
 
     def test_indexer_address_must_be_the_standins(self):
         td = make_copies(self, url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
@@ -247,19 +246,19 @@ class PreflightTest(unittest.TestCase):
         self.assertNotIn(SECRET, text)
 
     def test_caps_over_the_provider_limit_stop(self):
-        td = make_copies(self, caps=(12, 12, 50, 50, 50))
+        td = make_copies(self, caps=(12, 100))
         self.cfg = make_cfg(td)
-        self.assert_stops('record', self.world(), '174', 'limit of 100')
+        self.assert_stops('record', self.world(), '112', 'limit of 100')
 
     def test_caps_exactly_at_the_limit_pass(self):
-        td = make_copies(self, caps=(12, 13, 25, 25, 25))
+        td = make_copies(self, caps=(12, 88))
         self.cfg = make_cfg(td)
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
     def test_limit_is_settable(self):
-        self.cfg['limit'] = 90
-        self.assert_stops('record', self.world(), '99', 'limit of 90')
+        self.cfg['limit'] = 30
+        self.assert_stops('record', self.world(), '37', 'limit of 30')
 
     def test_port_in_use_stops(self):
         self.assert_stops('record', self.world(free=False), 'port 1340', 'in use')
@@ -280,9 +279,9 @@ class PreflightTest(unittest.TestCase):
                           'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
 
     def test_an_incomplete_recording_stops_a_run_and_says_why_with_the_record_command(self):
-        record(self.cfg, state='incomplete', why='the proof replay missed 2 requests (AltMount addon asked fake t=search&q=tt1)')
+        record(self.cfg, state='incomplete', why='the proof replay missed 2 requests (KaijuFlow asked fake t=search&q=tt1)')
         self.cfg['topup_command'] = 'python3 -I tools/brain/brainrun.py record --name n --store S --list l'
-        self.assert_stops('run', self.world(), 'incomplete', 'missed 2 requests', 'AltMount addon asked',
+        self.assert_stops('run', self.world(), 'incomplete', 'missed 2 requests', 'KaijuFlow asked',
                           'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
 
     def test_a_recording_without_a_state_does_not_pass_a_run(self):
@@ -312,25 +311,25 @@ class PreflightTest(unittest.TestCase):
                               'the expected settings file', 'says 3000')
 
     def test_every_differing_setting_gets_its_own_sentence_and_the_fix_is_explained_once(self):
-        theirs = rules(episodes=50)
+        theirs = rules(films=9000, episodes=50)
         theirs['tvFilters']['rules']['rankedRegexPatterns'][0]['mode'] = 'rank'
-        self.cfg = make_cfg(make_copies(self, kf_rules=rules(films=9000), uu_rules=theirs))
+        self.cfg = make_cfg(make_copies(self, kf_rules=theirs))
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 1, text)
         self.assertEqual(text.splitlines(), [
             'KaijuFlow has movieFilters.maxFileSize set to 9000, but the expected settings file '
             f"({self.cfg['expected_settings']}) says 3000: change the test copy's config, or the file if the copy's value is the intended one.",
-            'Usenet Ultimate has tvFilters.maxFileSize set to 50, but the expected settings file says 1000.',
-            'Usenet Ultimate has tvFilters.rules.rankedRegexPatterns[No disc images].mode set to "rank", '
+            'KaijuFlow has tvFilters.maxFileSize set to 50, but the expected settings file says 1000.',
+            'KaijuFlow has tvFilters.rules.rankedRegexPatterns[No disc images].mode set to "rank", '
             'but the expected settings file says "drop".'])
 
     def test_a_copy_without_any_sort_and_filter_rules_stops_with_one_sentence_per_missing_section(self):
         # the state found in the retro of the 2026-11-13 baseline: the copies had no filters, movieFilters or tvFilters
-        self.cfg = make_cfg(make_copies(self, uu_rules={}))
+        self.cfg = make_cfg(make_copies(self, kf_rules={}))
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 1, text)
         self.assertEqual([line.split(', but')[0] for line in text.splitlines()],
-                         ['Usenet Ultimate has no movieFilters setting', 'Usenet Ultimate has no tvFilters setting'])
+                         ['KaijuFlow has no movieFilters setting', 'KaijuFlow has no tvFilters setting'])
         self.assertTrue(text.splitlines()[1].endswith(', but the expected settings file has one.'), text)
 
     def test_a_missing_rule_and_a_rule_of_the_copys_own_get_one_sentence_each(self):
@@ -350,7 +349,7 @@ class PreflightTest(unittest.TestCase):
     def test_an_expected_settings_file_that_cannot_be_used_stops_with_one_sentence(self):
         write_expected(self.td, entries=[{'copies': ['kaijuflow', 'live'], 'settings': rules()}])
         self.assert_stops('record', self.world(), 'The expected settings file cannot be used (expected-settings.json, entry 1: '
-                          '"live" is not a test copy (kaijuflow, uu, nzbdav, altmount-addon, altmount-kf)): fix the file.')
+                          '"live" is not a test copy (kaijuflow, altmount-kf)): fix the file.')
         os.remove(self.cfg['expected_settings'])
         self.assert_stops('record', self.world(), 'The expected settings file cannot be used (expected-settings.json cannot be read: '
                           'FileNotFoundError): fix the file.')
@@ -371,15 +370,14 @@ class PreflightTest(unittest.TestCase):
 class SettingDifferencesTest(unittest.TestCase):
     """Ticket #109: the comparison with the expected settings on its own, plain data in and sentences out."""
 
-    EXPECTED = [{'copies': ['kaijuflow', 'uu'], 'settings': {'movieFilters': {'maxFileSize': 30, 'sortOrder': ['a', 'b'], 'none': []}}},
+    EXPECTED = [{'copies': ['kaijuflow'], 'settings': {'movieFilters': {'maxFileSize': 30, 'sortOrder': ['a', 'b'], 'none': []}}},
                 {'copies': ['altmount-kf'], 'settings': {'import.max_processor_workers': '2'}}]
 
     def settings(self, **changes):
         """What the settings reader gives for copies that match EXPECTED, then changed: settings(kaijuflow={name: value})."""
         rules_ = {'movieFilters.maxFileSize': 30, 'movieFilters.sortOrder[0]': 'a', 'movieFilters.sortOrder[1]': 'b',
                   'movieFilters.none': '[]', 'cacheTTL': 9000, 'healthChecks.maxConnections': 12}
-        got = {'kaijuflow': dict(rules_), 'uu': dict(rules_), 'nzbdav': {'usenet.max-download-connections': '25'},
-               'altmount-addon': {'import.max_processor_workers': '8'}, 'altmount-kf': {'import.max_processor_workers': '2'}}
+        got = {'kaijuflow': dict(rules_), 'altmount-kf': {'import.max_processor_workers': '2', 'streaming.max_prefetch': '3'}}
         for side, change in changes.items():
             got[side.replace('_', '-')].update(change)
         return got
@@ -388,7 +386,7 @@ class SettingDifferencesTest(unittest.TestCase):
         self.assertEqual(brainrun.setting_differences(self.EXPECTED, self.settings()), [])
 
     def test_only_the_named_settings_of_the_named_copies_are_compared(self):
-        got = self.settings(kaijuflow={'cacheTTL': 1, 'tvFilters.maxFileSize': 5}, nzbdav={'x': 1}, altmount_addon={'import.max_processor_workers': '1'})
+        got = self.settings(kaijuflow={'cacheTTL': 1, 'tvFilters.maxFileSize': 5}, altmount_kf={'streaming.max_prefetch': '9'})
         self.assertEqual(brainrun.setting_differences(self.EXPECTED, got), [])
 
     def test_a_setting_can_be_named_by_its_dotted_name_for_any_copy(self):
@@ -398,11 +396,11 @@ class SettingDifferencesTest(unittest.TestCase):
             "change the test copy's config, or the file if the copy's value is the intended one."])
 
     def test_an_entry_too_many_in_an_order_and_an_order_that_should_be_empty(self):
-        got = self.settings(uu={'movieFilters.sortOrder[2]': 'c', 'movieFilters.none[0]': 'x'})
-        del got['uu']['movieFilters.none']  # the reader writes an empty list as '[]', a filled one entry by entry
+        got = self.settings(kaijuflow={'movieFilters.sortOrder[2]': 'c', 'movieFilters.none[0]': 'x'})
+        del got['kaijuflow']['movieFilters.none']  # the reader writes an empty list as '[]', a filled one entry by entry
         self.assertEqual(brainrun.setting_differences(self.EXPECTED, got)[1:], [
-            'Usenet Ultimate has movieFilters.none entry 1 set to "x", but the expected settings file has no entry 1.'])
-        self.assertIn('Usenet Ultimate has movieFilters.sortOrder entry 3 set to "c", but the expected settings file '
+            'KaijuFlow has movieFilters.none entry 1 set to "x", but the expected settings file has no entry 1.'])
+        self.assertIn('KaijuFlow has movieFilters.sortOrder entry 3 set to "c", but the expected settings file '
                       'has no entry 3: change', brainrun.setting_differences(self.EXPECTED, got)[0])
 
     def test_a_copy_whose_config_cannot_be_read_is_left_to_the_checks_that_say_so(self):
@@ -426,15 +424,18 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         return str(caught.exception)
 
     def test_a_usable_file_gives_its_entries(self):
-        entries = [{'copies': ['kaijuflow', 'uu'], 'settings': rules()}]
+        entries = [{'copies': ['kaijuflow'], 'settings': rules()}]
         self.assertEqual(self.load({'about': 'x', 'expected': entries}), entries)
 
     def test_a_file_that_cannot_be_used_says_why_in_plain_words(self):
         self.assertEqual(self.refused('{not json'), 'expected-settings.json cannot be read: JSONDecodeError')
         self.assertEqual(self.refused({'copies': []}), 'expected-settings.json cannot be read: it has no "expected" list')
         self.assertEqual(self.refused({'expected': [{'copies': ['kaijuflow', 'live'], 'settings': {'a': 1}}]}),
-                         'expected-settings.json, entry 1: "live" is not a test copy (kaijuflow, uu, nzbdav, altmount-addon, altmount-kf)')
-        self.assertEqual(self.refused({'expected': [{'copies': ['uu'], 'settings': {'a': 1}}, {'copies': ['uu'], 'settings': {}}]}),
+                         'expected-settings.json, entry 1: "live" is not a test copy (kaijuflow, altmount-kf)')
+        self.assertEqual(self.refused({'expected': [{'copies': ['uu'], 'settings': {'a': 1}}]}),  # a stopped copy of before #185
+                         'expected-settings.json, entry 1: "uu" is not a test copy (kaijuflow, altmount-kf)')
+        self.assertEqual(self.refused({'expected': [{'copies': ['kaijuflow'], 'settings': {'a': 1}},
+                                                    {'copies': ['kaijuflow'], 'settings': {}}]}),
                          'expected-settings.json, entry 2: it names no settings')
         self.assertEqual(self.refused({'expected': [{'copies': [], 'settings': {'a': 1}}]}),
                          'expected-settings.json, entry 1: it names no copies')
@@ -455,47 +456,26 @@ class ExpectedSettingsFileTest(unittest.TestCase):
 
     def committed(self):
         entries = brainrun.load_expected_settings()
-        self.assertEqual([e['copies'] for e in entries], [['kaijuflow', 'uu'], ['altmount-addon']])  # NzbDAV has no such rules
+        self.assertEqual([e['copies'] for e in entries], [['kaijuflow'], ['kaijuflow']])  # the one setup (#187)
         return entries[0]['settings']
 
-    def test_the_committed_file_holds_altmount_directs_like_for_like_settings(self):
-        entry = brainrun.load_expected_settings()[1]['settings']
-        self.assertEqual((entry['stremio.max_fallback_releases'], entry['stremio.include_library_streams']), (0, False))  # one try
-        formats = entry['stremio.scoring.custom_formats']
-        self.assertEqual([(f['name'], f['score']) for f in formats],
-                         [('2160p', 400), ('1080p', 300), ('720p', 200), ('4K words beside 1080p or 720p', -400),
-                          ('No disc images', -10000)])  # 4K first; -1500 or below drops
-        self.assertEqual(formats[-1]['pattern'], '(?i)' + self.DROP)  # the same rule as KaijuFlow's and Usenet Ultimate's
-        self.assertEqual(self.committed()['movieFilters']['rules']['rankedRegexPatterns'][0]['pattern'], self.DROP)
-        titles = {'Film.2010.2160p.UHD.BluRay.REMUX': '2160p', 'Film.2010.UHD.BluRay': '2160p', 'Film.2010.1080p.WEB-DL': '1080p',
-                  'Film 2010 1080i HDTV': '1080p', 'Show.S01E02.720p.WEB': '720p', 'Film.2010.COMPLETE.UHD.BLURAY': 'No disc images',
-                  'Film.2010.BDMV': 'No disc images', 'Film.2010.DVDRip': None}
-        for title, want in titles.items():  # on ASCII titles Python's re and Go's RE2 read these patterns alike
-            hit = [f['name'] for f in formats if re.search(f['pattern'], title)]
-            self.assertEqual(hit[-1:] if want == 'No disc images' else hit, [want] if want else [], title)
+    def test_the_committed_file_holds_kaijuflows_fallback_on(self):
+        entry = brainrun.load_expected_settings()[1]  # #185: a fallback counts as played, so KaijuFlow plays as at home
+        self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {'ultimateFallback.enabled': True}))
 
-    def test_altmount_directs_formats_score_test_1s_releases_by_their_stated_resolution(self):
-        # AltMount v0.4.0 adds the score of every enabled format a title matches (internal/stremio/scorer.go,
-        # EvaluateRelease), so "1080p UHD" took 2160p's 400 and 1080p's 300 and beat real 4K in Test 1 (#154).
-        formats = brainrun.load_expected_settings()[1]['settings']['stremio.scoring.custom_formats']
-        score = {'2160p': 400, '1080p': 300, '720p': 200, None: 0}
-        for title, want in {  # top picks of Test 1 (2026-11-15T115540Z-baseline), and the names around them
-                'Inception 2010 PROPER 1080p UHD BluRay DD+5.1 x264-LoRD': '1080p',
-                'Interstellar 2014 UHD BluRay 1080p DDP 5 1 DoVi HDR10 x265-SM737': '1080p',
-                'Oppenheimer 2023 REPACK IMAX 1080p UHD BluRay DoVi HDR10 DD 5 1 x265': '1080p',
-                'The Matrix 1999 4K Remaster 1080p BluRay DTS x264-Geek': '1080p',
-                'Dune 2021 1080p UHD BluRay x265 HDR DD 5 1-Pahe in': '1080p',
-                'Pulp.Fiction.1994.PROPER.UHD.BluRay.1080p.DDP.5.1.DoVi.HDR10.x265-S': '1080p',
-                'Chernobyl.2019.S01E02.1080p.UHD.BDRip.DV.HDR.DDP5.1.x265.Vialle': '1080p',
-                'Breaking.Bad.S01E01.POLISH.2160p.WEB.H265-FLAME': '2160p',
-                'Inception.2010.2160p.UHD.Bluray.x265.HDR10.DTS-HDMA.5.1-4K4U': '2160p',
-                'Dune.2021.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HDR.AV1-CoSMiCSuRFeR': '2160p',
-                'Film.2010.UHD.BluRay.x265': '2160p', 'Show.S01E02.720p.UHD.WEB': '720p', 'Film.2010.DVDRip': None}.items():
-            self.assertEqual(br.resolution(title), want, title)  # what KaijuFlow's like-for-like check states for it
-            got = sum(f['score'] for f in formats if f['enabled'] and re.search(f['pattern'], title))
-            self.assertEqual(got, score[want], title)
+    def test_a_kaijuflow_copy_with_its_fallback_off_stops_with_one_sentence(self):
+        td = make_copies(self, kf_fallback=False)
+        cfg = make_cfg(td)  # then the file of the fixture folder gets the fallback entry too
+        write_expected(td, [{'copies': ['kaijuflow'], 'settings': rules()},
+                            {'copies': ['kaijuflow'], 'settings': {'ultimateFallback.enabled': True}}])
+        code, text = run_command('record', cfg, FakeWorld(cfg))
+        self.assertEqual(code, 1, text)
+        self.assertEqual([x.split(': change')[0] for x in text.splitlines() if x.strip()], [
+            f"KaijuFlow has ultimateFallback.enabled set to false, but the expected settings file ({cfg['expected_settings']}) says true"])
+        cfg = make_cfg(make_copies(self), expected_settings=cfg['expected_settings'])  # the fixture copy as expected: on
+        self.assertEqual(run_command('record', cfg, FakeWorld(cfg))[0], 0)
 
-    def test_the_committed_file_holds_the_standard_rules_for_kaijuflow_and_usenet_ultimate(self):
+    def test_the_committed_file_holds_the_standard_rules_for_kaijuflow(self):
         rules_ = self.committed()
         self.assertEqual(sorted(rules_), ['movieFilters', 'tvFilters'])
         films, episodes = rules_['movieFilters'], rules_['tvFilters']
@@ -514,48 +494,13 @@ class ExpectedSettingsFileTest(unittest.TestCase):
             self.assertIsNone(re.search(pattern, text), pattern)
 
     def test_the_committed_file_is_the_one_the_preflight_uses_unless_another_is_named(self):
-        cfg = make_cfg(make_copies(self, kf_rules=self.committed(), uu_rules=self.committed()), expected_settings=None)
+        cfg = make_cfg(make_copies(self, kf_rules=self.committed()), expected_settings=None)
         code, text = run_command('record', cfg, FakeWorld(cfg))
         self.assertEqual(code, 0, text)
-        cfg = make_cfg(make_copies(self, kf_rules=self.committed(), uu_rules={}), expected_settings=None)
+        cfg = make_cfg(make_copies(self, kf_rules={}), expected_settings=None)
         code, text = run_command('record', cfg, FakeWorld(cfg))
         self.assertEqual(code, 1, text)
-        self.assertIn('Usenet Ultimate has no movieFilters setting, but the expected settings file (tools/brain/expected-settings.json) has one', text)
-
-    # ---- AltMount direct, through the settings reader and the preflight (#142)
-    def test_altmount_direct_as_captured_before_like_for_like_differs_in_three_settings(self):
-        with open(os.path.join(ALTMOUNT_FIXTURES, 'stremio-as-found.yaml')) as f:
-            found = br.flatten_yaml(f.read())
-        self.assertEqual(brainrun.setting_differences(brainrun.load_expected_settings(), {'altmount-addon': found}), [
-            'AltMount direct has stremio.max_fallback_releases set to "2", but the expected settings file says "0": '
-            "change the test copy's config, or the file if the copy's value is the intended one.",
-            'AltMount direct has stremio.include_library_streams set to "null", but the expected settings file says "false".',
-            'AltMount direct has no stremio.scoring.custom_formats setting, but the expected settings file has one.'])
-        with open(os.path.join(ALTMOUNT_FIXTURES, 'stremio-like-for-like.yaml')) as f:
-            applied = br.flatten_yaml(f.read())
-        self.assertEqual(brainrun.setting_differences(brainrun.load_expected_settings(), {'altmount-addon': applied}), [])
-
-    def addon_preflight(self, lines):
-        cfg = make_cfg(make_copies(self, kf_rules=self.committed(), uu_rules=self.committed(), addon_lines=lines), expected_settings=None)
-        return run_command('record', cfg, FakeWorld(cfg))
-
-    def test_altmount_direct_with_a_fallback_or_without_the_custom_formats_stops_with_one_sentence_each(self):
-        lines = addon_stremio()
-        fallback = [x.replace('max_fallback_releases: 0', 'max_fallback_releases: 2') for x in lines]
-        start = lines.index('        custom_formats:')
-        end = next(i for i in range(start + 1, len(lines)) if not lines[i].startswith('            '))
-        no_formats = lines[:start] + ['        custom_formats: []'] + lines[end:]
-        for changed, sentence in (
-                (fallback, 'AltMount direct has stremio.max_fallback_releases set to "2", but the expected settings file '
-                           '(tools/brain/expected-settings.json) says "0"'),
-                (no_formats, 'AltMount direct has no stremio.scoring.custom_formats setting, but the expected settings file '
-                             '(tools/brain/expected-settings.json) has one')):
-            code, text = self.addon_preflight(changed)
-            self.assertEqual(code, 1, text)
-            self.assertEqual([x.split(': change')[0] for x in text.splitlines() if x.strip()], [sentence])
-        code, text = self.addon_preflight(lines)
-        self.assertEqual(code, 0, text)
-
+        self.assertIn('KaijuFlow has no movieFilters setting, but the expected settings file (tools/brain/expected-settings.json) has one', text)
 
 class DocsOnlyCommitTest(unittest.TestCase):
     """Ticket #113: the image is compared with the code that goes into it, asked of the real git in a small repository."""
@@ -699,10 +644,10 @@ class AddressesTest(unittest.TestCase):
 
         def run(argv, **kw):
             asked.append(argv)
-            return R({'kaijuflow-test': '172.20.0.5\n', 'uu-test': '172.20.0.6\n'}.get(argv[-1], ''), 0 if argv[-1] != 'altmount-addon-test' else 1)
+            return R({'kaijuflow-test': '172.20.0.5\n'}.get(argv[-1], ''))
 
-        got = brainrun.read_addresses(run=run)
-        self.assertEqual(got, {'kaijuflow-test': '172.20.0.5', 'uu-test': '172.20.0.6'})  # one container not up: left out
+        self.assertEqual(brainrun.read_addresses(run=run), {'kaijuflow-test': '172.20.0.5'})
+        self.assertEqual(brainrun.read_addresses(run=lambda argv, **kw: R('', 1)), {})  # a container that is not up: left out
         self.assertTrue(all(a[:2] == ['docker', 'inspect'] for a in asked))
         self.assertTrue(all(a[-1] in testbed.TEST_CONTAINERS for a in asked))
         self.assertTrue(all('kaijuflow-test-net' in a[3] for a in asked))

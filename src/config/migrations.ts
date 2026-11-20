@@ -364,10 +364,30 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   }
 }
 
-// Backend setting (spec #16): existing installs keep NzbDAV; every NzbDAV setting is left as is.
-if (!configData.backend) {
-  configData.backend = 'nzbdav';
-  saveConfigFile(configData);
+// AltMount is the only Backend (#188): an old config naming NzbDAV is read as AltMount.
+// The NzbDAV connection, library and Backend-choice settings are dropped; the shared
+// stream settings (nzbdavStreamingMethod, buffers, nzbdavCacheTimeouts) keep their names.
+{
+  const c = configData as any;
+  const NZBDAV_ONLY = ['backend', 'nzbdavUrl', 'nzbdavApiKey', 'nzbdavWebdavUrl', 'nzbdavWebdavUser', 'nzbdavWebdavPassword',
+    'nzbdavMoviesCategory', 'nzbdavTvCategory', 'staleLibraryFolderCleanupVersion'];
+  const LIBRARY_SEARCH = ['displayLibraryInResults', 'librarySearchThreshold', 'libraryApplyToMovies', 'libraryApplyToSeries',
+    'librarySearchScanUncategorized', 'libraryRunOnCacheHit', 'libraryDeleteAllTile', 'libraryDeletePerStreamTile',
+    'libraryDeleteAllPackScope', 'librarySkipTilePosition'];
+  let dropped = false;
+  const drop = (obj: Record<string, unknown> | undefined, keys: string[]) => {
+    if (!obj) return;
+    for (const k of keys) if (k in obj) { delete obj[k]; dropped = true; }
+  };
+  drop(c, NZBDAV_ONLY);
+  drop(c.searchConfig, LIBRARY_SEARCH);
+  drop(c.healthChecks, ['libraryPreCheck']);
+  drop(c.userAgents, ['nzbdavOperations']);
+  for (const f of [c.filters, c.movieFilters, c.tvFilters]) drop(f, ['preferLibraryResults']);
+  if (dropped) {
+    saveConfigFile(configData);
+    console.log('✅ AltMount is the only Backend: removed the NzbDAV and library settings');
+  }
 }
 
 // Migrate NZB Fallback → Ultimate Fallback. UF fully replaces fallback semantics;

@@ -10,11 +10,11 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { CacheEntry, StreamData, NZBDavConfig } from './types.js';
-import type { BackendId } from '../backends/types.js';
+import type { CacheEntry, StreamData } from './types.js';
+import { BACKEND_ID } from '../backends/types.js';
 import { config as globalConfig } from '../config/index.js';
 import { clearFallbackGroups } from './fallbackManager.js';
-import { clearDeliveryLog, pruneIndexerUnavailableMarks, MULTI_EPISODE_BLOCKED_ERROR, VIDEO_NOT_FOUND_ERROR } from './utils.js';
+import { clearDeliveryLog, pruneIndexerUnavailableMarks, MULTI_EPISODE_BLOCKED_ERROR } from './utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,10 +49,8 @@ const pendingCache = new Map<string, CacheEntry>();
 // ============================================================================
 // Broken Video Path Tracking
 // ============================================================================
-// Video paths whose WebDAV byte fetch returned 4xx/5xx during streaming.
-// Prevents the library check from re-serving a path whose content has been
-// evicted but whose directory entry still exists (NZBDav's PROPFIND can lie
-// after content eviction). 60s TTL covers a single user retry session;
+// Video paths whose byte fetch returned 4xx/5xx during streaming.
+// Prevents re-serving a path whose content has gone. 60s TTL covers a single user retry session;
 // fresh-submission probe success calls clearVideoPathBroken so legitimately
 // re-grabbed paths aren't blocked by TTL.
 
@@ -78,27 +76,6 @@ export function isVideoPathBroken(videoPath: string): boolean {
 /** Drop the broken marker for a path — called after a fresh-submission probe succeeds. */
 export function clearVideoPathBroken(videoPath: string): void {
   brokenVideoPaths.delete(videoPath);
-}
-
-// One-shot per-content marker that the next search for the same cache key
-// should skip Ultimate Library and run indexer queries instead. Set when the
-// user clicks the "Query indexers on next search" tile after a library short-
-// circuit. Auto-expires after 5 minutes; consumed on the next matching search.
-// Key is manifest-scoped: ${manifestKey}:${type}:${imdbId}:${season}:${episode}.
-const LIBRARY_BYPASS_TTL_MS = 5 * 60_000;
-const libraryBypassMarkers = new Map<string, number>();
-
-export function markLibraryBypass(bypassKey: string): void {
-  libraryBypassMarkers.set(bypassKey, Date.now() + LIBRARY_BYPASS_TTL_MS);
-}
-
-/** Returns true exactly once per set marker (one-shot consumption). Auto-evicts on read. */
-export function consumeLibraryBypass(bypassKey: string): boolean {
-  const expiresAt = libraryBypassMarkers.get(bypassKey);
-  if (expiresAt === undefined) return false;
-  libraryBypassMarkers.delete(bypassKey);
-  if (Date.now() >= expiresAt) return false;
-  return true;
 }
 
 /** Dynamic TTL helpers — when mode is 'storage', entries never expire by time */
@@ -144,20 +121,17 @@ function enforceStorageLimit(cache: Map<string, any>, sizeFn: () => number, maxM
  * Used to short-circuit repeat requests for the same stream within the TTL window.
  * The first request runs the full prep pipeline; subsequent requests return the cached result.
  */
-interface ReadyEntry { data: StreamData; indexerName?: string; createdAt: number; expiresAt: number; backend?: BackendId }
+interface ReadyEntry { data: StreamData; indexerName?: string; createdAt: number; expiresAt: number; backend?: string }
 
 /** Backend that made a ready entry. Entries saved before Backends existed have no tag: they are NzbDAV's. */
-const entryBackend = (e: ReadyEntry): BackendId => e.backend ?? 'nzbdav';
-/** Ready entries only count while the Backend that made them is the active one. */
-const isActiveBackendEntry = (e: ReadyEntry): boolean => entryBackend(e) === globalConfig.backend;
+const entryBackend = (e: ReadyEntry): string => e.backend ?? 'nzbdav';
+/** Ready entries only count when AltMount made them: NzbDAV's saved entries (#188) are never served. */
+const isActiveBackendEntry = (e: ReadyEntry): boolean => entryBackend(e) === BACKEND_ID;
 
-/**
- * Remembered ready Stream for a Source, or null. Ignores entries made by another
- * Backend than `backendId` (a Backend switch must never serve a stale link).
- */
-export function findReadyStream(nzbUrl: string, title: string, episodePattern: string | undefined, backendId: BackendId): StreamData | null {
+/** Remembered ready Stream for a Source, or null. Ignores entries NzbDAV made (a stale link). */
+export function findReadyStream(nzbUrl: string, title: string, episodePattern: string | undefined): StreamData | null {
   const entry = readyCache.get(getCacheKey(nzbUrl, title) + (episodePattern ? `:${episodePattern}` : ''));
-  if (!entry || entry.expiresAt <= Date.now() || entryBackend(entry) !== backendId) return null;
+  if (!entry || entry.expiresAt <= Date.now() || !isActiveBackendEntry(entry)) return null;
   return entry.data;
 }
 const readyCache = new Map<string, ReadyEntry>();
@@ -275,7 +249,7 @@ loadCacheFromDisk();
 recalculateTTLExpirations();
 
 /** Injected stream preparation function (set by streamHandler to break circular dep) */
-type PrepareFn = (nzbUrl: string, title: string, config: NZBDavConfig, filePattern?: string, contentType?: string, episodesInSeason?: number, isSeasonPack?: boolean, logPrefix?: string, indexerName?: string, searchExitIp?: string) => Promise<StreamData>;
+type PrepareFn = (nzbUrl: string, title: string, filePattern?: string, contentType?: string, episodesInSeason?: number, isSeasonPack?: boolean, logPrefix?: string, indexerName?: string, searchExitIp?: string) => Promise<StreamData>;
 let prepareFn: PrepareFn | null = null;
 
 export function setPrepareFn(fn: PrepareFn): void {
@@ -311,7 +285,7 @@ function shouldDeadBeUrlWide(nzbUrl: string, isSeasonPack?: boolean): boolean {
 /** Write a resolved stream directly to readyCache (used by Ultimate-Fallback to bypass getOrCreateStream). */
 export function setReadyCacheEntry(cacheKey: string, data: StreamData, indexerName?: string): void {
   const now = Date.now();
-  readyCache.set(cacheKey, { data, indexerName, createdAt: now, expiresAt: now + getReadyTTLMs(), backend: globalConfig.backend });
+  readyCache.set(cacheKey, { data, indexerName, createdAt: now, expiresAt: now + getReadyTTLMs(), backend: BACKEND_ID });
   saveCacheToDisk();
 }
 
@@ -389,7 +363,6 @@ export function recalculateTTLExpirations(): void {
 export async function getOrCreateStream(
   nzbUrl: string,
   title: string,
-  config: NZBDavConfig,
   cachePattern?: string,
   filePattern?: string,
   contentType?: string,
@@ -405,9 +378,8 @@ export async function getOrCreateStream(
 
   const cacheKey = getCacheKey(nzbUrl, title) + (cachePattern ? `:${cachePattern}` : '');
 
-  // The readyCache is no longer read here. `prepareStream` runs `checkNzbLibrary`
-  // first on every resolution, so the live WebDAV listing is the single source
-  // of truth. The cache is still written for telemetry / UI stats.
+  // The readyCache is not read here: `prepareStream` reuses a ready entry only
+  // after its first-byte probe passes.
 
   // Check dead NZB cache — known-bad NZBs are skipped instantly
   const deadKey = getDeadCacheKey(nzbUrl, cachePattern);
@@ -434,7 +406,7 @@ export async function getOrCreateStream(
   // Create new preparation task
   if (verbose) console.log(`${logPrefix}\u{1F195} Starting new stream preparation: ${title}`);
 
-  const promise = prepareFn(nzbUrl, title, config, filePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp);
+  const promise = prepareFn(nzbUrl, title, filePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp);
 
   // Set as pending with a TTL — if the promise hangs, the entry expires and
   // subsequent requests can retry instead of hanging forever.  When UF is
@@ -462,7 +434,7 @@ export async function getOrCreateStream(
       indexerName,
       createdAt,
       expiresAt: createdAt + getReadyTTLMs(),
-      backend: globalConfig.backend,
+      backend: BACKEND_ID,
     });
     if (globalConfig.healthyNzbDbMode === 'storage') {
       enforceStorageLimit(readyCache, estimateReadyCacheSize, globalConfig.healthyNzbDbMaxSizeMB ?? 50);
@@ -573,26 +545,6 @@ export function clearMultiEpisodeDeadEntries(): number {
   return count;
 }
 
-/** Clear dead entries that were false-positives of the orphaned-folder bug
- *  (job completed but the video was absent at the expected path because the
- *  release had been remounted at an iterated path). Called once by the
- *  stale-folder cleanup migration. */
-export function clearVideoNotFoundDeadEntries(): number {
-  let count = 0;
-  for (const [key, entry] of deadNzbCache) {
-    if (entry.error.message === VIDEO_NOT_FOUND_ERROR) {
-      console.log(`\u{1F9F9} Stale cleanup: cleared dead NZB "${entry.title || key}"`);
-      deadNzbCache.delete(key);
-      count++;
-    }
-  }
-  if (count) {
-    console.log(`\u{1F9F9} Cleared ${count} "video not found" dead NZB entries`);
-    saveCacheToDisk();
-  }
-  return count;
-}
-
 /** Clear only timed-out entries from the dead NZB cache */
 export function clearTimeoutDeadEntries(): number {
   let count = 0;
@@ -667,89 +619,6 @@ export function evictReadyByVideoPath(videoPath: string, markDead: boolean = tru
     }
   }
   return null;
-}
-
-/**
- * Clear broken-video marker and any dead-NZB entries that reference
- * `library:<videoPath>` (any episode pattern). Used after a confirmed
- * file-scope delete so the user can re-add the same NZB without a stale
- * ban. Pack-scope cleanup uses `evictReadyByVideoPathPrefix` instead.
- */
-export function clearVideoPathState(videoPath: string): void {
-  let removedAny = false;
-  if (brokenVideoPaths.delete(videoPath)) removedAny = true;
-  const libraryUrl = `library:${videoPath}`;
-  for (const [key] of deadNzbCache) {
-    const sepIdx = key.indexOf('::');
-    const url = sepIdx === -1 ? key : key.substring(0, sepIdx);
-    if (url === libraryUrl) {
-      deadNzbCache.delete(key);
-      removedAny = true;
-    }
-  }
-  if (removedAny) saveCacheToDisk();
-}
-
-/**
- * Evict every ready cache entry whose `data.videoPath` is inside `prefix`,
- * plus dead-NZB entries whose key references `library:<prefix>...` and
- * broken-video markers under the same prefix. Used after a pack-scope
- * delete so the next search re-evaluates fresh and dead entries do not
- * block re-add of the same path.
- */
-export function evictReadyByVideoPathPrefix(prefix: string, markDead: boolean = false): void {
-  const stripped = prefix.replace(/\/+$/, '');
-  const within = (p: string): boolean => p === stripped || p.startsWith(stripped + '/');
-  let removedAny = false;
-
-  for (const [key, entry] of readyCache.entries()) {
-    if (within(entry.data.videoPath)) {
-      readyCache.delete(key);
-      removedAny = true;
-      if (markDead) {
-        const sepIdx = key.indexOf('::');
-        if (sepIdx !== -1) {
-          const nzbUrl = key.substring(0, sepIdx);
-          const epMatch = key.match(EPISODE_PATTERN_SUFFIX_RE);
-          const episodePattern = epMatch ? epMatch[0].substring(1) : undefined;
-          const deadKey = getDeadCacheKey(nzbUrl, episodePattern);
-          if (!deadNzbCache.has(deadKey)) {
-            const now = Date.now();
-            const error = new Error('Video file no longer available (pack deleted)');
-            (error as any).isNzbdavFailure = true;
-            if (episodePattern) (error as any).isEpisodeSpecific = true;
-            deadNzbCache.set(deadKey, {
-              title: extractTitle(key),
-              indexerName: entry.indexerName,
-              size: entry.data.videoSize,
-              error,
-              createdAt: now,
-              expiresAt: now + getDeadTTLMs(),
-            });
-          }
-        }
-      }
-    }
-  }
-
-  // Clear stale dead-NZB entries that reference paths inside the deleted
-  // prefix so the user can re-add the same NZB without a stale ban.
-  const libraryUrlPrefix = `library:${stripped}`;
-  for (const [key] of deadNzbCache) {
-    const sepIdx = key.indexOf('::');
-    const url = sepIdx === -1 ? key : key.substring(0, sepIdx);
-    if (url === libraryUrlPrefix || url.startsWith(libraryUrlPrefix + '/')) {
-      deadNzbCache.delete(key);
-      removedAny = true;
-    }
-  }
-
-  // Clear broken-video markers under the prefix.
-  for (const path of brokenVideoPaths.keys()) {
-    if (within(path)) brokenVideoPaths.delete(path);
-  }
-
-  if (removedAny) saveCacheToDisk();
 }
 
 /**

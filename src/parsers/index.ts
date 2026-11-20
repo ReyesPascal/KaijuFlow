@@ -20,6 +20,3 @@ export { stripDiacritics, normalizeTitle, extractTitleFromRelease, isTextSearchM
 // Re-export Usenet searcher
 export { UsenetSearcher } from './usenetSearcher.js';
 
-// Re-export BDMV/MPLS parser
-export { parseMpls, extractDiscNumber, buildEpisodeMap, resolveEpisode } from './bdmvParser.js';
-export type { MplsPlaylist, MplsClip, BdmvEpisodeMap, BdmvEpisode, ResolvedEpisode } from './bdmvParser.js';
