@@ -27,11 +27,11 @@ The playable link a Backend produced for one Source.
 _Avoid_: tile, source (when you mean the link)
 
 **Backend**:
-A separate service that takes one Source, prepares it, and serves its video file to the player. NzbDAV, AltMount and InfiniDysk are Backends.
+A separate service that takes one Source, prepares it, and serves its video file to the player. AltMount is KaijuFlow's only Backend (NzbDAV was removed in #188; InfiniDysk stays unbuilt).
 _Avoid_: streamer, engine, provider (providers are Usenet servers)
 
 **Parity**:
-The bar for supporting a new Backend: any Source that plays through NzbDAV also plays through the new Backend, seeking works, and a Source that fails shows the failure video and is not offered again.
+The bar a Backend's path through KaijuFlow must meet, tested by the shared Parity scenarios against the fake AltMount: a good Source plays, seeking works, and a Source that fails shows the failure video and is not offered again. (It began as "plays like NzbDAV" when NzbDAV was the reference Backend.)
 _Avoid_: compatibility, support (unqualified)
 
 ### Preparing a Source
