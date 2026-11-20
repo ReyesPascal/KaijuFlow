@@ -29,6 +29,15 @@ test('a saved delivery method wins over the old proxy switch and over an old val
   assert.deepEqual(both, { playStreamBufferMB: 32 });
 });
 
+test('an empty old delivery method does not hide the old proxy switch', () => {
+  const c: Record<string, unknown> = { nzbdavStreamingMethod: null, nzbdavProxyEnabled: false };
+  migratePlaySettings(c);
+  assert.deepEqual(c, { playDeliveryMethod: 'direct' });
+  const blank: Record<string, unknown> = { nzbdavStreamingMethod: '' };
+  migratePlaySettings(blank);
+  assert.deepEqual(blank, {});
+});
+
 test('a config already on the new names is left alone', () => {
   const c: Record<string, unknown> = { playDeliveryMethod: 'proxy', playCacheTimeouts: true };
   assert.equal(migratePlaySettings(c), false);

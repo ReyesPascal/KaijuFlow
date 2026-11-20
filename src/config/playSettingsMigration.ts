@@ -17,12 +17,13 @@ export function migratePlaySettings(c: Record<string, unknown>): boolean {
   ];
   for (const [from, to] of RENAMES) {
     if (!(from in c)) continue;
-    if (c[to] === undefined && c[from] !== undefined) c[to] = c[from];
+    // An empty old value (null, '') counted as unset before: it does not move.
+    if (c[to] == null && c[from] != null && c[from] !== '') c[to] = c[from];
     delete c[from];
     changed = true;
   }
   if ('nzbdavProxyEnabled' in c) {
-    if (c.playDeliveryMethod === undefined && typeof c.nzbdavProxyEnabled === 'boolean') {
+    if (c.playDeliveryMethod == null && typeof c.nzbdavProxyEnabled === 'boolean') {
       c.playDeliveryMethod = c.nzbdavProxyEnabled ? 'proxy' : 'direct';
     }
     delete c.nzbdavProxyEnabled;

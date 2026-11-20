@@ -228,7 +228,7 @@ export function DashboardTab({
                       <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center group-hover:scale-110 group-active:scale-110 transition-transform">
                         <Play className="w-4 h-4 text-purple-400" />
                       </div>
-                      <span className="text-slate-400 text-sm">Streaming Mode</span>
+                      <span className="text-slate-400 text-sm">Streaming</span>
                     </div>
                     <div className="text-3xl font-bold group-hover:text-purple-400 group-active:text-purple-400 transition-colors">
                       AltMount<span className="text-lg font-normal text-purple-400 ml-2">+ {playDeliveryMethod === 'pipe' ? 'Pipe' : playDeliveryMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span>

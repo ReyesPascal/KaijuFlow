@@ -2,8 +2,8 @@
  * Stream Builder
  *
  * Converts processed search results into Stremio Stream objects.
- * Handles URL construction for all streaming modes:
- *   - Backend mode (proxy URL to the stream handler, with fallback groups)
+ * Handles URL construction for every kind of result:
+ *   - Indexer results (play URL to the stream handler, with fallback groups)
  *   - EasyNews DDL (direct CDN resolve URL)
  *   - EasyNews NZB (routed through download client)
  *   - Native (external NZB link)
