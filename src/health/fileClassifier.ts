@@ -124,8 +124,9 @@ export function isCompressedArchive(subject: string): boolean {
     return true;
   }
 
-  // Check for generic split files: .001, .002, etc. (any base name)
-  if (/\.\d{3}$/.test(filename)) {
+  // Check for generic split files: .001, .002, etc. (any base name), and the
+  // two-digit names of a Scrambled RAR set (.10, .11; Unscramble, ADR 0005)
+  if (/\.\d{2,3}$/.test(filename)) {
     return true;
   }
 

@@ -19,7 +19,9 @@
  *   file_flags (vint) -> unpacked_size (vint) -> attributes (vint) -> mtime (uint32, if flag 0x02)
  *   -> data_crc32 (uint32, if flag 0x04) -> compression_info (vint) -> host_os (vint) -> name_length (vint) -> name (UTF-8)
  *
- * Compression info bits 0-5 = version (0 = stored, others = compressed)
+ * Compression info: bits 0-5 = algorithm version (0 for RAR 5, also when packed),
+ * bits 7-9 = method (0 = stored, 1-5 = compressed). A file encryption record
+ * (type 0x01) in the file header's extra area means the data is encrypted (`rar -p`).
  */
 
 import type { ArchiveInfo } from './types.js';
@@ -125,8 +127,8 @@ export function parseRAR5(data: Buffer): ArchiveInfo {
           if (!compressionInfo) { offset = headerEnd + dataAreaSize; continue; }
           offset += compressionInfo.length;
 
-          // Compression version is bits 0-5 (0 = stored/no compression, >0 = compressed)
-          const compressionVersion = compressionInfo.value & 0x3F;
+          // Compression method is bits 7-9 (0 = stored); bits 0-5 are the algorithm version
+          const compressionMethod = (compressionInfo.value >> 7) & 0x07;
 
           // Host OS (vint)
           const hostOS = readVInt(data, offset);
@@ -145,7 +147,12 @@ export function parseRAR5(data: Buffer): ArchiveInfo {
           const filename = data.toString('utf8', offset, offset + nameLength.value);
           offset += nameLength.value;
 
-          const isStored = compressionVersion === 0;
+          const isStored = compressionMethod === 0;
+
+          // Extra area (last extraAreaSize bytes of the header): records of size, type, data
+          if (extraAreaSize > 0 && hasFileEncryptionRecord(data, headerEnd - extraAreaSize, headerEnd)) {
+            info.encrypted = true;
+          }
 
           // Skip directory entries (file_flags bit 0)
           if (!(fileFlags.value & 0x01)) {
@@ -183,6 +190,21 @@ export function parseRAR5(data: Buffer): ArchiveInfo {
   }
 
   return info;
+}
+
+/** True when a file header's extra area holds a file encryption record (type 0x01). */
+function hasFileEncryptionRecord(data: Buffer, start: number, end: number): boolean {
+  let offset = start;
+  while (offset < end) {
+    const size = readVInt(data, offset);
+    if (!size || size.value === 0) return false;
+    const recordEnd = offset + size.length + size.value;
+    const type = readVInt(data, offset + size.length);
+    if (!type || recordEnd > end) return false;
+    if (type.value === 0x01) return true;
+    offset = recordEnd;
+  }
+  return false;
 }
 
 const RAR5_SIGNATURE = Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00]);

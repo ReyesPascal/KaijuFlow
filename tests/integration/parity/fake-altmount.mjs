@@ -7,6 +7,17 @@ import { fault } from './first-byte-fault.mjs';
 import { nzbTag, rarVolumeCheck } from './fake-rar-rules.mjs';
 
 // A release name ending in one of these is filed by real AltMount v0.4.0 as a folder holding the file.
+/**
+ * What real AltMount v0.4.0 logged when it refused a Source (Test 2's cancelled
+ * record, quoted in ADR 0008; the logs are gone). No text was kept for a bare
+ * disc image, only that it failed.
+ */
+const ALTMOUNT_REFUSALS = {
+  'compressed-7z': 'no valid files found in 7zip archive after filtering. Only uncompressed files are supported',
+  'scrambled-rar4': 'all files failed validation',
+  'disc-image': 'failed (no log text kept)',
+};
+
 const VIDEO_EXTS = ['.mkv', '.mp4', '.avi', '.m4v', '.ts', '.m2ts', '.wmv', '.webm', '.mov', '.mpg', '.mpeg'];
 
 export const API_KEY = 'synthetic-altmount-key';
@@ -86,7 +97,8 @@ export async function createFakeAltmount(listen) {
       // Scripted answer (status + body) for a Source, to exercise AltMount's other error answers.
       if (src.scripted) return json(src.scripted.status, src.scripted.body);
       // Failed queue item: pinned handler answers 500 "NZB processing failed" (not 400/422).
-      if (src.rejected) return json(500, { error: 'NZB processing failed' });
+      // A refused Source (addRefused) fails the same way; the reason is only in AltMount's log.
+      if (src.rejected || src.refused) return json(500, { error: 'NZB processing failed' });
       // Not ready in time: AltMount answers 408 with the queue ID; the queued work is NOT cancelled.
       if (src.neverReady) { await new Promise(r => setTimeout(r, 300)); return json(408, { error: 'Timeout waiting for stream', details: src.queueId }); }
       const cached = src.completed;
@@ -151,6 +163,18 @@ export async function createFakeAltmount(listen) {
       sources.get(tag).rejected = true;
       return nzb;
     },
+    /**
+     * Register a Source real AltMount v0.4.0 refuses (#184, ADR 0009): its queue
+     * item fails. `kind`: 'compressed-7z', 'scrambled-rar4' or 'disc-image'.
+     * `refusal(tag)` gives the reason AltMount logs.
+     */
+    addRefused(tag, title, kind) {
+      if (!(kind in ALTMOUNT_REFUSALS)) throw new Error(`unknown refusal ${kind}`);
+      const nzb = this.addMovie(tag, title, Buffer.from('unused'));
+      sources.get(tag).refused = kind;
+      return nzb;
+    },
+    refusal(tag) { return ALTMOUNT_REFUSALS[sources.get(tag)?.refused] ?? null; },
     /** Register a Source that never becomes ready (408 after a short wait). */
     addNeverReady(tag, title) {
       const nzb = this.addMovie(tag, title, Buffer.from('unused'));
