@@ -1,5 +1,5 @@
 // Pins what the Backend declares it can do (R1, #16). AltMount is the only
-// Backend (#188); Ultimate Fallback stays off for it until #190 turns it on.
+// Backend (#188); Ultimate Fallback, the Play-time check's engine, is on for it since #190.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAltmountBackend, buildAltmountSettings } from '../../src/backends/altmount.js';
@@ -11,8 +11,8 @@ test('the Backend is AltMount', () => {
   assert.equal(getActiveBackend().label, 'AltMount');
 });
 
-test('AltMount has no Ultimate Fallback yet', () => {
+test('AltMount runs Ultimate Fallback (the Play-time check)', () => {
   const b = createAltmountBackend(buildAltmountSettings());
-  assert.deepEqual({ ...b.capabilities }, { ultimateFallback: false });
+  assert.deepEqual({ ...b.capabilities }, { ultimateFallback: true });
   assert.deepEqual({ ...backendCapabilities() }, { ...b.capabilities });
 });

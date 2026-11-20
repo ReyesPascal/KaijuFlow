@@ -32,6 +32,7 @@ import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js'
 import { coordinateHealthChecks, autoMarkRemainingResults, autoQueueToBackend } from './healthCheckCoordinator.js';
 import { buildStreams } from './streamBuilder.js';
 import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../play/streamCache.js';
+import { isPlayTimeCheckOn } from '../play/playTimeCheck.js';
 import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
 import { isDatabaseLoaded } from '../anime/animeDatabase.js';
@@ -348,21 +349,24 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // Apply current user filter/sort preferences (deprioritized packs appended after sort)
       allResults = applyUserFilters(allResults, titleMeta.type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks);
 
-      // Health checks pre-filter results before UF sees them; UF also performs
-      // its own per-candidate verification. Pass pre-existing health data so the
-      // coordinator skips already-checked results and smart mode counts them
-      // toward its threshold. Inner gate respects config.healthChecks.enabled.
-      const { healthResults: newHealth, filteredResults } = await coordinateHealthChecks({
-        allResults,
-        type: titleMeta.type,
-        season: titleMeta.season,
-        episode: titleMeta.episode,
-        episodesInSeason: titleMeta.episodesInSeason,
-        episodeAired: titleMeta.episodeAired,
-        preExistingHealth: healthMap.size > 0 ? healthMap : undefined,
-      });
-      for (const [key, val] of newHealth) healthMap.set(key, val);
-      allResults = filteredResults;
+      // Play-time check on (#190): the list goes out at once, unchecked; each
+      // Source is checked when it is about to be played. Otherwise the list-time
+      // check pre-filters results (pre-existing health data lets the coordinator
+      // skip already-checked results; its inner gate respects
+      // config.healthChecks.enabled). #191 deletes the list-time check.
+      if (!isPlayTimeCheckOn()) {
+        const { healthResults: newHealth, filteredResults } = await coordinateHealthChecks({
+          allResults,
+          type: titleMeta.type,
+          season: titleMeta.season,
+          episode: titleMeta.episode,
+          episodesInSeason: titleMeta.episodesInSeason,
+          episodeAired: titleMeta.episodeAired,
+          preExistingHealth: healthMap.size > 0 ? healthMap : undefined,
+        });
+        for (const [key, val] of newHealth) healthMap.set(key, val);
+        allResults = filteredResults;
+      }
 
       // Auto-mark EasyNews and Zyclops results as verified
       autoMarkRemainingResults(allResults, healthMap);

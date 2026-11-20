@@ -22,17 +22,12 @@ import { encodeTileEnvelope, toContentType } from '../play/redirectHelpers.js';
 import { buildStreamDisplay } from './streamDisplay.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
 
-// Ultimate Fallback tile name + path
-const UF_TILE_BASE_NAME = '👑 Ultimate Fallback';
+// The Best entry (GLOSSARY): Ultimate Fallback's tile, the Play-time check's way in (#190).
 const UF_STREAM_PATH = 'ultimate-fallback';
 
-/** Build the UF tile's display name + title based on the active preference mode.
- *  Brand goes in the `name` chip (left), mode + description in `title` (right detail). */
-function ufTileDisplay(mode: 'speed' | 'priority' | undefined): { name: string; title: string } {
-  if (mode === 'priority') {
-    return { name: UF_TILE_BASE_NAME, title: '⚬ Priority Mode\n⚬ Auto-select highest-quality healthy stream' };
-  }
-  return { name: UF_TILE_BASE_NAME, title: '⚬ Speed Mode\n⚬ Auto-select fastest healthy stream' };
+/** The Best entry's name chip and detail text. The name is fixed by spec #183 ("KaijuFlow ▶ Best"). */
+function bestEntryDisplay(): { name: string; title: string } {
+  return { name: 'KaijuFlow ▶ Best', title: '⚬ Plays the first healthy Source of the list\n⚬ Checked when you press play' };
 }
 
 
@@ -316,7 +311,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
     }
   }
 
-  // Prepend synthetic Ultimate Fallback tile so users can opt into the UF lobby explicitly.
+  // Prepend the Best entry (Ultimate Fallback's tile): the first healthy Source, found by the Play-time check.
   // The sessionKey gate skips item pages
   // that don't have an imdbId (shouldn't happen in practice, but defensive). streams.length
   // gate suppresses the tile when there are no search results, so a lone UF tile cannot
@@ -340,7 +335,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
     const ufUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/play/stream/${UF_STREAM_PATH}?t=${ufT}`;
     // bingeGroup matches regular tiles so cross-episode auto-play can continue via UF.
     const ufBingeGroup = autoPlay.enabled && autoPlay.method === 'firstFile' ? 'usenetultimate' : undefined;
-    const ufDisplay = ufTileDisplay(config.ultimateFallback?.preferenceMode);
+    const ufDisplay = bestEntryDisplay();
     streams.unshift({
       name: ufDisplay.name,
       title: ufDisplay.title,
