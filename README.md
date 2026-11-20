@@ -69,7 +69,7 @@ Keep provider credentials, indexer keys, private configuration, logs, and runtim
 
 - What a speed test is, and the words it uses: [GLOSSARY.md](GLOSSARY.md), "Measuring", and [ADR 0007](docs/adr/0007-speed-tests-play-as-at-home.md).
 - How a run is made: [tools/brain/RUNBOOK.md](tools/brain/RUNBOOK.md); the tools: [tools/brain/README.md](tools/brain/README.md).
-- The plan: spec [#58](https://github.com/ReyesPascal/KaijuFlow/issues/58); the speed-test build: spec [#159](https://github.com/ReyesPascal/KaijuFlow/issues/159).
+- The plan: spec [#58](https://github.com/ReyesPascal/KaijuFlow/issues/58); the speed-test build: spec [#159](https://github.com/ReyesPascal/KaijuFlow/issues/159); KaijuFlow with AltMount, fast and lean: spec [#183](https://github.com/ReyesPascal/KaijuFlow/issues/183) (the map since 2026-11-20).
 - The latest results: the [Speed Check page](https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD).
 
 </details>

@@ -1,5 +1,7 @@
 # KaijuFlow plays plain video only
 
+**Superseded** by [ADR 0009](0009-health-check-passes-what-altmount-streams.md) (2026-11-20): the health check passes what AltMount streams. Never built (#179 closed, not planned).
+
 KaijuFlow plays only Sources whose NZB holds a video file posted as is. Its health check blocks every other Source before sampling a segment: any archive (RAR4 or RAR5, stored or compressed, 7z, ZIP, encrypted or not) and any NZB whose files it cannot name as video or archive (obfuscated names). Usenet Ultimate and AltMount direct are not changed. Decided by the owner on 2026-11-15, after Test 2's first record (#156) was cancelled.
 
 The owner's words: "HERE IS A NEW RULE FOR SOURCES, ONLY PLAIN VIDEO"; asked whether stored RAR, which both Backends can stream, is out too: "plain video only"; on where it applies: "kf AND uu FIND OUT AND ALTMOUNT DIREC DOESNT THATS JUST HOW IT IS", then "LEAVE UU UNCHANGED, APPLY RULE TO KF"; on obfuscated NZBs: "BLOCK UNKNOWN".

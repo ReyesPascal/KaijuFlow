@@ -59,7 +59,7 @@ KaijuFlow has movieFilters.sortOrder entry 2 set to "size", but the expected set
 | One try per play: no hidden fallback | `ultimateFallback.enabled = false` (already so) | `stremio.max_fallback_releases = 0` and `stremio.include_library_streams = false` | the preflight, against `expected-settings.json` |
 | The same indexer and Backend connections | one indexer (NinjaCentral); 25 connections per Backend | the same | the preflight's address and connection checks |
 
-**Plain video only, KaijuFlow alone (ADR 0008).** KaijuFlow's health check blocks every Source that is not a video file posted as is (archives of any kind, and NZBs with no file named as video or archive). Usenet Ultimate and AltMount direct still play archives. That is part of KaijuFlow's health check, as skipping a dead Source is, so it is not a difference the stand-in makes up for. A title where KaijuFlow's top pick states a lower resolution than the other setup's is counted, not left out (owner, "COUNT THEM"; "Like for like per title" below).
+**What KaijuFlow plays ([ADR 0009](../../../docs/adr/0009-health-check-passes-what-altmount-streams.md), replacing ADR 0008).** KaijuFlow's health check passes only what AltMount is shown to stream: plain video, stored RAR5, stored 7z; it blocks every other archive and any NZB with no file it can name. Comparing setups ends with spec #183; the rules below that serve comparing setups are deleted by its tickets.
 
 **The stand-in's list.** Every search answer (`t=search`, `movie`, `tvsearch`) goes out filtered, in record and replay mode alike. The answers stored on disk stay as the indexer sent them, so a later change to the rules needs no new recording.
 
