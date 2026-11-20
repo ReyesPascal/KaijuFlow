@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seasonEpisodeOf } from '../../src/backends/altmount.js';
-import { buildEpisodePattern, buildDateEpisodePattern } from '../../src/nzbdav/utils.js';
+import { buildEpisodePattern, buildDateEpisodePattern } from '../../src/play/utils.js';
 
 test('season and episode are read back from the episode pattern', () => {
   for (const multi of [false, true]) {

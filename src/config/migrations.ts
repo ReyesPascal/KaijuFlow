@@ -19,6 +19,7 @@
 import 'dotenv/config';
 import crypto from 'crypto';
 import { configData, saveConfigFile } from './schema.js';
+import { migratePlaySettings } from './playSettingsMigration.js';
 
 // Migrate from .env if config is empty and .env has indexers
 if (configData.indexers.length === 0) {
@@ -366,7 +367,7 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
 
 // AltMount is the only Backend (#188): an old config naming NzbDAV is read as AltMount.
 // The NzbDAV connection, library and Backend-choice settings are dropped; the shared
-// stream settings (nzbdavStreamingMethod, buffers, nzbdavCacheTimeouts) keep their names.
+// stream settings are renamed by the next migration (#200).
 {
   const c = configData as any;
   const NZBDAV_ONLY = ['backend', 'nzbdavUrl', 'nzbdavApiKey', 'nzbdavWebdavUrl', 'nzbdavWebdavUser', 'nzbdavWebdavPassword',
@@ -387,6 +388,21 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   if (dropped) {
     saveConfigFile(configData);
     console.log('✅ AltMount is the only Backend: removed the NzbDAV and library settings');
+  }
+}
+
+// The play settings lose their NzbDAV names (#200), and the streaming-mode choice is
+// dropped: KaijuFlow always plays through the Backend.
+{
+  if (migratePlaySettings(configData as unknown as Record<string, unknown>)) {
+    saveConfigFile(configData);
+    console.log('✅ Renamed the nzbdav* stream settings to play* and removed streamingMode');
+  }
+  const renamedEnv = ['STREAMING_MODE', 'NZBDAV_PROXY_ENABLED', 'NZBDAV_STREAMING_METHOD', 'NZBDAV_STREAM_BUFFER_MB', 'NZBDAV_PIPE_BUFFER_MB',
+    'NZBDAV_MAX_SELF_REDIRECTS', 'NZBDAV_STREAM_MAX_RECONNECTS', 'NZBDAV_FIRST_SOURCE_SWITCH_MS'];
+  const oldEnv = renamedEnv.filter(name => process.env[name] !== undefined && process.env[name] !== '');
+  if (oldEnv.length > 0) {
+    console.warn(`⚠️  Deprecated env vars set but ignored: ${oldEnv.join(', ')}. Use the PLAY_* names (see .env.example).`);
   }
 }
 

@@ -1,5 +1,5 @@
 // What this does:
-//   Confirmation dialog shown when the user enables direct streaming mode.
+//   Confirmation dialog shown when the user picks the direct delivery method.
 //   Direct mode redirects the player to AltMount's file URL with its download key embedded,
 //   so the modal lists the best practices that mitigate that exposure.
 

@@ -35,13 +35,13 @@ interface UltimateFallbackOverlayProps {
   setUltimateFallback: React.Dispatch<React.SetStateAction<UltimateFallbackOverlayProps['ultimateFallback']>>;
   healthChecks: HealthChecksState;
   setHealthChecks: React.Dispatch<React.SetStateAction<HealthChecksState>>;
-  nzbdavStreamingMethod: 'pipe' | 'proxy' | 'direct';
-  setNzbdavStreamingMethod: React.Dispatch<React.SetStateAction<'pipe' | 'proxy' | 'direct'>>;
+  playDeliveryMethod: 'pipe' | 'proxy' | 'direct';
+  setPlayDeliveryMethod: React.Dispatch<React.SetStateAction<'pipe' | 'proxy' | 'direct'>>;
   setDirectModeWarning: React.Dispatch<React.SetStateAction<{ show: boolean }>>;
-  nzbdavStreamBufferMB: number;
-  setNzbdavStreamBufferMB: React.Dispatch<React.SetStateAction<number>>;
-  nzbdavPipeBufferMB: number;
-  setNzbdavPipeBufferMB: React.Dispatch<React.SetStateAction<number>>;
+  playStreamBufferMB: number;
+  setPlayStreamBufferMB: React.Dispatch<React.SetStateAction<number>>;
+  playPipeBufferMB: number;
+  setPlayPipeBufferMB: React.Dispatch<React.SetStateAction<number>>;
   apiFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
@@ -51,13 +51,13 @@ export function UltimateFallbackOverlay({
   setUltimateFallback,
   healthChecks,
   setHealthChecks,
-  nzbdavStreamingMethod,
-  setNzbdavStreamingMethod,
+  playDeliveryMethod,
+  setPlayDeliveryMethod,
   setDirectModeWarning,
-  nzbdavStreamBufferMB,
-  setNzbdavStreamBufferMB,
-  nzbdavPipeBufferMB,
-  setNzbdavPipeBufferMB,
+  playStreamBufferMB,
+  setPlayStreamBufferMB,
+  playPipeBufferMB,
+  setPlayPipeBufferMB,
   apiFetch,
 }: UltimateFallbackOverlayProps) {
   const update = useCallback(<K extends keyof typeof ultimateFallback>(key: K, value: (typeof ultimateFallback)[K]) => {
@@ -152,7 +152,7 @@ export function UltimateFallbackOverlay({
   }, [setHealthChecks]);
 
   // Backend forces proxy when both fallback AND UF are off — mirror here so the UI stays truthful
-  const effectiveMethod = !ultimateFallback.enabled ? 'proxy' as const : nzbdavStreamingMethod;
+  const effectiveMethod = !ultimateFallback.enabled ? 'proxy' as const : playDeliveryMethod;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => onClose()}>
@@ -254,17 +254,17 @@ export function UltimateFallbackOverlay({
                 <button
                   key={method}
                   role="radio"
-                  aria-checked={nzbdavStreamingMethod === method}
+                  aria-checked={playDeliveryMethod === method}
                   onClick={() => {
-                    if (method === 'direct' && nzbdavStreamingMethod !== 'direct') {
+                    if (method === 'direct' && playDeliveryMethod !== 'direct') {
                       setDirectModeWarning({ show: true });
                       return;
                     }
-                    setNzbdavStreamingMethod(method);
+                    setPlayDeliveryMethod(method);
                   }}
                   className={clsx(
                     "flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-colors",
-                    nzbdavStreamingMethod === method
+                    playDeliveryMethod === method
                       ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
                       : "bg-slate-700/50 border-slate-600 text-slate-400 hover:text-slate-300"
                   )}
@@ -274,9 +274,9 @@ export function UltimateFallbackOverlay({
               ))}
             </div>
             <p className="text-xs text-slate-500">
-              {nzbdavStreamingMethod === 'pipe'
+              {playDeliveryMethod === 'pipe'
                 ? 'Streams through a local pipe with buffering and automatic reconnection. Lowest memory overhead, no request modifications.'
-                : nzbdavStreamingMethod === 'proxy'
+                : playDeliveryMethod === 'proxy'
                 ? 'Dual-stage buffered proxy with manual flow control and automatic reconnection. Recommended default for most setups.'
                 : 'Player is redirected directly to the WebDAV URL with credentials embedded. Only supported on select Stremio applications.'}
             </p>
@@ -288,7 +288,7 @@ export function UltimateFallbackOverlay({
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium text-slate-300">{effectiveMethod === 'pipe' ? 'Pipe Stream Buffer' : 'Dual-Stage Proxy Stream Buffer'}</div>
               <button
-                onClick={() => effectiveMethod === 'pipe' ? setNzbdavPipeBufferMB(8) : setNzbdavStreamBufferMB(128)}
+                onClick={() => effectiveMethod === 'pipe' ? setPlayPipeBufferMB(8) : setPlayStreamBufferMB(128)}
                 className="text-xs text-amber-400 hover:text-amber-300"
               >
                 Reset
@@ -300,11 +300,11 @@ export function UltimateFallbackOverlay({
                 min={effectiveMethod === 'pipe' ? 1 : 8}
                 max={effectiveMethod === 'pipe' ? 16 : 256}
                 step={effectiveMethod === 'pipe' ? 1 : 8}
-                value={effectiveMethod === 'pipe' ? nzbdavPipeBufferMB : nzbdavStreamBufferMB}
-                onChange={(e) => effectiveMethod === 'pipe' ? setNzbdavPipeBufferMB(parseInt(e.target.value, 10)) : setNzbdavStreamBufferMB(parseInt(e.target.value, 10))}
+                value={effectiveMethod === 'pipe' ? playPipeBufferMB : playStreamBufferMB}
+                onChange={(e) => effectiveMethod === 'pipe' ? setPlayPipeBufferMB(parseInt(e.target.value, 10)) : setPlayStreamBufferMB(parseInt(e.target.value, 10))}
                 className="flex-1 accent-amber-400"
               />
-              <span className="text-sm text-slate-300 w-16 text-right">{effectiveMethod === 'pipe' ? nzbdavPipeBufferMB : nzbdavStreamBufferMB} MB</span>
+              <span className="text-sm text-slate-300 w-16 text-right">{effectiveMethod === 'pipe' ? playPipeBufferMB : playStreamBufferMB} MB</span>
             </div>
             <p className="text-xs text-slate-500">
               {effectiveMethod === 'pipe'
@@ -350,7 +350,7 @@ export function UltimateFallbackOverlay({
               <div>
                 <div className="text-sm text-slate-200 font-medium">On Search</div>
                 <p className="text-xs text-slate-500">Pre-resolve Ultimate Fallback as soon as results arrive. By the time you enter the Ultimate Fallback lobby, results will have already begun processing.</p>
-                <p className="text-[11px] text-amber-400 mt-1">⚠️ Suppresses Health Checks "Auto-queue to NzbDAV" when enabled.</p>
+                <p className="text-[11px] text-amber-400 mt-1">⚠️ Suppresses Health Checks "Auto-queue to the Backend" when enabled.</p>
               </div>
             </label>
           </div>
@@ -428,14 +428,14 @@ export function UltimateFallbackOverlay({
                 <p className="text-xs text-slate-500">Prefer the fastest resolving NZB, even if there are unresolved candidates with higher priority.</p>
               </div>
             </label>
-            <p className="text-xs text-slate-500 pt-1">Mode also controls NzbDAV Wait Times below.</p>
+            <p className="text-xs text-slate-500 pt-1">Mode also controls Backend Wait Times below.</p>
           </div>
 
-          {/* NzbDAV Wait Times — per-mode set */}
+          {/* Backend Wait Times — per-mode set */}
           <div className={clsx("bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-4 transition-opacity", !ultimateFallback.enabled && "opacity-40 pointer-events-none")}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <div className="text-sm font-medium text-slate-300">NzbDAV Wait Times</div>
+                <div className="text-sm font-medium text-slate-300">Backend Wait Times</div>
                 <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300/90 font-medium">
                   Editing: {isPriority ? 'Priority' : 'Speed'}
                 </span>
@@ -604,9 +604,9 @@ export function UltimateFallbackOverlay({
               </div>
             </div>
             <ul className="text-xs text-slate-500 space-y-1 list-disc list-inside">
-              <li>The time Ultimate Fallback will wait for a health-verified NZB to finish processing in NzbDAV before moving on to the next candidate.</li>
+              <li>The time Ultimate Fallback will wait for a health-verified NZB to finish preparing on the Backend before moving on to the next candidate.</li>
               <li>Priority and Speed modes use a separate set of wait times, switch the Preference Mode above to edit each one.</li>
-              <li>Set to 0 (∞) to disbale the timer and let nzbdav take as long as it needs to finish. Max 1 min 30s. Hold the +/- buttons to accelerate.</li>
+              <li>Set to 0 (∞) to disable the timer and let the Backend take as long as it needs to finish. Max 1 min 30s. Hold the +/- buttons to accelerate.</li>
             </ul>
           </div>
 
@@ -652,7 +652,7 @@ export function UltimateFallbackOverlay({
                     <span>max NNTP connections ({ultimateFallback.candidateCount} candidate{ultimateFallback.candidateCount !== 1 ? 's' : ''} × {Math.max(1, enabledPoolProviders)} pool provider{enabledPoolProviders !== 1 ? 's' : ''})</span>
                   </div>
                   <div className="text-xs text-amber-400/50 mt-1">
-                    These connections are separate from NzbDAV's download connections. Ensure your provider allows enough concurrent connections for both.
+                    These connections are separate from AltMount's download connections. Ensure your provider allows enough concurrent connections for both.
                   </div>
                 </>
               )}
@@ -725,8 +725,8 @@ export function UltimateFallbackOverlay({
               <div className="flex-1">
                 <div className="text-sm font-medium text-slate-300">Health Checking</div>
                 <ul className="text-xs text-slate-500 mt-0.5 list-disc list-inside space-y-1">
-                  <li>Enabling verifies every candidate in parallel before and during NzbDAV submission, sampling articles to confirm the NZB is alive and detecting its container format up front. Evicting an NzbDAV job if necessary and cleansing the submission pipleline at the same time.</li>
-                  <li>Disable to skip this parallel phase, Ultimate Fallback will submit candidates straight to nzbdav and detect each container after extraction.</li>
+                  <li>Enabling verifies every candidate in parallel before and during the hand-off to the Backend, sampling articles to confirm the NZB is alive and detecting its container format up front. Evicting a Backend job if necessary and cleansing the submission pipeline at the same time.</li>
+                  <li>Disable to skip this parallel phase, Ultimate Fallback will hand candidates straight to the Backend and detect each container after extraction.</li>
                 </ul>
               </div>
               <button
@@ -803,7 +803,7 @@ export function UltimateFallbackOverlay({
             <button
               onClick={() => {
                 setUltimateFallback({ ...DEFAULT_ULTIMATE_FALLBACK });
-                setNzbdavStreamingMethod('proxy');
+                setPlayDeliveryMethod('proxy');
               }}
               className="btn-secondary w-full"
             >

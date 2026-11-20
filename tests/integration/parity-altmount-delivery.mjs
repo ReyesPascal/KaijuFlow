@@ -21,14 +21,14 @@ try {
   const { config, configData } = await load('config/index');
   backend.configure(configData);
   const { default: express } = await import(root + '/node_modules/express/index.js');
-  const { handleStream } = await load('nzbdav/streamHandler');
-  const { createNzbdavStreamRoutes } = await load('routes/nzbdav');
+  const { handleStream } = await load('play/streamHandler');
+  const { createPlayStreamRoutes } = await load('routes/play');
   const app = express();
-  app.use('/stremio/:manifestKey/nzbdav', createNzbdavStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
+  app.use('/stremio/:manifestKey/play', createPlayStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
   const kaijuflow = await listen(app);
   const mediaFor = tag => Buffer.from(`KaijuFlow delivery bytes for ${tag}: 0123456789abcdefghijklmnopqrstuvwxyz`);
   const downloadKey = crypto.createHash('sha256').update(API_KEY).digest('hex');
-  const tileUrl = (nzb, title) => `${kaijuflow}/stremio/synthetic-manifest/nzbdav/stream/movie.mkv?t=` + Buffer.from(JSON.stringify({ url: nzb, title, indexer: 'Delivery', ty: 'movie' })).toString('base64url');
+  const tileUrl = (nzb, title) => `${kaijuflow}/stremio/synthetic-manifest/play/stream/movie.mkv?t=` + Buffer.from(JSON.stringify({ url: nzb, title, indexer: 'Delivery', ty: 'movie' })).toString('base64url');
   const leaks = text => text.includes(API_KEY) || text.includes(downloadKey) || /download_key/i.test(text);
   const headerText = h => [...h.entries()].map(([k, v]) => `${k}: ${v}`).join('\n');
   const results = [];
@@ -37,7 +37,7 @@ try {
 
   for (const method of ['proxy', 'pipe']) {
     await check(`${method}-plays-seeks-hides-key`, async () => {
-      configData.nzbdavStreamingMethod = method;
+      configData.playDeliveryMethod = method;
       const media = mediaFor(method), title = `KaijuFlow.Delivery.${method}.2026.1080p.WEB-DL.H264`;
       const url = tileUrl(backend.addMovie(method, title, media), title);
       const full = await get(url);
@@ -54,7 +54,7 @@ try {
   }
 
   await check('direct-redirects-to-file-route-and-seeks', async () => {
-    configData.nzbdavStreamingMethod = 'direct';
+    configData.playDeliveryMethod = 'direct';
     const media = mediaFor('direct'), title = 'KaijuFlow.Delivery.direct.2026.1080p.WEB-DL.H264';
     const url = tileUrl(backend.addMovie('direct', title, media), title);
     const r = await get(url);
@@ -74,7 +74,7 @@ try {
   });
 
   await check('proxy-default-for-unset-method', async () => {
-    configData.nzbdavStreamingMethod = 'proxy';
+    configData.playDeliveryMethod = 'proxy';
     const media = mediaFor('dflt'), title = 'KaijuFlow.Delivery.dflt.2026.1080p.WEB-DL.H264';
     const r = await get(tileUrl(backend.addMovie('dflt', title, media), title));
     assert.equal(r.status, 200);

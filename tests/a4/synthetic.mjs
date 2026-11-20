@@ -316,7 +316,7 @@ try {
 // 404 on loopback. Tests forwarding, 416 recovery and same-origin fallback.
 try {
   assert.ok(manifestKey,'auth fixture required');
-  const {createNzbdavStreamRoutes}=await src('routes/nzbdav.js');
+  const {createPlayStreamRoutes}=await src('routes/play.js');
   const body=Buffer.from('0123456789','ascii');
   const upstreamRanges=[];
   const fake=await serve((req,res)=>{
@@ -337,16 +337,16 @@ try {
   });
   configData.altmountUrl='http://127.0.0.1:'+fake.port;
   configData.altmountApiKey='synthetic-key';
-  configData.nzbdavStreamingMethod='pipe';
+  configData.playDeliveryMethod='pipe';
   const deps={
     config,handleStream:async(_req,res)=>res.end(),isStreamCached:()=>false,
     getLatestVersions:()=>({chrome:'synthetic'})
   };
   const app=express();
-  app.use('/stremio/:manifestKey/nzbdav',authMw.validateManifestKey,createNzbdavStreamRoutes(deps));
+  app.use('/stremio/:manifestKey/play',authMw.validateManifestKey,createPlayStreamRoutes(deps));
   const s=await serve(app);
   try{
-    const endpoint='/stremio/'+manifestKey+'/nzbdav/v?path='+encodeURIComponent('/content/movies/A4Media');
+    const endpoint='/stremio/'+manifestKey+'/play/v?path='+encodeURIComponent('/content/movies/A4Media');
     const full=await fetch('http://127.0.0.1:'+s.port+endpoint);
     assert.equal(full.status,200);assert.equal(await full.text(),'0123456789');
     const partial=await fetch('http://127.0.0.1:'+s.port+endpoint,{headers:{Range:'bytes=2-5'}});
@@ -356,10 +356,10 @@ try {
     const recovered=await fetch('http://127.0.0.1:'+s.port+endpoint,{headers:{Range:'bytes=100-'}});
     assert.equal(recovered.status,200);assert.equal(await recovered.text(),'0123456789');
     assert.deepEqual(upstreamRanges.slice(0,4),['(none)','bytes=2-5','bytes=100-','(none)']);
-    const missing='/stremio/'+manifestKey+'/nzbdav/v?path='+encodeURIComponent('/content/movies/MissingMedia');
+    const missing='/stremio/'+manifestKey+'/play/v?path='+encodeURIComponent('/content/movies/MissingMedia');
     const gone=await fetch('http://127.0.0.1:'+s.port+missing);
     assert.equal(gone.status,404);
-    const fb='/stremio/'+manifestKey+'/nzbdav/stream/ultimate-fallback';
+    const fb='/stremio/'+manifestKey+'/play/stream/ultimate-fallback';
     const fallback=await fetch('http://127.0.0.1:'+s.port+missing+'&_fb='+encodeURIComponent(fb),
       {redirect:'manual'});
     assert.equal(fallback.status,302);
@@ -442,7 +442,7 @@ try {
 
 // Original cache recovery markers, exercised with only disposable keys.
 try {
-  const cache=await src('nzbdav/streamCache.js');
+  const cache=await src('play/streamCache.js');
   const video='/content/movies/A4BrokenVideo.mkv';
   assert.equal(cache.isVideoPathBroken(video),false);
   cache.markVideoPathBroken(video);

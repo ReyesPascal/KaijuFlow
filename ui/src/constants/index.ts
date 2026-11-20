@@ -193,7 +193,7 @@ export const DEFAULT_ULTIMATE_FALLBACK = {
   maxAttempts: 0,
   desiredBackups: 0,
   backupProcessingLimit: 3,
-  // Keep in sync with src/nzbdav/timeoutDefaults.ts (UF_TIMEOUT_DEFAULTS).
+  // Keep in sync with src/play/timeoutDefaults.ts (UF_TIMEOUT_DEFAULTS).
   priorityMoviesTimeoutSeconds: 30,
   priorityTvTimeoutSeconds: 15,
   prioritySeasonPackTimeoutSeconds: 30,

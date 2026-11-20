@@ -42,7 +42,6 @@ export function updateSettings(settings: {
   addonEnabled?: boolean;
   cacheEnabled?: boolean;
   cacheTTL?: number;
-  streamingMode?: 'nzbdav' | 'stremio';
   indexManager?: 'newznab' | 'prowlarr' | 'nzbhydra';
   prowlarrUrl?: string;
   prowlarrApiKey?: string;
@@ -59,10 +58,10 @@ export function updateSettings(settings: {
   altmountApiKey?: string;
   altmountCategory?: string;
   altmountPrepareTimeout?: number;
-  nzbdavStreamBufferMB?: number;
-  nzbdavPipeBufferMB?: number;
-  nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';
-  nzbdavCacheTimeouts?: boolean;
+  playStreamBufferMB?: number;
+  playPipeBufferMB?: number;
+  playDeliveryMethod?: 'pipe' | 'proxy' | 'direct';
+  playCacheTimeouts?: boolean;
   healthyNzbDbMode?: 'time' | 'storage';
   healthyNzbDbTTL?: number;
   healthyNzbDbMaxSizeMB?: number;
@@ -146,9 +145,6 @@ export function updateSettings(settings: {
   if (settings.cacheTTL !== undefined) {
     configData.cacheTTL = settings.cacheTTL;
   }
-  if (settings.streamingMode !== undefined) {
-    configData.streamingMode = settings.streamingMode;
-  }
   if (settings.indexManager !== undefined) {
     configData.indexManager = settings.indexManager;
   }
@@ -210,18 +206,17 @@ export function updateSettings(settings: {
   if (settings.altmountPrepareTimeout !== undefined) {
     configData.altmountPrepareTimeout = Math.max(1, Math.round(Number(settings.altmountPrepareTimeout)) || 300);
   }
-  if (settings.nzbdavStreamBufferMB !== undefined) {
-    configData.nzbdavStreamBufferMB = settings.nzbdavStreamBufferMB;
+  if (settings.playStreamBufferMB !== undefined) {
+    configData.playStreamBufferMB = settings.playStreamBufferMB;
   }
-  if (settings.nzbdavPipeBufferMB !== undefined) {
-    configData.nzbdavPipeBufferMB = settings.nzbdavPipeBufferMB;
+  if (settings.playPipeBufferMB !== undefined) {
+    configData.playPipeBufferMB = settings.playPipeBufferMB;
   }
-  if (settings.nzbdavStreamingMethod !== undefined) {
-    configData.nzbdavStreamingMethod = settings.nzbdavStreamingMethod;
-    delete configData.nzbdavProxyEnabled;
+  if (settings.playDeliveryMethod !== undefined) {
+    configData.playDeliveryMethod = settings.playDeliveryMethod;
   }
-  if (settings.nzbdavCacheTimeouts !== undefined) {
-    configData.nzbdavCacheTimeouts = settings.nzbdavCacheTimeouts;
+  if (settings.playCacheTimeouts !== undefined) {
+    configData.playCacheTimeouts = settings.playCacheTimeouts;
   }
   if (settings.healthyNzbDbMode !== undefined) {
     configData.healthyNzbDbMode = settings.healthyNzbDbMode;
@@ -269,8 +264,8 @@ export function updateSettings(settings: {
     console.log(`🔒 proxy configuration changed; clearing proxy cache, search cache, fallback groups, and in-flight Ultimate Fallback sessions`);
     import('../proxy.js').then(m => m.clearProxyCache()).catch(() => {});
     import('../addon/index.js').then(m => m.clearSearchCache?.()).catch(() => {});
-    import('../nzbdav/fallbackManager.js').then(m => m.clearFallbackGroups?.()).catch(() => {});
-    import('../nzbdav/ultimateFallback.js').then(m => m.cancelAllUltimateFallbacks?.()).catch(() => {});
+    import('../play/fallbackManager.js').then(m => m.clearFallbackGroups?.()).catch(() => {});
+    import('../play/ultimateFallback.js').then(m => m.cancelAllUltimateFallbacks?.()).catch(() => {});
   }
   if (settings.searchConfig !== undefined) {
     // Clear the cached TVDB bearer token if the API key changed. The token is
@@ -420,7 +415,7 @@ export function updateSettings(settings: {
   // of vetting indexers changes (or on a disable, since UF tile injection
   // depends on the enabled flag).
   if (ufEnableTransitioned) {
-    import('../nzbdav/ultimateFallback.js').then(m => m.cancelAllUltimateFallbacks()).catch(() => {});
+    import('../play/ultimateFallback.js').then(m => m.cancelAllUltimateFallbacks()).catch(() => {});
   }
   if (ufEnableTransitioned || ufIndexersChanged) {
     import('../addon/index.js').then(m => m.clearSearchCache()).catch(() => {});

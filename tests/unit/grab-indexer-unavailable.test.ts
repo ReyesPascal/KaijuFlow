@@ -7,7 +7,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { grabNzb } from '../../src/backends/nzbGrab.ts';
-import { isIndexerUnavailableMessage, pruneIndexerUnavailableMarks } from '../../src/nzbdav/utils.ts';
+import { isIndexerUnavailableMessage, pruneIndexerUnavailableMarks } from '../../src/play/utils.ts';
 import { captureLogs } from './capture-logs.ts';
 import { isSourceFailure } from '../../src/backends/types.ts';
 
@@ -103,7 +103,7 @@ test('stored dead marks from an unavailable indexer are recognised, bad-Source o
 });
 
 test('loading the dead cache drops the indexer-caused marks and keeps the rest', () => {
-  const mark = (message: string) => ({ title: 't', indexerName: 'x', error: { message, isNzbdavFailure: true }, createdAt: 1, expiresAt: 0 });
+  const mark = (message: string) => ({ title: 't', indexerName: 'x', error: { message, isBadSource: true }, createdAt: 1, expiresAt: 0 });
   const stored = {
     'https://api.althub.co.za/getnzb/a.nzb': mark('Failed to download NZB from altHUB: 429 Too Many Requests'),
     'http://localhost:1337/u/easynews/nzb?hash=b': mark('Failed to download NZB from EasyNews: 500 Internal Server Error'),

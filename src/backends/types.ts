@@ -7,7 +7,7 @@
  * code directly. AltMount is KaijuFlow's only Backend (#188).
  */
 
-import type { StreamData } from '../nzbdav/types.js';
+import type { StreamData } from '../play/types.js';
 import type { BackendCapabilities } from './capabilities.js';
 
 export type BackendId = 'altmount';
@@ -110,11 +110,11 @@ export class PrepareCancelledError extends Error {
 
 /**
  * Build the error a Backend throws when the Source itself is bad (isSourceFailure
- * is true for it). The flag keeps its historical name `isNzbdavFailure`: saved dead marks carry it.
+ * is true for it). Its flag is `isBadSource`; streamCache.ts also reads the name dead marks saved before #200 used.
  */
-export function sourceFailure(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
-  const err = new Error(message) as Error & { isNzbdavFailure: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };
-  err.isNzbdavFailure = true;
+export function sourceFailure(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isBadSource: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
+  const err = new Error(message) as Error & { isBadSource: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };
+  err.isBadSource = true;
   err.isTimeout = isTimeout;
   err.isEpisodeSpecific = isEpisodeSpecific;
   return err;
@@ -125,5 +125,5 @@ export function sourceFailure(message: string, isTimeout = false, isEpisodeSpeci
  * to the Backend being unreachable or misconfigured (don't mark it dead).
  */
 export function isSourceFailure(err: unknown): boolean {
-  return (err as { isNzbdavFailure?: boolean } | null)?.isNzbdavFailure === true;
+  return (err as { isBadSource?: boolean } | null)?.isBadSource === true;
 }

@@ -21,10 +21,10 @@ try {
   backend.configure(configData);
   const news = await useFakeNews(configData, config);
   const { default: express } = await import(root + '/node_modules/express/index.js');
-  const { handleStream } = await load('nzbdav/streamHandler');
-  const { createNzbdavStreamRoutes } = await load('routes/nzbdav');
+  const { handleStream } = await load('play/streamHandler');
+  const { createPlayStreamRoutes } = await load('routes/play');
   const app = express();
-  app.use('/stremio/:manifestKey/nzbdav', createNzbdavStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
+  app.use('/stremio/:manifestKey/play', createPlayStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
   const kaijuflow = await listen(app);
   const results = await runParity({ kaijuflow, backend, news });
   Object.assign(report, { status: results.every(r => r.status === 'pass') ? 'pass' : 'fail', results });

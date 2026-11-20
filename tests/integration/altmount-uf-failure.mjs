@@ -18,13 +18,13 @@ try {
   const { config, configData } = await load('config/index');
   backend.configure(configData);
   configData.ultimateFallback = { ...configData.ultimateFallback, enabled: true, userPickFallback: 'fallback-chain', whenToResolve: 'on-tile-selection' };
-  const { isUltimateFallbackActive } = await load('nzbdav/utils');
-  const { createFallbackGroup } = await load('nzbdav/fallbackManager');
+  const { isUltimateFallbackActive } = await load('play/utils');
+  const { createFallbackGroup } = await load('play/fallbackManager');
   const { default: express } = await import(root + '/node_modules/express/index.js');
-  const { handleStream } = await load('nzbdav/streamHandler');
-  const { createNzbdavStreamRoutes } = await load('routes/nzbdav');
+  const { handleStream } = await load('play/streamHandler');
+  const { createPlayStreamRoutes } = await load('routes/play');
   const app = express();
-  app.use('/stremio/:manifestKey/nzbdav', createNzbdavStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
+  app.use('/stremio/:manifestKey/play', createPlayStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
   const kf = await listen(app);
 
   const badTitle = 'KaijuFlow.UF.Bad.2026.1080p.WEB-DL.H264', goodTitle = 'KaijuFlow.UF.Good.2026.1080p.WEB-DL.H264';
@@ -43,7 +43,7 @@ try {
     assert.equal(isUltimateFallbackActive(), false);
   });
   await check('failed Source plays the failure video; no fallback-group candidate is tried', async () => {
-    const res = await fetch(`${kf}/stremio/synthetic-manifest/nzbdav/stream/movie.mkv?t=${t}`, { signal: AbortSignal.timeout(20000) });
+    const res = await fetch(`${kf}/stremio/synthetic-manifest/play/stream/movie.mkv?t=${t}`, { signal: AbortSignal.timeout(20000) });
     const body = Buffer.from(await res.arrayBuffer());
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'video/mp4');

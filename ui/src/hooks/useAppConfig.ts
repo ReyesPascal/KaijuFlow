@@ -113,7 +113,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [cacheTTL, setCacheTTL] = useState<number>(9000);
 
   // ─── Streaming & Index Manager ──────────────────────────────────────
-  const [streamingMode, setStreamingMode] = useState<'nzbdav' | 'stremio'>('nzbdav');
   const [altmountUrl, setAltmountUrl] = useState('');
   const [altmountApiKey, setAltmountApiKey] = useState('');
   const [altmountCategory, setAltmountCategory] = useState('kaijuflow');
@@ -171,10 +170,10 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [nzbhydraTimeoutEnabled, setNzbhydraTimeoutEnabled] = useState(true);
   const [nzbhydraTimeout, setNzbhydraTimeout] = useState(30);
 
-  const [nzbdavStreamBufferMB, setNzbdavStreamBufferMB] = useState(128);
-  const [nzbdavPipeBufferMB, setNzbdavPipeBufferMB] = useState(8);
-  const [nzbdavStreamingMethod, setNzbdavStreamingMethod] = useState<'pipe' | 'proxy' | 'direct'>('proxy');
-  const [nzbdavConnectionStatus, setNzbdavConnectionStatus] = useState<'connected' | 'disconnected' | 'unconfigured' | 'checking' | null>(null);
+  const [playStreamBufferMB, setPlayStreamBufferMB] = useState(128);
+  const [playPipeBufferMB, setPlayPipeBufferMB] = useState(8);
+  const [playDeliveryMethod, setPlayDeliveryMethod] = useState<'pipe' | 'proxy' | 'direct'>('proxy');
+  const [backendConnectionStatus, setBackendConnectionStatus] = useState<'connected' | 'disconnected' | 'unconfigured' | 'checking' | null>(null);
 
   // ─── EasyNews ───────────────────────────────────────────────────────
   const [easynewsEnabled, setEasynewsEnabled] = useState(false);
@@ -347,10 +346,10 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   useEffect(() => {
     if (!initialLoadDone.current) return;
     const timer = setTimeout(() => saveSettings({
-      streamingMode, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod,
+      altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, playStreamBufferMB, playPipeBufferMB, playDeliveryMethod,
     }), 500);
     return () => clearTimeout(timer);
-  }, [streamingMode, altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, nzbdavStreamBufferMB, nzbdavPipeBufferMB, nzbdavStreamingMethod, saveSettings]);
+  }, [altmountUrl, altmountApiKey, altmountCategory, altmountPrepareTimeout, playStreamBufferMB, playPipeBufferMB, playDeliveryMethod, saveSettings]);
 
   // Auto-save: index manager type
   useEffect(() => {
@@ -517,8 +516,8 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       backendFieldsChanged.current = true;
       return;
     }
-    setNzbdavConnectionStatus(null);
-  }, [streamingMode, altmountUrl, altmountApiKey, altmountCategory]);
+    setBackendConnectionStatus(null);
+  }, [altmountUrl, altmountApiKey, altmountCategory]);
 
   // Check proxy when proxy mode changes
   useEffect(() => {
@@ -548,7 +547,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setConfig(data);
       setAddonEnabled(data.addonEnabled !== false);
       setCacheTTL(data.cacheTTL ?? 0);
-      setStreamingMode(data.streamingMode || 'nzbdav');
       setIndexManager(data.indexManager || 'newznab');
       setProxyMode(data.proxyMode || 'disabled');
       setProxyUrl(data.proxyUrl || '');
@@ -646,7 +644,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
           order = [...order, 'zyclops'];
         }
       }
-      // The NZB database card went with NzbDAV (#188).
+      // The NZB database card was removed in #188.
       order = order.filter((c: string) => c !== 'nzbDatabase');
       if (!order.includes('ultimateFallback')) {
         const zyclopsIdx = order.indexOf('zyclops');
@@ -837,36 +835,30 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setAltmountApiKey(data.altmountApiKey || '');
       setAltmountCategory(data.altmountCategory || 'kaijuflow');
       setAltmountPrepareTimeout(data.altmountPrepareTimeout ?? 300);
-      setNzbdavStreamBufferMB(data.nzbdavStreamBufferMB ?? 128);
-      setNzbdavPipeBufferMB(data.nzbdavPipeBufferMB ?? 8);
-      // Belt-and-braces: backend accessor already migrates, but fall back to legacy field if the API response
-      // somehow lacks nzbdavStreamingMethod (very old server, hand-edited config, etc.)
-      setNzbdavStreamingMethod(
-        data.nzbdavStreamingMethod
-          ?? (data.nzbdavProxyEnabled === false ? 'direct' : data.nzbdavProxyEnabled === true ? 'proxy' : 'proxy')
-      );
+      setPlayStreamBufferMB(data.playStreamBufferMB ?? 128);
+      setPlayPipeBufferMB(data.playPipeBufferMB ?? 8);
+      setPlayDeliveryMethod(data.playDeliveryMethod ?? 'proxy');
       // Mark initial load as done so auto-save hooks don't fire on load.
       // setTimeout defers past React's useEffect cycle — effects from the setState
       // batch above see initialLoadDone.current === false and skip the save.
       // Also auto-test the Backend connection on startup (inline to avoid stale closure)
       setTimeout(async () => {
         initialLoadDone.current = true;
-        if ((data.streamingMode || 'nzbdav') !== 'nzbdav') return;
         if (!data.altmountUrl) {
-          setNzbdavConnectionStatus('unconfigured');
+          setBackendConnectionStatus('unconfigured');
           return;
         }
-        setNzbdavConnectionStatus('checking');
+        setBackendConnectionStatus('checking');
         try {
-          const testResp = await apiFetch('/api/nzbdav/test', {
+          const testResp = await apiFetch('/api/play/test', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({}),
             signal: AbortSignal.timeout(20_000),
           });
-          setNzbdavConnectionStatus(testResp.ok ? 'connected' : 'disconnected');
+          setBackendConnectionStatus(testResp.ok ? 'connected' : 'disconnected');
         } catch {
-          setNzbdavConnectionStatus('disconnected');
+          setBackendConnectionStatus('disconnected');
         }
       });
     } catch (error) {
@@ -920,30 +912,26 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     }
   };
 
-  const checkNzbdavConnection = async () => {
-    if (streamingMode !== 'nzbdav') {
-      setNzbdavConnectionStatus(null);
-      return;
-    }
+  const checkBackendConnection = async () => {
     if (!altmountUrl) {
-      setNzbdavConnectionStatus('unconfigured');
+      setBackendConnectionStatus('unconfigured');
       setBackendMessage('AltMount URL is required');
       return;
     }
-    setNzbdavConnectionStatus('checking');
+    setBackendConnectionStatus('checking');
     setBackendMessage('');
     try {
-      const response = await apiFetch('/api/nzbdav/test', {
+      const response = await apiFetch('/api/play/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ altmountUrl, altmountApiKey, altmountCategory }),
       });
       const body = await response.json().catch(() => ({ message: '' }));
       setBackendMessage(body.message || '');
-      setNzbdavConnectionStatus(response.ok ? 'connected' : 'disconnected');
+      setBackendConnectionStatus(response.ok ? 'connected' : 'disconnected');
     } catch {
       setBackendMessage('Connection failed');
-      setNzbdavConnectionStatus('disconnected');
+      setBackendConnectionStatus('disconnected');
     }
   };
 
@@ -1209,7 +1197,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     cacheTTL, setCacheTTL,
 
     // Streaming & index manager
-    streamingMode, setStreamingMode,
     indexManager, setIndexManager,
 
     // Proxy
@@ -1267,10 +1254,10 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     altmountCategory, setAltmountCategory,
     altmountPrepareTimeout, setAltmountPrepareTimeout,
     backendMessage,
-    nzbdavStreamBufferMB, setNzbdavStreamBufferMB,
-    nzbdavPipeBufferMB, setNzbdavPipeBufferMB,
-    nzbdavStreamingMethod, setNzbdavStreamingMethod,
-    nzbdavConnectionStatus, setNzbdavConnectionStatus,
+    playStreamBufferMB, setPlayStreamBufferMB,
+    playPipeBufferMB, setPlayPipeBufferMB,
+    playDeliveryMethod, setPlayDeliveryMethod,
+    backendConnectionStatus, setBackendConnectionStatus,
 
     // EasyNews
     easynewsEnabled, setEasynewsEnabled,
@@ -1350,7 +1337,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     fetchIndexers,
     fetchLocalIp,
     checkProxyStatus,
-    checkNzbdavConnection,
+    checkBackendConnection,
     testTmdbKey,
     testTvdbKey,
     handleElementDrop,

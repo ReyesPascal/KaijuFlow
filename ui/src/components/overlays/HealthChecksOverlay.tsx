@@ -136,7 +136,7 @@ export default function HealthChecksOverlay({
                     <option value="all">All Healthy</option>
                   </select>
                   <p className="text-xs text-slate-500 mt-1">
-                    Automatically hand verified results to AltMount ahead of the click. Uses cached NZB data from health checks to save indexer grabs. (Backend streaming mode only)
+                    Automatically hand verified results to AltMount ahead of the click. Uses cached NZB data from health checks to save indexer grabs.
                   </p>
                   <p className="text-xs text-amber-400 mt-1">
                     ⚠️ Suppressed when Ultimate Fallback is set to "On Search".

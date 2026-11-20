@@ -1,12 +1,12 @@
 /**
- * Backend and stream routes. The paths keep their historical `nzbdav` name
- * (saved stream links and the UI use them); the Backend is AltMount (#188).
+ * Backend and play routes (#200 renamed them from their old Backend's name);
+ * the Backend is AltMount (#188).
  *
- * POST   /api/nzbdav/test   — Test the AltMount connection (saved or unsaved settings)
+ * POST   /api/play/test   — Test the AltMount connection (saved or unsaved settings)
  *
  * Also mounts the key-protected stream and video proxy:
- *   GET /:manifestKey/nzbdav/stream — stream handler (mounted separately in server.ts)
- *   GET /:manifestKey/nzbdav/v      — video proxy (adds the Backend's auth server-side for ExoPlayer compat)
+ *   GET /:manifestKey/play/stream — stream handler (mounted separately in server.ts)
+ *   GET /:manifestKey/play/v      — video proxy (adds the Backend's auth server-side for ExoPlayer compat)
  */
 
 import { Router } from 'express';
@@ -14,20 +14,20 @@ import http from 'http';
 import https from 'https';
 import { PassThrough } from 'stream';
 import type { Config } from '../types.js';
-import { encodeWebdavPath, WebDav404Error } from '../nzbdav/utils.js';
+import { encodeWebdavPath, WebDav404Error } from '../play/utils.js';
 import { getActiveBackend } from '../backends/index.js';
-import { evictReadyByVideoPath, markVideoPathBroken } from '../nzbdav/streamCache.js';
-import { incrementRedirectCounterOnUrl } from '../nzbdav/redirectHelpers.js';
+import { evictReadyByVideoPath, markVideoPathBroken } from '../play/streamCache.js';
+import { incrementRedirectCounterOnUrl } from '../play/redirectHelpers.js';
 import { resolveBaseUrl } from '../utils/urlHelpers.js';
 
-interface NzbdavDeps {
+interface PlayDeps {
   config: Config;
   handleStream: (req: any, res: any, proxyFn?: (req: any, res: any, videoPath: string, usePipe: boolean) => Promise<void>) => Promise<void>;
   isStreamCached: (nzbUrl: string, title: string) => boolean;
   getLatestVersions: () => { chrome: string };
 }
 
-export function createNzbdavRoutes(deps: NzbdavDeps): Router {
+export function createPlayApiRoutes(deps: PlayDeps): Router {
   const router = Router();
 
   // Backend test connection endpoint (dashboard status + settings "test connection").
@@ -44,9 +44,9 @@ export function createNzbdavRoutes(deps: NzbdavDeps): Router {
 
 /**
  * Creates the key-protected stream and video proxy router.
- * Mounted at /:manifestKey/nzbdav in server.ts.
+ * Mounted at /:manifestKey/play and /stremio/:manifestKey/play in server.ts.
  */
-export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
+export function createPlayStreamRoutes(deps: PlayDeps): Router {
   const router = Router({ mergeParams: true });
   const { config, handleStream, getLatestVersions } = deps;
 
@@ -93,7 +93,7 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
   // On mid-stream upstream drops, transparently reconnects from the last byte sent
   // using Range requests — the player never sees the interruption.
   const MAX_PROXY_RETRIES = 3;
-  const UPSTREAM_MAX_RECONNECTS = Number(process.env.NZBDAV_STREAM_MAX_RECONNECTS || process.env.STREAM_MAX_RECONNECTS) || 30;
+  const UPSTREAM_MAX_RECONNECTS = Number(process.env.PLAY_STREAM_MAX_RECONNECTS || process.env.STREAM_MAX_RECONNECTS) || 30;
   const RECONNECT_BASE_DELAY_MS = 50;
   const RECONNECT_MAX_DELAY_MS = 8000;
   const MAX_CONCURRENT_PER_FILE = 6;
@@ -172,12 +172,12 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
 
   /** Resolve dual-stage proxy buffer size (accessor handles env var → config → 128 MB default). */
   function getStreamBufferBytes(): number {
-    return (config.nzbdavStreamBufferMB ?? 128) * 1024 * 1024;
+    return (config.playStreamBufferMB ?? 128) * 1024 * 1024;
   }
 
   /** Resolve pipe mode buffer size (accessor clamps 1–16 MB; default 8). */
   function getPipeBufferBytes(): number {
-    return (config.nzbdavPipeBufferMB ?? 8) * 1024 * 1024;
+    return (config.playPipeBufferMB ?? 8) * 1024 * 1024;
   }
 
   /** Parse a Content-Range header (e.g. "bytes 0-999/1000"). */
@@ -346,7 +346,7 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
     const rangeStart = clientRange?.start ?? 0;
     // Resolve usePipe once — used by the request tracker (to gate supersession
     // cleanup) and by consumeUpstream (pipe vs manual branch).
-    const usePipe = usePipeOverride ?? ((config.nzbdavStreamingMethod ?? 'proxy') !== 'proxy');
+    const usePipe = usePipeOverride ?? ((config.playDeliveryMethod ?? 'proxy') !== 'proxy');
 
     // Track this request and get an abort handle
     let currentUpstream: http.IncomingMessage | undefined;
@@ -468,7 +468,7 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
       const totalSize = cr?.total ?? null;
 
       // Accept-Ranges: always advertise — the reconnect loop below resumes via
-      // byte-range requests against nzbdav, so the /v contract is range-capable.
+      // byte-range requests against the Backend, so the /v contract is range-capable.
       fwdHeaders['accept-ranges'] = 'bytes';
 
       // Upgrade 200→206 only when the client actually asked for a range AND
@@ -597,7 +597,7 @@ export function createNzbdavStreamRoutes(deps: NzbdavDeps): Router {
       if (!res.headersSent) {
         // Evict ready cache so fallback advances to the next candidate, and
         // mark the videoPath broken so library/lobby checks skip it on retry
-        // (NZBDav's PROPFIND can lie after content eviction — the marker
+        // (a Backend's file listing can lie after content eviction — the marker
         // bridges that gap with a short TTL; see streamCache.ts).
         if (err instanceof WebDav404Error) {
           const evicted = evictReadyByVideoPath(videoPath);

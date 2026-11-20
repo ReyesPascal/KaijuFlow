@@ -144,8 +144,8 @@ export function offeredPathsOf(raw: string, base: string): string[] {
 /**
  * Season and episode numbers behind a Source's episode selection. The stream
  * route builds `episodePattern` from them (buildEpisodePattern, optionally
- * wrapped with a date alternative); read them back the same way the old NzbDAV
- * file picker does: first S<digits>, first E<digits> (the chain-aware
+ * wrapped with a date alternative); read them back the way the stream
+ * route's file picker always has: first S<digits>, first E<digits> (the chain-aware
  * pattern's `E\d+` has no digits, so it is skipped).
  */
 export function seasonEpisodeOf(episodePattern?: string): { season: number; episode: number } | null {

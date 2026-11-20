@@ -30,6 +30,14 @@ _Avoid_: tile, source (when you mean the link)
 A separate service that takes one Source, prepares it, and serves its video file to the player. AltMount is KaijuFlow's only Backend.
 _Avoid_: streamer, engine, provider (providers are Usenet servers)
 
+**Play route**:
+KaijuFlow's address a Stream's play link points at (`/play/stream/...`, and `/play/v` for the video bytes): it hands the Source to the Backend and delivers the video. Named after the play since #200; before that it carried NzbDAV's name.
+_Avoid_: nzbdav route, stream proxy (unqualified)
+
+**Delivery method**:
+How a Play route gets the video to the player: `proxy` (through KaijuFlow's buffer, the default), `pipe` (through a small buffer) or `direct` (the player is sent to the Backend). The setting is `playDeliveryMethod`; there is no other streaming choice, KaijuFlow always plays through the Backend.
+_Avoid_: streaming method, streaming mode
+
 **Parity**:
 The bar a Backend's path through KaijuFlow must meet, tested by the shared Parity scenarios against the fake AltMount: a good Source plays, seeking works, and a Source that fails shows the failure video and is not offered again. (It began as "plays like NzbDAV" when NzbDAV was the reference Backend.)
 _Avoid_: compatibility, support (unqualified)

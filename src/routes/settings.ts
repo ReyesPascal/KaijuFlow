@@ -15,7 +15,7 @@ import { Router } from 'express';
 import type { Config } from '../types.js';
 import { configData } from '../config/schema.js';
 import { getTvAllowMultiEpisode } from '../config/accessors.js';
-import { recalculateTTLExpirations, clearMultiEpisodeDeadEntries, clearTimeoutDeadEntries } from '../nzbdav/streamCache.js';
+import { recalculateTTLExpirations, clearMultiEpisodeDeadEntries, clearTimeoutDeadEntries } from '../play/streamCache.js';
 
 interface SettingsDeps {
   config: Config;
@@ -50,7 +50,6 @@ function buildConfigResponse(config: Config) {
     })),
     cacheEnabled: config.cacheEnabled,
     cacheTTL: config.cacheTTL,
-    streamingMode: config.streamingMode,
     indexManager: config.indexManager,
     prowlarrUrl: config.prowlarrUrl,
     prowlarrApiKey: config.prowlarrApiKey,
@@ -66,10 +65,10 @@ function buildConfigResponse(config: Config) {
     altmountApiKey: config.altmountApiKey,
     altmountCategory: config.altmountCategory,
     altmountPrepareTimeout: config.altmountPrepareTimeout,
-    nzbdavStreamBufferMB: config.nzbdavStreamBufferMB,
-    nzbdavPipeBufferMB: config.nzbdavPipeBufferMB,
-    nzbdavStreamingMethod: config.nzbdavStreamingMethod,
-    nzbdavCacheTimeouts: config.nzbdavCacheTimeouts,
+    playStreamBufferMB: config.playStreamBufferMB,
+    playPipeBufferMB: config.playPipeBufferMB,
+    playDeliveryMethod: config.playDeliveryMethod,
+    playCacheTimeouts: config.playCacheTimeouts,
     healthyNzbDbMode: config.healthyNzbDbMode,
     healthyNzbDbTTL: config.healthyNzbDbTTL,
     healthyNzbDbMaxSizeMB: config.healthyNzbDbMaxSizeMB,
@@ -119,7 +118,7 @@ export function createSettingsRoutes(deps: SettingsDeps): Router {
   function handleSettingsUpdate(req: any, res: any) {
     try {
       const wasMultiEpAllowed = getTvAllowMultiEpisode(config);
-      const wasCacheTimeoutsEnabled = config.nzbdavCacheTimeouts !== false;
+      const wasCacheTimeoutsEnabled = config.playCacheTimeouts !== false;
       updateSettings(req.body);
       // Recalculate NZB database expirations when TTL, mode, or storage limit changes
       if (req.body.healthyNzbDbTTL !== undefined || req.body.deadNzbDbTTL !== undefined ||
@@ -132,7 +131,7 @@ export function createSettingsRoutes(deps: SettingsDeps): Router {
         clearMultiEpisodeDeadEntries();
       }
       // Flush timed-out dead NZB entries when "Include Timed-Out NZBs" is disabled
-      if (wasCacheTimeoutsEnabled && req.body.nzbdavCacheTimeouts === false) {
+      if (wasCacheTimeoutsEnabled && req.body.playCacheTimeouts === false) {
         clearTimeoutDeadEntries();
       }
       res.json(buildConfigResponse(config));

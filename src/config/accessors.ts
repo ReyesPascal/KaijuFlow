@@ -13,7 +13,7 @@ import type { Config, SearchConfig, HealthCheckConfig, AutoPlayConfig, StreamDis
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { getLatestVersions } from '../versionFetcher.js';
 import { configData, ZYCLOPS_DEFAULT_ENDPOINT } from './schema.js';
-import { UF_TIMEOUT_DEFAULTS } from '../nzbdav/timeoutDefaults.js';
+import { UF_TIMEOUT_DEFAULTS } from '../play/timeoutDefaults.js';
 import { DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 
 /** Parse a 'true'/'false' env var string. Returns undefined if not set. */
@@ -57,9 +57,6 @@ export const config: Config = {
   get cacheTTL() {
     return configData.cacheTTL;
   },
-  get streamingMode() {
-    return envEnum('STREAMING_MODE', ['nzbdav', 'stremio']) || configData.streamingMode;
-  },
   get indexManager() {
     return envEnum('INDEX_MANAGER', ['newznab', 'prowlarr', 'nzbhydra']) || configData.indexManager;
   },
@@ -75,31 +72,23 @@ export const config: Config = {
   get altmountPrepareTimeout() {
     return Math.max(1, configData.altmountPrepareTimeout ?? 300);
   },
-  get nzbdavCacheTimeouts() {
+  get playCacheTimeouts() {
     const env = envBool('INCLUDE_TIMEOUTS_AS_DEAD_NZBS');
     if (env !== undefined) return env;
-    return configData.nzbdavCacheTimeouts !== false;
+    return configData.playCacheTimeouts !== false;
   },
-  get nzbdavStreamBufferMB() {
-    const envMB = envInt('NZBDAV_STREAM_BUFFER_MB') ?? envInt('STREAM_BUFFER_MB');
+  get playStreamBufferMB() {
+    const envMB = envInt('PLAY_STREAM_BUFFER_MB') ?? envInt('STREAM_BUFFER_MB');
     if (envMB != null && envMB > 0) return Math.max(8, envMB);
-    return Math.max(8, configData.nzbdavStreamBufferMB ?? 128);
+    return Math.max(8, configData.playStreamBufferMB ?? 128);
   },
-  get nzbdavPipeBufferMB() {
-    const envMB = envInt('NZBDAV_PIPE_BUFFER_MB');
+  get playPipeBufferMB() {
+    const envMB = envInt('PLAY_PIPE_BUFFER_MB');
     if (envMB != null && envMB > 0) return Math.max(1, Math.min(16, envMB));
-    return Math.max(1, Math.min(16, configData.nzbdavPipeBufferMB ?? 8));
+    return Math.max(1, Math.min(16, configData.playPipeBufferMB ?? 8));
   },
-  get nzbdavStreamingMethod(): 'pipe' | 'proxy' | 'direct' {
-    const envMethod = envEnum('NZBDAV_STREAMING_METHOD', ['pipe', 'proxy', 'direct']);
-    if (envMethod) return envMethod;
-    const envLegacy = envBool('NZBDAV_PROXY_ENABLED');
-    if (envLegacy === true) return 'proxy';
-    if (envLegacy === false) return 'direct';
-    if (configData.nzbdavStreamingMethod) return configData.nzbdavStreamingMethod;
-    if (configData.nzbdavProxyEnabled === false) return 'direct';
-    if (configData.nzbdavProxyEnabled === true) return 'proxy';
-    return 'proxy';
+  get playDeliveryMethod(): 'pipe' | 'proxy' | 'direct' {
+    return envEnum('PLAY_DELIVERY_METHOD', ['pipe', 'proxy', 'direct']) || configData.playDeliveryMethod || 'proxy';
   },
   get healthyNzbDbMode(): 'time' | 'storage' {
     return configData.healthyNzbDbMode || 'time';
@@ -414,7 +403,7 @@ export const config: Config = {
     // (each backup matches the primary's container type) depends on reading
     // archive headers at health-check time. Without it, archive candidates
     // come back with unknown container type and UF can't filter mismatches
-    // before submitting them to nzbdav.
+    // before handing them to the Backend.
     const archiveInspection = true;
     const rawSample = envInt('ULTIMATE_FALLBACK_SAMPLE_COUNT') ?? ur?.sampleCount ?? 3;
     const sampleCount: 3 | 7 = rawSample === 7 ? 7 : 3;

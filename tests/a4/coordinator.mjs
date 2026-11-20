@@ -13,7 +13,7 @@ assert.match(root, /kaijuflow-a4-[^/]+\/positive\/work$/);
 const load = x => import(pathToFileURL(path.join(root,'dist',x)).href);
 const {configData} = await load('config/index.js');
 const {coordinateHealthChecks} = await load('addon/healthCheckCoordinator.js');
-const original = { healthChecks:structuredClone(configData.healthChecks), streamingMode:configData.streamingMode, indexManager:configData.indexManager, easynewsHealthCheck:configData.easynewsHealthCheck };
+const original = { healthChecks:structuredClone(configData.healthChecks), indexManager:configData.indexManager, easynewsHealthCheck:configData.easynewsHealthCheck };
 const results=[];
 const run=async(id,fn)=>{try{const measurements=await fn();results.push({id,status:'pass',measurements});console.log('A4 COORD CASE',id,'pass',JSON.stringify(measurements));}catch(e){results.push({id,status:'fail',error:String(e),stack:e.stack});console.log('A4 COORD CASE',id,'fail',String(e));}};
 const items=()=>[
@@ -23,7 +23,7 @@ const items=()=>[
 ];
 const pre=arr=>new Map(arr.slice(0,2).map(r=>[r.link,{status:'verified',message:'Synthetic cached result',playable:true}]));
 try{
-  configData.streamingMode='none'; configData.indexManager='manual'; configData.easynewsHealthCheck=false;
+  configData.indexManager='manual'; configData.easynewsHealthCheck=false;
   configData.healthChecks={...configData.healthChecks,enabled:true,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture'}],inspectionMethod:'smart',smartBatchSize:2,smartAdditionalRuns:2,smartMinHealthy:1,hideBlocked:false};
   await run('A4-COORD-SMART-018',async()=>{
     const arr=items(), r=await coordinateHealthChecks({allResults:arr,type:'movie',preExistingHealth:pre(arr)});
@@ -48,7 +48,7 @@ try{
     return {autoMarked:true,retained:r.filteredResults.length};
   });
 } finally {
-  configData.healthChecks=original.healthChecks;configData.streamingMode=original.streamingMode;configData.indexManager=original.indexManager;configData.easynewsHealthCheck=original.easynewsHealthCheck;
+  configData.healthChecks=original.healthChecks;configData.indexManager=original.indexManager;configData.easynewsHealthCheck=original.easynewsHealthCheck;
 }
 fs.writeFileSync(output,JSON.stringify({source_commit:'c83a3c733b6394eb140a1c0a1dc500010a9f22e5',gate:'A4-ISO-000',cases:results},null,2));
 console.log('A4 COORD SUMMARY',JSON.stringify({passed:results.filter(x=>x.status==='pass').length,failed:results.filter(x=>x.status!=='pass').length}));

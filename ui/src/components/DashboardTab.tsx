@@ -44,8 +44,8 @@ export interface DashboardTabProps {
   easynewsEnabled: boolean;
   enabledIndexersCount: number;
   syncedIndexers: SyncedIndexer[];
-  nzbdavConnectionStatus: 'connected' | 'disconnected' | 'unconfigured' | 'checking' | null;
-  nzbdavStreamingMethod: 'pipe' | 'proxy' | 'direct';
+  backendConnectionStatus: 'connected' | 'disconnected' | 'unconfigured' | 'checking' | null;
+  playDeliveryMethod: 'pipe' | 'proxy' | 'direct';
   proxyMode: 'disabled' | 'http';
   proxyStatus: 'connected' | 'disconnected' | 'checking' | null;
   userAgents: {
@@ -85,8 +85,8 @@ export function DashboardTab({
   easynewsEnabled,
   enabledIndexersCount,
   syncedIndexers,
-  nzbdavConnectionStatus,
-  nzbdavStreamingMethod,
+  backendConnectionStatus,
+  playDeliveryMethod,
   proxyMode,
   proxyStatus,
   userAgents,
@@ -228,44 +228,39 @@ export function DashboardTab({
                       <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center group-hover:scale-110 group-active:scale-110 transition-transform">
                         <Play className="w-4 h-4 text-purple-400" />
                       </div>
-                      <span className="text-slate-400 text-sm">Streaming Mode</span>
+                      <span className="text-slate-400 text-sm">Streaming</span>
                     </div>
                     <div className="text-3xl font-bold group-hover:text-purple-400 group-active:text-purple-400 transition-colors">
-                      {config.streamingMode === 'nzbdav'
-                        ? <>AltMount<span className="text-lg font-normal text-purple-400 ml-2">+ {nzbdavStreamingMethod === 'pipe' ? 'Pipe' : nzbdavStreamingMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span></>
-                        : 'Native'}
+                      AltMount<span className="text-lg font-normal text-purple-400 ml-2">+ {playDeliveryMethod === 'pipe' ? 'Pipe' : playDeliveryMethod === 'direct' ? 'Direct' : 'Dual-Stage Proxy'}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
-                      {config.streamingMode === 'nzbdav' && nzbdavConnectionStatus && (
+                      {backendConnectionStatus && (
                         <>
-                          {nzbdavConnectionStatus === 'checking' && (
+                          {backendConnectionStatus === 'checking' && (
                             <div className="flex items-center gap-1.5">
                               <div className="animate-spin rounded-full h-3 w-3 border-2 border-slate-400 border-t-transparent" />
                               <span className="text-xs text-slate-400">Checking...</span>
                             </div>
                           )}
-                          {nzbdavConnectionStatus === 'connected' && (
+                          {backendConnectionStatus === 'connected' && (
                             <div className="flex items-center gap-1.5">
                               <div className="w-2 h-2 rounded-full bg-green-400" />
                               <span className="text-xs text-green-400">Connected</span>
                             </div>
                           )}
-                          {nzbdavConnectionStatus === 'disconnected' && (
+                          {backendConnectionStatus === 'disconnected' && (
                             <div className="flex items-center gap-1.5">
                               <div className="w-2 h-2 rounded-full bg-red-400" />
                               <span className="text-xs text-red-400">Disconnected</span>
                             </div>
                           )}
-                          {nzbdavConnectionStatus === 'unconfigured' && (
+                          {backendConnectionStatus === 'unconfigured' && (
                             <div className="flex items-center gap-1.5">
                               <div className="w-2 h-2 rounded-full bg-yellow-400" />
                               <span className="text-xs text-yellow-400">Not Configured</span>
                             </div>
                           )}
                         </>
-                      )}
-                      {config.streamingMode === 'stremio' && (
-                        <span className="text-xs text-slate-500 group-hover:text-slate-400 group-active:text-slate-400 transition-colors">Click to configure &rarr;</span>
                       )}
                     </div>
                   </div>

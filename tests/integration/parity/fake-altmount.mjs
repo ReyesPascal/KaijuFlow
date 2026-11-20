@@ -212,9 +212,9 @@ export async function createFakeAltmount(listen) {
     /** KaijuFlow settings that point the AltMount Backend at this fake. */
     configure(configData) {
       Object.assign(configData, {
-        streamingMode: 'nzbdav', indexManager: 'manual',
+        indexManager: 'manual',
         altmountUrl: base, altmountApiKey: API_KEY, altmountCategory: 'kaijuflow', altmountPrepareTimeout: 20,
-        nzbdavStreamingMethod: 'proxy',
+        playDeliveryMethod: 'proxy',
         ultimateFallback: { ...configData.ultimateFallback, enabled: false },
       });
     },

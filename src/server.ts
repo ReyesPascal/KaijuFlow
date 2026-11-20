@@ -16,7 +16,7 @@ import { config, getIndexers, addIndexer, updateIndexer, deleteIndexer, reorderI
 import { getLogBuffer, subscribeToLogs } from './logBuffer.js';
 import { getAllStats, getIndexerStats, resetIndexerStats, resetAllStats, runStaleIndexerStatsCleanup } from './statsTracker.js';
 import { fetchLatestVersions, getLatestVersions } from './versionFetcher.js';
-import { handleStream, isStreamCached, saveCacheToDisk } from './nzbdav/index.js';
+import { handleStream, isStreamCached, saveCacheToDisk } from './play/index.js';
 import { proxyFetch, testProxyConnection } from './proxy.js';
 import { fetchIndexerCaps } from './parsers/newznabClient.js';
 import { hasAnyUsers, createUser, authenticateUser, generateToken, verifyToken, getUserById, getManifests, createManifest, updateManifest, regenerateManifest, deleteManifest } from './auth/auth.js';
@@ -37,7 +37,7 @@ import { createAuthRoutes } from './routes/auth.js';
 import { createIndexerRoutes } from './routes/indexers.js';
 import { createIntegrationRoutes } from './routes/integrations.js';
 import { createSettingsRoutes } from './routes/settings.js';
-import { createNzbdavRoutes, createNzbdavStreamRoutes } from './routes/nzbdav.js';
+import { createPlayApiRoutes, createPlayStreamRoutes } from './routes/play.js';
 import { createEasynewsProxyRoutes } from './routes/easynewsProxy.js';
 import { createHealthCheckRoutes } from './routes/healthCheck.js';
 import { bindVerifyTlsCertificates } from './health/nntpConnection.js';
@@ -118,7 +118,7 @@ app.use('/api/manifests', createManifestRoutes({
 // --- Protected API routes ---
 
 // Shared stream deps (used by both API routes and key-protected stream proxy)
-const nzbdavDeps = {
+const playDeps = {
   config,
   handleStream,
   isStreamCached,
@@ -153,7 +153,7 @@ app.use('/api', createSettingsRoutes({
   clearSearchCache,
 }));
 
-app.use('/api/nzbdav', createNzbdavRoutes(nzbdavDeps));
+app.use('/api/play', createPlayApiRoutes(playDeps));
 
 app.use('/api/health-check', createHealthCheckRoutes({
   getProviders,
@@ -183,7 +183,7 @@ app.use('/api/rules', createRulesRoutes());
 // Mounted at both /:manifestKey/ (legacy) and /stremio/:manifestKey/ (recommended for reverse proxy setups)
 
 const easynewsRoutes = createEasynewsProxyRoutes({ config, getLatestVersions });
-const nzbdavRoutes = createNzbdavStreamRoutes(nzbdavDeps);
+const playRoutes = createPlayStreamRoutes(playDeps);
 const stremioRouter = express.Router({ mergeParams: false });
 // Serve manifest with absolute logo URL (Stremio doesn't resolve relative paths correctly)
 stremioRouter.get('/manifest.json', (req, res) => {
@@ -200,12 +200,12 @@ const contextMiddleware = (pathPrefix: string) => (req: express.Request, _res: e
 // /stremio/ prefixed routes (recommended for new installations and reverse proxy setups)
 // Must be mounted BEFORE root-level routes so /stremio/:manifestKey matches before /:manifestKey captures "stremio"
 app.use('/stremio/:manifestKey/easynews', validateManifestKey, easynewsRoutes);
-app.use('/stremio/:manifestKey/nzbdav', validateManifestKey, nzbdavRoutes);
+app.use('/stremio/:manifestKey/play', validateManifestKey, playRoutes);
 app.use('/stremio/:manifestKey', validateManifestKey, contextMiddleware('/stremio'), stremioRouter);
 
 // Root-level routes (legacy, still works for existing installations)
 app.use('/:manifestKey/easynews', validateManifestKey, easynewsRoutes);
-app.use('/:manifestKey/nzbdav', validateManifestKey, nzbdavRoutes);
+app.use('/:manifestKey/play', validateManifestKey, playRoutes);
 app.use('/:manifestKey', validateManifestKey, contextMiddleware(''), stremioRouter);
 
 // SPA fallback — serve index.html for all non-API, non-asset routes

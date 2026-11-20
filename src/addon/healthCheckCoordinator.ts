@@ -15,9 +15,9 @@ import { performBatchHealthChecks, setHealthCheckConnectionCap, type HealthCheck
 import { requestContext } from '../requestContext.js';
 import { buildStreamFilename } from '../parsers/metadataParsers.js';
 import { getActiveBackend } from '../backends/index.js';
-import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../nzbdav/streamCache.js';
-import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
-import { isUltimateFallbackActive } from '../nzbdav/utils.js';
+import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../play/streamCache.js';
+import { encodeTileEnvelope, toContentType } from '../play/redirectHelpers.js';
+import { isUltimateFallbackActive } from '../play/utils.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
 
 // Internal self-requests (auto-queue) hit loopback directly to avoid
@@ -401,7 +401,7 @@ export function autoMarkRemainingResults(
  * Mode 'all': queue all verified results in order.
  * Reuses NZB content cached during health checks to avoid extra indexer grabs.
  */
-export function autoQueueToNzbdav(
+export function autoQueueToBackend(
   allResults: any[],
   healthResults: Map<string, HealthCheckResult>,
   type: string,
@@ -411,22 +411,22 @@ export function autoQueueToNzbdav(
 ): void {
   const mode = config.healthChecks?.autoQueueMode;
   // UF in on-results mode submits NZBs at search time itself; running auto-queue
-  // would race on the same titles (NzbDAV has had 500s on concurrent inserts).
+  // would race on the same titles.
   // on-tile-selection defers UF's submit until click, so auto-queue is safe there.
   const ufSubmitsAtSearch = isUltimateFallbackActive()
     && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
-  if (!config.healthChecks?.enabled || !mode || mode === 'off' || config.streamingMode !== 'nzbdav'
+  if (!config.healthChecks?.enabled || !mode || mode === 'off'
       || allResults.length === 0 || ufSubmitsAtSearch) {
     return;
   }
 
-  // Packed into the tile envelope so the stream handler resolves the nzbdav
+  // Packed into the tile envelope so the stream handler resolves the Backend
   // category correctly for auto-queued submits.
   const ty = toContentType(type);
   // Auto-queued tiles go through the stream route, so the active Backend prepares them.
   const backendLabel = getActiveBackend().label;
 
-  const sendToNzbdav = (result: any, reason: string) => {
+  const sendToBackend = (result: any, reason: string) => {
     try {
       console.log(`🚀 Auto-queueing (${reason}): ${result.title}`);
       const autoManifestKey = requestContext.getStore()?.manifestKey || '';
@@ -458,7 +458,7 @@ export function autoQueueToNzbdav(
           ...(episodesInSeason ? { epcount: episodesInSeason } : {}),
         } : {}),
       });
-      const proxyUrl = `${SELF_URL}/${autoManifestKey}/nzbdav/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}?t=${tileT}&auto=true`;
+      const proxyUrl = `${SELF_URL}/${autoManifestKey}/play/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}?t=${tileT}&auto=true`;
       fetch(proxyUrl).catch(err => console.error('❌ Auto-queue failed:', err));
     } catch (error) {
       console.error(`❌ Auto-queue to ${backendLabel} failed:`, error);
@@ -476,7 +476,7 @@ export function autoQueueToNzbdav(
   };
 
   if (mode === 'all') {
-    // Deduplicate by title — same release from different indexers causes NZBDav DB conflicts
+    // Deduplicate by title — the same release from different indexers would be prepared twice
     const seen = new Set<string>();
     const verified = allResults.filter(r => {
       if (!isEligible(r)) return false;
@@ -486,10 +486,10 @@ export function autoQueueToNzbdav(
     });
     if (verified.length > 0) {
       console.log(`🚀 Auto-queueing all ${verified.length} verified result(s) to ${backendLabel}`);
-      // Serialize submissions — NZBDav's database chokes on concurrent inserts
+      // Serialize submissions — one hand-off to the Backend at a time
       (async () => {
         for (let i = 0; i < verified.length; i++) {
-          sendToNzbdav(verified[i], `verified ${i + 1}/${verified.length}`);
+          sendToBackend(verified[i], `verified ${i + 1}/${verified.length}`);
           if (i < verified.length - 1) await new Promise(r => setTimeout(r, 250));
         }
       })();
@@ -498,7 +498,7 @@ export function autoQueueToNzbdav(
     // mode === 'top'
     const firstVerified = allResults.find(isEligible);
     if (firstVerified) {
-      sendToNzbdav(firstVerified, 'verified');
+      sendToBackend(firstVerified, 'verified');
     }
   }
 }

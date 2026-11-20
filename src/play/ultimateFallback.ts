@@ -39,16 +39,16 @@ interface CandidateState {
   grabStatus: 'pending' | 'grabbing' | 'done' | 'failed';
   healthPromise?: Promise<{ cs: CandidateState; result: HealthCheckResult }>;
   grabPromise?: Promise<{ cs: CandidateState; ok: boolean }>;
-  nzbdavStatus: 'idle' | 'submitted' | 'completed' | 'failed' | 'skipped';
+  prepareStatus: 'idle' | 'submitted' | 'completed' | 'failed' | 'skipped';
   nzoId?: string;
   cancelled?: boolean;
   containerType?: string;     // Video container (e.g. 'MKV') — from health check or library hit
   videoSize?: number;         // File size in bytes — known once primary/backup is resolved
-  containerFallbackViaNzbdav?: boolean; // submitted without pre-resolved container; derive from videoPath post-resolve
+  containerFallbackViaPrepare?: boolean; // submitted without pre-resolved container; derive from videoPath post-resolve
   duplicate?: boolean;         // Resolved to same videoPath as another candidate
   duplicateOf?: number;        // poolIndex of the original candidate this duplicates
   replaced?: boolean;          // Replacement already pulled for this dead candidate
-  nzbdavDeadWritten?: boolean; // setDeadNzbEntry already wrote a specific nzbdav-failure entry — don't shadow it with a generic URL-only one at end-of-pipeline
+  prepareDeadWritten?: boolean; // setDeadNzbEntry already wrote a specific Backend-failure entry — don't shadow it with a generic URL-only one at end-of-pipeline
   grabFailed?: boolean;        // Grab never produced an NZB (indexer/network/VPN transient) — don't persist to dead NZB DB
   libraryHitDeferred?: LibraryHit; // Priority mode: library hit waiting for an earlier in-flight candidate to terminate
 }
@@ -302,7 +302,7 @@ export async function ultimateFallbackFromCandidates(
   if (hasProviders) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   const pool = hasProviders ? new NntpConnectionPool() : undefined;
   if (!healthCheckEnabled) {
-    console.log(`${tag} 🏥 Health checking disabled — submitting candidates direct to nzbdav`);
+    console.log(`${tag} 🏥 Health checking disabled — handing candidates straight to the Backend`);
   }
 
   try {
@@ -399,7 +399,7 @@ export async function ultimateFallbackFromCandidates(
         libraryResolvedUrls.add(hit.candidate.nzbUrl);
         resolvedTitles.add(hit.candidate.title);
         requiredContainerType = hitExt;
-        cs.nzbdavStatus = 'skipped';
+        cs.prepareStatus = 'skipped';
         cs.containerType = hitExt || undefined;
         cs.videoSize = hit.data.videoSize;
         sessionResolve(hit.data);
@@ -408,7 +408,7 @@ export async function ultimateFallbackFromCandidates(
         return 'primary';
       }
       if (resolvedVideoPaths.has(hit.data.videoPath)) {
-        cs.nzbdavStatus = 'skipped';
+        cs.prepareStatus = 'skipped';
         cs.duplicate = true;
         cs.duplicateOf = videoPathOwner.get(hit.data.videoPath);
         if (hitExt) cs.containerType = hitExt;
@@ -417,7 +417,7 @@ export async function ultimateFallbackFromCandidates(
         return 'duplicate';
       }
       if (requiredContainerType && hitExt && hitExt !== requiredContainerType) {
-        cs.nzbdavStatus = 'skipped';
+        cs.prepareStatus = 'skipped';
         cs.containerType = hitExt;
         skippedMismatch++;
         console.log(`${tag}   📦 #${cs.poolIndex + 1} Library hit skipped (${hitExt} ≠ ${requiredContainerType}) — ${cs.candidate.title.substring(0, 60)} [${cs.candidate.indexerName}]`);
@@ -431,7 +431,7 @@ export async function ultimateFallbackFromCandidates(
       deferred.backupStreams!.push({ nzbUrl: cs.candidate.nzbUrl, videoPath: hit.data.videoPath, title: cs.candidate.title, indexerName: cs.candidate.indexerName, candidateIndex: cs.poolIndex + 1 });
       const cacheKey = getCacheKey(hit.candidate.nzbUrl, hit.candidate.title) + (cachePattern ? `:${cachePattern}` : '');
       setReadyCacheEntry(cacheKey, hit.data, hit.candidate.indexerName);
-      cs.nzbdavStatus = 'skipped';
+      cs.prepareStatus = 'skipped';
       cs.containerType = hitExt || undefined;
       cs.videoSize = hit.data.videoSize;
       backupCount++;
@@ -453,18 +453,18 @@ export async function ultimateFallbackFromCandidates(
         poolIndex: idx,
         healthStatus: 'pending',
         grabStatus: 'pending',
-        nzbdavStatus: 'idle',
+        prepareStatus: 'idle',
       };
       activePool.push(cs);
       return cs;
     };
 
     // Priority mode: a library hit at poolIndex N must wait for any earlier
-    // candidate still actively grabbing or running an nzbdav job to finish first.
+    // candidate still actively grabbing or preparing on the Backend to finish first.
     const hasEarlierInFlight = (poolIndex: number): boolean =>
       activePool.some(c =>
         c.poolIndex < poolIndex &&
-        (c.grabStatus === 'grabbing' || c.nzbdavStatus === 'submitted')
+        (c.grabStatus === 'grabbing' || c.prepareStatus === 'submitted')
       );
 
     for (let i = 0; i < poolSize && nextCandidateIdx < allCandidates.length; i++) {
@@ -490,7 +490,7 @@ export async function ultimateFallbackFromCandidates(
     if (primaryResolved) {
       console.log(`${tag} Continuing pipeline for backup candidates after library hit`);
     } else {
-      console.log(`${tag} No library hits in pool — launching grab chain + health checks + nzbdav`);
+      console.log(`${tag} No library hits in pool — launching grab chain + health checks + Backend prepare`);
       if (hits.length > 0) {
         console.log(`${tag} ⚠️ Found ${hits.length} library hit(s), none in initial pool — pool may snake toward them or post-drain sweep will pick up the rest`);
       }
@@ -522,13 +522,13 @@ export async function ultimateFallbackFromCandidates(
       });
     };
 
-    // Direct nzbdav pipeline — we own the lifecycle for cancellation control
-    const startNzbdav = async (cs: CandidateState): Promise<StreamData | null> => {
-      cs.nzbdavStatus = 'submitted';
-      const logPrefix = `${tag} [nzbdav #${cs.poolIndex + 1}] `;
+    // Direct Backend prepare — we own the lifecycle for cancellation control
+    const startPrepare = async (cs: CandidateState): Promise<StreamData | null> => {
+      cs.prepareStatus = 'submitted';
+      const logPrefix = `${tag} [prepare #${cs.poolIndex + 1}] `;
       try {
         // Cancel checkpoint: before HTTP starts
-        if (cs.cancelled) { cs.nzbdavStatus = 'failed'; return null; }
+        if (cs.cancelled) { cs.prepareStatus = 'failed'; return null; }
 
         // Steps 1-3: submit (uses cached XML from grab chain), wait for the
         // job (per-mode, per-content-type budget), find the video. Cancel
@@ -544,7 +544,7 @@ export async function ultimateFallbackFromCandidates(
           },
         );
         // Cancel checkpoint: health check may have failed during video discovery
-        if (cs.cancelled) { cs.nzbdavStatus = 'failed'; return null; }
+        if (cs.cancelled) { cs.prepareStatus = 'failed'; return null; }
 
         // Step 4: Probe video is servable
         await backend.probe(video, { logPrefix, title: cs.candidate.title, source: cs.candidate.indexerName });
@@ -553,19 +553,19 @@ export async function ultimateFallbackFromCandidates(
         const cacheKey = getCacheKey(cs.candidate.nzbUrl, cs.candidate.title) + (cachePattern ? `:${cachePattern}` : '');
         setReadyCacheEntry(cacheKey, video, cs.candidate.indexerName);
 
-        cs.nzbdavStatus = 'completed';
+        cs.prepareStatus = 'completed';
         console.log(`${logPrefix}✅ Stream ready: ${cs.candidate.title}`);
         return video;
       } catch (err) {
-        if (err instanceof PrepareCancelledError) { cs.nzbdavStatus = 'failed'; return null; }
+        if (err instanceof PrepareCancelledError) { cs.prepareStatus = 'failed'; return null; }
         // Skip logging/cancelling if the event loop already cancelled this candidate
         if (cs.cancelled) return null;
         if (cs.nzoId) backend.cancel(cs.nzoId, 'pipeline failure').catch(() => {});
-        if ((err as any)?.isNzbdavFailure) {
+        if ((err as any)?.isBadSource) {
           setDeadNzbEntry(cs.candidate.nzbUrl, cs.candidate.title, err as Error, cachePattern, cs.candidate.indexerName, cs.videoSize || cs.candidate.size, cs.candidate.isSeasonPack);
-          cs.nzbdavDeadWritten = true;
+          cs.prepareDeadWritten = true;
         }
-        cs.nzbdavStatus = 'failed';
+        cs.prepareStatus = 'failed';
         console.log(`${logPrefix}❌ Failed: ${(err as Error).message}`);
         return null;
       }
@@ -595,7 +595,7 @@ export async function ultimateFallbackFromCandidates(
         // No backups wanted — block any post-primary grab. Catches the
         // inline-call race where `backupLimitReached` hasn't been set yet
         // by the top of the loop. Already-grabbed candidates still flow
-        // through nzbdav submission (free backups); we just refuse to
+        // through the Backend hand-off (free backups); we just refuse to
         // start *new* work. Free library hits are picked up by the
         // post-drain sweep below regardless.
         if (options.desiredBackups === 0) return null;
@@ -638,13 +638,13 @@ export async function ultimateFallbackFromCandidates(
     const selectNext = (): CandidateState | null => {
       // Speed mode only for primary selection — after primary, always use priority order
       if (options.preferenceMode === 'speed' && !primaryResolved) {
-        const healthy = activePool.find(cs => cs.healthStatus === 'healthy' && cs.nzbdavStatus === 'idle');
+        const healthy = activePool.find(cs => cs.healthStatus === 'healthy' && cs.prepareStatus === 'idle');
         if (healthy) return healthy;
-        return activePool.find(cs => cs.grabStatus === 'done' && cs.healthStatus !== 'dead' && cs.healthStatus !== 'error' && cs.nzbdavStatus === 'idle') ?? null;
+        return activePool.find(cs => cs.grabStatus === 'done' && cs.healthStatus !== 'dead' && cs.healthStatus !== 'error' && cs.prepareStatus === 'idle') ?? null;
       }
       // Priority: iterate in order — if a higher-priority candidate is still grabbing/checking, wait
       for (const cs of activePool) {
-        if (cs.nzbdavStatus !== 'idle') continue;
+        if (cs.prepareStatus !== 'idle') continue;
         if (cs.healthStatus === 'dead' || cs.healthStatus === 'error') continue;
         if (cs.grabStatus === 'grabbing') return null;
         // After primary: wait for health check so containerType is available for matching
@@ -654,11 +654,11 @@ export async function ultimateFallbackFromCandidates(
       return null;
     };
 
-    for (const cs of activePool) { if (cs.nzbdavStatus === 'idle') startGrab(cs); }
+    for (const cs of activePool) { if (cs.prepareStatus === 'idle') startGrab(cs); }
 
     // ── Event loop (continues after primary for backup pre-caching) ──
-    let activeNzbdavCs: CandidateState | null = null;
-    let nzbdavPromise: Promise<StreamData | null> | null = null;
+    let activePrepareCs: CandidateState | null = null;
+    let preparePromise: Promise<StreamData | null> | null = null;
     const skipContainerMatching = !hasProviders;
 
     while (!controller.signal.aborted) {
@@ -682,7 +682,7 @@ export async function ultimateFallbackFromCandidates(
         if (cs.grabPromise && cs.grabStatus === 'grabbing') pending.push(cs.grabPromise);
         if (cs.healthPromise && cs.healthStatus === 'checking') pending.push(cs.healthPromise);
       }
-      if (nzbdavPromise) pending.push(nzbdavPromise);
+      if (preparePromise) pending.push(preparePromise);
       if (pending.length === 0 && !selectNext()) {
         // Pool drained — try pulling more candidates before exiting.
         // pullReplacement self-gates on backupLimitReached/desiredBackups/BPL,
@@ -713,42 +713,42 @@ export async function ultimateFallbackFromCandidates(
         }
       }
 
-      // Process health check completions — cancel active nzbdav job if its candidate is dead, pull replacements for idle dead candidates
+      // Process health check completions — cancel the active prepare if its candidate is dead, pull replacements for idle dead candidates
       for (const cs of activePool) {
         if (cs.healthStatus !== 'dead' && cs.healthStatus !== 'error') continue;
-        if (cs === activeNzbdavCs && cs.nzbdavStatus === 'submitted') {
-          console.log(`${tag} 🗑️ Health check failed for active nzbdav candidate #${cs.poolIndex + 1} — cancelling job`);
+        if (cs === activePrepareCs && cs.prepareStatus === 'submitted') {
+          console.log(`${tag} 🗑️ Health check failed for the candidate being prepared #${cs.poolIndex + 1} — cancelling job`);
           cs.cancelled = true;
           // Flip status synchronously so hasEarlierInFlight in the same tick (via pullReplacement
           // below) doesn't see this candidate as still in-flight and re-defer parked library hits.
-          cs.nzbdavStatus = 'failed';
+          cs.prepareStatus = 'failed';
           if (cs.nzoId) backend.cancel(cs.nzoId, 'health check failed').catch(() => {});
-          nzbdavPromise?.catch(() => {});
-          activeNzbdavCs = null;
-          nzbdavPromise = null;
+          preparePromise?.catch(() => {});
+          activePrepareCs = null;
+          preparePromise = null;
           pullReplacement();
-        } else if (cs.nzbdavStatus === 'idle' && !cs.replaced) {
+        } else if (cs.prepareStatus === 'idle' && !cs.replaced) {
           cs.replaced = true;
           pullReplacement();
         }
       }
 
-      // Check nzbdav completion — primary vs backup
-      if (activeNzbdavCs?.nzbdavStatus === 'completed' && resolvedStreamData) {
+      // Check prepare completion — primary vs backup
+      if (activePrepareCs?.prepareStatus === 'completed' && resolvedStreamData) {
         if (!primaryResolved) {
           // ── Primary resolution ──
           primaryResolved = true;
-          primaryPoolIndex = activeNzbdavCs.poolIndex;
+          primaryPoolIndex = activePrepareCs.poolIndex;
           requiredContainerType = path.extname(resolvedStreamData.videoPath).slice(1).toUpperCase();
           resolvedVideoPaths.add(resolvedStreamData.videoPath);
-          videoPathOwner.set(resolvedStreamData.videoPath, activeNzbdavCs.poolIndex);
-          resolvedTitles.add(activeNzbdavCs.candidate.title);
-          activeNzbdavCs.videoSize = resolvedStreamData.videoSize;
+          videoPathOwner.set(resolvedStreamData.videoPath, activePrepareCs.poolIndex);
+          resolvedTitles.add(activePrepareCs.candidate.title);
+          activePrepareCs.videoSize = resolvedStreamData.videoSize;
           const elapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
-          console.log(`${tag} ✅ Resolved in ${elapsed}s — ${activeNzbdavCs.candidate.title} [${activeNzbdavCs.candidate.indexerName}]`);
+          console.log(`${tag} ✅ Resolved in ${elapsed}s — ${activePrepareCs.candidate.title} [${activePrepareCs.candidate.indexerName}]`);
           sessionResolve(resolvedStreamData);
           if (requiredContainerType) {
-            console.log(`${tag} 📦 Container locked: ${requiredContainerType} (from primary #${activeNzbdavCs.poolIndex + 1}, videoPath: ${resolvedStreamData.videoPath})`);
+            console.log(`${tag} 📦 Container locked: ${requiredContainerType} (from primary #${activePrepareCs.poolIndex + 1}, videoPath: ${resolvedStreamData.videoPath})`);
           } else {
             console.log(`${tag} 📦 Primary videoPath has no file extension (${resolvedStreamData.videoPath}) — submitting all healthy backups without container filtering`);
           }
@@ -762,54 +762,54 @@ export async function ultimateFallbackFromCandidates(
           const resolvedExt = path.extname(videoPath).slice(1).toUpperCase();
           if (resolvedVideoPaths.has(videoPath)) {
             duplicateCount++;
-            activeNzbdavCs.duplicate = true;
-            activeNzbdavCs.duplicateOf = videoPathOwner.get(videoPath);
-            console.log(`${tag}   📦 #${activeNzbdavCs.poolIndex + 1} Skipping (duplicate videoPath: ${videoPath}) — ${activeNzbdavCs.candidate.title.substring(0, 60)} [${activeNzbdavCs.candidate.indexerName}]`);
-          } else if (activeNzbdavCs.containerFallbackViaNzbdav && requiredContainerType && (!resolvedExt || resolvedExt !== requiredContainerType)) {
+            activePrepareCs.duplicate = true;
+            activePrepareCs.duplicateOf = videoPathOwner.get(videoPath);
+            console.log(`${tag}   📦 #${activePrepareCs.poolIndex + 1} Skipping (duplicate videoPath: ${videoPath}) — ${activePrepareCs.candidate.title.substring(0, 60)} [${activePrepareCs.candidate.indexerName}]`);
+          } else if (activePrepareCs.containerFallbackViaPrepare && requiredContainerType && (!resolvedExt || resolvedExt !== requiredContainerType)) {
             // Fallback-resolved backup has wrong (or empty) container vs primary. Discard.
-            activeNzbdavCs.nzbdavStatus = 'skipped';
-            if (resolvedExt) activeNzbdavCs.containerType = resolvedExt;
+            activePrepareCs.prepareStatus = 'skipped';
+            if (resolvedExt) activePrepareCs.containerType = resolvedExt;
             skippedMismatch++;
-            console.log(`${tag}   📦 #${activeNzbdavCs.poolIndex + 1} Fallback container mismatch (${resolvedExt || 'no ext'} ≠ ${requiredContainerType}) — ${activeNzbdavCs.candidate.title.substring(0, 60)} [${activeNzbdavCs.candidate.indexerName}]`);
+            console.log(`${tag}   📦 #${activePrepareCs.poolIndex + 1} Fallback container mismatch (${resolvedExt || 'no ext'} ≠ ${requiredContainerType}) — ${activePrepareCs.candidate.title.substring(0, 60)} [${activePrepareCs.candidate.indexerName}]`);
           } else {
             resolvedVideoPaths.add(videoPath);
-            videoPathOwner.set(videoPath, activeNzbdavCs.poolIndex);
-            resolvedTitles.add(activeNzbdavCs.candidate.title);
-            deferred.backupUrls!.add(activeNzbdavCs.candidate.nzbUrl);
-            deferred.backupStreams!.push({ nzbUrl: activeNzbdavCs.candidate.nzbUrl, videoPath, title: activeNzbdavCs.candidate.title, indexerName: activeNzbdavCs.candidate.indexerName, candidateIndex: activeNzbdavCs.poolIndex + 1 });
+            videoPathOwner.set(videoPath, activePrepareCs.poolIndex);
+            resolvedTitles.add(activePrepareCs.candidate.title);
+            deferred.backupUrls!.add(activePrepareCs.candidate.nzbUrl);
+            deferred.backupStreams!.push({ nzbUrl: activePrepareCs.candidate.nzbUrl, videoPath, title: activePrepareCs.candidate.title, indexerName: activePrepareCs.candidate.indexerName, candidateIndex: activePrepareCs.poolIndex + 1 });
             backupCount++;
-            if (!activeNzbdavCs.containerType) activeNzbdavCs.containerType = resolvedExt || undefined;
-            activeNzbdavCs.videoSize = resolvedStreamData.videoSize;
-            const via = activeNzbdavCs.containerFallbackViaNzbdav ? 'via fallback, ' : '';
-            const ct = activeNzbdavCs.containerType || 'unknown';
-            console.log(`${tag}   📦 #${activeNzbdavCs.poolIndex + 1} Backup submitted (${via}${ct}, videoPath: ${videoPath}) — ${activeNzbdavCs.candidate.title.substring(0, 60)} [${activeNzbdavCs.candidate.indexerName}]`);
+            if (!activePrepareCs.containerType) activePrepareCs.containerType = resolvedExt || undefined;
+            activePrepareCs.videoSize = resolvedStreamData.videoSize;
+            const via = activePrepareCs.containerFallbackViaPrepare ? 'via fallback, ' : '';
+            const ct = activePrepareCs.containerType || 'unknown';
+            console.log(`${tag}   📦 #${activePrepareCs.poolIndex + 1} Backup submitted (${via}${ct}, videoPath: ${videoPath}) — ${activePrepareCs.candidate.title.substring(0, 60)} [${activePrepareCs.candidate.indexerName}]`);
           }
         }
         pullReplacement();
-        activeNzbdavCs = null;
-        nzbdavPromise = null;
+        activePrepareCs = null;
+        preparePromise = null;
         resolvedStreamData = null;
       }
-      if (activeNzbdavCs?.nzbdavStatus === 'failed') {
+      if (activePrepareCs?.prepareStatus === 'failed') {
         if (primaryResolved) {
           failedBackupCount++;
-          console.log(`${tag}   📦 #${activeNzbdavCs.poolIndex + 1} Backup failed — ${activeNzbdavCs.candidate.title.substring(0, 60)} [${activeNzbdavCs.candidate.indexerName}]`);
+          console.log(`${tag}   📦 #${activePrepareCs.poolIndex + 1} Backup failed — ${activePrepareCs.candidate.title.substring(0, 60)} [${activePrepareCs.candidate.indexerName}]`);
         } else {
-          console.log(`${tag} ❌ nzbdav failed for #${activeNzbdavCs.poolIndex + 1} ${activeNzbdavCs.candidate.title}`);
+          console.log(`${tag} ❌ Prepare failed for #${activePrepareCs.poolIndex + 1} ${activePrepareCs.candidate.title}`);
         }
-        activeNzbdavCs.healthStatus = 'dead';
+        activePrepareCs.healthStatus = 'dead';
         pullReplacement();
-        activeNzbdavCs = null;
-        nzbdavPromise = null;
+        activePrepareCs = null;
+        preparePromise = null;
       }
 
-      // Submit to nzbdav if no active job
-      if (!activeNzbdavCs || activeNzbdavCs.nzbdavStatus !== 'submitted') {
+      // Hand the next candidate to the Backend if none is being prepared
+      if (!activePrepareCs || activePrepareCs.prepareStatus !== 'submitted') {
         const next = selectNext();
         if (next) {
           // Skip cross-indexer duplicates (same release title already resolved)
           if (primaryResolved && resolvedTitles.has(next.candidate.title)) {
-            next.nzbdavStatus = 'skipped';
+            next.prepareStatus = 'skipped';
             next.duplicate = true;
             duplicateCount++;
             console.log(`${tag}   📦 #${next.poolIndex + 1} Skipping (duplicate title) — ${next.candidate.title.substring(0, 60)} [${next.candidate.indexerName}]`);
@@ -822,12 +822,12 @@ export async function ultimateFallbackFromCandidates(
             evaluatedAfterPrimary++;
             if (!next.containerType) {
               // Archive inspection couldn't determine the container. Health check
-              // already grabbed the segments — fall through to nzbdav and derive
+              // already grabbed the segments — fall through to the Backend and derive
               // the container from the extracted videoPath post-resolve.
-              next.containerFallbackViaNzbdav = true;
-              console.log(`${tag}   📦 #${next.poolIndex + 1} Container fallback via nzbdav — ${next.candidate.title.substring(0, 60)} [${next.candidate.indexerName}]`);
+              next.containerFallbackViaPrepare = true;
+              console.log(`${tag}   📦 #${next.poolIndex + 1} Container fallback via the Backend — ${next.candidate.title.substring(0, 60)} [${next.candidate.indexerName}]`);
             } else if (next.containerType !== requiredContainerType) {
-              next.nzbdavStatus = 'skipped';
+              next.prepareStatus = 'skipped';
               skippedMismatch++;
               console.log(`${tag}   📦 #${next.poolIndex + 1} Skipping (${next.containerType} ≠ ${requiredContainerType}) — ${next.candidate.title.substring(0, 60)} [${next.candidate.indexerName}]`);
               pullReplacement();
@@ -836,16 +836,16 @@ export async function ultimateFallbackFromCandidates(
               console.log(`${tag}   📦 #${next.poolIndex + 1} Backup match (${next.containerType}) — ${next.candidate.title.substring(0, 60)} [${next.candidate.indexerName}]`);
             }
           }
-          console.log(`${tag} 🚀 Submitting #${next.poolIndex + 1} ${next.candidate.title} [${next.candidate.indexerName}] to nzbdav`);
-          activeNzbdavCs = next;
-          nzbdavPromise = startNzbdav(next).then(data => { resolvedStreamData = data; return data; });
+          console.log(`${tag} 🚀 Submitting #${next.poolIndex + 1} ${next.candidate.title} [${next.candidate.indexerName}] to the Backend`);
+          activePrepareCs = next;
+          preparePromise = startPrepare(next).then(data => { resolvedStreamData = data; return data; });
         }
       }
 
       // Check if all candidates are exhausted
       const allProcessed = activePool.every(cs =>
         cs.healthStatus === 'dead' || cs.healthStatus === 'error' ||
-        cs.nzbdavStatus === 'failed' || cs.nzbdavStatus === 'completed' || cs.nzbdavStatus === 'skipped'
+        cs.prepareStatus === 'failed' || cs.prepareStatus === 'completed' || cs.prepareStatus === 'skipped'
       );
       if (allProcessed && nextCandidateIdx >= allCandidates.length) {
         if (!primaryResolved) {
@@ -896,8 +896,8 @@ export async function ultimateFallbackFromCandidates(
       sessionReject(new Error('All candidates exhausted'));
     }
     const healthy = activePool.filter(cs => cs.healthStatus === 'healthy').length;
-    const dead = activePool.filter(cs => cs.healthStatus === 'dead' || cs.healthStatus === 'error' || cs.nzbdavStatus === 'failed').length;
-    const skipped = activePool.filter(cs => cs.nzbdavStatus === 'skipped').length;
+    const dead = activePool.filter(cs => cs.healthStatus === 'dead' || cs.healthStatus === 'error' || cs.prepareStatus === 'failed').length;
+    const skipped = activePool.filter(cs => cs.prepareStatus === 'skipped').length;
     const divider = '┄'.repeat(120);
     const settingsLine = [
       `pool: ${options.candidateCount}`,
@@ -936,16 +936,16 @@ export async function ultimateFallbackFromCandidates(
     const poolIndicesRendered = new Set<number>(rows.map(r => r.poolIndex));
     for (const cs of activePool) {
       if (cs.poolIndex === primaryPoolIndex) continue;
-      if (cs.healthStatus === 'pending' && cs.nzbdavStatus === 'idle') continue;
-      const isLibraryBackup = cs.nzbdavStatus === 'skipped' && libraryResolvedUrls.has(cs.candidate.nzbUrl);
-      const icon = isLibraryBackup ? '📚' : cs.duplicate ? '🔁' : cs.nzbdavStatus === 'completed' ? '✅' : cs.nzbdavStatus === 'skipped' ? '⏭️' : cs.nzbdavStatus === 'failed' ? '❌' : cs.healthStatus === 'healthy' ? '💚' : cs.healthStatus === 'dead' ? '❌' : '⏳';
+      if (cs.healthStatus === 'pending' && cs.prepareStatus === 'idle') continue;
+      const isLibraryBackup = cs.prepareStatus === 'skipped' && libraryResolvedUrls.has(cs.candidate.nzbUrl);
+      const icon = isLibraryBackup ? '📚' : cs.duplicate ? '🔁' : cs.prepareStatus === 'completed' ? '✅' : cs.prepareStatus === 'skipped' ? '⏭️' : cs.prepareStatus === 'failed' ? '❌' : cs.healthStatus === 'healthy' ? '💚' : cs.healthStatus === 'dead' ? '❌' : '⏳';
       const dupRef = cs.duplicate ? (cs.duplicateOf !== undefined ? ` (#${cs.duplicateOf + 1})` : '') : '';
       const sizeStr = cs.videoSize ? ` · ${formatBytes(cs.videoSize)}` : '';
       const ct = cs.containerType ? `[${cs.containerType}${sizeStr}] ` : '';
       const skippedLabel = cs.containerType && requiredContainerType && cs.containerType !== requiredContainerType
         ? `skipped (${cs.containerType} ≠ ${requiredContainerType})`
         : `skipped (${cs.containerType || 'unknown'})`;
-      const status = isLibraryBackup ? 'backup (library)' : cs.duplicate ? `duplicate${dupRef}` : cs.nzbdavStatus === 'completed' ? 'backup' : cs.nzbdavStatus === 'skipped' ? skippedLabel : cs.cancelled ? 'cancelled' : cs.nzbdavStatus === 'failed' ? 'nzbdav-failed' : cs.grabFailed ? 'grab-failed' : cs.healthStatus === 'dead' ? 'dead' : 'standby';
+      const status = isLibraryBackup ? 'backup (library)' : cs.duplicate ? `duplicate${dupRef}` : cs.prepareStatus === 'completed' ? 'backup' : cs.prepareStatus === 'skipped' ? skippedLabel : cs.cancelled ? 'cancelled' : cs.prepareStatus === 'failed' ? 'prepare-failed' : cs.grabFailed ? 'grab-failed' : cs.healthStatus === 'dead' ? 'dead' : 'standby';
       rows.push({
         poolIndex: cs.poolIndex,
         isPrimary: false,
@@ -986,13 +986,13 @@ export async function ultimateFallbackFromCandidates(
     }
 
     // Write dead candidates to the dead NZB DB so the fallback loop skips them.
-    // Skip candidates whose nzbdav step already wrote a specific failure entry via setDeadNzbEntry
+    // Skip candidates whose prepare step already wrote a specific failure entry via setDeadNzbEntry
     // (preserves granular errors for selective clears like clearMultiEpisodeDeadEntries /
     // clearTimeoutDeadEntries). Also skip grab-failed candidates — grab failures are transient
     // indexer/network/VPN issues, not NZB-liveness signals, and should never be persisted.
     let deadWrites = 0;
     for (const cs of activePool) {
-      if (cs.healthStatus === 'dead' && !cs.nzbdavDeadWritten && !cs.grabFailed) {
+      if (cs.healthStatus === 'dead' && !cs.prepareDeadWritten && !cs.grabFailed) {
         addDeadNzbByUrl(cs.candidate.nzbUrl, cs.candidate.title, cs.candidate.indexerName, cs.candidate.size);
         deadWrites++;
       }

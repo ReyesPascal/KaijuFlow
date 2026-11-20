@@ -43,7 +43,7 @@ const STREAM_LOG_INTERVAL_MS = 30_000;   // 30 seconds
 const STREAM_LOG_STATE_TTL_MS = 3_600_000; // 1 hour — evict stale entries to prevent unbounded growth
 const STREMIO_TIMEOUT_MS = 60_000;       // Stremio's built-in HTTP timeout
 const STREMIO_SAFETY_MARGIN_MS = 5_000;  // Safety buffer when deciding whether to self-redirect
-const MAX_SELF_REDIRECTS = Number(process.env.NZBDAV_MAX_SELF_REDIRECTS) || 500; // Safety cap on self-redirects — supports large fallback chains without infinite loops
+const MAX_SELF_REDIRECTS = Number(process.env.PLAY_MAX_SELF_REDIRECTS) || 500; // Safety cap on self-redirects — supports large fallback chains without infinite loops
 const EXO_PLAYER_BUDGET_MS = 8_000;      // Max blocking time per post-redirect request (keeps ExoPlayer alive on Android)
 // KaijuFlow (AUDIT.md finding 5): on a fresh play request, stop waiting for the
 // first source after this long and try the next one. The first source is NOT
@@ -52,7 +52,7 @@ const EXO_PLAYER_BUDGET_MS = 8_000;      // Max blocking time per post-redirect 
 // PTP 1.0.2.1 gives up on a source at ~42 s (30 s soft + 12 s hard), so 25 s
 // leaves room for the backup. 0 disables.
 const FIRST_SOURCE_SWITCH_MS = (() => {
-  const raw = process.env.NZBDAV_FIRST_SOURCE_SWITCH_MS;
+  const raw = process.env.PLAY_FIRST_SOURCE_SWITCH_MS;
   const n = raw === undefined || raw === '' ? NaN : Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : 25_000;
 })();
@@ -321,11 +321,11 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
 
 /** Delivery method for the first response of a Stream: the streaming-method setting. */
 function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
-  return globalConfig.nzbdavStreamingMethod ?? 'proxy';
+  return globalConfig.playDeliveryMethod ?? 'proxy';
 }
 
 /**
- * Express handler for /nzbdav/stream endpoint
+ * Express handler for /play/stream endpoint
  * Supports automatic fallback: if the chosen NZB fails, tries the next candidates
  * from the fallback group until one succeeds or all are exhausted.
  */
@@ -571,7 +571,6 @@ export async function handleStream(
     // the existing await-flow below picks up the new session promise.
     if (
       globalConfig.ultimateFallback?.whenToResolve === 'on-tile-selection'
-      && globalConfig.streamingMode === 'nzbdav'
       && !getSessionPromise(sessionKey)
     ) {
       const group = fallbackGroupId ? getFallbackGroup(fallbackGroupId) : undefined;
@@ -999,7 +998,7 @@ export async function handleStream(
         evictReadyByVideoPath((error as WebDav404Error).videoPath);
       }
 
-      const err = error as Error & { isNzbdavFailure?: boolean };
+      const err = error as Error & { isBadSource?: boolean };
       console.error(`\u274C Stream failed [${i + 1}/${maxCandidates}] ${candidate.title}: ${err.message}`);
 
       // User-pick failure: fall straight into the UF lobby instead of walking the candidate chain.
