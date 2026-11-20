@@ -237,11 +237,11 @@ class FirstTryTests(unittest.TestCase):
             "Target: Cold start within 1 s of AltMount direct. Measured: KaijuFlow no figure, AltMount direct no figure "
             '(10 titles left out: not like for like). Not measured.'])
 
-    def test_the_check_counts_first_try_plays_and_lists_the_fallbacks_apart(self):
+    def test_the_check_counts_a_fallback_as_played_and_lists_the_fallbacks_apart(self):
         _, out = run_check(FULL)
         lines = out.splitlines()
-        self.assertIn("Top picks played, AltMount direct: cold 18 of 20, warm 18 of 20.", lines)
-        start = lines.index('Played after a fallback (4), not counted as played:')
+        self.assertIn("Top picks played, AltMount direct: cold 20 of 20, warm 20 of 20.", lines)  # #185: a fallback plays
+        start = lines.index('Played after a fallback (4), counted as played:')
         self.assertEqual(lines[start + 1:start + 5], [
             "- AltMount direct, cold 1, Chernobyl S01E02: played after 3 fallbacks",
             "- AltMount direct, warm 1, Chernobyl S01E02: played after 3 fallbacks",

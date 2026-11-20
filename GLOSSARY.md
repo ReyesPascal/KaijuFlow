@@ -91,11 +91,11 @@ Every title played once, cold or warm, on every side of a pass. A timed run play
 _Avoid_: iteration, lap
 
 **Top pick**:
-The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. A top pick **plays** only on its one try (see Like for like): video that arrives after the top pick's own import failed is a **fallback**, counted as not played (#143).
+The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. Video that arrives after the top pick's own import failed is a **fallback**: counted as played since #185, shown as "played after N fallbacks" with its extra seconds, which stay in its title to video (until #185 it counted as not played, #143).
 _Avoid_: first result, winner
 
 **Fail**:
-In a speed test, a play whose top pick does not play on its one try: the viewer presses it and gets an error, the failure video, a refusal, or video only after a fallback. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
+A play whose top pick gives no video: the viewer presses it and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail (#185). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Title to video**:

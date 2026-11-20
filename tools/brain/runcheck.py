@@ -51,6 +51,29 @@ def _step_gap(v):
     return round(abs(total - v['start_s']), 2)
 
 
+def _round_title(v):
+    return f"{v['phase'].capitalize()} {v['round']} {v['title']}"
+
+
+def list_lines(visits, sides):
+    """Per side and list (#185), one line: the fails (titles and plays, each failed play named), the fallbacks (each named
+    with its extra seconds) and the median cold and warm title to video. A run without tags gets one line for every title."""
+    out = []
+    for s in sides:
+        for x in br.run_lists(visits) or [None]:
+            vs = [v for v in visits if v['side'] == s and x in (None, v.get('list'))]
+            if not vs:
+                continue
+            failed = [_round_title(v) for v in br.fail_visits(vs, s)]
+            fell_back = [f'{_round_title(v)}, {br.fallback_text(v)}' for v in vs if br.fallbacks(v)]
+            out.append(f"{_side(s)}, {f'{x} list' if x else 'every title'}: fails {br.fails_words(br.fail_figure(vs, s))}"
+                       + (f" ({'; '.join(failed)})" if failed else '')
+                       + (f"; fallbacks {len(fell_back)} ({'; '.join(fell_back)})" if fell_back else '; fallbacks none')
+                       + ''.join(f'; {phase} title to video {br._secs(br.side_time(vs, s, phase, "video"))}' for phase in ('cold', 'warm'))
+                       + '.')
+    return out
+
+
 def check_run(run_dir):
     """Returns (usable, lines) for one run folder."""
     meta, err = _load(run_dir, 'meta.json')
@@ -84,7 +107,7 @@ def check_run(run_dir):
     absent = [s for s in sides if s not in seen]
     if absent and status == 'ok':
         reasons.append('planned side absent: ' + ', '.join(_side(s) for s in absent))
-    # top picks played per side, cold and warm (a top pick "played" when its visit served video on the first try, br.plays)
+    # top picks played per side, cold and warm (a top pick "played" when its visit served video, a fallback too: br.plays)
     for s in sides:
         by = {}
         for phase in ('cold', 'warm'):
@@ -134,18 +157,10 @@ def check_run(run_dir):
     else:
         lines.append('Failures: none.')
     fell_back = [v for v in visits if br.fallbacks(v)]
-    if fell_back:
-        lines.append(f'Played after a fallback ({len(fell_back)}), not counted as played:')
-        lines += [f'- {_visit_name(v)}: {br.failed_result(v, "fallback")}' for v in fell_back]
-    for s in sides:  # a run on a tagged title list (#167): the fails of each setup per list
-        parts = []
-        for x in br.run_lists(visits):
-            failed = br.fail_visits(visits, s, x)
-            names = [f"{v['phase'].capitalize()} {v['round']} {v['title']}"
-                     + (f", {br.failed_result(v, 'fallback')}" if br.fallbacks(v) else '') for v in failed]
-            parts.append(f"{x} {br.fails_words(br.fail_figure(visits, s, lst=x))}" + (f" ({'; '.join(names)})" if names else ''))
-        if parts:
-            lines.append(f"Fails, {_side(s)}: " + '; '.join(parts) + '.')
+    if fell_back:  # a fallback counts as played, its extra seconds in its title to video (#185)
+        lines.append(f'Played after a fallback ({len(fell_back)}), counted as played:')
+        lines += [f'- {_visit_name(v)}: {br.fallback_text(v)}' for v in fell_back]
+    lines += list_lines(visits, sides)
     lines += br.like_for_like_lines(visits)
     lines += br.top_pick_table(visits)
     if not (err and status == 'ok'):  # the report's gate decides which runs get target verdicts; they never decide the baseline verdict

@@ -503,10 +503,10 @@ WORDS = [('Setup', 'One way of searching and playing that the test times, such a
 SPEED_WORDS = [  # a speed test's words (GLOSSARY.md, "Measuring"), after those of every run
     ('Title to video', 'Seconds from asking for a title until its video starts: the list and the start on one clock. A fail '
                        'has no time.'),
-    ('Fail', 'A play whose top pick does not play on its one try: an error, the failure video, or video only after a '
-             'fallback. Every count of fails names the titles that failed and the failed plays: a title failed in both cold '
-             'rounds is one title and two plays.'),
-    ('Fallback', 'Video that came only after the top pick failed and the setup tried another Source. It counts as a fail.'),
+    ('Fail', 'A play whose top pick gives no video: an error, a refusal or the failure video. Every count of fails names '
+             'the titles that failed and the failed plays: a title failed in both cold rounds is one title and two plays.'),
+    ('Fallback', 'Video that came only after the top pick failed and the setup tried another Source. It counts as played, '
+                 'its extra seconds in the title to video (#185).'),
     ('Easy list', 'Popular, well kept titles, where most Sources still play.'),
     ('Hard list', 'Older releases, titles prone to takedowns and less popular titles, where dead Sources are common.')]
 
@@ -1057,7 +1057,7 @@ def report(m):
         sizes = {len(lst['titles']) for lst in m['speed']['lists']}
         over = f'the {sizes.pop()} titles' if len(sizes) == 1 else 'the titles'
         words = ('<b>Title to video:</b> seconds from asking for a title until its video starts, the list and the start on one '
-                 'clock. <b>Fail:</b> a play whose top pick does not play on its one try; video after a fallback is a fail too. '
+                 'clock. <b>Fail:</b> a play whose top pick gives no video; video after a fallback is played, not a fail. '
                  'A count names the titles and the plays. '
                  f'Medians over {over} of each list.')
     else:

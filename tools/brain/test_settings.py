@@ -64,10 +64,11 @@ def rules(films=3000, episodes=1000):
 
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 12, 25, 25, 25),
                 url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None, addon_off=(), backup_host='backup.example',
-                kf_rules=None, uu_rules=None, addon_lines=None):
+                kf_rules=None, uu_rules=None, addon_lines=None, kf_fallback=True):
     """A fake kaijuflow-test folder: KaijuFlow, UU, NzbDAV and both AltMounts, plus the key file. KaijuFlow and UU hold the
     sort and filter rules of rules() unless others are given (kf_rules, uu_rules: what goes into the config; {} for none).
-    AltMount direct's `stremio:` block holds addon_lines, by default addon_stremio(): the like-for-like settings (#142)."""
+    AltMount direct's `stremio:` block holds addon_lines, by default addon_stremio(): the like-for-like settings (#142).
+    KaijuFlow's fallback is on (ultimateFallback.enabled, #185) unless kf_fallback is False."""
     base = base or tempdir(case)
     td = os.path.join(base, 'kaijuflow-test')
     kf_cap, uu_cap, nz_cap, addon_cap, altkf_cap = caps
@@ -80,7 +81,8 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
                              'smartBatchSize': 3, 'smartAdditionalRuns': 1, 'smartMinHealthy': 1, 'archiveInspection': True,
                              'providers': [{'name': 'p', 'host': 'h', 'username': SECRET, 'password': SECRET}]},
             'searchConfig': {'seasonPackAdditionalPages': 2, 'seriesPackAdditionalPages': 2},
-            'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False}))
+            'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False,
+            **({'ultimateFallback': {'enabled': kf_fallback}} if rel == 'config/config.json' else {})}))
     for side, cap in (('altmount-addon', addon_cap), ('altmount-kf', altkf_cap)):
         lines = ['import:', '    max_processor_workers: 2', '    segment_sample_percentage: 1',
                  'stremio:', *((addon_stremio() if addon_lines is None else addon_lines) if side == 'altmount-addon' else []),

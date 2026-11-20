@@ -1,4 +1,4 @@
-"""The one command that runs every side cold, then warm, twice, and writes the run record (spec #58, ticket #62).
+"""The one command that runs the setup (KaijuFlow with its AltMount copy, #185) cold, then warm, twice, and writes the run record (spec #58, ticket #62).
 
     python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list>
            [--runs-root DIR] [--one-page | --quick | --sides LIST --rounds 1|2] [--titles-file titles.json] [--user-id ID] [--tries 1]
@@ -55,8 +55,8 @@ from common import DEFAULT_TEST_DIR  # noqa: E402
 DEFAULT_RUNS_ROOT = os.path.expanduser('~/kaijuflow-notes/brain-runs')
 PLAN = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 RECORD_ROUNDS = ('cold', 'warm')  # a record pass: a cold round, then a warm round on the same state (#79)
-MAIN_SIDES = ['kaijuflow', 'uu', 'altmount-addon']
-ALL_TESTBED = ['nzbdav', 'altmount-addon', 'altmount-kf', 'uu', 'kaijuflow']
+MAIN_SIDES = ['kaijuflow']  # one setup (#185): KaijuFlow with its AltMount copy; the other test copies stay stopped
+ALL_TESTBED = ['altmount-kf', 'kaijuflow']  # the test copies a record or a run resets: the setup's own
 ONE_PAGE_TESTBED = ['kaijuflow', 'altmount-kf']  # the test copies the one-page side uses
 # side -> the test copy (testbed service) that answers its list address
 SIDE_SERVICE = {'kaijuflow': 'kaijuflow', 'kaijuflow-1page': 'kaijuflow', 'uu': 'uu', 'altmount-addon': 'altmount-addon'}
@@ -162,7 +162,7 @@ def run_plan(cfg):
 
 
 def short_run(cfg):
-    """What a short run played (see brainreport.short_run_text), or None when the run is the full plan: the three main sides,
+    """What a short run played (see brainreport.short_run_text), or None when the run is the full plan: the setup,
     two rounds and every title of the list."""
     sides, rounds = run_sides(cfg), cfg.get('rounds', 2)
     if all(s in sides for s in MAIN_SIDES) and rounds == 2 and not cfg.get('partial_titles'):
@@ -171,7 +171,7 @@ def short_run(cfg):
 
 
 def planned_sides(cfg):
-    """The sides a run, a record pass or a smoke check uses: the three main sides, then the one-page side when asked for."""
+    """The sides a run, a record pass or a smoke check uses: KaijuFlow, then the one-page side when asked for."""
     return list(MAIN_SIDES) + (['kaijuflow-1page'] if cfg['one_page'] else [])
 
 
