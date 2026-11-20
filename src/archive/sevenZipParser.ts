@@ -34,6 +34,9 @@ import { downloadSegment } from './nntpSegmentDownloader.js';
 // AES-256 coder ID in the 7z coder-chain (4 bytes: 0x06F10701).
 const AES256_CODEC_ID = Buffer.from([0x06, 0xF1, 0x07, 0x01]);
 
+// Copy coder ID (1 byte: 0x00): stored, no compression.
+const COPY_CODEC_ID = Buffer.from([0x00]);
+
 // Sanity caps applied to values parsed from untrusted NZB/archive bytes.
 const MAX_METADATA_SIZE = 10 * 1024 * 1024;   // 10MB for pack/unpack/nextHeader sizes
 const MAX_PASSWORD_LENGTH = 1024;              // characters, pre-utf16le expansion
@@ -685,7 +688,8 @@ function parseEncodedHeaderInfo(data: Buffer): EncodedHeaderInfo | null {
       break;
     }
 
-    if (packSize === 0 || unpackSize === 0 || coderProps.length === 0) return null;
+    // An AES-only header (7z -mx0 -mhe) has no LZMA props; keep it so the encryption is seen.
+    if (packSize === 0 || unpackSize === 0 || (coderProps.length === 0 && !encrypted)) return null;
 
     // Sanity caps — untrusted input from NZB. Matches nextHeaderSize cap elsewhere.
     if (packSize > MAX_METADATA_SIZE || unpackSize > MAX_METADATA_SIZE) return null;
@@ -777,10 +781,18 @@ export function parse7zHeaderProperties(data: Buffer, startOffset: number, info:
       if (aesIdx !== -1 && aesIdx < scanEnd) {
         info.encrypted = true;
       }
-      const lzmaPattern = Buffer.from([0x03, 0x01, 0x01]);
-      const lzmaIdx = data.indexOf(lzmaPattern, sectionStart);
-      if (lzmaIdx !== -1 && lzmaIdx < scanEnd) {
-        info.compression = 'compressed';
+      // The folders' coders say whether the files are stored: every coder Copy
+      // (AES on top only encrypts). When they can't be read, fall back to the scan.
+      const coders = readFolderCoders(data, sectionStart);
+      if (coders) {
+        if (coders.some(c => c.equals(AES256_CODEC_ID))) info.encrypted = true;
+        info.compression = coders.every(c => c.equals(COPY_CODEC_ID) || c.equals(AES256_CODEC_ID)) ? 'stored' : 'compressed';
+      } else {
+        const lzmaPattern = Buffer.from([0x03, 0x01, 0x01]);
+        const lzmaIdx = data.indexOf(lzmaPattern, sectionStart);
+        if (lzmaIdx !== -1 && lzmaIdx < scanEnd) {
+          info.compression = 'compressed';
+        }
       }
 
       // Search forward for kFilesInfo (0x05) by looking for the pattern:
@@ -882,5 +894,74 @@ export function parse7zHeaderProperties(data: Buffer, startOffset: number, info:
     } else {
       break;
     }
+  }
+}
+
+/**
+ * Coder IDs of every folder in a StreamsInfo that starts at `offset` (just
+ * after kMainStreamsInfo): skips kPackInfo, then reads kUnPackInfo's folders
+ * (7-Zip's 7zFormat.txt). Returns null when the bytes don't follow that layout.
+ */
+function readFolderCoders(data: Buffer, offset: number): Buffer[] | null {
+  const num = (): number => {
+    const r = read7zNumber(data, offset);
+    if (!r) throw new Error('short');
+    offset += r.length;
+    return r.value;
+  };
+  const byte = (): number => {
+    if (offset >= data.length) throw new Error('short');
+    return data[offset++];
+  };
+  const skipDigests = (count: number): void => {
+    let defined = count;
+    if (byte() === 0) {
+      defined = 0;
+      for (let i = 0; i < Math.ceil(count / 8); i++) {
+        let bits = byte();
+        while (bits) { defined += bits & 1; bits >>= 1; }
+      }
+    }
+    offset += 4 * defined;
+  };
+  try {
+    let id = byte();
+    if (id === 0x06) { // kPackInfo: packPos, numPackStreams, [kSize], [kCRC], kEnd
+      num();
+      const packStreams = num();
+      for (id = byte(); id !== 0x00; id = byte()) {
+        if (id === 0x09) for (let i = 0; i < packStreams; i++) num();
+        else if (id === 0x0A) skipDigests(packStreams);
+        else return null;
+      }
+      id = byte();
+    }
+    if (id !== 0x07 || byte() !== 0x0B) return null; // kUnPackInfo, kFolder
+    const folders = num();
+    if (folders < 1 || folders > 10000 || byte() !== 0x00) return null; // inline folders only
+    const coders: Buffer[] = [];
+    for (let f = 0; f < folders; f++) {
+      const count = num();
+      if (count < 1 || count > 64) return null;
+      let inStreams = 0;
+      let outStreams = 0;
+      for (let c = 0; c < count; c++) {
+        const flags = byte();
+        if (flags & 0x80) return null; // alternative methods: not written by 7-Zip
+        const idSize = flags & 0x0F;
+        if (offset + idSize > data.length) return null;
+        coders.push(Buffer.from(data.subarray(offset, offset + idSize)));
+        offset += idSize;
+        if (flags & 0x10) { inStreams += num(); outStreams += num(); } else { inStreams++; outStreams++; }
+        if (flags & 0x20) offset += num(); // coder properties
+      }
+      const bindPairs = outStreams - 1;
+      for (let b = 0; b < bindPairs; b++) { num(); num(); }
+      const packed = inStreams - bindPairs;
+      if (packed > 1) for (let p = 0; p < packed; p++) num();
+    }
+    return coders;
+  } catch {
+    return null;
   }
 }

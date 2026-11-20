@@ -2,13 +2,17 @@
  * Health Check Pipeline
  *
  * Main orchestration for NZB health checks. Downloads and parses the NZB,
- * classifies files, optionally inspects archive headers, samples segments,
- * and verifies article availability across providers.
+ * classifies files, inspects archive headers, samples segments, and verifies
+ * article availability across providers.
+ *
+ * It passes only what AltMount streams (ADR 0009, `altmountPassRule.ts`):
+ * plain video, stored RAR5 and stored 7z. Everything else is blocked before
+ * a segment is sampled.
  */
 
 import * as net from 'net';
 import * as tls from 'tls';
-import { downloadArchiveHeader, inspectArchive, hasVideoContent, download7zEndMetadata, isDiscImageName } from '../archive/index.js';
+import { downloadArchiveHeader, inspectArchive, download7zEndMetadata, isDiscImageName } from '../archive/index.js';
 import type { UsenetProvider } from '../types.js';
 import type { HealthCheckResult, HealthCheckOptions } from './types.js';
 import { downloadAndParseNzb, CircuitChangedError } from './nzbParser.js';
@@ -16,6 +20,7 @@ import { extractFilename, isVideoFile, isCompressedArchive, getVideoContainerTyp
 import { findFirstArchivePart, selectMultiPartSamples, collectAllArchiveSegments } from './archiveGrouper.js';
 import { NntpConnectionPool } from './nntpConnection.js';
 import { checkArticlesMultiProvider } from './articleChecker.js';
+import { whyAltMountCannotStream } from './altmountPassRule.js';
 
 /**
  * Perform health check on an NZB using multiple providers.
@@ -97,8 +102,7 @@ export async function performHealthCheck(
       fileToCheck = findFirstArchivePart(archiveFiles) || archiveFiles[0];
       fileType = 'archive';
     } else {
-      // No recognizable video or archive files — may be obfuscated (e.g. EasyNews NZBs)
-      // Pick the largest file by total segment bytes and proceed with segment check
+      // No file named as video or archive: blocked (ADR 0009), a disc image with its own message.
       const largest = files.reduce((a, b) => {
         const aSize = a.segments.reduce((s, seg) => s + seg.bytes, 0);
         const bSize = b.segments.reduce((s, seg) => s + seg.bytes, 0);
@@ -114,18 +118,22 @@ export async function performHealthCheck(
           password,
         };
       }
-      fileToCheck = largest;
-      fileType = 'unknown';
-      log(`No recognized file types — checking largest file: ${extractFilename(fileToCheck.subject)}`);
+      log(`→ Blocked: no video or archive file named (largest: ${extractFilename(largest.subject)})`);
+      return {
+        status: 'blocked',
+        message: 'No video or archive file named',
+        playable: false,
+        password,
+      };
     }
 
     log(`Checking ${fileType}: ${extractFilename(fileToCheck.subject)}`);
 
     // For archives, inspect the header to determine compression and contents
     // Try each enabled provider until one succeeds (pool providers first, then backups)
-    // Archive inspection can be disabled for faster checks
+    // Always on for an archive, whatever options.archiveInspection says: the pass rule needs it (ADR 0009)
     let archiveInfo = null;
-    if (options.archiveInspection && fileType === 'archive' && fileToCheck.segments.length > 0) {
+    if (fileType === 'archive' && fileToCheck.segments.length > 0) {
       const inspectionProviders = [
         ...providers.filter(p => p.enabled && p.type === 'pool'),
         ...providers.filter(p => p.enabled && p.type !== 'pool'),
@@ -218,47 +226,25 @@ export async function performHealthCheck(
             log(`  files: ${archiveInfo.files.slice(0, 3).map(f => f.name).join(', ')}`);
           }
 
-          // If encrypted without a known password, block it
-          if (archiveInfo.encrypted && !password) {
-            log('→ Blocked: encrypted archive (no password)');
-            return {
-              status: 'blocked',
-              message: 'Encrypted archive (no password)',
-              playable: false,
-              containerType,
-            };
-          }
-          if (archiveInfo.encrypted && password) {
-            log(`Encrypted archive — password available, continuing to segment check`);
-          }
-
-          // If nested archive, we can't verify what's inside the inner archive
-          if (archiveInfo.hasNestedArchive) {
-            log('→ Blocked: nested archive');
-            return {
-              status: 'blocked',
-              message: 'Nested archive',
-              playable: false,
-              password,
-              containerType,
-            };
-          }
-
-          if (!hasVideoContent(archiveInfo)) {
-            log('→ Blocked: no video files in archive');
-            return {
-              status: 'blocked',
-              message: 'No video files in archive',
-              playable: false,
-              password,
-              containerType,
-            };
-          }
-
           break; // Inspection succeeded — stop trying providers
         } catch (err) {
           warn(`⚠️ Archive inspection failed (${inspectionProvider.name}): ${(err as Error).message}`);
         }
+      }
+    }
+
+    // Pass only what AltMount streams (ADR 0009); decided before any segment is sampled
+    if (fileType === 'archive') {
+      const blockedBecause = whyAltMountCannotStream(archiveInfo, password);
+      if (blockedBecause) {
+        log(`→ Blocked: ${blockedBecause}`);
+        return {
+          status: 'blocked',
+          message: blockedBecause,
+          playable: false,
+          password,
+          containerType,
+        };
       }
     }
 
@@ -322,7 +308,7 @@ export async function performHealthCheck(
     if (result.totalExists === samplesToCheck.length) {
       const backupNote = usedBackup ? ' (with backup)' : '';
 
-      if (fileType === 'video' || fileType === 'unknown') {
+      if (fileType === 'video') {
         log(`→ Verified${backupNote}`);
         return {
           status: 'verified',
@@ -332,39 +318,17 @@ export async function performHealthCheck(
           password,
           containerType,
         };
-      } else {
-        if (archiveInfo && archiveInfo.compression === 'stored') {
-          log(`→ Verified: stored archive${backupNote}`);
-          return {
-            status: 'verified_stored',
-            message: `Stored archive (${samplesToCheck.length} samples checked${backupNote})`,
-            playable: true,
-            providersUsed: providerNames,
-            password,
-            containerType,
-          };
-        } else if (archiveInfo && archiveInfo.compression === 'compressed') {
-          log(`→ Verified: compressed archive${backupNote}`);
-          return {
-            status: 'verified_archive',
-            message: `Compressed archive (${samplesToCheck.length} samples checked${backupNote})`,
-            playable: true,
-            providersUsed: providerNames,
-            password,
-            containerType,
-          };
-        } else {
-          log(`→ Verified: archive available${backupNote}`);
-          return {
-            status: 'verified_archive',
-            message: `Archive available (${samplesToCheck.length} samples checked${backupNote})`,
-            playable: true,
-            providersUsed: providerNames,
-            password,
-            containerType,
-          };
-        }
       }
+      // An archive gets here only when the pass rule found it stored
+      log(`→ Verified: stored archive${backupNote}`);
+      return {
+        status: 'verified_stored',
+        message: `Stored archive (${samplesToCheck.length} samples checked${backupNote})`,
+        playable: true,
+        providersUsed: providerNames,
+        password,
+        containerType,
+      };
     }
 
     // Some missing — blocked

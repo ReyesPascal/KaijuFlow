@@ -161,6 +161,22 @@ function assertFailureVideo(r, media) {
 
 const failureScenarios = [
   {
+    // Sources real AltMount refuses (#184, ADR 0009): its queue item fails, so the
+    // player gets the failure video. KaijuFlow's health check blocks them at list
+    // time; this is the end-to-end seam for the play-time check (#190).
+    id: 'altmount-refused-sources-failure-video',
+    needs: 'addRefused',
+    async run({ kaijuflow, backend }) {
+      for (const kind of ['compressed-7z', 'scrambled-rar4', 'disc-image']) {
+        const title = `KaijuFlow.Parity.Refused.${kind}.2026.2160p.WEB-DL.H265`;
+        const nzb = backend.addRefused(`refused-${kind}`, title, kind);
+        assert.ok(backend.refusal(`refused-${kind}`), `fake AltMount keeps the reason for ${kind}`);
+        assertFailureVideo(await play(streamUrl(kaijuflow, nzb, title)), mediaFor(`refused-${kind}`));
+        assert.equal(backend.submitsFor(`refused-${kind}`), 1);
+      }
+    },
+  },
+  {
     // A Source the Backend rejects: failure video, then marked dead (the repeat is
     // answered without asking the Backend again).
     id: 'rejected-source-failure-video-and-dead',
