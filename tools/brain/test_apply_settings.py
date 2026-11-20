@@ -138,6 +138,14 @@ class ApplyCommittedFileTest(unittest.TestCase):
         self.assertEqual(apply(self.td, 'altmount-addon')[1],
                          'AltMount direct: nothing changed; altmount-addon/config/config.yaml already holds the expected settings.\n')
 
+    def test_kaijuflow_with_its_fallback_off_gets_it_switched_on(self):
+        td = make_copies(self, kf_fallback=False, kf_rules=brainrun.load_expected_settings()[0]['settings'])
+        code, text = apply(td, 'kaijuflow')
+        self.assertEqual(code, 0, text)
+        self.assertEqual(text.splitlines()[1:], ['KaijuFlow: ultimateFallback.enabled: false -> true',
+                                                 'KaijuFlow: 1 setting changed in config/config.json.'])
+        self.assertIs(json.loads(read(os.path.join(td, 'config/config.json')))['ultimateFallback']['enabled'], True)
+
     def test_after_applying_to_every_copy_the_preflight_finds_no_difference(self):
         cfg = make_cfg(self.td, expected_settings=None)
         code, text = run_command('record', cfg, FakeWorld(cfg))

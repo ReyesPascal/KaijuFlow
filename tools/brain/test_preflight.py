@@ -455,8 +455,24 @@ class ExpectedSettingsFileTest(unittest.TestCase):
 
     def committed(self):
         entries = brainrun.load_expected_settings()
-        self.assertEqual([e['copies'] for e in entries], [['kaijuflow', 'uu'], ['altmount-addon']])  # NzbDAV has no such rules
+        self.assertEqual([e['copies'] for e in entries], [['kaijuflow', 'uu'], ['altmount-addon'], ['kaijuflow']])  # NzbDAV has no such rules
         return entries[0]['settings']
+
+    def test_the_committed_file_holds_kaijuflows_fallback_on(self):
+        entry = brainrun.load_expected_settings()[2]  # #185: a fallback counts as played, so KaijuFlow plays as at home
+        self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {'ultimateFallback.enabled': True}))
+
+    def test_a_kaijuflow_copy_with_its_fallback_off_stops_with_one_sentence(self):
+        td = make_copies(self, kf_fallback=False)
+        cfg = make_cfg(td)  # then the file of the fixture folder gets the fallback entry too
+        write_expected(td, [{'copies': ['kaijuflow', 'uu'], 'settings': rules()},
+                            {'copies': ['kaijuflow'], 'settings': {'ultimateFallback.enabled': True}}])
+        code, text = run_command('record', cfg, FakeWorld(cfg))
+        self.assertEqual(code, 1, text)
+        self.assertEqual([x.split(': change')[0] for x in text.splitlines() if x.strip()], [
+            f"KaijuFlow has ultimateFallback.enabled set to false, but the expected settings file ({cfg['expected_settings']}) says true"])
+        cfg = make_cfg(make_copies(self), expected_settings=cfg['expected_settings'])  # the fixture copy as expected: on
+        self.assertEqual(run_command('record', cfg, FakeWorld(cfg))[0], 0)
 
     def test_the_committed_file_holds_altmount_directs_like_for_like_settings(self):
         entry = brainrun.load_expected_settings()[1]['settings']
