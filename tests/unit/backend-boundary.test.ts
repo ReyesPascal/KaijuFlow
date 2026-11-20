@@ -1,7 +1,8 @@
 // Backend slot boundary. AltMount is KaijuFlow's only Backend (#188): every
 // caller goes through getActiveBackend() (src/backends/), and the NzbDAV
 // client code (job API, WebDAV client, library search, history and delete)
-// is gone and must not come back.
+// is gone and must not come back. Its name is gone too (#200): the play code
+// lives in src/play/ and the routes under /play and /api/play.
 // Run: npm run test:unit
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,7 +30,8 @@ test('the Backend slot holds one Backend, AltMount', () => {
 
 test('no NzbDAV client code is left', () => {
   const gone = ['nzbdavApi', 'videoDiscovery', 'librarySearch', 'webdavClient', 'historyApi', 'staleFolderCleanup', 'deleteAllTargetsStore', 'bdmvResolver'];
-  for (const mod of gone) assert.ok(!fs.existsSync(path.join(SRC, 'nzbdav', `${mod}.ts`)), `src/nzbdav/${mod}.ts is back`);
+  assert.ok(!fs.existsSync(path.join(SRC, 'nzbdav')), 'src/nzbdav/ is back');
+  for (const mod of gone) assert.ok(!fs.existsSync(path.join(SRC, 'play', `${mod}.ts`)), `src/play/${mod}.ts is back`);
   assert.ok(!fs.existsSync(path.join(SRC, 'backends/nzbdav.ts')), 'src/backends/nzbdav.ts is back');
   const importRe = /(?:from\s+|import\()\s*['"]([^'"]+)['"]/g;
   const violations: string[] = [];
@@ -75,4 +77,29 @@ test('only the shared step calls grabNzb', () => {
     });
   }
   assert.deepEqual(violations, [], 'get the NZB from grabSourceNzb (src/backends/sourceNzb.ts) instead');
+});
+
+// #200: the code stops saying NzbDAV. Only the code that reads what older versions
+// saved may name it: the config migrations and the dead marks' old flag name.
+const OLD_NAME_READERS = ['config/migrations.ts', 'config/playSettingsMigration.ts'];
+
+test('no NzbDAV name in src/ outside the readers of old saved data', () => {
+  const violations: string[] = [];
+  for (const file of sourceFiles(SRC)) {
+    if (OLD_NAME_READERS.includes(rel(file))) continue;
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (!/nzbdav/i.test(line)) return;
+      if (rel(file) === 'play/streamCache.ts' && /isNzbdavFailure/.test(line) && !/nzbdav/i.test(line.replace(/isNzbdavFailure/g, ''))) return;
+      violations.push(`${rel(file)}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(violations, []);
+});
+
+test('the play routes are mounted under /play and /api/play, and the old paths are not', () => {
+  const server = fs.readFileSync(path.join(SRC, 'server.ts'), 'utf8');
+  const mounts = [...server.matchAll(/app\.use\('([^']+)'/g)].map(m => m[1]);
+  for (const p of ['/api/play', '/stremio/:manifestKey/play', '/:manifestKey/play']) assert.ok(mounts.includes(p), `${p} is mounted`);
+  assert.deepEqual(mounts.filter(p => /nzbdav/i.test(p)), []);
 });

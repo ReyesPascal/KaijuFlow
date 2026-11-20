@@ -17,8 +17,8 @@ import { parseQuality, parseCodec, parseSource, parseVisualTag, parseAudioTag, p
 import type { Stream, AutoPlayConfig } from '../types.js';
 import type { HealthCheckResult } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
-import { createFallbackGroup, isUltimateFallbackActive, type FallbackCandidate } from '../nzbdav/index.js';
-import { encodeTileEnvelope, toContentType } from '../nzbdav/redirectHelpers.js';
+import { createFallbackGroup, isUltimateFallbackActive, type FallbackCandidate } from '../play/index.js';
+import { encodeTileEnvelope, toContentType } from '../play/redirectHelpers.js';
 import { buildStreamDisplay } from './streamDisplay.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
 
@@ -75,7 +75,7 @@ export interface StreamBuildOutput {
 export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
   const { allResults, healthResults, type, imdbId, season, episode, episodesInSeason, episodeAired, now, runtime } = ctx;
   // Normalize once and pack into every NZB tile envelope so the stream handler
-  // can resolve the nzbdav category (Movies vs TV) even when no in-memory
+  // can resolve the Backend category (Movies vs TV) even when no in-memory
   // fallback group exists (Ultimate Fallback disabled, evicted, or post-restart).
   const ty = toContentType(type);
   // sessionKey includes manifestKey so concurrent requests from different Stremio installations
@@ -86,15 +86,15 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
   // Build auto-play / binge group settings
   const autoPlay: AutoPlayConfig = config.autoPlay || { enabled: true, method: 'firstFile' as const, attributes: ['resolution', 'quality', 'edition'] as ('resolution' | 'quality' | 'edition')[] };
 
-  // Create fallback group for NZBDav mode (auto-retry next NZB on failure)
+  // Create the fallback group (auto-retry next NZB on failure)
   let fallbackGroupId: string | undefined;
   let fallbackCandidates: FallbackCandidate[] | undefined;
-  if (config.streamingMode === 'nzbdav' && isUltimateFallbackActive() && allResults.length > 0) {
+  if (isUltimateFallbackActive() && allResults.length > 0) {
     fallbackGroupId = crypto.randomUUID().slice(0, 12);
 
     fallbackCandidates = allResults
       .filter(r => {
-        // Include all results that go through NZBDav pipeline (skip EasyNews DDL)
+        // Include all results that go through the Backend (skip EasyNews DDL)
         if (r.easynewsMeta && config.easynewsMode !== 'nzb') return false;
         return true;
       })
@@ -219,8 +219,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
     }
 
     // For EasyNews results: DDL mode uses direct download resolve, NZB mode uses download client pipeline
-    // For the Backend mode (streamingMode 'nzbdav'), create a proxy URL that hands the Source to the Backend when the user clicks play
-    // For native mode, use direct NZB download link
+    // Every other result gets a play URL that hands the Source to the Backend when the user clicks play
     if (result.easynewsMeta && config.easynewsMode === 'nzb') {
       // EasyNews NZB mode — route through download client like regular NZB results
       const meta = result.easynewsMeta;
@@ -233,46 +232,34 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
       const streamManifestKey = requestContext.getStore()?.manifestKey || '';
       const nzbProxyUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/easynews/nzb?${nzbParams.toString()}`;
 
-      if (config.streamingMode === 'nzbdav') {
-        // Same envelope shape as the regular indexer-result tile above. The
-        // `url` field points at /easynews/nzb instead of a raw NZB URL, but
-        // the stream handler treats it identically: fetch + submit to NZBDav.
-        const candidateIdx = fallbackCandidates
-          ? fallbackCandidates.findIndex(c => c.nzbUrl === nzbProxyUrl && c.title === result.title)
-          : -1;
-        const needsEpisodeCtx = result.isSeasonPack && season !== undefined && episode !== undefined;
-        const tileT = encodeTileEnvelope({
-          ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
-          ...(candidateIdx >= 0 ? { idx: candidateIdx } : {}),
-          ...(sessionKey ? { sk: sessionKey } : {}),
-          ...(needsEpisodeCtx ? { season, episode, seasonpack: 1 as const, ...(episodesInSeason ? { epcount: episodesInSeason } : {}), ...(episodeAired ? { aired: episodeAired } : {}) } : {}),
-          ty,
-          url: nzbProxyUrl,
-          title: result.title,
-          indexer: result.indexerName || '',
-          ...(result.searchExitIp ? { ip: result.searchExitIp } : {}),
-        });
-        const proxyUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/nzbdav/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}?t=${tileT}`;
-        streams.push({
-          name: streamName,
-          title: streamTitle,
-          url: proxyUrl,
-          behaviorHints: {
-            notWebReady: false,
-            bingeGroup,
-          },
-        });
-      } else {
-        streams.push({
-          name: streamName,
-          title: streamTitle,
-          externalUrl: nzbProxyUrl,
-          behaviorHints: {
-            notWebReady: true,
-            bingeGroup,
-          },
-        });
-      }
+      // Same envelope shape as the regular indexer-result tile above. The
+      // `url` field points at /easynews/nzb instead of a raw NZB URL, but
+      // the stream handler treats it identically: fetch + hand to the Backend.
+      const candidateIdx = fallbackCandidates
+        ? fallbackCandidates.findIndex(c => c.nzbUrl === nzbProxyUrl && c.title === result.title)
+        : -1;
+      const needsEpisodeCtx = result.isSeasonPack && season !== undefined && episode !== undefined;
+      const tileT = encodeTileEnvelope({
+        ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
+        ...(candidateIdx >= 0 ? { idx: candidateIdx } : {}),
+        ...(sessionKey ? { sk: sessionKey } : {}),
+        ...(needsEpisodeCtx ? { season, episode, seasonpack: 1 as const, ...(episodesInSeason ? { epcount: episodesInSeason } : {}), ...(episodeAired ? { aired: episodeAired } : {}) } : {}),
+        ty,
+        url: nzbProxyUrl,
+        title: result.title,
+        indexer: result.indexerName || '',
+        ...(result.searchExitIp ? { ip: result.searchExitIp } : {}),
+      });
+      const proxyUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/play/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}?t=${tileT}`;
+      streams.push({
+        name: streamName,
+        title: streamTitle,
+        url: proxyUrl,
+        behaviorHints: {
+          notWebReady: false,
+          bingeGroup,
+        },
+      });
     } else if (result.easynewsMeta) {
       // EasyNews DDL mode — direct download/stream from EasyNews CDN
       const meta = result.easynewsMeta;
@@ -296,7 +283,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
           bingeGroup,
         },
       });
-    } else if (config.streamingMode === 'nzbdav') {
+    } else {
       const streamManifestKey = requestContext.getStore()?.manifestKey || '';
       // Single-param tile URL. Infuse and other iOS external-player handoff
       // chains truncate everything after the first `&` in the URL they
@@ -307,7 +294,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
       const candidateIdx = fallbackCandidates
         ? fallbackCandidates.findIndex(c => c.nzbUrl === result.link && c.title === result.title)
         : -1;
-      const base = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/nzbdav/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}`;
+      const base = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/play/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}`;
       const needsEpisodeCtx = result.isSeasonPack && season !== undefined && episode !== undefined;
       const tileT = encodeTileEnvelope({
         ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
@@ -326,29 +313,17 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
         url: `${base}?t=${tileT}`,
         behaviorHints: { notWebReady: false, bingeGroup },
       });
-    } else {
-      streams.push({
-        name: streamName,
-        title: streamTitle,
-        externalUrl: result.link,
-        behaviorHints: {
-          notWebReady: true,  // Native mode requires external NZB client
-          bingeGroup,
-        },
-      });
     }
   }
 
   // Prepend synthetic Ultimate Fallback tile so users can opt into the UF lobby explicitly.
-  // Guarded by streamingMode=nzbdav: UF resolves via NZBDav, so showing the tile in other
-  // modes would produce a URL the handler can't serve. sessionKey gate skips item pages
+  // The sessionKey gate skips item pages
   // that don't have an imdbId (shouldn't happen in practice, but defensive). streams.length
   // gate suppresses the tile when there are no search results, so a lone UF tile cannot
   // obscure results from other Stremio addons.
   if (
     streams.length > 0
     && isUltimateFallbackActive()
-    && config.streamingMode === 'nzbdav'
     && sessionKey
   ) {
     // Pack sk + fbg into a single base64url-encoded JSON envelope so the URL
@@ -362,7 +337,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
       sk: sessionKey,
       ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
     });
-    const ufUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/nzbdav/stream/${UF_STREAM_PATH}?t=${ufT}`;
+    const ufUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/play/stream/${UF_STREAM_PATH}?t=${ufT}`;
     // bingeGroup matches regular tiles so cross-episode auto-play can continue via UF.
     const ufBingeGroup = autoPlay.enabled && autoPlay.method === 'firstFile' ? 'usenetultimate' : undefined;
     const ufDisplay = ufTileDisplay(config.ultimateFallback?.preferenceMode);

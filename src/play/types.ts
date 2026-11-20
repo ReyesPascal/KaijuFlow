@@ -1,6 +1,6 @@
 /**
  * Stream handling types shared by the stream handler, the caches and Ultimate
- * Fallback. (The folder keeps its historical name; NzbDAV itself is gone, #188.)
+ * Fallback.
  */
 
 export interface StreamData {

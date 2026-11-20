@@ -487,8 +487,8 @@ const verifyInflight = new Map<string, Promise<string>>();
 // re-stamps. Fire-and-forget so the caller's abort/throw surfaces with no latency.
 function fanOutRotationClears(): void {
   void import('./addon/index.js').then(m => m.clearSearchCache?.()).catch(err => console.warn('🔒 ⚠️ clearSearchCache failed:', err?.message));
-  void import('./nzbdav/fallbackManager.js').then(m => m.clearFallbackGroups?.()).catch(err => console.warn('🔒 ⚠️ clearFallbackGroups failed:', err?.message));
-  void import('./nzbdav/ultimateFallback.js').then(m => m.cancelAllUltimateFallbacks?.()).catch(err => console.warn('🔒 ⚠️ cancelAllUltimateFallbacks failed:', err?.message));
+  void import('./play/fallbackManager.js').then(m => m.clearFallbackGroups?.()).catch(err => console.warn('🔒 ⚠️ clearFallbackGroups failed:', err?.message));
+  void import('./play/ultimateFallback.js').then(m => m.cancelAllUltimateFallbacks?.()).catch(err => console.warn('🔒 ⚠️ cancelAllUltimateFallbacks failed:', err?.message));
 }
 
 /**

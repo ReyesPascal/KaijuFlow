@@ -21,7 +21,6 @@ export interface ConfigData {
   indexers: UsenetIndexer[];
   cacheEnabled: boolean;
   cacheTTL: number;
-  streamingMode: 'nzbdav' | 'stremio';
   indexManager: 'newznab' | 'prowlarr' | 'nzbhydra';
   prowlarrUrl?: string;
   prowlarrApiKey?: string;
@@ -33,11 +32,10 @@ export interface ConfigData {
   nzbhydraPassword?: string;
   nzbhydraTimeoutEnabled?: boolean;
   nzbhydraTimeout?: number;
-  nzbdavCacheTimeouts?: boolean;
-  nzbdavStreamBufferMB?: number;
-  nzbdavPipeBufferMB?: number;
-  nzbdavProxyEnabled?: boolean;
-  nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';
+  playCacheTimeouts?: boolean;
+  playStreamBufferMB?: number;
+  playPipeBufferMB?: number;
+  playDeliveryMethod?: 'pipe' | 'proxy' | 'direct';
   altmountUrl?: string;
   altmountApiKey?: string;
   altmountCategory?: string;
@@ -147,7 +145,6 @@ function loadConfigFile(): ConfigData {
     indexers: [],
     cacheEnabled: true,
     cacheTTL: 9000,
-    streamingMode: 'nzbdav',
     indexManager: 'newznab',
   };
 }
@@ -187,10 +184,9 @@ if (!fs.existsSync(CONFIG_FILE)) {
 
 // Log active environment variable overrides at startup
 const ENV_OVERRIDES: readonly string[] = [
-  'STREAMING_MODE', 'INDEX_MANAGER',
-  'NZBDAV_PROXY_ENABLED', 'NZBDAV_STREAMING_METHOD',
-  'NZBDAV_STREAM_BUFFER_MB', 'STREAM_BUFFER_MB', 'NZBDAV_PIPE_BUFFER_MB', 'NZBDAV_STREAM_MAX_RECONNECTS', 'STREAM_MAX_RECONNECTS', 'NZBDAV_MAX_SELF_REDIRECTS',
-  'NZBDAV_JOB_TIMEOUT', 'NZBDAV_MOVIES_TIMEOUT', 'NZBDAV_TV_TIMEOUT', 'NZBDAV_SEASON_PACK_TIMEOUT',
+  'INDEX_MANAGER',
+  'PLAY_DELIVERY_METHOD',
+  'PLAY_STREAM_BUFFER_MB', 'STREAM_BUFFER_MB', 'PLAY_PIPE_BUFFER_MB', 'PLAY_STREAM_MAX_RECONNECTS', 'STREAM_MAX_RECONNECTS', 'PLAY_MAX_SELF_REDIRECTS',
   'SEARCH_TIMEOUT',
   'PROWLARR_URL', 'PROWLARR_API_KEY',
   'NZBHYDRA_URL', 'NZBHYDRA_API_KEY', 'NZBHYDRA_USERNAME', 'NZBHYDRA_PASSWORD',

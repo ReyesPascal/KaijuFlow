@@ -504,7 +504,7 @@ function App() {
           directModeWarning={ac.directModeWarning}
           setDirectModeWarning={ac.setDirectModeWarning}
           handleEnableDirectMode={() => {
-            ac.setNzbdavStreamingMethod('direct');
+            ac.setPlayDeliveryMethod('direct');
             ac.setDirectModeWarning({ show: false });
           }}
         />
@@ -706,10 +706,6 @@ function App() {
       {ac.activeOverlay === 'streaming' && (
         <StreamingOverlay
           onClose={() => ac.setActiveOverlay(null)}
-          config={ac.config}
-          setConfig={ac.setConfig}
-          streamingMode={ac.streamingMode}
-          setStreamingMode={ac.setStreamingMode}
           altmountUrl={ac.altmountUrl}
           setAltmountUrl={ac.setAltmountUrl}
           altmountApiKey={ac.altmountApiKey}
@@ -719,14 +715,14 @@ function App() {
           altmountPrepareTimeout={ac.altmountPrepareTimeout}
           setAltmountPrepareTimeout={ac.setAltmountPrepareTimeout}
           backendMessage={ac.backendMessage}
-          nzbdavConnectionStatus={ac.nzbdavConnectionStatus}
-          nzbdavStreamBufferMB={ac.nzbdavStreamBufferMB}
-          setNzbdavStreamBufferMB={ac.setNzbdavStreamBufferMB}
-          nzbdavPipeBufferMB={ac.nzbdavPipeBufferMB}
-          setNzbdavPipeBufferMB={ac.setNzbdavPipeBufferMB}
-          nzbdavStreamingMethod={ac.nzbdavStreamingMethod}
-          setNzbdavStreamingMethod={ac.setNzbdavStreamingMethod}
-          checkNzbdavConnection={ac.checkNzbdavConnection}
+          backendConnectionStatus={ac.backendConnectionStatus}
+          playStreamBufferMB={ac.playStreamBufferMB}
+          setPlayStreamBufferMB={ac.setPlayStreamBufferMB}
+          playPipeBufferMB={ac.playPipeBufferMB}
+          setPlayPipeBufferMB={ac.setPlayPipeBufferMB}
+          playDeliveryMethod={ac.playDeliveryMethod}
+          setPlayDeliveryMethod={ac.setPlayDeliveryMethod}
+          checkBackendConnection={ac.checkBackendConnection}
         />
       )}
 
@@ -817,13 +813,13 @@ function App() {
           setUltimateFallback={ac.setUltimateFallback}
           healthChecks={ac.healthChecks}
           setHealthChecks={ac.setHealthChecks}
-          nzbdavStreamingMethod={ac.nzbdavStreamingMethod}
-          setNzbdavStreamingMethod={ac.setNzbdavStreamingMethod}
+          playDeliveryMethod={ac.playDeliveryMethod}
+          setPlayDeliveryMethod={ac.setPlayDeliveryMethod}
           setDirectModeWarning={ac.setDirectModeWarning}
-          nzbdavStreamBufferMB={ac.nzbdavStreamBufferMB}
-          setNzbdavStreamBufferMB={ac.setNzbdavStreamBufferMB}
-          nzbdavPipeBufferMB={ac.nzbdavPipeBufferMB}
-          setNzbdavPipeBufferMB={ac.setNzbdavPipeBufferMB}
+          playStreamBufferMB={ac.playStreamBufferMB}
+          setPlayStreamBufferMB={ac.setPlayStreamBufferMB}
+          playPipeBufferMB={ac.playPipeBufferMB}
+          setPlayPipeBufferMB={ac.setPlayPipeBufferMB}
           apiFetch={apiFetch}
         />
       )}
@@ -1008,8 +1004,8 @@ function App() {
             easynewsEnabled={ac.easynewsEnabled}
             enabledIndexersCount={enabledIndexersCount}
             syncedIndexers={ac.syncedIndexers}
-            nzbdavConnectionStatus={ac.nzbdavConnectionStatus}
-            nzbdavStreamingMethod={ac.nzbdavStreamingMethod}
+            backendConnectionStatus={ac.backendConnectionStatus}
+            playDeliveryMethod={ac.playDeliveryMethod}
             proxyMode={ac.proxyMode}
             proxyStatus={ac.proxyStatus}
             userAgents={ac.userAgents}

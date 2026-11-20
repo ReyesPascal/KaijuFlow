@@ -25,13 +25,13 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../nzbdav/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
-import { coordinateHealthChecks, autoMarkRemainingResults, autoQueueToNzbdav } from './healthCheckCoordinator.js';
+import { coordinateHealthChecks, autoMarkRemainingResults, autoQueueToBackend } from './healthCheckCoordinator.js';
 import { buildStreams } from './streamBuilder.js';
-import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../nzbdav/streamCache.js';
+import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../play/streamCache.js';
 import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
 import { isDatabaseLoaded } from '../anime/animeDatabase.js';
@@ -322,9 +322,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       }
 
       // Ultimate-Fallback takes priority — handles health checking + the Backend hand-off internally.
-      // Guarded by streamingMode=nzbdav (the Backend mode): running it for other modes
-      // wastes cycles and produces a tile URL the handler can't serve.
-      if (isUltimateFallbackActive() && config.ultimateFallback && config.streamingMode === 'nzbdav') {
+      if (isUltimateFallbackActive() && config.ultimateFallback) {
         // On-tile-selection: defer UF until the user clicks the lobby tile.
         // The lobby handler in streamHandler.ts triggers UF there.
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
@@ -376,7 +374,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       const ufSubmitsAtSearch = isUltimateFallbackActive()
         && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
       if (!ufSubmitsAtSearch) {
-        autoQueueToNzbdav(allResults, healthMap, titleMeta.type, titleMeta.season, titleMeta.episode, titleMeta.episodesInSeason);
+        autoQueueToBackend(allResults, healthMap, titleMeta.type, titleMeta.season, titleMeta.episode, titleMeta.episodesInSeason);
       }
 
       // Build streams

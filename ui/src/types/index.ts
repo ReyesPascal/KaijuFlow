@@ -126,7 +126,6 @@ export interface Config {
   indexers: Indexer[];
   cacheEnabled: boolean;
   cacheTTL: number;
-  streamingMode: 'nzbdav' | 'stremio';
   indexManager: 'newznab' | 'prowlarr' | 'nzbhydra';
   proxyMode?: 'disabled' | 'http';
   proxyUrl?: string;
@@ -165,10 +164,9 @@ export interface Config {
   altmountApiKey?: string;
   altmountCategory?: string;
   altmountPrepareTimeout?: number;
-  nzbdavStreamBufferMB?: number;
-  nzbdavPipeBufferMB?: number;
-  nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';
-  nzbdavProxyEnabled?: boolean;
+  playStreamBufferMB?: number;
+  playPipeBufferMB?: number;
+  playDeliveryMethod?: 'pipe' | 'proxy' | 'direct';
   easynewsEnabled?: boolean;
   easynewsUsername?: string;
   easynewsPassword?: string;

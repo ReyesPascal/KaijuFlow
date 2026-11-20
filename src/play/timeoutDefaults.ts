@@ -1,7 +1,7 @@
 /**
  * Ultimate Fallback Timeout Defaults & Shared Selector
  *
- * Default per-content wait times for Ultimate Fallback's nzbdav job-completion
+ * Default per-content wait times for Ultimate Fallback's Backend prepare
  * step, plus the helper that selects the right timeout based on content type
  * and season-pack status.
  */

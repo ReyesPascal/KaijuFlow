@@ -1,5 +1,5 @@
 /**
- * Stream handling module (historical folder name; NzbDAV itself is gone, #188).
+ * Play module: stream handling, caches and Ultimate Fallback.
  * Re-exports the public symbols of the stream handler, caches and Ultimate Fallback.
  */
 

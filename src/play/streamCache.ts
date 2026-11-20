@@ -123,12 +123,11 @@ function enforceStorageLimit(cache: Map<string, any>, sizeFn: () => number, maxM
  */
 interface ReadyEntry { data: StreamData; indexerName?: string; createdAt: number; expiresAt: number; backend?: string }
 
-/** Backend that made a ready entry. Entries saved before Backends existed have no tag: they are NzbDAV's. */
-const entryBackend = (e: ReadyEntry): string => e.backend ?? 'nzbdav';
-/** Ready entries only count when AltMount made them: NzbDAV's saved entries (#188) are never served. */
-const isActiveBackendEntry = (e: ReadyEntry): boolean => entryBackend(e) === BACKEND_ID;
+/** Ready entries only count when AltMount made them: saved entries another Backend made
+ *  (#188), and untagged ones from before Backends existed, are never served (a stale link). */
+const isActiveBackendEntry = (e: ReadyEntry): boolean => e.backend === BACKEND_ID;
 
-/** Remembered ready Stream for a Source, or null. Ignores entries NzbDAV made (a stale link). */
+/** Remembered ready Stream for a Source, or null. Ignores entries another Backend made. */
 export function findReadyStream(nzbUrl: string, title: string, episodePattern: string | undefined): StreamData | null {
   const entry = readyCache.get(getCacheKey(nzbUrl, title) + (episodePattern ? `:${episodePattern}` : ''));
   if (!entry || entry.expiresAt <= Date.now() || !isActiveBackendEntry(entry)) return null;
@@ -147,7 +146,8 @@ interface SerializedDeadEntry {
   title?: string;
   indexerName?: string;
   size?: number;
-  error: { message: string; isNzbdavFailure: boolean; isTimeout?: boolean; isEpisodeSpecific?: boolean };
+  // isNzbdavFailure: the flag's name in dead marks saved before #200; read on load, never written.
+  error: { message: string; isBadSource?: boolean; isNzbdavFailure?: boolean; isTimeout?: boolean; isEpisodeSpecific?: boolean };
   createdAt?: number;
   expiresAt: number;
 }
@@ -175,7 +175,7 @@ function loadCacheFromDisk(): void {
       const expiresAt = entry.expiresAt || Infinity;
       if (expiresAt > now) {
         const error = new Error(entry.error.message);
-        (error as any).isNzbdavFailure = entry.error.isNzbdavFailure;
+        (error as any).isBadSource = entry.error.isBadSource ?? entry.error.isNzbdavFailure ?? false;
         (error as any).isTimeout = entry.error.isTimeout ?? false;
         // Migration: writers prior to this fix stored episode-keyed entries
         // with isEpisodeSpecific=false, causing isDeadNzbByUrl to bleed them
@@ -226,14 +226,14 @@ export function saveCacheToDisk(): void {
   const deadData: Record<string, SerializedDeadEntry> = {};
   for (const [key, entry] of deadNzbCache.entries()) {
     if (entry.expiresAt > now) {
-      if ((entry.error as any).isTimeout && globalConfig.nzbdavCacheTimeouts === false) continue;
+      if ((entry.error as any).isTimeout && globalConfig.playCacheTimeouts === false) continue;
       deadData[key] = {
         title: entry.title,
         indexerName: entry.indexerName,
         size: entry.size,
         error: {
           message: entry.error.message,
-          isNzbdavFailure: (entry.error as any).isNzbdavFailure ?? false,
+          isBadSource: (entry.error as any).isBadSource ?? false,
           isTimeout: (entry.error as any).isTimeout ?? false,
           isEpisodeSpecific: (entry.error as any).isEpisodeSpecific ?? false,
         },
@@ -442,9 +442,9 @@ export async function getOrCreateStream(
     saveCacheToDisk();
   }).catch((error) => {
     pendingCache.delete(cacheKey);
-    if (error.isNzbdavFailure) {
+    if (error.isBadSource) {
       const deadCreatedAt = Date.now();
-      const persist = !error.isTimeout || globalConfig.nzbdavCacheTimeouts !== false;
+      const persist = !error.isTimeout || globalConfig.playCacheTimeouts !== false;
       const ttl = persist ? getDeadTTLMs() : (globalConfig.cacheTTL || 7200) * 1000;
       // First-attempt pack failure of the whole NZB (no healthy entry yet, error
       // not flagged episode-specific by its source) bans the whole URL so siblings
@@ -483,7 +483,7 @@ export function getStreamCache(): Map<string, CacheEntry> {
 }
 
 /**
- * Check if an NZB is known-dead (failed with isNzbdavFailure)
+ * Check if an NZB is known-dead (failed with isBadSource)
  */
 export function isDeadNzb(cacheKey: string): boolean {
   return deadNzbCache.has(cacheKey);
@@ -596,7 +596,7 @@ export function evictReadyByVideoPath(videoPath: string, markDead: boolean = tru
           if (!deadNzbCache.has(deadKey)) {
             const now = Date.now();
             const error = new Error('Video file no longer available (404)');
-            (error as any).isNzbdavFailure = true;
+            (error as any).isBadSource = true;
             // deadKey is episode-specific when episodePattern is set; tag the error
             // so isDeadNzbByUrl's prefix-iter loop skips it as URL-wide.
             if (episodePattern) (error as any).isEpisodeSpecific = true;
@@ -650,7 +650,7 @@ export function getCacheEntries(): {
 
   for (const [key, entry] of deadNzbCache.entries()) {
     if (entry.expiresAt < now) continue;
-    if ((entry.error as any).isTimeout && globalConfig.nzbdavCacheTimeouts === false) continue;
+    if ((entry.error as any).isTimeout && globalConfig.playCacheTimeouts === false) continue;
     const sepIdx = key.indexOf('::');
     let episodePattern: string | undefined;
     if (sepIdx !== -1 && (entry.error as any).isEpisodeSpecific) {
@@ -704,7 +704,7 @@ export function getCacheStats(): {
   let failed = 0;
   for (const entry of deadNzbCache.values()) {
     if (entry.expiresAt > now) {
-      if ((entry.error as any).isTimeout && globalConfig.nzbdavCacheTimeouts === false) continue;
+      if ((entry.error as any).isTimeout && globalConfig.playCacheTimeouts === false) continue;
       failed++;
     }
   }
@@ -753,7 +753,7 @@ export function addDeadNzbByUrl(nzbUrl: string, title: string, indexerName?: str
   if (deadNzbCache.has(normalized)) return;
   const createdAt = Date.now();
   const error = new Error('Health check: blocked');
-  (error as any).isNzbdavFailure = true;
+  (error as any).isBadSource = true;
   deadNzbCache.set(normalized, { title, indexerName, size, error, createdAt, expiresAt: createdAt + getDeadTTLMs() });
   if (globalConfig.deadNzbDbMode === 'storage') {
     enforceStorageLimit(deadNzbCache, estimateDeadCacheSize, globalConfig.deadNzbDbMaxSizeMB ?? 50);

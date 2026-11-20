@@ -34,15 +34,15 @@ try {
   const { config, configData } = await load('config/index');
   alt.configure(configData);
   const { default: express } = await import(root + '/node_modules/express/index.js');
-  const { handleStream, prepareStream } = await load('nzbdav/streamHandler');
-  const { findReadyStream, getCacheEntries } = await load('nzbdav/streamCache');
-  const { createNzbdavStreamRoutes } = await load('routes/nzbdav');
+  const { handleStream, prepareStream } = await load('play/streamHandler');
+  const { findReadyStream, getCacheEntries } = await load('play/streamCache');
+  const { createPlayStreamRoutes } = await load('routes/play');
   const app = express();
-  app.use('/stremio/:manifestKey/nzbdav', createNzbdavStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
+  app.use('/stremio/:manifestKey/play', createPlayStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
   const kaijuflow = await listen(app);
   const play = async s => {
     const t = Buffer.from(JSON.stringify({ url: s.nzb, title: s.title, indexer: 'Switch', ty: 'movie' })).toString('base64url');
-    const res = await fetch(`${kaijuflow}/stremio/synthetic-manifest/nzbdav/stream/movie.mkv?t=${t}`, { signal: AbortSignal.timeout(20000) });
+    const res = await fetch(`${kaijuflow}/stremio/synthetic-manifest/play/stream/movie.mkv?t=${t}`, { signal: AbortSignal.timeout(20000) });
     return { status: res.status, body: Buffer.from(await res.arrayBuffer()) };
   };
 

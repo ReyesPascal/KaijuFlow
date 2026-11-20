@@ -151,7 +151,7 @@ export interface Config {
   indexers: UsenetIndexer[];
   cacheEnabled: boolean;
   cacheTTL: number;  // Cache time in seconds
-  streamingMode: 'nzbdav' | 'stremio';  indexManager: 'newznab' | 'prowlarr' | 'nzbhydra';
+  indexManager: 'newznab' | 'prowlarr' | 'nzbhydra';
   proxyMode?: 'disabled' | 'http';  // Proxy mode for indexer requests
   proxyUrl?: string;           // HTTP proxy URL (e.g. http://localhost:8888)
   proxyIndexers?: Record<string, boolean>;  // Per-indexer proxy toggle
@@ -185,10 +185,10 @@ export interface Config {
   altmountApiKey?: string;
   altmountCategory: string;                   // Accessor default 'kaijuflow'
   altmountPrepareTimeout: number;             // Seconds, accessor default 300
-  nzbdavCacheTimeouts?: boolean;              // Store timed-out NZBs in dead cache (default true)
-  nzbdavStreamBufferMB?: number;              // Dual-stage proxy buffer size in MB (default 128, range 8-256)
-  nzbdavPipeBufferMB?: number;                // Pipe mode buffer size in MB (default 8, range 1-16)
-  nzbdavStreamingMethod?: 'pipe' | 'proxy' | 'direct';  // Streaming delivery: proxy (default, dual-stage buffer), pipe, or direct (redirect to the Backend)
+  playCacheTimeouts?: boolean;              // Store timed-out NZBs in dead cache (default true)
+  playStreamBufferMB?: number;              // Dual-stage proxy buffer size in MB (default 128, range 8-256)
+  playPipeBufferMB?: number;                // Pipe mode buffer size in MB (default 8, range 1-16)
+  playDeliveryMethod?: 'pipe' | 'proxy' | 'direct';  // Streaming delivery: proxy (default, dual-stage buffer), pipe, or direct (redirect to the Backend)
   healthyNzbDbMode?: 'time' | 'storage';      // Database limit mode for successful streams (default 'time')
   healthyNzbDbTTL?: number;                   // TTL in seconds for successful streams when mode is 'time' (default 259200 / 3 days)
   healthyNzbDbMaxSizeMB?: number;             // Max storage in MB for successful streams when mode is 'storage' (default 50)
@@ -349,7 +349,7 @@ export interface HealthCheckConfig {
 // Ultimate-Fallback: combines retry-on-failure with Health Checking for fastest resolution
 export interface UltimateFallbackConfig {
   enabled: boolean;
-  healthCheckEnabled?: boolean;        // Run NNTP health-check pre-flight before nzbdav submission (default false)
+  healthCheckEnabled?: boolean;        // Run NNTP health-check pre-flight before the Backend hand-off (default false)
   whenToResolve: 'on-results' | 'on-tile-selection';   // When to fire UF — on search results or on user tile click (default on-tile-selection)
   userPickFallback: 'uf-lobby' | 'failure-video' | 'fallback-chain';      // When an individual stream tile fails — show failure video (default), fall into UF lobby, or walk the chain
   candidateCount: number;              // Active pool size (1-10, default 1)
@@ -359,7 +359,7 @@ export interface UltimateFallbackConfig {
   maxAttempts: number;                 // Cap on total primary search attempts before giving up (0 = unlimited, 1-20 = cap, default 0). Library hits don't count.
   desiredBackups: number;              // Target backups post-primary (0 = no replacement pulls; free library/in-flight still cache. 1-10 = target count, default 0)
   backupProcessingLimit: number;       // Max candidates to evaluate for backup (0 = all, 1-20 = limit, default 3)
-  // Per-mode nzbdav job-completion wait times (0-90s, 0 = wait forever). Active set picked by preferenceMode at runtime.
+  // Per-mode Backend prepare wait times (0-90s, 0 = wait forever). Active set picked by preferenceMode at runtime.
   priorityMoviesTimeoutSeconds: number;
   priorityTvTimeoutSeconds: number;
   prioritySeasonPackTimeoutSeconds: number;

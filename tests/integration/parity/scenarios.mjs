@@ -9,7 +9,7 @@ const mediaFor = tag => Buffer.from(`KaijuFlow parity bytes for ${tag}: 01234567
 
 function streamUrl(kaijuflow, nzbUrl, title) {
   const t = Buffer.from(JSON.stringify({ url: nzbUrl, title, indexer: 'Parity', ty: 'movie' })).toString('base64url');
-  return `${kaijuflow}/stremio/synthetic-manifest/nzbdav/stream/movie.mkv?t=${t}`;
+  return `${kaijuflow}/stremio/synthetic-manifest/play/stream/movie.mkv?t=${t}`;
 }
 
 async function play(url, range) {
@@ -19,7 +19,7 @@ async function play(url, range) {
 
 function seriesUrl(kaijuflow, nzbUrl, title, season, episode, pack) {
   const t = Buffer.from(JSON.stringify({ url: nzbUrl, title, indexer: 'Parity', ty: 'series', season, episode, ...(pack ? { seasonpack: 1, epcount: 3 } : {}) })).toString('base64url');
-  return `${kaijuflow}/stremio/synthetic-manifest/nzbdav/stream/series.mkv?t=${t}`;
+  return `${kaijuflow}/stremio/synthetic-manifest/play/stream/series.mkv?t=${t}`;
 }
 
 export const scenarios = [

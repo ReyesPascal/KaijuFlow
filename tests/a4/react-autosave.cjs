@@ -38,7 +38,7 @@ async function advance(ms) {
 const requests=[];
 const apiFetch=(url,opts={})=>{
   if(url==='/api/config') return Promise.resolve({ok:true,json:async()=>({
-    indexers:[], cacheTTL:9000, streamingMode:'stremio', addonEnabled:true,
+    indexers:[], cacheTTL:9000, addonEnabled:true,
     autoPlay:{enabled:false,method:'firstFile',attributes:['resolution','quality','edition']}
   })});
   if(url==='/api/settings' && opts.method==='PUT') {
