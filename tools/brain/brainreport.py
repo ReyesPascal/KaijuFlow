@@ -196,8 +196,8 @@ def limit_event(text, indexers):
 #   RECORD <slug> <request> -> <status> <n> bytes from=.. t=..   ERROR <slug> <request> -> <status> from=.. t=..
 # The runner maps each address to the test container that sent it and each container to its visits (assign_standin).
 LINE_RE = re.compile(r'^(HIT|MISS|RECORD|ERROR) (\S+) (.*?)(?:\swait_ms=(\d+))? from=(\S+) t=(\d+)$')
-# The test container that sends a side's indexer requests (the one-page side uses KaijuFlow's container too).
-CLIENT_CONTAINER = {'kaijuflow': 'kaijuflow-test', 'kaijuflow-1page': 'kaijuflow-test'}
+# The test container that sends every side's indexer requests (the one-page side is KaijuFlow's container too).
+CLIENT_CONTAINER = 'kaijuflow-test'
 LIST_SLACK_MS = 100  # the list time is rounded; a search answer sent just before the list arrived still counts
 
 
@@ -246,7 +246,7 @@ def assign_standin(visits, lines, addresses=None):
     marked = sorted((v for v in visits if v.get('t_start')), key=lambda v: _ms(v['t_start']))
     per_container, got = {}, {id(v): [] for v in marked}
     for v in marked:
-        per_container.setdefault(CLIENT_CONTAINER.get(v['side']), []).append(v)
+        per_container.setdefault(CLIENT_CONTAINER, []).append(v)
 
     def current(candidates, t):
         found = None
@@ -399,6 +399,11 @@ def fallback_s(v):
     return None if any(s is None for s in secs) else round(sum(secs), 3)
 
 
+def fallback_count(visits, side, lst=None):
+    """How many of one side's plays fell back, every round of one list (or every title) together (spec #183)."""
+    return sum(1 for v in visits if v['side'] == side and lst in (None, v.get('list')) and fallbacks(v))
+
+
 def fallback_total_s(visits, side, lst=None):
     """The seconds one side's fallbacks added, every round of one list (or every title) together (owner, 2026-11-20, #187):
     fallback_s of each fallback, added up; 0 when nothing fell back. None when one fallback's extra seconds are not known:
@@ -416,7 +421,7 @@ def fallback_text(v):
 
 def plays(v):
     """Whether a visit's top pick played: video arrived, on the first try or after a fallback. A fallback counts as played
-    (#185, KaijuFlow's fallback on, as at home); fallbacks() and fallback_s() say how many and how slow (rules.md)."""
+    (#185; KaijuFlow with AltMount falls back only once #190 turns Ultimate Fallback on); fallbacks() and fallback_s() say how many and how slow (rules.md)."""
     return bool(v.get('ok'))
 
 
@@ -783,7 +788,8 @@ JUDGED = 'kaijuflow'  # the side a run is judged on: KaijuFlow
 NO_FIGURE = 'no figure'  # the run holds no visit to make the figure from (a side or a round is not in it)
 
 
-def _secs(x):
+def secs_text(x):
+    """Seconds as `check`, the report and the page print them ('1.50 s'), or 'no figure'."""
     return NO_FIGURE if x is None else f'{x:.2f} s'
 
 

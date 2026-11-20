@@ -402,7 +402,7 @@ def _am_timeouts(flat):
 
 def _rows(rep):
     st = rep["settings"]
-    both = ("kaijuflow",)
+    kf = ("kaijuflow",)
     am = YAML_CONFIGS
 
     def g(s):
@@ -421,22 +421,22 @@ def _rows(rep):
         return "max %s%s" % (rep["caps"][s], "".join(" (+ other host max %s, own limit)" % r["max"] for r in other))
 
     yield "Usenet connections (NewsHosting)", {s: conns(s) for s in SETTINGS_SIDES}
-    yield "Health check: samples per NZB / NZBs inspected", per(both, lambda f: _cell(f, "healthChecks.sampleCount", "healthChecks.nzbsToInspect"))
-    yield "Health check: method / batch / extra runs / min healthy", per(both, lambda f: _cell(
+    yield "Health check: samples per NZB / NZBs inspected", per(kf, lambda f: _cell(f, "healthChecks.sampleCount", "healthChecks.nzbsToInspect"))
+    yield "Health check: method / batch / extra runs / min healthy", per(kf, lambda f: _cell(
         f, "healthChecks.inspectionMethod", "healthChecks.smartBatchSize", "healthChecks.smartAdditionalRuns", "healthChecks.smartMinHealthy"))
-    yield "Health check: archive inspection", per(both, lambda f: _cell(f, "healthChecks.archiveInspection"))
-    yield "Pages per enabled indexer (maxPages)", {s: _per_indexer(g(s), "maxPages", on(s)) for s in both}
-    yield "Pages: season pack / series pack extra pages", per(both, lambda f: _cell(f, "searchConfig.seasonPackAdditionalPages", "searchConfig.seriesPackAdditionalPages"))
-    yield "Indexer timeout (s)", {**{s: _per_indexer(g(s), "timeout", on(s)) for s in both}, **per(am, _am_timeouts)}
+    yield "Health check: archive inspection", per(kf, lambda f: _cell(f, "healthChecks.archiveInspection"))
+    yield "Pages per enabled indexer (maxPages)", {s: _per_indexer(g(s), "maxPages", on(s)) for s in kf}
+    yield "Pages: season pack / series pack extra pages", per(kf, lambda f: _cell(f, "searchConfig.seasonPackAdditionalPages", "searchConfig.seriesPackAdditionalPages"))
+    yield "Indexer timeout (s)", {**{s: _per_indexer(g(s), "timeout", on(s)) for s in kf}, **per(am, _am_timeouts)}
     yield "Enabled indexers (slugs)", {s: ", ".join(rep["enabled"].get(s) or []) or "-" for s in SETTINGS_SIDES}
     yield "Import workers (max_processor_workers)", per(am, lambda f: _cell(f, "import.max_processor_workers"))
     yield "Import samples % / health samples % / health system on", per(am, lambda f: _cell(f, "import.segment_sample_percentage", "health.segment_sample_percentage", "health.enabled"))
     yield "Prefetch: streaming.max_prefetch / import.max_download_prefetch", per(am, lambda f: _cell(f, "streaming.max_prefetch", "import.max_download_prefetch"))
     yield "In-flight per connection: normal / stat / stream", per(am, lambda f: _cell(f, "providers[0].inflight_requests", "providers[0].stat_inflight_requests", "providers[0].stream_inflight_requests"))
     yield "AltMount segment cache: on / GB / hours / MB memory", per(am, lambda f: _cell(f, "segment_cache.enabled", "segment_cache.max_size_gb", "segment_cache.expiry_hours", "segment_cache.memory_mb"))
-    yield "Cache: search results (cacheTTL s)", per(both, lambda f: _cell(f, "cacheTTL"))
-    yield "Cache: healthy NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "healthyNzbDbMode", "healthyNzbDbTTL", "healthyNzbDbMaxSizeMB"))
-    yield "Cache: dead NZB DB mode / TTL / MB", per(both, lambda f: _cell(f, "deadNzbDbMode", "deadNzbDbTTL", "deadNzbDbMaxSizeMB"))
+    yield "Cache: search results (cacheTTL s)", per(kf, lambda f: _cell(f, "cacheTTL"))
+    yield "Cache: healthy NZB DB mode / TTL / MB", per(kf, lambda f: _cell(f, "healthyNzbDbMode", "healthyNzbDbTTL", "healthyNzbDbMaxSizeMB"))
+    yield "Cache: dead NZB DB mode / TTL / MB", per(kf, lambda f: _cell(f, "deadNzbDbMode", "deadNzbDbTTL", "deadNzbDbMaxSizeMB"))
     yield "AltMount: fast_fail_header_only / skip_repair", per(am, lambda f: _cell(f, "stremio.fast_fail_header_only", "stremio.skip_repair"))
     yield "AltMount: PAR2 repair / failure masking / mount type", per(am, lambda f: _cell(f, "par2_repair.enabled", "streaming.failure_masking.enabled", "mount_type"))
 

@@ -3,8 +3,6 @@
  * (saved stream links and the UI use them); the Backend is AltMount (#188).
  *
  * POST   /api/nzbdav/test   — Test the AltMount connection (saved or unsaved settings)
- * GET    /api/nzbdav/cache  — Stream cache stats
- * DELETE /api/nzbdav/cache  — Clear stream cache
  *
  * Also mounts the key-protected stream and video proxy:
  *   GET /:manifestKey/nzbdav/stream — stream handler (mounted separately in server.ts)
@@ -25,19 +23,12 @@ import { resolveBaseUrl } from '../utils/urlHelpers.js';
 interface NzbdavDeps {
   config: Config;
   handleStream: (req: any, res: any, proxyFn?: (req: any, res: any, videoPath: string, usePipe: boolean) => Promise<void>) => Promise<void>;
-  getCacheStats: () => any;
-  clearStreamCache: () => void;
-  clearReadyCache: () => number;
-  clearFailedCache: () => number;
-  deleteCacheEntry: (cacheKey: string) => boolean;
-  getCacheEntries: () => any;
   isStreamCached: (nzbUrl: string, title: string) => boolean;
   getLatestVersions: () => { chrome: string };
 }
 
 export function createNzbdavRoutes(deps: NzbdavDeps): Router {
   const router = Router();
-  const { config, getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries } = deps;
 
   // Backend test connection endpoint (dashboard status + settings "test connection").
   // Fields missing from the body come from the saved settings.
@@ -46,42 +37,6 @@ export function createNzbdavRoutes(deps: NzbdavDeps): Router {
     const reply: { message: string; testPath?: string } = { message: status.message };
     if (status.testPath !== undefined) reply.testPath = status.testPath;
     res.status(status.httpStatus).json(reply);
-  });
-
-  // Stream cache stats endpoint
-  router.get('/cache', (req, res) => {
-    res.json(getCacheStats());
-  });
-
-  // Clear stream cache endpoint
-  router.delete('/cache', (req, res) => {
-    clearStreamCache();
-    res.json({ success: true });
-  });
-
-  // Detailed cache entries endpoint
-  router.get('/cache/entries', (req, res) => {
-    res.json(getCacheEntries());
-  });
-
-  // Clear only ready (successful) cache entries
-  router.delete('/cache/ready', (req, res) => {
-    const cleared = clearReadyCache();
-    res.json({ success: true, cleared });
-  });
-
-  // Clear only failed cache entries
-  router.delete('/cache/failed', (req, res) => {
-    const cleared = clearFailedCache();
-    res.json({ success: true, cleared });
-  });
-
-  // Delete a single cache entry by key
-  router.delete('/cache/entry', (req, res) => {
-    const key = req.query.key as string;
-    if (!key) return res.status(400).json({ message: 'Missing key parameter' });
-    const deleted = deleteCacheEntry(key);
-    res.json({ success: deleted });
   });
 
   return router;

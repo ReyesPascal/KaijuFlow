@@ -12,9 +12,9 @@
 
 Private, self-hosted Usenet discovery, verification, fallback, and original-quality streaming for Stremio, based on the complete Usenet Ultimate v1.4.1 release.
 
-KaijuFlow checks a Source's health before it lists it, so the title you press is the one that plays. Its speed tests hold it to that: first no fails, then the fastest time from title to video, measured against Usenet Ultimate and AltMount direct.
+KaijuFlow checks a Source's health, so the title you press is the one that plays, and hands it to AltMount, its one Backend, to stream. Every change is measured on Brain against KaijuFlow's own previous run: first no fails, then the fastest time from title to video.
 
-The baseline includes the backend, React UI and media assets, search and indexer integrations, NNTP providers, Smart and Fixed health checks, archive inspection, NzbDAV streaming, automatic fallback, caches, installation scripts, and Docker tooling. Application source and assets remain unchanged from the pinned release. See [UPSTREAM.md](UPSTREAM.md) for provenance and licensing.
+It started from that release: the backend, React UI and media assets, search and indexer integrations, NNTP providers, Smart and Fixed health checks, archive inspection, automatic fallback, caches, installation scripts, and Docker tooling. It streams through AltMount alone; NzbDAV streaming was removed (#188). See [UPSTREAM.md](UPSTREAM.md) for provenance and licensing.
 
 ## Getting started
 
@@ -67,7 +67,7 @@ Keep provider credentials, indexer keys, private configuration, logs, and runtim
 <details>
 <summary><strong>How KaijuFlow is measured</strong></summary>
 
-- What a speed test is, and the words it uses: [GLOSSARY.md](GLOSSARY.md), "Measuring", and [ADR 0007](docs/adr/0007-speed-tests-play-as-at-home.md).
+- What a run is and how it is judged, and the words it uses: [tools/brain/docs/rules.md](tools/brain/docs/rules.md) and [GLOSSARY.md](GLOSSARY.md), "Measuring"; spec #183 replaced most of [ADR 0007](docs/adr/0007-speed-tests-play-as-at-home.md) (its amendment of 2026-11-20).
 - How a run is made: [tools/brain/RUNBOOK.md](tools/brain/RUNBOOK.md); the tools: [tools/brain/README.md](tools/brain/README.md).
 - The plan: spec [#58](https://github.com/ReyesPascal/KaijuFlow/issues/58); the speed-test build: spec [#159](https://github.com/ReyesPascal/KaijuFlow/issues/159); KaijuFlow with AltMount, fast and lean: spec [#183](https://github.com/ReyesPascal/KaijuFlow/issues/183) (the map since 2026-11-20).
 - The latest results: the [Speed Check page](https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD).

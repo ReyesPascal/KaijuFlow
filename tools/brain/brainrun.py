@@ -54,15 +54,9 @@ DEFAULT_RUNS_ROOT = os.path.expanduser('~/kaijuflow-notes/brain-runs')
 PLAN = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 RECORD_ROUNDS = ('cold', 'warm')  # a record pass: a cold round, then a warm round on the same state (#79)
 MAIN_SIDES = ['kaijuflow']  # one setup (#185): KaijuFlow with its AltMount copy; the other test copies stay stopped
-ALL_TESTBED = ['altmount-kf', 'kaijuflow']  # the test copies a record or a run resets: the setup's own
-ONE_PAGE_TESTBED = ['kaijuflow', 'altmount-kf']  # the test copies the one-page side uses
-# side -> the test copy (testbed service) that answers its list address
-SIDE_SERVICE = {'kaijuflow': 'kaijuflow', 'kaijuflow-1page': 'kaijuflow'}
-# side -> (KaijuFlow container with [KF-STEP] lines, its AltMount container, whose log holds the imports)
-SIDE_LOGS = {
-    'kaijuflow': ('kaijuflow-test', 'altmount-kf-test'),
-    'kaijuflow-1page': ('kaijuflow-test', 'altmount-kf-test'),
-}
+ALL_TESTBED = ['altmount-kf', 'kaijuflow']  # the test copies a record or a run resets, the one-page side's too: the setup's own
+# every side's containers: KaijuFlow's, with the [KF-STEP] lines, and its AltMount's, whose log holds the imports
+KF_CONTAINER, ALTMOUNT_CONTAINER = br.CLIENT_CONTAINER, 'altmount-kf-test'
 GRACE_S = 5
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
 EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
@@ -173,7 +167,7 @@ def switch_to_one_page(io, log=print):
     it. The config is patched while the copy is stopped, then KaijuFlow and its AltMount are reset and come up again (cold).
     io.restore_config() undoes it. `log` gets the reset's lines."""
     io.apply_one_page()
-    io.reset(ONE_PAGE_TESTBED, log)
+    io.reset(ALL_TESTBED, log)
 
 
 def visit_answer(got, tries, play=None, seek=None):
@@ -361,7 +355,7 @@ class RealIO:
             os.remove(self.backup)
 
     def visit_http(self, side, kind, vid, tries):
-        base = side_base(self.cfg, side)
+        base = list_base(self.cfg)
         return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries)
 
     def logs(self, container, since):
@@ -396,7 +390,7 @@ def read_addresses(run=subprocess.run):
     """{test container: its address on the test network}, read with `docker inspect` (read-only); a container that is not up
     or has no address is left out."""
     out = {}
-    for container in sorted(set(br.CLIENT_CONTAINER.values())):
+    for container in [KF_CONTAINER]:
         if container not in testbed.TEST_CONTAINERS:
             raise ValueError('not a test container: ' + container)
         fmt = '{{with index .NetworkSettings.Networks "%s"}}{{.IPAddress}}{{end}}' % testbed.NETWORK
@@ -434,9 +428,9 @@ def shelve_marker(store):
     return new
 
 
-def side_base(cfg, side):
-    u = cfg['user_id']
-    return {'kaijuflow': f'http://localhost:1338/{u}', 'kaijuflow-1page': f'http://localhost:1338/{u}'}[side]
+def list_base(cfg):
+    """The address every side's list is asked of: KaijuFlow's test copy (the one-page side is the same copy, patched)."""
+    return f"http://localhost:1338/{cfg['user_id']}"
 
 
 # --------------------------------------------------------------------------- the preflight (spec #72, ticket #74)
@@ -764,7 +758,7 @@ def partial_titles(titles, titles_file):
 
 def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     kind, vid, label = title[:3]
-    kf_c, be_c = SIDE_LOGS[side]
+    kf_c, be_c = KF_CONTAINER, ALTMOUNT_CONTAINER
     t0 = io.now()
     http = io.visit_http(side, kind, vid, cfg['tries'])
     t1 = io.now()
@@ -797,7 +791,7 @@ def finalize_steps(io, visits):
     """
     by_container = {}
     for v in visits:
-        by_container.setdefault(SIDE_LOGS[v['side']][0], []).append(v)
+        by_container.setdefault(KF_CONTAINER, []).append(v)
     for container, vs in by_container.items():
         vs.sort(key=lambda v: br.parse_ts(v['t_start']))
         first = br.parse_ts(vs[0]['t_start']) - datetime.timedelta(seconds=1)
@@ -937,7 +931,7 @@ def run_all(cfg, io):
             if main_sides:
                 do_pass(cfg, io, run, logbuf, 'main sides', main_sides, ALL_TESTBED)
             if 'kaijuflow-1page' in run_sides(cfg):
-                do_pass(cfg, io, run, logbuf, 'one-page side', ['kaijuflow-1page'], ONE_PAGE_TESTBED,
+                do_pass(cfg, io, run, logbuf, 'one-page side', ['kaijuflow-1page'], ALL_TESTBED,
                         first_reset=switch_to_one_page)
         except CapReached as e:
             run['status'] = 'null'
@@ -1289,7 +1283,7 @@ def smoke(cfg, io=None):
             http = io.visit_http(side, 'movie', os.environ.get('SMOKE_IMDB', 'tt0133093'), 0)
             io.sleep(1)
             new = [x for x in io.standin_lines()[before:] if x.startswith('MISS ')]
-            container = br.CLIENT_CONTAINER[side]
+            container = KF_CONTAINER
             results[side] = dict(http=http.get('list_status'), container=container,
                                  **smoke_side_result(new, addresses.get(container)))
     finally:

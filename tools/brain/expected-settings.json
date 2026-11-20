@@ -1,5 +1,5 @@
 {
- "about": "The settings every test copy is expected to have; the preflight of brainrun.py compares each copy with this file (tools/brain/docs/rules.md). It holds the standard sort and filter rules the owner defined in issue #109 on 2026-11-13: KaijuFlow's default filter object, plus the largest single file (maxFileSize, 30 GB for films and 10 GB for episodes, in bytes) and the drop rule \"No disc images\". KaijuFlow alone (#185): its fallback is on (ultimateFallback.enabled), as at home; a fallback counts as played. No host, address, login or key belongs here.",
+ "about": "The settings every test copy is expected to have; the preflight of brainrun.py compares each copy with this file (tools/brain/docs/rules.md). It holds the standard sort and filter rules the owner defined in issue #109 on 2026-11-13: KaijuFlow's default filter object, plus the largest single file (maxFileSize, 30 GB for films and 10 GB for episodes, in bytes) and the drop rule \"No disc images\". KaijuFlow alone (#185): its fallback is on (ultimateFallback.enabled); a fallback counts as played. With AltMount the setting has no effect until #190 turns Ultimate Fallback on, so the baseline (#189) plays one try per title. No host, address, login or key belongs here.",
  "expected": [
   {
    "copies": ["kaijuflow"],

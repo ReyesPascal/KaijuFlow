@@ -49,7 +49,7 @@ class Copies:
         self.up = set(up)
 
     def is_up(self, side):
-        return brainrun.SIDE_SERVICE[side] in self.up
+        return 'kaijuflow' in self.up  # every side is KaijuFlow's test copy
 
     def down_answer(self, tries):
         return brainrun.visit_answer(refused_get(), tries)
@@ -399,8 +399,8 @@ class WallClockTest(unittest.TestCase):
         # the switch to one page resets KaijuFlow and its AltMount, 10 s each, from 18:01:38
         at = lines.index('18:01:35 [8/16] kaijuflow warm 2 Show S01E01: plays list 2.0 s start 1.5 s')
         self.assertEqual(lines[at + 1:at + 5], [
-            '18:01:38 [8/16] reset kaijuflow: restored from template', '18:01:48 [8/16] reset kaijuflow: up',
-            '18:01:48 [8/16] reset altmount-kf: restored from template', '18:01:58 [8/16] reset altmount-kf: up'])
+            '18:01:38 [8/16] reset altmount-kf: restored from template', '18:01:48 [8/16] reset altmount-kf: up',
+            '18:01:48 [8/16] reset kaijuflow: restored from template', '18:01:58 [8/16] reset kaijuflow: up'])
         for n, line in enumerate(lines):  # no line of the run without the time and the count
             time_, count, _ = line.split(' ', 2)
             datetime.datetime.strptime(time_, '%H:%M:%S')
@@ -1186,9 +1186,9 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(plays[15].split()[1:3], ['[8/8]', 'proof'])
         # the resets' lines start the same way: before the pass, at the switch to one page, before the proof, at the end
         self.assertEqual(lines[0], '18:00:00 [0/8] reset altmount-kf: restored from template')
-        self.assertEqual(lines[lines.index(plays[3]) + 1], '18:00:38 [4/8] reset kaijuflow: restored from template')
+        self.assertEqual(lines[lines.index(plays[3]) + 1], '18:00:38 [4/8] reset altmount-kf: restored from template')
         self.assertEqual(lines[lines.index(plays[7]) + 1], '18:01:14 [0/8] proof reset altmount-kf: restored from template')
-        self.assertEqual(lines[lines.index(plays[11]) + 1], '18:01:52 [4/8] proof reset kaijuflow: restored from template')
+        self.assertEqual(lines[lines.index(plays[11]) + 1], '18:01:52 [4/8] proof reset altmount-kf: restored from template')
         self.assertEqual(lines[-1], '18:02:48 [8/8] reset kaijuflow: up')
         self.assertTrue(all(x[2] == x[5] == ':' and x[9] == '[' for x in lines), lines)
 
@@ -1672,7 +1672,8 @@ class ShortRunTest(SignalGuard):
         self.assertEqual(len(run['visits']), 8)  # two titles, four rounds
         self.assertEqual(self.meta(run)['sides'], ['kaijuflow-1page'])
         self.assertIn(('patch-one-page',), io.calls)
-        self.assertNotIn(('reset', tuple(brainrun.ALL_TESTBED)), io.calls)  # no pass of the main sides
+        kinds = [c[0] for c in io.calls]
+        self.assertLess(kinds.index('patch-one-page'), kinds.index('reset'))  # no pass of the main sides before the switch
 
     def test_no_selectors_play_the_full_plan_as_before(self):
         run = brainrun.run_all(make_cfg(self.tmp), CleanIO())

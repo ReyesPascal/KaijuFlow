@@ -53,6 +53,11 @@ def _round_title(v):
     return f"{v['phase'].capitalize()} {v['round']} {v['title']}"
 
 
+def _line_head(side, lst):
+    """'KaijuFlow, hard list', or 'KaijuFlow, every title' for a run without tags: how a per-list line starts."""
+    return f"{_side(side)}, {f'{lst} list' if lst else 'every title'}"
+
+
 def list_lines(visits, sides):
     """Per side and list (#185), one line: the fails (titles and plays, each failed play named), the fallbacks (each named
     with its extra seconds) and the median cold and warm title to video. A run without tags gets one line for every title."""
@@ -64,10 +69,10 @@ def list_lines(visits, sides):
                 continue
             failed = [_round_title(v) for v in br.fail_visits(vs, s)]
             fell_back = [f'{_round_title(v)}, {br.fallback_text(v)}' for v in vs if br.fallbacks(v)]
-            out.append(f"{_side(s)}, {f'{x} list' if x else 'every title'}: fails {br.fails_words(br.fail_figure(vs, s))}"
+            out.append(f"{_line_head(s, x)}: fails {br.fails_words(br.fail_figure(vs, s))}"
                        + (f" ({'; '.join(failed)})" if failed else '')
                        + (f"; fallbacks {len(fell_back)} ({'; '.join(fell_back)})" if fell_back else '; fallbacks none')
-                       + ''.join(f'; {phase} title to video {br._secs(br.side_time(vs, s, phase, "video"))}' for phase in ('cold', 'warm'))
+                       + ''.join(f'; {phase} title to video {br.secs_text(br.side_time(vs, s, phase, "video"))}' for phase in ('cold', 'warm'))
                        + '.')
     return out
 
@@ -88,34 +93,63 @@ def _fallback_secs(x):
     return 'unknown' if x is None else f'{x:.2f} s'
 
 
+def _why_not_judged(meta):
+    """Why this run's lists cannot be judged (a run that did not finish, or a short run, played fewer plays than the
+    previous run, so fewer fails says nothing), or None when they can (spec #183)."""
+    status = meta.get('status')
+    if status == 'stopped':
+        return 'this run was stopped'
+    if status != 'ok':
+        return f'this run did not finish (status {status})'
+    if meta.get('short'):
+        return f"this run is short ({meta['short']})"
+    return None
+
+
+def _compared(name, now, was, words, by):
+    """'cold title to video 1.50 s (was 2.00 s), better': one figure of this run against the previous run's."""
+    return f"{name} {words(now)} (was {words(was)}), {by or 'not compared'}"
+
+
 def judged_lines(run_dir, meta, visits):
     """KaijuFlow's run judged against its previous run on the same recording (#186, rules.md "Judged against the previous
     run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
-    and kept or not kept; then the verdict over every list. Each list's line also shows its fallback time (the fallbacks'
-    extra seconds added up, brainreport.fallback_total_s) against the previous run's, which the verdict leaves out (#187)."""
+    and kept or not kept; then the verdict over every list. Each list's line also shows, against the previous run's, its
+    median warm title to video (spec #183) and its fallback time (the fallbacks' extra seconds added up,
+    brainreport.fallback_total_s, #187); the verdict leaves those out."""
     side, recording = br.JUDGED, meta.get('recording')
     prev = br.run_before(run_dir, recording)
     if prev is None:
         return [f'Against the previous run: not compared, no earlier run on the same recording ({recording}).']
     out, verdicts = [f"Against the previous run on the same recording ({recording}): {prev['folder']}."], []
+    why_not = _why_not_judged(meta)
     for x in br.run_lists(visits) or [None]:
         fails = [br.fail_figure(vs, side, lst=x) for vs in (visits, prev['visits'])]
-        cold = [br.side_time(vs, side, 'cold', 'video', lst=x) for vs in (visits, prev['visits'])]
+        cold, warm = ([br.side_time(vs, side, phase, 'video', lst=x) for vs in (visits, prev['visits'])]
+                      for phase in ('cold', 'warm'))
         by_fails = _against(*[f['fails'] if f['counted'] else None for f in fails])
         by_cold = _against(*cold)
-        fell_back = [br.fallback_total_s(vs, side, lst=x) for vs in (visits, prev['visits'])]
-        by_fallback = _against(*fell_back)  # shown, never part of the verdict (owner, 2026-11-20, #187)
-        if by_fails == 'worse':
+        fell_back = [br.fallback_count(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        fallback_secs = [br.fallback_total_s(vs, side, lst=x) for vs in (visits, prev['visits'])]
+        if why_not:
+            verdict = NOT_JUDGED
+        elif by_fails == 'worse':
             verdict = NOT_KEPT
         elif by_fails is None or by_cold is None:
             verdict = NOT_JUDGED
         else:
             verdict = KEPT if by_cold != 'worse' else NOT_KEPT
         verdicts.append(verdict)
-        out.append(f"{_side(side)}, {f'{x} list' if x else 'every title'}: fails {br.fails_words(fails[0])} "
-                   f"(was {br.fails_words(fails[1])}), {by_fails or 'not compared'}; cold title to video {br._secs(cold[0])} "
-                   f"(was {br._secs(cold[1])}), {by_cold or 'not compared'}; fallback time {_fallback_secs(fell_back[0])} "
-                   f"(was {_fallback_secs(fell_back[1])}), {by_fallback or 'not compared'}. {verdict.capitalize()}.")
+        figures = [_compared('fails', *fails, br.fails_words, by_fails),
+                   _compared('cold title to video', *cold, br.secs_text, by_cold),
+                   # shown, never part of the verdict (spec #183; owner, 2026-11-20, #187)
+                   _compared('warm title to video', *warm, br.secs_text, _against(*warm)),
+                   _compared('fallbacks', *fell_back, str, _against(*fell_back)),
+                   _compared('fallback time', *fallback_secs, _fallback_secs, _against(*fallback_secs))]
+        out.append(f"{_line_head(side, x)}: {'; '.join(figures)}. {verdict.capitalize()}"
+                   + (f': {why_not}.' if why_not else '.'))
+    if why_not:
+        return out + [f'Verdict against the previous run: {NOT_JUDGED}, {why_not}.']
     overall = NOT_KEPT if NOT_KEPT in verdicts else NOT_JUDGED if NOT_JUDGED in verdicts else KEPT
     return out + [f'Verdict against the previous run: {overall}.']
 
