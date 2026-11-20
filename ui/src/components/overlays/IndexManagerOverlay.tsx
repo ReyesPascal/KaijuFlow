@@ -34,7 +34,6 @@ import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../../constants';
 interface IndexManagerOverlayProps {
   onClose: () => void;
   config: Config | null;
-  backend: 'nzbdav' | 'altmount';
   setConfig: React.Dispatch<React.SetStateAction<Config | null>>;
   indexManager: 'newznab' | 'prowlarr' | 'nzbhydra';
   setIndexManager: React.Dispatch<React.SetStateAction<'newznab' | 'prowlarr' | 'nzbhydra'>>;
@@ -79,44 +78,6 @@ interface IndexManagerOverlayProps {
   urlDedup: boolean;
   setUrlDedup: React.Dispatch<React.SetStateAction<boolean>>;
 
-  // Library short-circuit threshold (0 = off, 1-10 = active)
-  librarySearchThreshold: number;
-  setLibrarySearchThreshold: React.Dispatch<React.SetStateAction<number>>;
-
-  // Per-type apply toggles for Ultimate Library (default true each)
-  libraryApplyToMovies: boolean;
-  setLibraryApplyToMovies: React.Dispatch<React.SetStateAction<boolean>>;
-  libraryApplyToSeries: boolean;
-  setLibraryApplyToSeries: React.Dispatch<React.SetStateAction<boolean>>;
-
-  // Include /content/uncategorized as a second scan root
-  librarySearchScanUncategorized: boolean;
-  setLibrarySearchScanUncategorized: React.Dispatch<React.SetStateAction<boolean>>;
-
-  // Run Ultimate Library on cache hit (default false)
-  libraryRunOnCacheHit: boolean;
-  setLibraryRunOnCacheHit: React.Dispatch<React.SetStateAction<boolean>>;
-
-  // Display library in results
-  displayLibraryInResults: boolean;
-  setDisplayLibraryInResults: React.Dispatch<React.SetStateAction<boolean>>;
-  // Library delete tiles (two toggles, both default false). Two-step
-  // click-confirm enforced server-side. Tiles are spliced into the streams
-  // array post-build and never enter fallbackCandidates so UF skips them.
-  libraryDeleteAllTile: boolean;
-  setLibraryDeleteAllTile: React.Dispatch<React.SetStateAction<boolean>>;
-  libraryDeletePerStreamTile: boolean;
-  setLibraryDeletePerStreamTile: React.Dispatch<React.SetStateAction<boolean>>;
-  // Opens the best-practices modal when the user enables either delete tile.
-  // Toggling off bypasses the modal and flips the toggle directly.
-  setLibraryDeleteWarning: React.Dispatch<React.SetStateAction<{ show: boolean; toggleType: 'all' | 'perStream' | null }>>;
-  // Position of the "Skip Ultimate Library" stream tile in the results list.
-  librarySkipTilePosition: 'second' | 'last';
-  setLibrarySkipTilePosition: React.Dispatch<React.SetStateAction<'second' | 'last'>>;
-  // For series/season pack results, the "Delete All" tile deletes either the
-  // per-episode file ('episode', default) or the entire release folder ('pack').
-  libraryDeleteAllPackScope: 'episode' | 'pack';
-  setLibraryDeleteAllPackScope: React.Dispatch<React.SetStateAction<'episode' | 'pack'>>;
   absoluteEpisodeFallback: boolean;
   setAbsoluteEpisodeFallback: React.Dispatch<React.SetStateAction<boolean>>;
   parallelAlternateTitleSearch: boolean;
@@ -230,7 +191,6 @@ interface IndexManagerOverlayProps {
 }
 
 export function IndexManagerOverlay({
-  backend,
   onClose,
   config,
   setConfig,
@@ -267,27 +227,6 @@ export function IndexManagerOverlay({
   setSeriesPackAdditionalPages,
   urlDedup,
   setUrlDedup,
-  librarySearchThreshold,
-  setLibrarySearchThreshold,
-  libraryApplyToMovies,
-  setLibraryApplyToMovies,
-  libraryApplyToSeries,
-  setLibraryApplyToSeries,
-  librarySearchScanUncategorized,
-  setLibrarySearchScanUncategorized,
-  libraryRunOnCacheHit,
-  setLibraryRunOnCacheHit,
-  displayLibraryInResults,
-  setDisplayLibraryInResults,
-  libraryDeleteAllTile,
-  setLibraryDeleteAllTile,
-  libraryDeletePerStreamTile,
-  setLibraryDeletePerStreamTile,
-  setLibraryDeleteWarning,
-  librarySkipTilePosition,
-  setLibrarySkipTilePosition,
-  libraryDeleteAllPackScope,
-  setLibraryDeleteAllPackScope,
   absoluteEpisodeFallback,
   setAbsoluteEpisodeFallback,
   parallelAlternateTitleSearch,
@@ -393,8 +332,6 @@ export function IndexManagerOverlay({
   const nzbhydraTimeoutInc = useHoldRepeat(useCallback(() => setNzbhydraTimeout(p => Math.min(45, p + 1)), [setNzbhydraTimeout]));
   const easynewsTimeoutDec = useHoldRepeat(useCallback(() => setEasynewsTimeout(p => Math.max(1, p - 1)), [setEasynewsTimeout]));
   const easynewsTimeoutInc = useHoldRepeat(useCallback(() => setEasynewsTimeout(p => Math.min(45, p + 1)), [setEasynewsTimeout]));
-  const libraryThresholdDec = useHoldRepeat(useCallback(() => setLibrarySearchThreshold(p => Math.max(1, p - 1)), [setLibrarySearchThreshold]));
-  const libraryThresholdInc = useHoldRepeat(useCallback(() => setLibrarySearchThreshold(p => Math.min(10, p + 1)), [setLibrarySearchThreshold]));
   const seasonPackPagesDec = useHoldRepeat(useCallback(() => setSeasonPackAdditionalPages(p => Math.max(1, p - 1)), [setSeasonPackAdditionalPages]));
   const seasonPackPagesInc = useHoldRepeat(useCallback(() => setSeasonPackAdditionalPages(p => Math.min(10, p + 1)), [setSeasonPackAdditionalPages]));
   const seriesPackPagesDec = useHoldRepeat(useCallback(() => setSeriesPackAdditionalPages(p => Math.max(1, p - 1)), [setSeriesPackAdditionalPages]));
@@ -701,257 +638,6 @@ export function IndexManagerOverlay({
                   <div className="text-xs text-slate-500">Kitsu · MAL · AniList · AniDB</div>
                   <div className="text-xs text-slate-500 mt-1">Incoming anime IDs from metadata addons like AIOMetadata or Anime Kitsu are automatically resolved and mapped to the search methods configured per-indexer below.</div>
                 </div>
-              </div>
-
-              {/* Library features read NzbDAV's library: unavailable under AltMount (#24) */}
-              <div className={`space-y-4 ${backend === 'altmount' ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={backend === 'altmount'}>
-                {backend === 'altmount' && (
-                  <div className="text-xs text-amber-400/80 italic">Library features are unavailable with the AltMount Backend.</div>
-                )}
-              {/* Display Library in Results — own card */}
-              <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-slate-300">Display library in results</div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="display-library-in-results"
-                      checked={displayLibraryInResults}
-                      onChange={(e) => setDisplayLibraryInResults(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-                <div className="text-xs text-slate-500">Mark search results that already exist in your library with the 📚 icon. Adds a quick WebDAV check to each result before sending to Stremio.</div>
-              </div>
-
-              {/* Ultimate Library — primary search source */}
-              <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-yellow-500/5 to-amber-500/5">
-                <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 via-transparent to-yellow-500/5 animate-pulse" style={{ animationDuration: '4s' }} />
-                <div className="relative p-4 space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
-                        <Crown className="w-3.5 h-3.5 text-white" />
-                      </div>
-                      <h3 className="text-sm font-bold bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent">Ultimate Library</h3>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={librarySearchThreshold > 0}
-                        onChange={(e) => setLibrarySearchThreshold(e.target.checked ? 1 : 0)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                  </div>
-                  <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                    <p>Scan your WebDAV library before any indexer is queried.</p>
-                    <p>When Ultimate Library returns at least the configured number of results after filtering, indexer searches are skipped entirely.</p>
-                    <p>Supports <span className="bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent font-semibold">Ultimate Fallback</span> and is powered by <span className="bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent font-semibold">Ultimate Text Search</span>.</p>
-                  </div>
-                  <p className="text-xs text-amber-400/60 italic">Pairs best with Season and Series Packs enabled.</p>
-
-                  {librarySearchThreshold > 0 && (
-                    <div className="space-y-3 pt-2 border-t border-amber-500/20">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs text-slate-300 font-medium">Result Threshold</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            {...libraryThresholdDec}
-                            aria-label="Decrease library threshold"
-                            className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                          >−</button>
-                          <span className="text-lg font-bold text-amber-400/90 tabular-nums w-10 text-center">{librarySearchThreshold}</span>
-                          <button
-                            {...libraryThresholdInc}
-                            aria-label="Increase library threshold"
-                            className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                          >+</button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-amber-400/60 italic">Skip indexer queries when the library returns as least this many results after filtering · NzbDAV streaming mode only</p>
-
-                      <div className="space-y-3 pt-3 border-t border-amber-500/20">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs text-slate-300 font-medium">Apply to Movies</span>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={libraryApplyToMovies}
-                              onChange={(e) => setLibraryApplyToMovies(e.target.checked)}
-                              className="sr-only peer"
-                            />
-                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs text-slate-300 font-medium">Apply to TV</span>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={libraryApplyToSeries}
-                              onChange={(e) => setLibraryApplyToSeries(e.target.checked)}
-                              className="sr-only peer"
-                            />
-                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                          </label>
-                        </div>
-                        <p className="text-xs text-amber-400/60 italic">Scope which content types Ultimate Library applies to.</p>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 pt-3 border-t border-amber-500/20">
-                        <span className="text-xs text-slate-300 font-medium">Scan Uncategorized</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={librarySearchScanUncategorized}
-                            onChange={(e) => setLibrarySearchScanUncategorized(e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                        </label>
-                      </div>
-                      <p className="text-xs text-amber-400/60 italic">Scan <code className="text-amber-300/80">/content/uncategorized</code>, in additon to the default categories, for content that's been manually uploaded to the default location in NzbDAV.</p>
-
-                      <div className="flex items-center justify-between gap-3 pt-3 border-t border-amber-500/20">
-                        <span className="text-xs text-slate-300 font-medium">Run on Cache Hit</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={libraryRunOnCacheHit}
-                            onChange={(e) => setLibraryRunOnCacheHit(e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                        </label>
-                      </div>
-                      <div className="text-xs text-amber-400/60 italic space-y-1">
-                        <p>When enabled, Ultimate Library runs on every request, including when cached results exist.</p>
-                        <p>If the post-filter Ultimate Library scan meets your threshold, library results replace the cached results for that request.</p>
-                        <p>Otherwise, the cached results are returned.</p>
-                        <p>The "Skip Ultimate Library" stream tile will bypass Ultimate Library and return cached results, if they exist, on the next request.</p>
-                      </div>
-
-                      <div className="space-y-3 pt-3 border-t border-amber-500/20">
-                        <div className="text-sm font-semibold text-slate-200 py-2">Skip Ultimate Library Stream Tile</div>
-
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs text-slate-300 font-medium">Tile Position</span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setLibrarySkipTilePosition('second')}
-                              className={clsx(
-                                "px-3 py-1 rounded-md text-xs font-medium border transition-colors",
-                                librarySkipTilePosition === 'second'
-                                  ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
-                                  : "bg-slate-700/50 border-slate-600 text-slate-400 hover:text-slate-300"
-                              )}
-                            >First</button>
-                            <button
-                              onClick={() => setLibrarySkipTilePosition('last')}
-                              className={clsx(
-                                "px-3 py-1 rounded-md text-xs font-medium border transition-colors",
-                                librarySkipTilePosition === 'last'
-                                  ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
-                                  : "bg-slate-700/50 border-slate-600 text-slate-400 hover:text-slate-300"
-                              )}
-                            >Last</button>
-                          </div>
-                        </div>
-                        <div className="text-xs text-amber-400/60 italic space-y-1">
-                          <p>A "Skip Ultimate Library" stream tile is added to the results list when Ultimate Library displays results.</p>
-                          <p>Clicking the tile arms a one-time bypass.</p>
-                          <p>Your next search for the same content skips Ultimate Library and queries your indexers instead.</p>
-                          <p>This allows you to fetch new content from your enabled indexers.</p>
-                          <p>Use the position selector to pin the tile to the top slot (or second if Ultimate Fallback is enabled) or to the end of the results list.</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3 pt-3 border-t border-amber-500/20">
-                        <div className="text-sm font-semibold text-slate-200 py-2">Manage your WebDAV library from the Ultimate Library results list</div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs text-slate-300 font-medium">Stream Tile: Delete All Results From WebDAV</span>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={libraryDeleteAllTile}
-                              onChange={(e) => {
-                                if (e.target.checked && !libraryDeleteAllTile) {
-                                  setLibraryDeleteWarning({ show: true, toggleType: 'all' });
-                                } else {
-                                  setLibraryDeleteAllTile(e.target.checked);
-                                }
-                              }}
-                              className="sr-only peer"
-                            />
-                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                          </label>
-                        </div>
-                        <div className="text-xs text-amber-400/60 italic space-y-1">
-                          <p>Enabling this toggle adds a "Delete All Results From WebDAV" stream tile to the results list.</p>
-                          <p>The tile is placed immediately after the "Skip Ultimate Library" tile, so its position follows whichever slot you chose above (top or last).</p>
-                          <p>Clicking the tile deletes all Ultimate Library results for the current request from your WebDAV mount.</p>
-                          <p>For series / season pack results, the pack-scope selector below decides whether the tile deletes the per-episode file or the entire release pack.</p>
-                        </div>
-
-                        {libraryDeleteAllTile && (
-                          <div className="flex items-center justify-between gap-3 pt-1">
-                            <span className="text-xs text-slate-300 font-medium">Pack scope</span>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setLibraryDeleteAllPackScope('episode')}
-                                className={clsx(
-                                  "px-3 py-1 rounded-md text-xs font-medium border transition-colors",
-                                  libraryDeleteAllPackScope === 'episode'
-                                    ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
-                                    : "bg-slate-700/50 border-slate-600 text-slate-400 hover:text-slate-300"
-                                )}
-                              >Episode</button>
-                              <button
-                                onClick={() => setLibraryDeleteAllPackScope('pack')}
-                                className={clsx(
-                                  "px-3 py-1 rounded-md text-xs font-medium border transition-colors",
-                                  libraryDeleteAllPackScope === 'pack'
-                                    ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
-                                    : "bg-slate-700/50 border-slate-600 text-slate-400 hover:text-slate-300"
-                                )}
-                              >Pack</button>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between gap-3 pt-2">
-                          <span className="text-xs text-slate-300 font-medium">Stream Tile: Delete Result From WebDAV</span>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={libraryDeletePerStreamTile}
-                              onChange={(e) => {
-                                if (e.target.checked && !libraryDeletePerStreamTile) {
-                                  setLibraryDeleteWarning({ show: true, toggleType: 'perStream' });
-                                } else {
-                                  setLibraryDeletePerStreamTile(e.target.checked);
-                                }
-                              }}
-                              className="sr-only peer"
-                            />
-                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                          </label>
-                        </div>
-                        <div className="text-xs text-amber-400/60 italic space-y-1">
-                          <p>Enabling this toggle adds a "Delete The (Above / Left) Result From WebDAV" stream tile to the results list.</p>
-                          <p>The stream tile is placed after the stream it deletes in the results list.</p>
-                          <p>Clicking the tile deletes the individual result from your WebDAV mount.</p>
-                          <p>For season / series pack results, an additional tile is placed next in the results list that allows you to delete the entire season / series pack for that result.</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
               </div>
 
               {/* Season Packs — own card, separate from Search Settings */}

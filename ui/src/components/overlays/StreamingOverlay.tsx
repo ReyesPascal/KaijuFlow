@@ -1,5 +1,5 @@
 // What this does:
-//   Streaming configuration overlay with NzbDAV connection settings, stream buffer, and categories
+//   Streaming configuration overlay: AltMount (the Backend) connection settings, delivery method and stream buffer
 
 import { Play, X, Activity } from 'lucide-react';
 import clsx from 'clsx';
@@ -11,8 +11,6 @@ interface StreamingOverlayProps {
   setConfig: React.Dispatch<React.SetStateAction<Config | null>>;
   streamingMode: 'nzbdav' | 'stremio';
   setStreamingMode: React.Dispatch<React.SetStateAction<'nzbdav' | 'stremio'>>;
-  backend: 'nzbdav' | 'altmount';
-  setBackend: React.Dispatch<React.SetStateAction<'nzbdav' | 'altmount'>>;
   altmountUrl: string;
   setAltmountUrl: React.Dispatch<React.SetStateAction<string>>;
   altmountApiKey: string;
@@ -22,32 +20,14 @@ interface StreamingOverlayProps {
   altmountPrepareTimeout: number;
   setAltmountPrepareTimeout: React.Dispatch<React.SetStateAction<number>>;
   backendMessage: string;
-  nzbdavUrl: string;
-  setNzbdavUrl: React.Dispatch<React.SetStateAction<string>>;
-  nzbdavApiKey: string;
-  setNzbdavApiKey: React.Dispatch<React.SetStateAction<string>>;
-  nzbdavWebdavUrl: string;
-  setNzbdavWebdavUrl: React.Dispatch<React.SetStateAction<string>>;
-  nzbdavWebdavUser: string;
-  setNzbdavWebdavUser: React.Dispatch<React.SetStateAction<string>>;
-  nzbdavWebdavPassword: string;
-  setNzbdavWebdavPassword: React.Dispatch<React.SetStateAction<string>>;
-  nzbdavMoviesCategory: string;
-  setNzbdavMoviesCategory: React.Dispatch<React.SetStateAction<string>>;
-  nzbdavTvCategory: string;
-  setNzbdavTvCategory: React.Dispatch<React.SetStateAction<string>>;
   nzbdavStreamBufferMB: number;
   setNzbdavStreamBufferMB: React.Dispatch<React.SetStateAction<number>>;
   nzbdavPipeBufferMB: number;
   setNzbdavPipeBufferMB: React.Dispatch<React.SetStateAction<number>>;
   nzbdavStreamingMethod: 'pipe' | 'proxy' | 'direct';
   setNzbdavStreamingMethod: React.Dispatch<React.SetStateAction<'pipe' | 'proxy' | 'direct'>>;
-  ultimateFallbackEnabled: boolean;
   nzbdavConnectionStatus: 'connected' | 'disconnected' | 'unconfigured' | 'checking' | null;
-  nzbdavTestNzbStatus: 'idle' | 'sending' | 'success' | 'error';
-  nzbdavTestNzbMessage: string;
   checkNzbdavConnection: () => Promise<void>;
-  sendNzbdavTestNzb: () => Promise<void>;
 }
 
 export function StreamingOverlay({
@@ -56,8 +36,6 @@ export function StreamingOverlay({
   setConfig,
   streamingMode,
   setStreamingMode,
-  backend,
-  setBackend,
   altmountUrl,
   setAltmountUrl,
   altmountApiKey,
@@ -67,35 +45,16 @@ export function StreamingOverlay({
   altmountPrepareTimeout,
   setAltmountPrepareTimeout,
   backendMessage,
-  nzbdavUrl,
-  setNzbdavUrl,
-  nzbdavApiKey,
-  setNzbdavApiKey,
-  nzbdavWebdavUrl,
-  setNzbdavWebdavUrl,
-  nzbdavWebdavUser,
-  setNzbdavWebdavUser,
-  nzbdavWebdavPassword,
-  setNzbdavWebdavPassword,
-  nzbdavMoviesCategory,
-  setNzbdavMoviesCategory,
-  nzbdavTvCategory,
-  setNzbdavTvCategory,
   nzbdavStreamBufferMB,
   setNzbdavStreamBufferMB,
   nzbdavPipeBufferMB,
   setNzbdavPipeBufferMB,
   nzbdavStreamingMethod,
   setNzbdavStreamingMethod,
-  ultimateFallbackEnabled,
   nzbdavConnectionStatus,
-  nzbdavTestNzbStatus,
-  nzbdavTestNzbMessage,
   checkNzbdavConnection,
-  sendNzbdavTestNzb,
 }: StreamingOverlayProps) {
-  // NzbDAV forces proxy when UF is off; AltMount honours the setting. Mirror here so the UI stays truthful
-  const effectiveMethod = backend !== 'altmount' && !ultimateFallbackEnabled ? 'proxy' as const : nzbdavStreamingMethod;
+  const effectiveMethod = nzbdavStreamingMethod;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => onClose()}>
       <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl border border-slate-700/50 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
@@ -123,33 +82,15 @@ export function StreamingOverlay({
               className="input flex-1 max-w-xs"
             >
               <option value="stremio" disabled>Stremio Native (Unavailable)</option>
-              <option value="nzbdav">Backend (NzbDAV or AltMount)</option>
+              <option value="nzbdav">Backend (AltMount)</option>
             </select>
             <p className="text-xs text-slate-500 mt-2">
-              <strong>Backend:</strong> Stream through a hosted Backend that prepares the chosen Source
+              <strong>Backend:</strong> Stream through AltMount, which prepares the chosen Source
             </p>
           </div>
 
           {streamingMode === 'nzbdav' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Backend</label>
-              <select
-                value={backend}
-                onChange={(e) => setBackend(e.target.value as 'nzbdav' | 'altmount')}
-                className="input flex-1 max-w-xs"
-              >
-                <option value="nzbdav">NzbDAV</option>
-                <option value="altmount">AltMount</option>
-              </select>
-              <p className="text-xs text-slate-500 mt-2">
-                Switching Backend keeps the other Backend's settings, so you can switch back at any time.
-              </p>
-            </div>
-          )}
-
-          {streamingMode === 'nzbdav' && (
             <div className="space-y-4">
-              {backend === 'altmount' && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">AltMount URL</label>
@@ -194,56 +135,6 @@ export function StreamingOverlay({
                   </div>
                   <p className="text-xs text-slate-500">Direct delivery hands the player a link that contains AltMount's access key. Keep proxy delivery unless the player is on a trusted network.</p>
                 </div>
-              )}
-              {backend === 'nzbdav' && (<>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">NzbDAV URL</label>
-                <input type="text" value={nzbdavUrl} onChange={(e) => setNzbdavUrl(e.target.value)} placeholder="http://localhost:3000" className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">NzbDAV API Key</label>
-                <input type="password" value={nzbdavApiKey} onChange={(e) => setNzbdavApiKey(e.target.value)} placeholder="Your NzbDAV API key" className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">WebDAV URL</label>
-                <p className="text-xs text-slate-500 mb-1"><span className="text-amber-400/70">Proxy Streaming Method:</span> Use the local/internal hostname for best performance (e.g. http://nzbdav:3000)</p>
-                <p className="text-xs text-slate-500 mb-1"><span className="text-amber-400/70">Direct Streaming Method:</span> Must be a publicly reachable URL (e.g. https://nzbdav.example.com) if using a reverse proxy (Traefik, Caddy, Nginx, etc.)</p>
-                <p className="text-xs text-slate-500 mb-1"><span className="text-amber-400/70">Direct Streaming Method:</span> If using an auth layer (Authelia, Authentik, etc.), the NzbDAV hostname must bypass auth so Stremio can reach it directly</p>
-                <input type="text" value={nzbdavWebdavUrl} onChange={(e) => setNzbdavWebdavUrl(e.target.value)} placeholder="http://localhost:3000" className="input" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">WebDAV Username</label>
-                  <input type="text" value={nzbdavWebdavUser} onChange={(e) => setNzbdavWebdavUser(e.target.value)} placeholder="admin" className="input" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">WebDAV Password</label>
-                  <input type="password" value={nzbdavWebdavPassword} onChange={(e) => setNzbdavWebdavPassword(e.target.value)} placeholder="password" className="input" />
-                </div>
-              </div>
-              <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium text-slate-300">NZB Mount Categories</div>
-                  <button
-                    onClick={() => { setNzbdavMoviesCategory('Usenet-Ultimate-Movies'); setNzbdavTvCategory('Usenet-Ultimate-TV'); }}
-                    className="text-xs text-primary-400 hover:text-primary-300"
-                  >
-                    Reset to Defaults
-                  </button>
-                </div>
-                <p className="text-xs text-slate-500">Folder names where NZBs are stored for each content type.</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Movies Folder</label>
-                    <input type="text" value={nzbdavMoviesCategory} onChange={(e) => setNzbdavMoviesCategory(e.target.value)} placeholder="Usenet-Ultimate-Movies" className="input" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">TV Folder</label>
-                    <input type="text" value={nzbdavTvCategory} onChange={(e) => setNzbdavTvCategory(e.target.value)} placeholder="Usenet-Ultimate-TV" className="input" />
-                  </div>
-                </div>
-              </div>
-              </>)}
               {/* Stream Buffer Size — hidden in direct mode (no buffer needed); method + range follow effectiveMethod */}
               {effectiveMethod !== 'direct' && (
               <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-3">
@@ -270,8 +161,8 @@ export function StreamingOverlay({
                 </div>
                 <p className="text-xs text-slate-500">
                   {effectiveMethod === 'pipe'
-                    ? 'Buffer between WebDAV and the player. Absorbs network jitter with minimal memory usage.'
-                    : 'Internal buffer between WebDAV and the player. Larger buffers absorb network jitter but use more memory per stream.'}
+                    ? 'Buffer between AltMount and the player. Absorbs network jitter with minimal memory usage.'
+                    : 'Internal buffer between AltMount and the player. Larger buffers absorb network jitter but use more memory per stream.'}
                 </p>
               </div>
               )}
@@ -302,7 +193,7 @@ export function StreamingOverlay({
                       {nzbdavConnectionStatus === 'unconfigured' && 'Not configured'}
                       {!nzbdavConnectionStatus && 'Not tested'}
                     </div>
-                    {backend === 'altmount' && backendMessage && nzbdavConnectionStatus !== 'checking' && (
+                    {backendMessage && nzbdavConnectionStatus !== 'checking' && (
                       <div className="text-xs text-slate-400 mt-1">{backendMessage}</div>
                     )}
                   </div>
@@ -311,20 +202,8 @@ export function StreamingOverlay({
                   <button onClick={checkNzbdavConnection} className="btn text-sm">
                     Test Connection
                   </button>
-                  {backend === 'nzbdav' && (<button
-                    onClick={sendNzbdavTestNzb}
-                    disabled={nzbdavTestNzbStatus === 'sending' || !nzbdavUrl}
-                    className="btn text-sm"
-                  >
-                    {nzbdavTestNzbStatus === 'sending' ? 'Sending...' : 'Send Test NZB'}
-                  </button>)}
                 </div>
               </div>
-              {nzbdavTestNzbMessage && (
-                <p className={clsx('text-xs mt-2 px-4 pb-3', nzbdavTestNzbStatus === 'success' ? 'text-green-400' : 'text-red-400')}>
-                  {nzbdavTestNzbMessage}
-                </p>
-              )}
             </div>
           )}
         </div>
