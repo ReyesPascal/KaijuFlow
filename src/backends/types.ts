@@ -110,7 +110,7 @@ export class PrepareCancelledError extends Error {
 
 /**
  * Build the error a Backend throws when the Source itself is bad (isSourceFailure
- * is true for it). The flag keeps its historical name `isBadSource`: saved dead marks carry it.
+ * is true for it). Its flag is `isBadSource`; streamCache.ts also reads the name dead marks saved before #200 used.
  */
 export function sourceFailure(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isBadSource: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
   const err = new Error(message) as Error & { isBadSource: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };
