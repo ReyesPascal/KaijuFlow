@@ -66,8 +66,9 @@ class FakeIO(Copies):
     LIST_S, START_S, SEEKS_S = 2.0, 1.5, 0.5  # a visit whose top pick plays takes the three together: 4 s
     FAILED_PLAY_S = 10.0                      # a top pick that fails gives up after this long: the visit takes 12 s
 
-    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=()):
+    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=(), load=0.4):
         Copies.__init__(self, up)
+        self.load = load
         self.calls, self.clock, self.visits = [], datetime.datetime(2026, 11, 10, 18, 0, 0, tzinfo=UTC), 0
         self.limit_at_visit, self._marker, self.commit = limit_at_visit, marker, commit
         self.settings = settings or {'kaijuflow': {'healthChecks.sampleCount': 3, 'altmountApiKey': '***'}}
@@ -94,8 +95,11 @@ class FakeIO(Copies):
     def image_label(self):
         return self.commit
 
-    def preflight(self, mode):
+    def preflight(self, mode, seen=None):
+        """As the real preflight: a run's preflight hands back the load it judged (`load`)."""
         self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
+        if mode == 'run' and seen is not None:
+            seen['load'] = self.load
         return list(getattr(self, 'problems', []))
 
     def snapshot(self):
@@ -247,6 +251,12 @@ class RunTest(unittest.TestCase):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO(commit='c-from-label'))
         meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
         self.assertEqual((meta['commit'], meta['head']), ('c-from-label', 'repo-head'))
+
+    def test_run_record_keeps_the_load_the_preflight_judged(self):
+        io = FakeIO(load=0.4271)
+        io.load_average = lambda: 1.7  # a later reading, busy: the run must not take it
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['start_load'], 0.43)
 
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
@@ -1168,7 +1178,7 @@ class RecordIO(FakeIO):
         self.up = set()
         self.seen = set()  # (side, title) already visited: the next visit is a warm one
 
-    def preflight(self, mode):
+    def preflight(self, mode, seen=None):
         self.calls.append(('preflight', mode))
         return list(getattr(self, 'problems', []))
 
