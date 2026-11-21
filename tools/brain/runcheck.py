@@ -116,11 +116,16 @@ def judged_lines(run_dir, meta, visits):
     run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
     and kept or not kept; then the verdict over every list. Each list's line also shows, against the previous run's, its
     median warm title to video (spec #183) and its fallback time (the fallbacks' extra seconds added up,
-    brainreport.fallback_total_s, #187); the verdict leaves those out."""
+    brainreport.fallback_total_s, #187); the verdict leaves those out. A previous run with another Browse pause is not
+    compared, with why (#205, rules.md "Browse pause")."""
     side, recording = br.JUDGED, meta.get('recording')
     prev = br.run_before(run_dir, recording)
     if prev is None:
         return [f'Against the previous run: not compared, no earlier run on the same recording ({recording}).']
+    pauses = [br.pause_text(br.browse_pause_of(m)) for m in (prev, meta)]
+    if pauses[0] != pauses[1]:  # #205: the pause lets work begun at list time show in the start, so it is no like for like
+        return [f"Against the previous run on the same recording ({recording}): {prev['folder']}: not compared, its Browse pause "
+                f"was {pauses[0]} and this run's is {pauses[1]}; a run is judged only against a run with the same pause."]
     out, verdicts = [f"Against the previous run on the same recording ({recording}): {prev['folder']}."], []
     why_not = _why_not_judged(meta)
     for x in br.run_lists(visits) or [None]:

@@ -316,6 +316,26 @@ class PreviousRunTests(unittest.TestCase):
         self.assertIn('Against the previous run: not compared, no earlier run on the same recording (another).', lines)
         self.assertFalse([x for x in lines if x.startswith('Verdict against the previous run')], out)
 
+    def test_a_previous_run_with_another_browse_pause_is_not_compared_and_check_says_why(self):
+        # #205: the previous run (from before #205, so no Browse pause) against this run's 5 s pause
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            edit(run, 'meta.json', lambda m: m.update(browse_pause_s=5))
+            code, out = run_check(run)
+        lines = out.splitlines()
+        self.assertIn('Against the previous run on the same recording (l): 2026-01-01T000000Z-before: not compared, its '
+                      "Browse pause was 0 s and this run's is 5 s; a run is judged only against a run with the same pause.", lines)
+        self.assertFalse([x for x in lines if x.startswith('Verdict against the previous run') or '(was ' in x], out)
+        self.assertEqual(code, 0)  # still usable as a baseline: the next run with its pause is judged against it
+
+    def test_two_runs_with_the_same_browse_pause_are_judged(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            for folder in (run, os.path.join(os.path.dirname(run), '2026-01-01T000000Z-before')):
+                edit(folder, 'meta.json', lambda m: m.update(browse_pause_s=5))
+            _, out = run_check(run)
+        self.assertEqual(judged_lines(out)[3], 'Verdict against the previous run: kept.')
+
     def test_an_earlier_run_marked_never_compared_with_or_archived_is_passed_over(self):
         with tempdir() as tmp:
             run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
