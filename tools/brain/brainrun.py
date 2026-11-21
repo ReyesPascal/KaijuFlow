@@ -30,6 +30,7 @@ import argparse
 import contextlib
 import copy
 import datetime
+import ipaddress
 import json
 import os
 import re
@@ -40,6 +41,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
@@ -269,6 +271,18 @@ class RealIO:
     def recording_state(self):
         return _read_json(os.path.join(self.cfg['store'], self.cfg['listname'], RECORDING_FILE))
 
+    def load_average(self):
+        return os.getloadavg()[0]
+
+    def machine_addresses(self):
+        return read_machine_addresses()
+
+    def pinned_addresses(self):
+        return read_pinned(self.cfg['test_dir'])
+
+    def dns_answer(self, name, server):
+        return read_dns(name, server)
+
     def port_free(self, port):
         with socket.socket() as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -286,8 +300,8 @@ class RealIO:
         return {slug: sum(1 for f in os.listdir(os.path.join(d, slug)) if f.endswith('.body'))
                 for slug in os.listdir(d) if os.path.isdir(os.path.join(d, slug))}
 
-    def preflight(self, mode):
-        return preflight(mode, self.cfg, self)
+    def preflight(self, mode, seen=None):
+        return preflight(mode, self.cfg, self, seen)
 
     def marker(self):
         return _read_json(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
@@ -409,6 +423,84 @@ def read_addresses(run=subprocess.run):
     return out
 
 
+class LookupFailed(Exception):
+    """A reader of the machine's own state (#217) got no answer; the message says how, to finish a sentence."""
+
+
+def _ask(argv, run=None):
+    """The output of a read-only command, or LookupFailed saying how it failed. `run` stands in for subprocess.run."""
+    try:
+        r = (run or subprocess.run)(argv, capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        raise LookupFailed(f'{argv[0]} is not installed') from None
+    except OSError as e:
+        raise LookupFailed(f'{argv[0]} could not start: {e.strerror or e}') from None
+    except subprocess.TimeoutExpired:
+        raise LookupFailed(f'{argv[0]} gave no answer within 30 s') from None
+    if r.returncode != 0:
+        said = [line.strip() for line in f'{r.stdout or ""}\n{getattr(r, "stderr", "") or ""}'.splitlines() if line.strip()]
+        raise LookupFailed(f'{argv[0]} stopped with exit code {r.returncode}' + (f': "{said[-1]}"' if said else ''))
+    return r.stdout
+
+
+def read_machine_addresses(run=None):
+    """Every address this machine has now, on any interface, read with `ip -j addr show` (read-only), as ipaddress objects.
+    LookupFailed when ip is missing, fails, or lists no address."""
+    out = _ask(['ip', '-j', 'addr', 'show'], run)
+    try:
+        found = [_address(a.get('local')) for link in json.loads(out) for a in link.get('addr_info', [])]
+    except (ValueError, TypeError, AttributeError):
+        raise LookupFailed('ip -j addr show printed nothing readable') from None
+    if not any(found):
+        raise LookupFailed('ip -j addr show lists no address')
+    return [a for a in found if a]
+
+
+def read_dns(name, server, run=None):
+    """The addresses `server` answers for `name`, read with `dig +short` (the CNAMEs it prints first are left out), as
+    ipaddress objects; [] when the server has none. LookupFailed when dig is missing, fails or times out."""
+    out = _ask(['dig', '+short', '+time=3', '+tries=2', name, '@' + server], run)
+    return [a for a in map(_address, out.split()) if a]
+
+
+def _env_value(path, key):
+    """The value of `key` in a compose .env file (KEY=VALUE lines, quotes taken off); None when the file or the key is missing.
+    Only that key is kept: the file holds secrets."""
+    try:
+        with open(path) as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        name, eq, value = line.strip().removeprefix('export ').partition('=')
+        if eq and name.strip() == key:
+            value = value.strip()
+            return value[1:-1] if len(value) > 1 and value[0] == value[-1] and value[0] in '"\'' else value
+    return None
+
+
+def read_pinned(test_dir):
+    """The two addresses the test setup pins (#217), and nothing else of the files they are in: `HOST_IP` from the test
+    folder's .env, and the host of KaijuFlow's `altmountUrl` (its login, if any, left out). `altmount_url` says whether that
+    URL is 'set', 'missing', or set but naming 'no host' (no http:// in front, say). `HOST_IP` and `altmount_host` are None
+    when there is none."""
+    url = (_read_json(os.path.join(test_dir, 'config', 'config.json')) or {}).get('altmountUrl')
+    try:
+        host = urllib.parse.urlsplit(url).hostname if isinstance(url, str) else None
+    except ValueError:
+        host = None
+    return {'HOST_IP': _env_value(os.path.join(test_dir, '.env'), 'HOST_IP') or None, 'altmount_host': host or None,
+            'altmount_url': 'missing' if url in (None, '') else 'set' if host else 'no host'}
+
+
+def _address(text):
+    """`text` as an ipaddress object, so 2001:DB8::1 and 2001:db8:0::1 are one address; None when it is not an address."""
+    try:
+        return ipaddress.ip_address(text)
+    except (ValueError, TypeError):
+        return None
+
+
 def note_addresses(io, run):
     """Adds the containers' current addresses to the run (they can change when a container is started again)."""
     for container, ip in io.addresses().items():
@@ -452,6 +544,15 @@ BUILD_INPUTS = ('Dockerfile', '.dockerignore', '.gitattributes', 'package.json',
                 'src', 'ui', 'scripts/docker-entrypoint.sh')
 # The settings every test copy is expected to have (sort and filter rules); the preflight compares each copy with it (#109).
 EXPECTED_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
+
+
+# A timed run starts only on an idle machine (#217): a busy one made the cold lists of #205's baseline with the Browse pause
+# 30-70% slower.
+BUSY_LOAD = 1.0  # the 1-minute load average at or above which the machine is busy
+# An image build by this preflight loads the machine itself: the load check then waits up to this long for it to settle.
+SETTLE_AFTER_BUILD_S, SETTLE_POLL_S = 180, 10
+# The router has answered Newshosting's name with a dead 10.x address (2026-11-17): every Usenet read then fails.
+NEWS_HOST, ROUTER, SINKHOLE = 'news.newshosting.com', '192.168.4.1', ipaddress.ip_network('10.0.0.0/8')
 
 
 class PreflightFailed(Exception):
@@ -631,14 +732,15 @@ def setting_differences(expected, settings, file=None):
     return out
 
 
-def preflight(mode, cfg, io):
+def preflight(mode, cfg, io, seen=None):
     """Checks the setup before a record ('record') or a run ('run'). Returns plain sentences, one per problem; [] means go.
 
-    Record only: the key file. Run only: the recording exists. Everything else is checked in both.
+    Record only: the key file. Run only: the machine is idle and the recording exists. Everything else is checked in both.
+    `seen`, when given, gets the readings the checks judged: 'load' (a run only), so the run keeps the number judged.
     """
     if mode not in ('record', 'run'):
         raise ValueError("preflight mode must be 'record' or 'run'")
-    problems = []
+    problems, rebuilt = [], False
     port = cfg.get('standin_port', 1340)
 
     # 1. the test image holds the code of the commit being tested
@@ -650,6 +752,7 @@ def preflight(mode, cfg, io):
         state = image_state(label, commit, io.build_inputs_changed)
         if cfg.get('rebuild_image') and state != 'current':
             io.rebuild_image(commit)
+            rebuilt = True
             label = io.image_label()
             state = image_state(label, commit, io.build_inputs_changed)
         if state == 'missing':
@@ -714,7 +817,66 @@ def preflight(mode, cfg, io):
     if not io.port_free(port):
         problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (an earlier indexer stand-in?) and try again.")
 
-    # 7. (run only) the recording exists and holds an answer for every enabled indexer
+    # 7. (run only) the machine is idle (#217); after an image build by this preflight, once the build's own load has settled
+    if mode == 'run':
+        load = io.load_average()
+        if rebuilt and load >= BUSY_LOAD:
+            print(f"Waiting up to {SETTLE_AFTER_BUILD_S // 60} minutes for the image build's load to settle (1-minute load average "
+                  f'{load:.2f}).', flush=True)
+            waited = 0
+            while load >= BUSY_LOAD and waited < SETTLE_AFTER_BUILD_S:
+                io.sleep(SETTLE_POLL_S)
+                waited += SETTLE_POLL_S
+                load = io.load_average()
+        if seen is not None:
+            seen['load'] = load
+        if load >= BUSY_LOAD:
+            after = f' {SETTLE_AFTER_BUILD_S // 60} minutes after the image build' if rebuilt else ''
+            problems.append(f'The machine is busy: its 1-minute load average is {load:.2f}{after}, at or above {BUSY_LOAD:.2f}, which slows '
+                            'a timed run: stop what keeps it busy (other agents, test suites, builds) and wait until it is idle.')
+
+    # 8. the pinned addresses are this machine's (#217): a stale altmountUrl made every play fail on 2026-11-20
+    pinned, env = io.pinned_addresses(), os.path.join(cfg['test_dir'], '.env')
+    try:
+        mine, unread = io.machine_addresses(), None
+    except LookupFailed as e:
+        mine, unread = [], str(e)
+        problems.append(f"This machine's addresses cannot be read ({unread}), so HOST_IP in {env} and KaijuFlow's altmountUrl cannot "
+                        'be checked: check that ip -j addr show works.')
+    others = [str(a) for a in mine if not a.is_loopback and not a.is_link_local]
+    shown = _list(others) if others else 'only loopback and link-local ones'
+    if not pinned['HOST_IP']:
+        problems.append(f"The test folder's {env} has no HOST_IP: set it to this machine's address" + ('.' if unread else f' ({shown}).'))
+    elif not unread and _address(pinned['HOST_IP']) not in mine:
+        problems.append(f'HOST_IP in {env} is {pinned["HOST_IP"]}, which is not an address this machine has now ({shown}): '
+                        'set it to the current one, then start the test copies again.')
+    host = pinned['altmount_host']
+    if pinned['altmount_url'] == 'missing':
+        problems.append("KaijuFlow's config has no altmountUrl, so it cannot reach its AltMount: set it, with the owner's go.")
+    elif pinned['altmount_url'] == 'no host':
+        problems.append("KaijuFlow's altmountUrl names no host (it needs the form http://<address>:<port>), so it cannot reach its "
+                        "AltMount: fix it, with the owner's go.")
+    elif not unread and _address(host) and _address(host) not in mine:
+        problems.append(f"KaijuFlow's altmountUrl points at {host}, which is not an address this machine has now ({shown}), so "
+                        "every play would fail: change it to the current address, with the owner's go.")
+
+    # 9. the router answers Newshosting's name with a real address, not its sinkhole (#217)
+    try:
+        answer, failed = io.dns_answer(NEWS_HOST, ROUTER), None
+    except LookupFailed as e:
+        answer, failed = [], str(e)
+    sunk = [str(a) for a in answer if a in SINKHOLE]
+    if failed:
+        problems.append(f'The lookup of {NEWS_HOST} at the router ({ROUTER}) failed ({failed}), so nothing says the health check and '
+                        f'AltMount can reach Usenet: run dig +short {NEWS_HOST} @{ROUTER} and fix what it shows.')
+    elif not answer:
+        problems.append(f'The router ({ROUTER}) gives no address for {NEWS_HOST}, so the health check and AltMount cannot reach '
+                        f'Usenet: check the network (dig +short {NEWS_HOST} @{ROUTER}).')
+    elif sunk:
+        problems.append(f'The router ({ROUTER}) answers {NEWS_HOST} with {_list(sunk)}, its sinkhole, so every Usenet read would fail: '
+                        f"fix the router's DNS until dig +short {NEWS_HOST} @{ROUTER} gives no 10.x address.")
+
+    # 10. (run only) the recording exists and holds an answer for every enabled indexer
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})
@@ -745,7 +907,10 @@ def preflight_command(mode, cfg, io):
     if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
         print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
-        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out.')
+        idle = f'the machine is idle (1-minute load below {BUSY_LOAD:.2f}), ' if mode == 'run' else ''
+        machine = (f'; {idle}HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
+                   + (' and the recording is complete' if mode == 'run' else ''))
+        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
     return 1 if problems else 0
 
 
@@ -909,10 +1074,12 @@ def _write(path, text):
 
 
 def run_all(cfg, io):
-    problems = io.preflight('run')
+    seen = {}
+    problems = io.preflight('run', seen)
     if problems:
         raise PreflightFailed(problems)
     started = io.now()
+    start_load = round(seen['load'], 2) if 'load' in seen else None  # the load the preflight judged, as the run starts (#217)
     root = cfg['runs_root']
     run_dir = br.create_run_dir(root, cfg['name'], started)
     logs_dir = os.path.join(run_dir, 'logs')
@@ -925,7 +1092,7 @@ def run_all(cfg, io):
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off', 'browse pause': br.pause_text(cfg['browse_pause']),
                      'one-page side': 'yes' if 'kaijuflow-1page' in run_sides(cfg) else 'no'},
            'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []},
-           'lists': title_lists(cfg['titles'])}
+           'lists': title_lists(cfg['titles']), 'start_load': start_load}
     wait = cfg.get('wait', True)
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     try:
@@ -1007,7 +1174,7 @@ def write_run_ending(cfg, io, run, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
-                                    'standin_misses', 'changes', 'timing', 'browse_pause_s')}
+                                    'standin_misses', 'changes', 'timing', 'browse_pause_s', 'start_load')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
         meta['lists'] = run['lists']
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
