@@ -459,9 +459,12 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         self.assertEqual([e['copies'] for e in entries], [['kaijuflow'], ['kaijuflow']])  # the one setup (#187)
         return entries[0]['settings']
 
-    def test_the_committed_file_holds_kaijuflows_fallback_on(self):
+    def test_the_committed_file_holds_kaijuflows_fallback_on_as_the_play_time_check(self):
         entry = brainrun.load_expected_settings()[1]  # #185: a fallback counts as played, so KaijuFlow plays as at home
-        self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {'ultimateFallback.enabled': True}))
+        self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {  # #190: the Play-time check's settings
+            'ultimateFallback.enabled': True, 'ultimateFallback.candidateCount': 3, 'ultimateFallback.preferenceMode': 'priority',
+            'ultimateFallback.whenToResolve': 'on-tile-selection', 'ultimateFallback.maxAttempts': 0,
+            'ultimateFallback.desiredBackups': 0}))
 
     def test_a_kaijuflow_copy_with_its_fallback_off_stops_with_one_sentence(self):
         td = make_copies(self, kf_fallback=False)

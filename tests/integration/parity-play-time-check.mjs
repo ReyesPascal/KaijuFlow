@@ -64,7 +64,7 @@ try {
     const out = await requestContext.run({ baseUrl: kaijuflow, pathPrefix: '/stremio', manifestKey: 'synthetic-manifest' }, () => addon.get('stream', type, id));
     return out.streams;
   };
-  const results = await runPlayTimeParity({ kaijuflow, backend, news, indexer, list });
+  const results = await runPlayTimeParity({ kaijuflow, backend, news, indexer, list, configData });
   Object.assign(report, { status: results.every(r => r.status === 'pass') ? 'pass' : 'fail', results });
 } catch (e) { Object.assign(report, { status: 'fail', error: String(e?.stack || e) }); }
 fs.writeFileSync(output, JSON.stringify(report, null, 2));

@@ -44,12 +44,17 @@ def rules(films=3000, episodes=1000):
     return {'movieFilters': one(films), 'tvFilters': one(episodes)}
 
 
+# The Play-time check's settings of the committed expected settings file (#190), as an applied copy holds them.
+PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-tile-selection', 'maxAttempts': 0,
+                   'desiredBackups': 0}
+
+
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 25),
                 url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None,
                 altkf_off=(), backup_host='backup.example', kf_rules=None, kf_fallback=True):
     """A fake kaijuflow-test folder: KaijuFlow and its AltMount, the one setup (#187), plus the key file. KaijuFlow holds
     the sort and filter rules of rules() unless others are given (kf_rules: what goes into the config; {} for none), and its
-    fallback is on (ultimateFallback.enabled, #185) unless kf_fallback is False. caps: KaijuFlow's and its AltMount's
+    fallback is on (ultimateFallback.enabled, #185) unless kf_fallback is False, with the Play-time check's settings (#190). caps: KaijuFlow's and its AltMount's
     connection caps; altkf_off: indexers its AltMount has switched off."""
     base = base or tempdir(case)
     td = os.path.join(base, 'kaijuflow-test')
@@ -64,7 +69,7 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
                              'providers': [{'name': 'p', 'host': 'h', 'username': SECRET, 'password': SECRET}]},
             'searchConfig': {'seasonPackAdditionalPages': 2, 'seriesPackAdditionalPages': 2},
             'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False,
-            'ultimateFallback': {'enabled': kf_fallback}}))
+            'ultimateFallback': {'enabled': kf_fallback, **PLAY_TIME_CHECK}}))
     for side, cap in (('altmount-kf', altkf_cap),):
         lines = ['import:', '    max_processor_workers: 2', '    segment_sample_percentage: 1',
                  'stremio:', '    indexers:', '        newsnab:']

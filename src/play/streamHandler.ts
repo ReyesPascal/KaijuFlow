@@ -324,6 +324,15 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
   return `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (pattern ? `:${pattern}` : '');
 }
 
+/**
+ * What a failed list entry does: the userPickFallback setting, except that with the Play-time check
+ * on a failure always falls back (#190), so an old config's 'failure-video' walks on down the list.
+ */
+function userPickFallbackMode(): 'uf-lobby' | 'failure-video' | 'fallback-chain' {
+  const mode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
+  return mode === 'failure-video' && isPlayTimeCheckOn() ? 'fallback-chain' : mode;
+}
+
 /** Delivery method for the first response of a Stream: the streaming-method setting. */
 function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
   return globalConfig.playDeliveryMethod ?? 'proxy';
@@ -771,10 +780,10 @@ export async function handleStream(
   const ufLobbyAvailable = isUltimateFallbackActive();
   const sessionBackups = sessionKey ? getSessionBackups(sessionKey) : null;
   if (userPick && redirectCount === 0) {
-    console.log(`🎯 User-pick attempt: userPickFallback=${globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain'}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
+    console.log(`🎯 User-pick attempt: userPickFallback=${userPickFallbackMode()}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
   }
   const candidateOrder: number[] = [];
-  const userPickMode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
+  const userPickMode = userPickFallbackMode();
   if (userPick && ufLobbyAvailable && userPickMode !== 'fallback-chain') {
     candidateOrder.push(candidateStart);
   } else if (userPick && userPickMode === 'fallback-chain') {
@@ -1014,7 +1023,7 @@ export async function handleStream(
         userPick
         && sessionKey
         && isUltimateFallbackActive()
-        && globalConfig.ultimateFallback?.userPickFallback === 'uf-lobby'
+        && userPickFallbackMode() === 'uf-lobby'
         && redirectCount < MAX_SELF_REDIRECTS
         && !res.headersSent
       ) {
@@ -1033,7 +1042,7 @@ export async function handleStream(
       if (
         userPick
         && isUltimateFallbackActive()
-        && globalConfig.ultimateFallback?.userPickFallback === 'failure-video'
+        && userPickFallbackMode() === 'failure-video'
         && !res.headersSent
       ) {
         console.log(`👑 User-pick failed — userPickFallback=failure-video, serving failure video`);
@@ -1049,7 +1058,7 @@ export async function handleStream(
     userPick
     && sessionKey
     && isUltimateFallbackActive()
-    && globalConfig.ultimateFallback?.userPickFallback === 'uf-lobby'
+    && userPickFallbackMode() === 'uf-lobby'
     && redirectCount < MAX_SELF_REDIRECTS
     && !res.headersSent
   ) {
@@ -1069,7 +1078,7 @@ export async function handleStream(
   // ensures Stremio never considers the episode "completed", so it won't mark it
   // as watched or auto-advance to the next episode. The user sees the
   // "Stream Unavailable" message and goes back to the stream list manually.
-  if (userPick && globalConfig.ultimateFallback?.userPickFallback === 'failure-video') {
+  if (userPick && userPickFallbackMode() === 'failure-video') {
     console.error(`\u274C User-pick attempt failed (userPickFallback=failure-video) — serving failure video`);
   } else {
     console.error(`\u274C All ${maxCandidates} candidate(s) exhausted, serving failure video`);

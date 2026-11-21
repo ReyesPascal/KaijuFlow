@@ -189,6 +189,24 @@ export const playTimeScenarios = [
     },
   },
   {
+    // A failed list entry falls back to the next Source even when an older config still says "failure video"
+    // for a failed entry (the old default): with the Play-time check a failure falls back (#190).
+    id: 'list-entry-falls-back-whatever-an-old-config-says',
+    async run(w) {
+      const saved = w.configData.ultimateFallback;
+      w.configData.ultimateFallback = { ...saved, userPickFallback: 'failure-video' };
+      try {
+        const { id, sources } = offerMovie(w, [{ tag: 'old-dead', kind: 'dead' }, { tag: 'old-next' }]);
+        const streams = await w.list('movie', id);
+        const r = await play(streams[1].url);
+        assert.equal(r.status, 200);
+        assertBytes(r.body, sources[1].media, 'the next Source plays');
+      } finally {
+        w.configData.ultimateFallback = saved;
+      }
+    },
+  },
+  {
     // An episode: Best checks the episode's Sources and AltMount is told which episode to play.
     id: 'best-plays-an-episode',
     async run(w) {
