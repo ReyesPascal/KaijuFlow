@@ -17,7 +17,7 @@ import { buildStreamFilename } from '../parsers/metadataParsers.js';
 import { getActiveBackend } from '../backends/index.js';
 import { isDeadNzbByUrl, addDeadNzbByUrl, saveCacheToDisk } from '../play/streamCache.js';
 import { encodeTileEnvelope, toContentType } from '../play/redirectHelpers.js';
-import { isPlayTimeCheckOn } from '../play/playTimeCheck.js';
+import { isUltimateFallbackActive } from '../play/utils.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
 
 // Internal self-requests (auto-queue) hit loopback directly to avoid
@@ -414,7 +414,7 @@ export function autoQueueToBackend(
   // being played is prepared, the next only when it fails (#192). A list it gets then
   // carries health only from a list remembered from before, or auto-marked results.
   if (!config.healthChecks?.enabled || !mode || mode === 'off'
-      || allResults.length === 0 || isPlayTimeCheckOn()) {
+      || allResults.length === 0 || isUltimateFallbackActive()) {
     return;
   }
 
