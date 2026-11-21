@@ -11,7 +11,7 @@ let nextImdb = 1000001;
 
 /**
  * Offer movie Sources for a new title, in list order (same quality, sizes going down, so KaijuFlow's sort keeps
- * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'rejected' | 'scrambled-rar4' | 'disc-image' }.
+ * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'rejected' | 'never-ready' | 'scrambled-rar4' | 'disc-image' }.
  * Returns { id, sources: [{ tag, title, media }] }.
  */
 function offerMovie({ backend, indexer }, specs) {
@@ -23,6 +23,7 @@ function offerMovie({ backend, indexer }, specs) {
     const link = kind === 'healthy' ? backend.addMovie(spec.tag, title, media)
       : kind === 'dead' ? backend.addMovie(spec.tag, title, media, { dead: true })
       : kind === 'rejected' ? backend.addRejected(spec.tag, title)
+      : kind === 'never-ready' ? backend.addNeverReady(spec.tag, title)
       : backend.addRefused(spec.tag, title, kind);
     return { tag: spec.tag, title, media, link, size: (20 - i) * GB };
   });
@@ -225,6 +226,31 @@ export const playTimeScenarios = [
       assert.equal(r.status, 200, 'a press of the stopped title\'s Best still plays');
       assertBytes(r.body, a.sources[0].media, 'its Best checks and prepares on the press');
       assert.equal(w.backend.submitsFor('stop-a1'), 1);
+    },
+  },
+  {
+    // Head start, one title at a time (#206), stopped mid-import: a list request for another title while the first
+    // title's import is under way stops its run. AltMount ends an import it has begun on its own (KaijuFlow cannot
+    // stop it), but KaijuFlow hands it nothing more for the first title: that import fails and no next Source follows.
+    id: 'a-newer-list-request-stops-the-head-start-mid-import',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'stopimp-a1', kind: 'never-ready' }, { tag: 'stopimp-a2' }]);
+      const b = offerMovie(w, [{ tag: 'stopimp-b1' }]);
+      const before = w.backend.submitted.length;
+      const { result: streamsA } = await withLogs(async lines => {
+        const out = await w.list('movie', a.id);
+        await until(() => w.backend.submitsFor('stopimp-a1') === 1, 'the first title\'s import');
+        await w.list('movie', b.id);
+        await bestDone(lines, a.id);
+        await bestDone(lines, b.id);
+        return out;
+      });
+      await new Promise(r => setTimeout(r, 600)); // the first title's import has failed by now (AltMount answers 408 after 300 ms)
+      assert.equal(w.backend.submitsFor('stopimp-a2'), 0, 'the first title\'s next Source never reaches AltMount');
+      assert.deepEqual(w.backend.submitted.slice(before), ['stopimp-a1', 'stopimp-b1'], 'the import under way, then only the newest title\'s');
+      const r = await play(streamsA[0].url);
+      assert.equal(r.status, 200, 'a press of the stopped title\'s Best still plays');
+      assertBytes(r.body, a.sources[1].media, 'checked and prepared on the press');
     },
   },
   {
@@ -666,6 +692,33 @@ export const playTimeScenarios = [
       const streams = await w.list('movie', id);
       assertFailureVideo(await play(streams[0].url));
       assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
+    },
+  },
+  {
+    // #193 (spec #183, Seam 1): a stored 7z set, its parts named `<name>.7z.001` ..., holds no RAR names, so
+    // Unscramble skips it from the names alone, before reading any article, and it goes up as it is; the check
+    // passes it (stored 7z, ADR 0009) and it plays.
+    id: 'a-stored-7z-set-is-skipped-by-unscramble-and-plays',
+    async run(w) {
+      const id = `tt${nextImdb++}`;
+      const title = 'KaijuFlow.PlayTime.SevenZip.2026.2160p.WEB-DL.H265-GRP';
+      const media = mediaFor('sevenzip');
+      const link = w.backend.addSevenZip('sevenzip', title, media);
+      w.indexer.offer(id, [{ tag: 'sevenzip', title, media, link, size: 20 * GB }]);
+      const original = await (await fetch(link)).text();
+      const { result: r, lines } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
+        await bestDone(lines, id);
+        return play(streams[0].url);
+      });
+      const steps = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+      assert.deepEqual(steps.filter(s => s.step === 'play_check' && s.title === title).map(s => s.status), ['verified_stored'], 'the check passes it');
+      // no RAR-named or number-named parts: Unscramble ends before reading anything (its reads: unscramble-step.test.ts)
+      assert.deepEqual(steps.filter(s => s.step === 'unscramble' && s.title === title).map(s => [s.result, s.parts]), [['not-scrambled', 0]],
+        'Unscramble decides from its names alone');
+      assert.deepEqual(w.backend.uploadedNzbs('sevenzip'), [original], 'it goes up as it is');
+      assert.equal(r.status, 200, 'the 7z set plays');
+      assertBytes(r.body, media, 'its video');
     },
   },
   {

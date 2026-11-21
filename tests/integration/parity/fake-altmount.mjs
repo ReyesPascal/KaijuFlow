@@ -208,6 +208,29 @@ export async function createFakeAltmount(listen) {
       }
       return nzb;
     },
+    /**
+     * Register a stored 7z set Source (#193): a real stored 7z split in volumes (tests/fixtures/archives,
+     * stored-split.7z.001 to .004, from make.sh), posted as `<title>.7z.001` ... in volume order, each
+     * part's real bytes cut into three articles (a 7z keeps its header at the end), every article on
+     * the news server. Real AltMount v0.4.0 streams a stored 7z (spec #183, Test 1), so it plays; a
+     * compressed one is refused (addRefused).
+     */
+    addSevenZip(tag, title, media) {
+      if (!news) throw new Error('a 7z set Source needs the news server (useNews)');
+      const nzb = this.addMovie(tag, title, media);
+      const files = [1, 2, 3, 4].map(n => {
+        const data = fixture(`stored-split.7z.00${n}`);
+        const size = Math.ceil(data.length / 3);
+        const segs = [0, 1, 2].map(i => ({ id: `${tag}-p${n}-s${i + 1}@fake`, bytes: data.subarray(i * size, (i + 1) * size) }));
+        for (const s of segs) news.articles.set(s.id, s.bytes);
+        const subject = `[${n}/4] - &quot;${title}.7z.00${n}&quot; yEnc (1/3)`;
+        return `<file poster="kf@fake" date="1700000000" subject="${subject}"><groups><group>alt.binaries.synthetic</group></groups><segments>` +
+          segs.map((s, i) => `<segment bytes="${s.bytes.length}" number="${i + 1}">${s.id}</segment>`).join('') + `</segments></file>\n`;
+      });
+      sources.get(tag).nzb = `<?xml version="1.0" encoding="UTF-8"?>\n<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"><head><meta type="kf-tag">${tag}</meta></head>\n` +
+        files.join('') + `</nzb>\n`;
+      return nzb;
+    },
     /** Why real AltMount v0.4.0 would fail this NZB's RAR set, or null if it would accept it. */
     rarVolumeCheck(nzbText) { return rarVolumeCheck(nzbText, volumeOf); },
     /** The NZB texts KaijuFlow uploaded for a Source, in order. */
