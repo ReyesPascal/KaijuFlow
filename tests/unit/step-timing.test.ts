@@ -54,9 +54,9 @@ test('lines never carry an API key or a URL query', async () => {
   assert.doesNotMatch(logs, /apikey|https?:\/\//i);
 });
 
-test('parseStepLine ignores other log lines, and the step names are the seven agreed ones', () => {
+test('parseStepLine ignores other log lines, and the step names are the eight agreed ones', () => {
   assert.equal(parseStepLine('Searching x'), null);
-  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'health_batch', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte']);
+  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'health_batch', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte']);
 });
 
 test('timeIndexerPage writes an indexer_page line with source and page, and passes the result through', async () => {

@@ -11,7 +11,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 export const STEP_LOG_TAG = '[KF-STEP]';
 
-export const STEP_NAMES = ['indexer_page', 'health_batch', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte'] as const;
+export const STEP_NAMES = ['indexer_page', 'health_batch', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte'] as const;
 export type StepName = (typeof STEP_NAMES)[number];
 
 export interface StepFields {

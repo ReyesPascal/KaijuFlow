@@ -42,6 +42,9 @@ SIDES = {
     "kaijuflow": dict(kind="cache", conf="config", tpl="kaijuflow", port=1338),
 }
 CACHE_FILES = ("healthy-nzbs.json", "dead-nzbs.json")
+# The plays the Best entry remembers (Ultimate Fallback sessions, kept 2 h across restarts): a cold reset removes
+# them, or a cold round would replay a Source the reset AltMount no longer holds (#190).
+SESSIONS_FILE = "uf-sessions.json"
 
 
 def compose_cmd(test_dir, verb, *services):
@@ -105,6 +108,7 @@ def _restore(test_dir, side):
             _rm(os.path.join(conf, name))
             shutil.copyfile(os.path.join(tpl, name), os.path.join(conf, name))
         _rm(os.path.join(conf, "stats.json"))
+        _rm(os.path.join(conf, SESSIONS_FILE))
 
 
 def reset(test_dir, sides=None, runner=_run, wait=wait_ready, log=None):
@@ -201,6 +205,17 @@ def _check_cache(test_dir, side, _http):
             continue
         if data:
             out.append("%s: %s holds %d entries" % (side, name, len(data)))
+    sessions = os.path.join(test_dir, SIDES[side]["conf"], SESSIONS_FILE)
+    try:
+        with open(sessions) as f:
+            held = json.load(f)
+    except FileNotFoundError:
+        held = []
+    except (OSError, ValueError) as e:
+        out.append("%s: %s unreadable (%s)" % (side, SESSIONS_FILE, type(e).__name__))
+        held = []
+    if held:
+        out.append("%s: %s holds %d entries" % (side, SESSIONS_FILE, len(held)))
     return out
 
 

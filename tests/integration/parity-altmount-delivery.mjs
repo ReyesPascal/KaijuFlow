@@ -1,5 +1,5 @@
 // Pipe and direct delivery against fake AltMount (#23). Application modules are real; the Backend is fake.
-// Ultimate Fallback off (the owner's setup). Checks what the player receives, and that seeking works.
+// Ultimate Fallback off: the list-time route, until #191 (the owner's setup, with the Play-time check, is parity-play-time-check). Checks what the player receives, and that seeking works.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

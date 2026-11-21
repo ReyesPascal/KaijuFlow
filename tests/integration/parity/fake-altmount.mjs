@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { serveBytes } from './serve-bytes.mjs';
 import { fault } from './first-byte-fault.mjs';
 import { nzbTag, rarVolumeCheck } from './fake-rar-rules.mjs';
+import { scrambledRarSet } from './fake-nntp.mjs';
 
 // A release name ending in one of these is filed by real AltMount v0.4.0 as a folder holding the file.
 /**
@@ -28,12 +29,28 @@ export async function createFakeAltmount(listen) {
   const requests = [];
   const submitKinds = []; // 'file' | 'nzb_url' per submit
   const submitFields = []; // { season, episode } per submit (strings as received, or undefined)
+  const submitted = []; // tag per accepted submit, in order
   let base = '';
   let down = false;
   let indexerDown = 0; // HTTP status the NZB link answers while the indexer is "down" (0 = serves the NZB)
   let nextQueueId = 1; // real AltMount queue ids are integers
   const uploads = new Map(); // tag -> uploaded NZB texts
   const volumeOf = new Map(); // first-article id -> real RAR5 volume, for Scrambled RAR sets
+  let news = null; // fake news server (useNews): Sources then get NZBs KaijuFlow's health check can read
+  let fixture = () => { throw new Error('useNews was given no archive fixtures'); };
+
+  /**
+   * With a fake news server: an NZB naming one file, 3 segments, its articles on
+   * the news server unless `dead` (articles missing, as on Newshosting in #189).
+   */
+  const checkableNzb = (tag, fileName, { dead = false } = {}) => {
+    const ids = [1, 2, 3].map(n => `${tag}-s${n}@fake`);
+    if (!dead) for (const id of ids) news.articles.set(id, Buffer.alloc(200, 0x41));
+    const subject = `[1/1] - &quot;${fileName.replace(/&/g, '&amp;')}&quot; yEnc (1/3)`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"><head><meta type="kf-tag">${tag}</meta></head>\n` +
+      `<file poster="kf@fake" date="1700000000" subject="${subject}"><groups><group>alt.binaries.synthetic</group></groups><segments>` +
+      ids.map((id, i) => `<segment bytes="750000" number="${i + 1}">${id}</segment>`).join('') + `</segments></file>\n</nzb>\n`;
+  };
 
   base = await listen(async (req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
@@ -84,6 +101,7 @@ export async function createFakeAltmount(listen) {
         return json(400, { error: 'Episode not found in NZB' });
       }
       src.submits++;
+      submitted.push(tag);
       // Real AltMount v0.4.0 (captured in #84): an upload named like a video file is filed as a FOLDER with that name
       // holding the file of the same name. The reply offers the folder, which answers 400 "Cannot stream directory".
       let offered = file.path;
@@ -94,6 +112,11 @@ export async function createFakeAltmount(listen) {
       }
       // AltMount v0.4.0 RAR volume rules: a failed queue item, answered like any other.
       if (fileMatch && rarVolumeCheck(fileMatch[1], volumeOf)) return json(500, { error: 'NZB processing failed' });
+      // Articles gone from the news server: real AltMount's import probe fails the queue item
+      // ("fast-fail segment check failed", #189), answered like any failed item.
+      if (news && fileMatch && [...fileMatch[1].matchAll(/<segment\b[^>]*>([^<]+)<\/segment>/g)].some(m => !news.articles.has(m[1]))) {
+        return json(500, { error: 'NZB processing failed' });
+      }
       // Scripted answer (status + body) for a Source, to exercise AltMount's other error answers.
       if (src.scripted) return json(src.scripted.status, src.scripted.body);
       // Failed queue item: pinned handler answers 500 "NZB processing failed" (not 400/422).
@@ -132,14 +155,16 @@ export async function createFakeAltmount(listen) {
     submitKinds,
     submitFields,
     /** Register a movie Source the fake will accept. Returns its NZB link. */
-    addMovie(tag, title, media) {
+    addMovie(tag, title, media, opts = {}) {
       sources.set(tag, { tag, title, files: [{ media, path: `/movies/${title}/${tag}.mkv` }], queueId: nextQueueId++, submits: 0, completed: false });
+      if (news) sources.get(tag).nzb = checkableNzb(tag, `${title}.mkv`, opts);
       return `${base}/${tag}.nzb`;
     },
     /** Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}]. */
-    addSeries(tag, title, episodes) {
+    addSeries(tag, title, episodes, opts = {}) {
       const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}.mkv` }));
       sources.set(tag, { tag, title, files, queueId: nextQueueId++, submits: 0, completed: false });
+      if (news) sources.get(tag).nzb = checkableNzb(tag, `${title}.mkv`, opts);
       return `${base}/${tag}.nzb`;
     },
     /**
@@ -159,6 +184,7 @@ export async function createFakeAltmount(listen) {
     uploadedNzbs(tag) { return uploads.get(tag) ?? []; },
     /** Register a Source whose queue item fails. */
     addRejected(tag, title) {
+      // With a news server its articles are all there: it passes KaijuFlow's health check and AltMount still fails it.
       const nzb = this.addMovie(tag, title, Buffer.from('unused'));
       sources.get(tag).rejected = true;
       return nzb;
@@ -172,6 +198,19 @@ export async function createFakeAltmount(listen) {
       if (!(kind in ALTMOUNT_REFUSALS)) throw new Error(`unknown refusal ${kind}`);
       const nzb = this.addMovie(tag, title, Buffer.from('unused'));
       sources.get(tag).refused = kind;
+      if (news && kind === 'scrambled-rar4') {
+        // Its RAR parts as posted: a real stored RAR4 set (tests/fixtures/archives) number-named out of
+        // volume order, every article on the news server.
+        const rar4 = ['rar4-stored.rar', 'rar4-stored.r00', 'rar4-stored.r01', 'rar4-stored.r02'];
+        const set = scrambledRarSet({ base: `${tag}-rar4`, parts: 4, startAt: 10, tag, firstArticle: v => fixture(rar4[v]) });
+        for (const [id, bytes] of set.articles) news.articles.set(id, bytes);
+        for (const p of set.parts) for (const n of [2, 3]) news.articles.set(`${tag}-v${p.volume}-s${n}@fake`, Buffer.alloc(200, 0x41));
+        sources.get(tag).nzb = set.nzb;
+      } else if (news && kind === 'disc-image') {
+        sources.get(tag).nzb = checkableNzb(tag, `${title}.iso`);
+      } else if (news) {
+        throw new Error(`no NZB for a ${kind} Source with a news server yet`);
+      }
       return nzb;
     },
     refusal(tag) { return ALTMOUNT_REFUSALS[sources.get(tag)?.refused] ?? null; },
@@ -204,6 +243,15 @@ export async function createFakeAltmount(listen) {
       return nzb;
     },
     setFirstByteFault(tag, mode) { sources.get(tag).fault = mode; },
+    /**
+     * Give every Source registered from now on an NZB KaijuFlow's health check can
+     * read, its articles on this fake news server (startFakeNntp). addMovie and
+     * addSeries take { dead: true } for a Source whose articles are missing.
+     * archiveFixture(name): the bytes of a real archive from tests/fixtures/archives.
+     */
+    useNews(server, { archiveFixture } = {}) { news = server; if (archiveFixture) fixture = archiveFixture; },
+    /** Tags of the Sources KaijuFlow submitted, in submit order. */
+    submitted,
     /** Make the Backend unreachable (true) or reachable again (false). */
     setDown(v) { down = v; },
     /** Make the indexer answer this HTTP status for every NZB link (0 = serve the NZB again). */

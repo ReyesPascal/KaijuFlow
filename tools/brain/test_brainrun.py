@@ -1007,6 +1007,14 @@ class BrowsePauseVisitTest(unittest.TestCase):
         # title to video is the list and the start alone: the pause is in neither
         self.assertEqual((out['list_s'], out['start_s']), (2.0, 1.5))
 
+    def test_the_best_entry_on_top_is_played_but_is_no_source(self):
+        # #190: KaijuFlow's list is the Best entry (the play address its list gives it, streamBuilder.ts) and the Sources
+        best = 'http://kf/stremio/k/play/stream/ultimate-fallback?t=abc'
+        out, events = self.visit({'streams': [{'url': best}, {'url': 'http://kf/stremio/k/play/stream/a.mkv?t=x'},
+                                              {'url': 'http://kf/stremio/k/play/stream/b.mkv?t=y'}]})
+        self.assertEqual(out['sources'], 2)
+        self.assertEqual(events[-1], ('play', best))
+
     def test_a_list_with_nothing_to_play_waits_no_pause(self):
         for body, status in (({'streams': []}, 200), ({}, 500)):
             out, events = self.visit(body, status)

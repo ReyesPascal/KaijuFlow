@@ -394,10 +394,13 @@ export const config: Config = {
   get ultimateFallback(): UltimateFallbackConfig {
     const ur = configData.ultimateFallback;
     const enabled = envBool('ULTIMATE_FALLBACK_ENABLED') ?? ur?.enabled ?? false;
-    const healthCheckEnabled = envBool('ULTIMATE_FALLBACK_HEALTH_CHECK_ENABLED') ?? ur?.healthCheckEnabled ?? false;
     const whenToResolve = envEnum('ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', ['on-results', 'on-tile-selection']) ?? ur?.whenToResolve ?? 'on-tile-selection';
-    const userPickFallback = envEnum('ULTIMATE_FALLBACK_USER_PICK_FALLBACK', ['uf-lobby', 'failure-video', 'fallback-chain']) ?? ur?.userPickFallback ?? 'failure-video';
-    const candidateCount = Math.max(1, Math.min(10, envInt('ULTIMATE_FALLBACK_CANDIDATE_COUNT') ?? ur?.candidateCount ?? 1));
+    // A clicked list entry that fails falls back to the next Source of the list (#190); an old config's
+    // 'failure-video' is read as that too, since the Play-time check always falls back.
+    const savedPick = envEnum('ULTIMATE_FALLBACK_USER_PICK_FALLBACK', ['uf-lobby', 'failure-video', 'fallback-chain']) ?? ur?.userPickFallback ?? 'fallback-chain';
+    const userPickFallback = savedPick === 'uf-lobby' ? 'uf-lobby' : 'fallback-chain';
+    // How many Sources the Play-time check checks at once, from the top of the list down (#190, default 3).
+    const candidateCount = Math.max(1, Math.min(10, envInt('ULTIMATE_FALLBACK_CANDIDATE_COUNT') ?? ur?.candidateCount ?? 3));
     const preferenceMode = envEnum('ULTIMATE_FALLBACK_PREFERENCE_MODE', ['priority', 'speed']) ?? ur?.preferenceMode ?? 'priority';
     // Archive inspection is mandatory for UF — its container-matching guarantee
     // (each backup matches the primary's container type) depends on reading
@@ -418,7 +421,6 @@ export const config: Config = {
     const speedSeasonPackTimeoutSeconds = Math.max(0, Math.min(90, envInt('ULTIMATE_FALLBACK_SPEED_SEASON_PACK_TIMEOUT') ?? ur?.speedSeasonPackTimeoutSeconds ?? UF_TIMEOUT_DEFAULTS.speed.seasonPack));
     return {
       enabled,
-      healthCheckEnabled,
       whenToResolve,
       userPickFallback,
       candidateCount,

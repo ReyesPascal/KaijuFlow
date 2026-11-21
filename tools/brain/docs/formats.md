@@ -135,7 +135,7 @@ A setting is named from the top of the copy's config down, with dots: a whole se
 - The file is in the repository: no host, address, login or key. An entry whose setting has a secret name (the settings reader's own test, `brainreport.is_secret_name`) is refused.
 - A file that cannot be used fails the preflight with one sentence that says why.
 
-Today the file holds KaijuFlow's standard sort and filter rules and its fallback on (no effect with AltMount until #190 turns Ultimate Fallback on: [rules](rules.md#what-a-run-is-185)); any other setting the settings reader reads, of KaijuFlow or its AltMount, can be added the same way.
+Today the file holds KaijuFlow's standard sort and filter rules and its fallback on with the Play-time check's settings (#190: [rules](rules.md#what-a-run-is-185)); `ultimateFallback.userPickFallback` cannot be named, because the settings reader takes its name for a login, and KaijuFlow does not need it: with the Play-time check on a failed list entry always falls back; any other setting the settings reader reads, of KaijuFlow or its AltMount, can be added the same way.
 
 **Applying it (#163).** `python3 -I tools/brain/testbed.py apply <copy> [--expected FILE]` writes every setting the file names for that copy (all its entries together) into the copy's config (`config.json`, or `config.yaml` for an AltMount copy), each named setting replaced as a whole, and leaves everything else as it was (it refuses to write when anything else would change). It reads the file as it is, so a change to the file is picked up with no change to the command. Before writing it copies the config to `<test folder>/backups/<copy>-<UTC time>-<file name>`. It prints, one line each, the backup, every setting that changed (`KaijuFlow: movieFilters.maxFileSize: 53687091200 -> 32212254720`; a setting, rule or section that was missing or extra as a whole is named once, as the preflight names it: `AltMount KaijuFlow: segment_cache.enabled: added, "true"`, `KaijuFlow: tvFilters.minFileSize: removed (was 5)`), and how many changed. Values are shown as the settings reader reads them, so no secret is printed. A copy that already holds the values gets one line, `<copy>: nothing changed; <config> already holds the expected settings.`, and no backup. A copy the file names nothing for, or NzbDAV (its settings are in a database), gets `Nothing applied: ...` and exit 1.
 
@@ -219,14 +219,14 @@ KaijuFlow writes one line per timed step to stdout (`src/utils/stepTiming.ts`): 
 
 | Field | Meaning |
 |---|---|
-| `step` | `indexer_page`, `health_batch`, `nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte` |
+| `step` | `indexer_page`, `health_batch`, `play_check`, `nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte` |
 | `source` | Source or indexer name (none for `health_batch`) |
 | `ms` | whole milliseconds the step took |
 | `ok` | false when the step threw (the line is still written) |
 | `t` | end time, ISO UTC |
 | `ref` | Stremio id (`tt0133093`, `tt1234567:1:2`), on the search-side steps `indexer_page` and `health_batch` only |
-| `title` | release title of the Source, on the prepare-side steps (`nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte`) |
+| `title` | release title of the Source, on the prepare-side steps (`play_check`, `nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte`) |
 | `job` | Backend job id on `upload`, `import_wait`, `first_byte` |
-| extras | `page` (`indexer_page`, 1 = first page); `count`, `checked`, `indexers` (`health_batch`); `result`, `parts`, `wait_ms` (`unscramble`; `wait_ms` is the part of `ms` spent waiting for its turn, #119); `includes_upload` (`import_wait` on AltMount: one request uploads and waits, so there is no `upload` line) |
+| extras | `page` (`indexer_page`, 1 = first page); `count`, `checked`, `indexers` (`health_batch`); `result`, `parts`, `wait_ms` (`unscramble`; `wait_ms` is the part of `ms` spent waiting for its turn, #119); `includes_upload` (`import_wait` on AltMount: one request uploads and waits, so there is no `upload` line); `status` (`play_check`: the health check's answer, `verified`, `verified_stored`, `blocked` or `error`; one line per Source the Play-time check checked, #190) |
 
 `brainrun.py` ties lines to a title like this: search-side lines by `ref`, for that side's visit until the next visit that used the same KaijuFlow container starts (a late `health_batch` is kept); prepare-side lines to the Source that was played (its release title appears in the played Stream's text; otherwise the work that began after the visit began), so background work of the previous title cannot land in the next one. This runs once at the end of the run (`finalize_steps`).

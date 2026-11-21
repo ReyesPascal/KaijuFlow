@@ -112,11 +112,11 @@ Every title played once, cold or warm, on every side of a pass. A timed run play
 _Avoid_: iteration, lap
 
 **Top pick**:
-The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. Video that arrives only after the top pick's own import failed is a **fallback**: counted as played, with its extra seconds in its title to video.
+The first Source in a side's list for a title. Two top picks are the same Source when their sizes match. A round plays the first entry of a side's list: the top pick, or on KaijuFlow's list (since #190) the Best entry above it, which plays the first Healthy Source. Video that arrives only after an import failed (the played entry's own, or with Best a checked Source that AltMount refused) is a **fallback**: counted as played, with its extra seconds in its title to video. A Source Best skips because its check failed costs no import, so it is no fallback.
 _Avoid_: first result, winner
 
 **Fail**:
-A play whose top pick gives no video: the viewer presses it and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
+A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Previous run**:

@@ -29,6 +29,7 @@ RUN_ORDER = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 CAUSES = [('indexer_limit', 'Indexer limit'), ('backend_rejection', 'Backend rejection'),
           ('failure_video', 'Failure video'), ('other', 'Other'), ('not_recorded', 'Not recorded')]
 SEARCH_STEPS = ('indexer_page', 'health_batch')
+PLAY_CHECK = 'play_check'  # one line per Source the Play-time check checked (#190): Best checks several, a list entry one
 
 COLUMN_HELP = {
     'Side': 'KaijuFlow, or KaijuFlow with one page per indexer (`--one-page`).',
@@ -45,7 +46,8 @@ COLUMN_HELP = {
     'Indexer wait': 'KaijuFlow only: seconds spent waiting for indexers during the search (the slowest indexer, its '
                     'pages added up; indexers are asked at the same time).',
     'Health checks': 'seconds spent checking whether Sources look downloadable (the checks of one list added up; '
-                     'if they overlap, the real wait was shorter). KaijuFlow only.',
+                     'if they overlap, the real wait was shorter), plus the wait for the Play-time checks after the press '
+                     '(#190; checks run together count once). KaijuFlow only.',
     'Unscramble': 'KaijuFlow only: seconds spent putting scrambled RAR parts in order before the import.',
     'Backend probe': 'KaijuFlow only: seconds KaijuFlow waited for the Backend to deliver the first byte after the import.',
     'Indexers': 'seconds of the search time that were the indexers\' answering time (for a replayed answer, the time the real '
@@ -71,7 +73,7 @@ COLUMN_HELP = {
     'Size': 'the size of the top pick\'s file as the Backend served it, in GB of 1000 x 1000 x 1000 bytes. For a top pick that '
             'did not play it is the size the side states in its list, marked "listed": the indexer\'s figure for the post, '
             'not the measured size of the file (KaijuFlow counts it in GB of 1024 x 1024 x 1024 bytes).',
-    'Sources': 'how many Sources the side listed.',
+    'Sources': 'how many Sources the side listed (KaijuFlow\'s Best entry is none, #190).',
     'Result': '"plays" when the top pick delivered video on the first try; "played after N fallbacks, S s extra" when video '
               'arrived only after N imports failed, the top pick\'s own among them, and S seconds is what those imports took; '
               'otherwise the failure kind and a short note.',
@@ -296,6 +298,20 @@ def _sum_ms(steps, name):
     return round(sum(ms) / 1000, 3) if ms else None
 
 
+def play_check_s(v):
+    """Seconds the visit waited for its Play-time checks (#190): from the first check's start until the played Source's
+    own check ended (the last check's end when no check names it). Best checks several Sources at once, so this is the
+    time they covered together, not their sum; checks that ran on after the played Source was found are left out. None
+    when the visit has no play_check line."""
+    checks = [s for s in v.get('steps', []) if s.get('step') == PLAY_CHECK and s.get('t')]
+    if not checks:
+        return None
+    src = _norm(v.get('played_source') or '')
+    mine = [_ms(s['t']) for s in checks if src and _norm(s.get('title', '')) == src]
+    until = max(mine) if mine else max(_ms(s['t']) for s in checks)
+    return round(_union_s([(_ms(s['t']) - s['ms'], _ms(s['t'])) for s in checks if _ms(s['t']) <= until]), 3)
+
+
 def visit_metrics(v):
     steps = [s for s in v.get('steps', []) if s.get('step') not in SEARCH_STEPS or s.get('ref') == v.get('id')]
     pages = {}
@@ -318,7 +334,9 @@ def visit_metrics(v):
         'nzb_fetch_s': _sum_ms(steps, 'nzb_fetch'),
         'import_s': import_s,
         'start_s': v.get('start_s'),
-        'health_s': _sum_ms(steps, 'health_batch'),
+        # the list-time batches (before the list) and the Play-time checks (after the press, #190)
+        'health_s': None if _sum_ms(steps, 'health_batch') is None and play_check_s(v) is None
+        else round((_sum_ms(steps, 'health_batch') or 0) + (play_check_s(v) or 0), 3),
         'unscramble_s': _sum_ms(steps, 'unscramble'),
         'indexer_wait_s': round(max(pages.values()) / 1000, 3) if pages else None,
         'probe_s': _sum_ms(steps, 'first_byte'),
@@ -420,8 +438,9 @@ def fallback_text(v):
 
 
 def plays(v):
-    """Whether a visit's top pick played: video arrived, on the first try or after a fallback. A fallback counts as played
-    (#185; KaijuFlow with AltMount falls back only once #190 turns Ultimate Fallback on); fallbacks() and fallback_s() say how many and how slow (rules.md)."""
+    """Whether a visit's play gave video, on the first try or after a fallback. A fallback counts as played
+    (#185). Since #190 a round plays the Best entry: video from the first healthy Source counts as played, and a Source
+    AltMount refused before it is a fallback; fallbacks() and fallback_s() say how many and how slow (rules.md)."""
     return bool(v.get('ok'))
 
 
@@ -538,10 +557,12 @@ def attribute_steps(visit, steps, end=None):
     """The step lines that belong to one visit of one side.
 
     Search-side lines (indexer_page, health_batch) carry `ref`: kept when ref is the visit's id, from the visit's start until
-    `end` (the start of that side's next visit; None = no end), however late they are written. Prepare-side lines carry the
-    release `title` of the Source: kept only for the Source that was played, found by its name in the visit's `played_source`
-    (from KaijuFlow's log) or in the played stream's text. No Source found means no prepare-side lines: a play that reused what
-    the Backend held shows no import and no Unscramble, and another Source's background work never lands here.
+    `end` (the start of that side's next visit; None = no end), however late they are written. Play-time check lines
+    (play_check, #190) are kept for every Source checked inside that window, played or not: Best checks several Sources and
+    skips the ones whose check fails, and that wait is the visit's. Other prepare-side lines carry the release `title` of the
+    Source: kept only for the Source that was played, found by its name in the visit's `played_source` (from KaijuFlow's log)
+    or in the played stream's text. No Source found means no such lines: a play that reused what the Backend held shows no
+    import and no Unscramble, and another Source's background work (Best's backups) never lands here.
     """
     lo = parse_ts(visit['t_start']) - datetime.timedelta(seconds=1)
 
@@ -553,10 +574,11 @@ def attribute_steps(visit, steps, end=None):
         return t >= lo and (end is None or t < end)
 
     out = [s for s in steps if s.get('step') in SEARCH_STEPS and s.get('ref') == visit.get('id') and inside(s)]
+    out += [s for s in steps if s.get('step') == PLAY_CHECK and inside(s)]
     played = ' '.join(str(t.get('title', '')) for t in visit.get('tries', [])[:1])
     src = _norm(visit.get('played_source') or '')
     for s in steps:
-        if s.get('step') in SEARCH_STEPS or not s.get('title') or not inside(s):
+        if s.get('step') in SEARCH_STEPS + (PLAY_CHECK,) or not s.get('title') or not inside(s):
             continue
         n = _norm(s['title'])
         if (src and n == src) or (len(n) >= 8 and n in _norm(played)):

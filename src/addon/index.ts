@@ -25,7 +25,7 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, ultimateFallbackOptions, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
@@ -328,8 +328,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
         const ur = config.ultimateFallback;
         ultimateFallbackFromCandidates(
-          sessionKey, fallbackCandidates,
-          { candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, archiveInspection: ur.archiveInspection, sampleCount: ur.sampleCount, maxAttempts: ur.maxAttempts, desiredBackups: ur.desiredBackups, backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds, priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds, speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds, speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers },
+          sessionKey, fallbackCandidates, ultimateFallbackOptions(ur),
           cachePattern, filePattern, type, episodesInSeason,
         ).catch(err => console.error('❌ Ultimate-Fallback error:', err));
         return;
@@ -348,21 +347,24 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // Apply current user filter/sort preferences (deprioritized packs appended after sort)
       allResults = applyUserFilters(allResults, titleMeta.type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks);
 
-      // Health checks pre-filter results before UF sees them; UF also performs
-      // its own per-candidate verification. Pass pre-existing health data so the
-      // coordinator skips already-checked results and smart mode counts them
-      // toward its threshold. Inner gate respects config.healthChecks.enabled.
-      const { healthResults: newHealth, filteredResults } = await coordinateHealthChecks({
-        allResults,
-        type: titleMeta.type,
-        season: titleMeta.season,
-        episode: titleMeta.episode,
-        episodesInSeason: titleMeta.episodesInSeason,
-        episodeAired: titleMeta.episodeAired,
-        preExistingHealth: healthMap.size > 0 ? healthMap : undefined,
-      });
-      for (const [key, val] of newHealth) healthMap.set(key, val);
-      allResults = filteredResults;
+      // Play-time check on (#190): the list goes out at once, unchecked; each
+      // Source is checked when it is about to be played. Otherwise the list-time
+      // check pre-filters results (pre-existing health data lets the coordinator
+      // skip already-checked results; its inner gate respects
+      // config.healthChecks.enabled). #191 deletes the list-time check.
+      if (!isUltimateFallbackActive()) {
+        const { healthResults: newHealth, filteredResults } = await coordinateHealthChecks({
+          allResults,
+          type: titleMeta.type,
+          season: titleMeta.season,
+          episode: titleMeta.episode,
+          episodesInSeason: titleMeta.episodesInSeason,
+          episodeAired: titleMeta.episodeAired,
+          preExistingHealth: healthMap.size > 0 ? healthMap : undefined,
+        });
+        for (const [key, val] of newHealth) healthMap.set(key, val);
+        allResults = filteredResults;
+      }
 
       // Auto-mark EasyNews and Zyclops results as verified
       autoMarkRemainingResults(allResults, healthMap);

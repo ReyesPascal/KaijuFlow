@@ -64,14 +64,15 @@ def _from_the_play(v):
 
 
 def _step_gap(v):
-    """Seconds between the step times a visit reports from its play on (_from_the_play) and its measured start; None when
-    the visit has no such steps."""
+    """Seconds between the step times a visit reports from its play on (_from_the_play), its Play-time checks included
+    (#190), and its measured start; None when the visit has no such steps."""
     if not any(s.get('step') == 'first_byte' for s in v.get('steps') or []):
         return None
     if v.get('start_s') is None:
         return None
-    m = br.visit_metrics(_from_the_play(v))
-    total = sum(m[k] or 0 for k in ('nzb_fetch_s', 'unscramble_s', 'import_s', 'probe_s'))
+    fv = _from_the_play(v)
+    m = br.visit_metrics(fv)
+    total = sum(m[k] or 0 for k in ('nzb_fetch_s', 'unscramble_s', 'import_s', 'probe_s')) + (br.play_check_s(fv) or 0)
     return round(abs(total - v['start_s']), 2)
 
 

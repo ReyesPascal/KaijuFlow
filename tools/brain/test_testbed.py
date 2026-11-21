@@ -66,6 +66,7 @@ class Bed:
         write(d + "/config/healthy-nzbs.json", '{"a": 1}')
         write(d + "/config/dead-nzbs.json", '{"b": 2}')
         write(d + "/config/stats.json", "{}")
+        write(d + "/config/uf-sessions.json", '[{"sessionKey": "k:movie:tt1::"}]')
         write(d + "/config/config.json", '{"keep": true}')
         # a stopped test copy of the runs before #185: nothing here touches it (#187)
         write(d + "/uu/config/healthy-nzbs.json", '{"a": 1}')
@@ -168,6 +169,7 @@ class Reset(unittest.TestCase):
         self.assertEqual(read(d + "/config/healthy-nzbs.json"), "{}")
         self.assertEqual(read(d + "/config/dead-nzbs.json"), "{}")
         self.assertFalse(os.path.exists(d + "/config/stats.json"))
+        self.assertFalse(os.path.exists(d + "/config/uf-sessions.json"), "Best's remembered plays go too (#190)")
         self.assertEqual(read(d + "/uu/config/healthy-nzbs.json"), '{"a": 1}')
         self.assertEqual(sorted(c[-1] for c in runner.calls if c[-2] == "stop"), ["altmount-kf", "kaijuflow"])
 
@@ -228,6 +230,11 @@ class CheckEmpty(unittest.TestCase):
         write(self.bed.dir + "/config/healthy-nzbs.json", '{"a": 1}')
         problems = testbed.check_empty(self.bed.dir, http=http_empty)
         self.assertTrue(any("kaijuflow" in p and "healthy-nzbs" in p for p in problems))
+
+    def test_kaijuflows_remembered_best_plays_must_be_gone_too(self):
+        write(self.bed.dir + "/config/uf-sessions.json", '[{"sessionKey": "k:movie:tt1::"}]')
+        problems = testbed.check_empty(self.bed.dir, http=http_empty)
+        self.assertTrue(any("kaijuflow" in p and "uf-sessions" in p for p in problems))
 
 
 if __name__ == "__main__":

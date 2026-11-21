@@ -1,5 +1,5 @@
 // Parity suite against fake AltMount. Application modules are real; the Backend is fake.
-// Ultimate Fallback off (the owner's setup), proxy delivery.
+// Ultimate Fallback off: the list-time route, until #191 (the owner's setup, with the Play-time check, is parity-play-time-check), proxy delivery.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

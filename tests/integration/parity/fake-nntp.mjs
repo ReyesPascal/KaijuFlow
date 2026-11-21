@@ -101,12 +101,15 @@ export async function useFakeNews(configData, config) {
 
 /**
  * Start a fake news server. `articles`: Map<messageId, Buffer> (a missing id
- * answers 430). `delayMs` slows every BODY reply. Records `reads` (message ids
- * whose bodies were asked for), `stats` (ids asked for with STAT) and the `peak`
- * number of open connections.
+ * answers 430). `delayMs` slows every BODY reply; `slow(prefix, ms)` slows every
+ * reply for ids starting with prefix. Records `reads` (message ids whose bodies
+ * were asked for), `stats` (ids asked for with STAT), `asks` ({ id, asked,
+ * answered } times in ms, per BODY or STAT) and the `peak` number of open
+ * connections.
  */
 export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) {
-  const state = { reads: [], stats: [], open: 0, peak: 0 };
+  const state = { reads: [], stats: [], asks: [], open: 0, peak: 0 };
+  const slowed = new Map(); // id prefix -> ms
   const sockets = new Set();
   const server = net.createServer(sock => {
     state.open++; state.peak = Math.max(state.peak, state.open);
@@ -128,14 +131,18 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
           const id = line.slice(line.indexOf('<') + 1, line.lastIndexOf('>'));
           const isBody = line.startsWith('BODY');
           if (isBody) state.reads.push(id); else state.stats.push(id);
+          const ask = { id, asked: Date.now(), answered: null };
+          state.asks.push(ask);
           const reply = () => {
+            ask.answered = Date.now();
             if (sock.destroyed) return;
             const data = articles.get(id);
             if (!data) { sock.write('430 no such article\r\n'); return; }
             if (!isBody) { sock.write(`223 0 <${id}>\r\n`); return; }
             sock.write(Buffer.from(`222 0 <${id}>\r\n` + yencLines(data, id).join('\r\n') + '\r\n.\r\n', 'latin1'));
           };
-          if (delayMs > 0) setTimeout(reply, delayMs); else reply();
+          const wait = Math.max(isBody ? delayMs : 0, ...[...slowed].filter(([prefix]) => id.startsWith(prefix)).map(([, ms]) => ms));
+          if (wait > 0) setTimeout(reply, wait); else reply();
         } else sock.write('500 what\r\n');
       }
     });
@@ -148,6 +155,8 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
     state,
     /** Served articles; scenarios add their sets here. */
     articles,
+    /** Answer every BODY and STAT for ids starting with `prefix` after `ms` (0 = no extra wait). */
+    slow(prefix, ms) { if (ms > 0) slowed.set(prefix, ms); else slowed.delete(prefix); },
     /**
      * A KaijuFlow health-check provider pointing at this server.
      * @param {string} [name]
