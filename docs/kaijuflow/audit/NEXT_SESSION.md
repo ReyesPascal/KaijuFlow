@@ -8,6 +8,13 @@ Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
 ## Goal
 KaijuFlow with AltMount as its one Backend, as fast and lean as possible; KaijuFlow does the health check, archives AltMount can stream allowed; no more speed tests against Usenet Ultimate or AltMount direct (owner, 2026-11-20; spec #183, the map). Owner's words: "I just want altmount to be the fast backend and want KF to do the healthcheck, even if its RARS, find a way to make them work together as fast as possible forget speed testing against the rest"; "i want it to be as fast and lean as possible". Spec #159 and its last tickets (#179 plain video only, #180, #156 Test 2) were closed on 2026-11-20; ADR 0009 replaces ADR 0008.
 
+## Next command
+What the owner types next (the `/kf` report ends with it, `docs/agents/resume.md`). Keep it current; empty when nothing waits on the owner.
+
+    /mattpocock-skills:implement-spec #183
+
+Phase 1 of spec #183's "Building it": builds #217, #190, and the six tuning tickets into `tuning-183`; merges #217's PR and PR #210 itself once ready and green. After it reports phase 1 done: `/kf phase 2 of #183` (runs, idle machine).
+
 ## The machine
 - New machine `brain` (user `brain`) since 2026-11-12. The old machine is gone, and everything that was only on it went with it: the run records up to 2026-11-10, the old test settings and templates, and the architecture review.
 - On this machine there are only the five test containers (`kaijuflow-test`, `uu-test`, `nzbdav-test`, `altmount-addon-test`, `altmount-kf-test`). Since #187 the brain tools and `compose.test.yaml` know only `kaijuflow-test` and `altmount-kf-test`; the other three are to be stopped and kept (a live step, owner's go). No live stack (Usenet Ultimate, NzbDAV, AltMount) exists here.
@@ -63,4 +70,5 @@ Owner's ideas waiting for a `/grill-with-docs` (not tickets): start the health c
 - Open issues: `gh issue list`; what can start now: `python3 -I tools/brain/frontier.py` (map #183).
 
 ## How to update
+Keep "Next command" right: whenever the next step needs the owner to type something, write it there.
 Update this note after every run or merge. Keep issue lists out of it: the tracker holds them (close a ticket in the session its work is done, `docs/agents/issue-tracker.md`). A gotcha that needs work goes on its ticket; this note keeps only a pointer.
