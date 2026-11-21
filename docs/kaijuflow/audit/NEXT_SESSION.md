@@ -13,7 +13,9 @@ What the owner types next (the `/kf` report ends with it, `docs/agents/resume.md
 
     /mattpocock-skills:implement-spec #183
 
-**First, before phase 1: the voice test** (owner, 2026-11-20: "save the voices to test next session when i start with kf"). The run's owner alert (`~/.local/bin/kf-alert`, spec #183) speaks with a Piper voice; the owner has not picked one. Play the three, one at a time, each waiting for the owner to close its notification (X) before the next: `KF_VOICE=<voice> ~/.local/bin/kf-alert "voice one"` (then two, three) with `en_GB-jenny_dioco-medium` (now the default), `en_US-amy-medium`, `en_US-hfc_female-medium`. Ask which they want, set it as the default `voice=` in `~/.local/bin/kf-alert`, clear this paragraph, then give the command above.
+Type it **inside herdr** (owner, 2026-11-20: phase 1's implementers and fix-up each run as their own Claude Code in a herdr pane; spec #183, "Implementers run in herdr panes"). Open a terminal, run `herdr`, type `kf` in its first pane, then the command above. The run stops if `HERDR_ENV` is not set.
+
+**Alert voice:** picked on 2026-11-20: Kyutai Pocket TTS, built-in voice "azelma" (research `docs/kaijuflow/research/REALISTIC_ALERT_VOICE.md`; binary in `~/.local/share/pocket-tts`, v4.0.1, checksum-checked). `kf-alert` makes the sentence in its detached part (about 6 s), falls back to Piper Jenny, then `spd-say`; `KF_VOICE` picks another voice. A whispered voice (cloning an Expresso whisper clip) needs a free Hugging Face login and the owner accepting `kyutai/pocket-tts`'s terms; not done. Closing the notification (X, a click, or "Stop voice") stops the voice (`kf-notify-wait`; `notify-send -w` never returned on GNOME Shell 50). `kf-alert stop` ends every alert.
 
 Phase 1 of spec #183's "Building it": builds #217, #190, and the six tuning tickets into `tuning-183`; merges #217's PR and PR #210 itself once ready and green. After it reports phase 1 done: `/kf phase 2 of #183` (runs, idle machine).
 
