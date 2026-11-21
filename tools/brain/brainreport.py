@@ -1081,7 +1081,7 @@ def not_recorded_section(run):
 
 # --------------------------------------------------------------------------- where the time went (#112)
 
-# The five parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
+# The six parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
 TIME_PARTS = [('measured_s', 'Measured list and start time'), ('pauses_s', 'Pauses (`--settle`)'),
               ('browse_s', 'Browse pauses'), ('failed_s', 'Failed plays'), ('resets_s', 'Resets'),
               ('other_s', 'Everything else')]
@@ -1148,7 +1148,7 @@ def _time_of_day(iso_time):
 
 
 def time_section(run):
-    """The report's section on the run's wall-clock time: the whole run and each pass in one sentence, the five parts that
+    """The report's section on the run's wall-clock time: the whole run and each pass in one sentence, the six parts that
     add up to the whole run, then each round with the reset before it. Seconds are shown to one decimal, so the parts as
     printed are within a second of the total. [] for a run that holds no timing (made before #112)."""
     timing = run.get('timing') or {}
