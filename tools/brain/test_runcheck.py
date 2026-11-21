@@ -140,6 +140,23 @@ class CheckTests(unittest.TestCase):
         self.assertIn("- KaijuFlow, warm 1, Beta: HTTP 503", out)
         self.assertIn('KaijuFlow, cold 1, Alpha (', out)
 
+    def test_work_done_during_the_browse_pause_is_no_step_gap(self):
+        # #205: list 1 s, then the 5 s Browse pause, so the play begins at 6 s. Work KaijuFlow does before that (today's
+        # Auto-queue) is no part of the start: an NZB fetch inside the pause is left out, and a step that began in the pause
+        # counts only from the play on (3 s of unscramble ending at 6.1 s counts 0.1 s). Start 1.0 s = 0.1 + 0.6 + 0.3.
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+
+            def pause(raw):
+                visit_of(raw, 'kaijuflow', 'cold', 'Alpha').update(browse_pause_s=5, list_s=1.0, start_s=1.0, steps=[
+                    {'step': 'nzb_fetch', 'ms': 2000, 'ok': True, 't': '2026-01-01T00:00:04.000Z'},
+                    {'step': 'unscramble', 'ms': 3000, 'ok': True, 't': '2026-01-01T00:00:06.100Z'},
+                    {'step': 'import_wait', 'ms': 600, 'ok': True, 'includes_upload': True, 't': '2026-01-01T00:00:06.700Z'},
+                    {'step': 'first_byte', 'ms': 300, 'ok': True, 't': '2026-01-01T00:00:07.000Z'}])
+            edit(run, 'raw.json', pause)
+            _, out = run_check(run)
+        self.assertIn('Visits whose step times and measured start differ by more than 0.5 s: none.', out.splitlines())
+
     def test_side_without_import_time_is_named(self):
         with tempdir() as tmp:
             run = copy_run(tmp)
