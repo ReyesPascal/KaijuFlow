@@ -1095,11 +1095,22 @@ def visit_wall_s(v):
         return None
 
 
-def failed_result(v, cause):
-    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took."""
-    text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
+def failed_visit_s(v):
+    """The time of a top pick that did not play, as "Failed plays" counts it: its whole visit less its Browse pause (#205);
+    None without both times."""
     took = visit_wall_s(v)
-    return text if took is None else f'{text} (the whole visit took {took:.1f} s)'
+    return None if took is None else round(took - (v.get('browse_pause_s') or 0), 3)
+
+
+def failed_result(v, cause):
+    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long its visit took
+    less its Browse pause, the time "Failed plays" adds up."""
+    text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
+    took, pause = failed_visit_s(v), v.get('browse_pause_s') or 0
+    if took is None:
+        return text
+    return f'{text} (the visit took {took:.1f} s, less its {pause_text(pause)} Browse pause)' if pause else \
+        f'{text} (the whole visit took {took:.1f} s)'
 
 
 def time_parts(run):
@@ -1113,8 +1124,7 @@ def time_parts(run):
     parts = {'measured_s': sum((v.get('list_s') or 0) + (v.get('start_s') or 0) for v in visits if v.get('ok')),
              'pauses_s': sum(r.get('pause_s') or 0 for r in timing.get('rounds') or []),
              'browse_s': sum(v.get('browse_pause_s') or 0 for v in visits),
-             'failed_s': sum(visit_wall_s(v) - (v.get('browse_pause_s') or 0) for v in visits
-                             if not v.get('ok') and visit_wall_s(v) is not None),
+             'failed_s': sum(failed_visit_s(v) or 0 for v in visits if not v.get('ok')),
              'resets_s': sum(r.get('seconds') or 0 for r in timing.get('resets') or [])}
     parts = {k: round(x, 3) for k, x in parts.items()}
     parts['other_s'] = round((timing.get('seconds') or 0) - sum(parts.values()), 3)

@@ -463,6 +463,11 @@ class WallClockTest(unittest.TestCase):
         self.assertIn('- **Browse pauses**: the Browse pause between a list arriving and its play, '
                       '5 s each (16 visits); it is no part of title to video.', lines)
         self.assertEqual(meta['timing']['parts']['browse_s'], 80.0)
+        # each failed play's Result cell gives the same 12 s that "Failed plays" adds up: 8 x 12 = 96
+        rows = read(os.path.join(run['dir'], 'report.md')).split('## Per title\n\n')[1].split('\n\n')[0].split('\n')[2:]
+        failed = [r for r in rows if '| KaijuFlow, one page per indexer |' in r]
+        self.assertEqual(len(failed), 8)
+        self.assertTrue(all('(the visit took 12.0 s, less its 5 s Browse pause)' in r for r in failed), failed[0])
 
     def test_no_part_of_the_time_is_counted_twice(self):
         """Held against the clock, not against the remainder: every play and every pause lies inside a round, the rounds and
