@@ -3,7 +3,7 @@
 import { after } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { cacheNzbContent } from '../../src/health/nzbContentCache.ts';
-import { rar5FirstArticle, startFakeNntp } from '../integration/parity/fake-nntp.mjs';
+import { rar5FirstArticle, scrambledRarSet, startFakeNntp } from '../integration/parity/fake-nntp.mjs';
 
 const servers: Array<{ close(): Promise<void> }> = [];
 after(async () => { for (const s of servers) await s.close(); });
@@ -57,6 +57,15 @@ export async function nzbWithNews(files: F[], { served = true, password, missing
 }
 
 /** A real archive from tests/fixtures/archives (see make.sh there). */
-export function archiveFixture(name: string): Buffer {
+export function archiveFixture(name: string): Buffer<ArrayBuffer> {
   return readFileSync(new URL(`../fixtures/archives/${name}`, import.meta.url));
+}
+
+/**
+ * A 7z set named `<hash>.7z.001` ... `.004` (the 7z sets in the Test 1 run,
+ * 2026-11-15, were named `<hash>.7z.NNN`; this base is invented), its first
+ * articles real 7z volumes.
+ */
+export function sevenZipSet() {
+  return scrambledRarSet({ base: 'Xq7Lm2Pz9Rb4Vn8Kw3Ty5uhaF.7z', parts: 4, startAt: 1, width: 3, firstArticle: (v: number) => archiveFixture(`stored-split.7z.00${v + 1}`) });
 }

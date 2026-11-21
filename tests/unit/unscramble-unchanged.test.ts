@@ -1,12 +1,13 @@
 // Unscramble (#45, spec #42, ADR 0005): when it can't finish, the original NZB
-// comes back with the reason; properly named and non-RAR Sources cost no
-// reads; the time limit and the health-check connection cap hold.
+// comes back with the reason; properly named and non-RAR Sources (a 7z set
+// included, #193) cost no reads; the time limit and the health-check connection cap hold.
 // Run: npm run test:unit
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { unscrambleNzb } from '../../src/archive/unscramble.ts';
 import { setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../../src/health/nntpConnection.ts';
 import { scrambledRarSet, startFakeNntp, rar5FirstArticle, rar4FirstArticle } from '../integration/parity/fake-nntp.mjs';
+import { archiveFixture, sevenZipSet } from './health-nzb.ts';
 
 const LIMIT_MS = 15000; // the spec's ceiling; these tests never get near it
 const servers: Array<{ close(): Promise<void> }> = [];
@@ -90,12 +91,24 @@ test('a RAR4 set: unchanged, not-rar5', async () => {
   assertUnchanged(r, set.nzb, 'not-rar5');
 });
 
-test('a number-named split that is not RAR (7z): unchanged, not-rar5', async () => {
-  const sevenZip = Buffer.concat([Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), Buffer.alloc(64)]);
-  const set = scrambledRarSet({ base: 'extras.7z', parts: 3, startAt: 1, width: 3, firstArticle: () => sevenZip });
+test('a 7z set (<name>.7z.001 ...): unchanged from its names alone, no reads', async () => {
+  // Each 7z set in the Test 1 run cost about a second reading first articles
+  // to answer not-rar5 (#193).
+  const set = sevenZipSet();
   const n = await news({ articles: set.articles });
   const r = await unscrambleNzb(set.nzb, [n.provider()], LIMIT_MS);
-  assertUnchanged(r, set.nzb, 'not-rar5');
+  assertUnchanged(r, set.nzb, 'not-scrambled');
+  assert.equal(r.parts, 0);
+  assert.equal(n.state.reads.length, 0, 'no first article should be read');
+});
+
+test('a number-named set of real RAR5 volumes is still Unscrambled', async () => {
+  const set = scrambledRarSet({ base: 'f0729944c1d2e3b4', parts: 4, startAt: 1, width: 3, firstArticle: (v: number) => archiveFixture(`rar5-stored.part${v + 1}.rar`) });
+  const n = await news({ articles: set.articles });
+  const r = await unscrambleNzb(set.nzb, [n.provider()], LIMIT_MS);
+  assert.equal(r.changed, true, `expected a rename, got ${r.reason}`);
+  for (const p of set.parts) assert.ok(r.nzb.includes(`&quot;f0729944c1d2e3b4.part0${p.volume + 1}.rar&quot;`), `${p.name} is volume ${p.volume}`);
+  assert.equal(n.state.reads.length, 4, 'one first article per part');
 });
 
 test('an unreachable provider: unchanged, read-error, nothing thrown', async () => {
