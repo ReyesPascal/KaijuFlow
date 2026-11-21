@@ -13,7 +13,7 @@ after(async () => { for (const s of servers) await s.close(); });
  * segment each); without it every article is filler (a RAR5 first article for
  * a `.rar` name).
  */
-export type F = { name: string; segs?: number; bytes?: number; data?: Buffer };
+export type F = { name: string; segs?: number; bytes?: number; data?: Buffer; /** list the segments last first in the NZB, as some posters do */ reversed?: boolean };
 
 function chunks(f: F): Buffer[] {
   const n = f.segs ?? 1;
@@ -26,8 +26,9 @@ function nzbXml(files: F[], tag: string, password?: string): string {
   const head = password ? `<head><meta type="password">${password}</meta></head>` : '';
   const body = files.map(f => {
     const parts = chunks(f);
-    const segs = parts.map((c, i) =>
-      `<segment bytes="${f.data ? c.length : f.bytes ?? 1000}" number="${i + 1}">${tag}-${f.name}-${i + 1}@fake</segment>`).join('');
+    const listed = parts.map((c, i) =>
+      `<segment bytes="${f.data ? c.length : f.bytes ?? 1000}" number="${i + 1}">${tag}-${f.name}-${i + 1}@fake</segment>`);
+    const segs = (f.reversed ? listed.reverse() : listed).join('');
     return `<file subject="&quot;${f.name}&quot; yEnc (1/${parts.length})"><segments>${segs}</segments></file>`;
   }).join('');
   return `<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">${head}${body}</nzb>`;

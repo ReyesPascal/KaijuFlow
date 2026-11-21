@@ -101,3 +101,8 @@ test('a stored RAR5 set with a later part missing is still blocked by sampling',
   assert.equal(result.status, 'blocked');
   assert.match(result.message, /^Missing \d+ of \d+ segments/);
 });
+
+test('a stored RAR5 set whose segments are listed out of order is verified (the header is read by segment number)', async () => {
+  const { result } = await check(rar5Parts.map(p => ({ ...fx(p), reversed: true })));
+  assert.equal(result.status, 'verified_stored', result.message);
+});
