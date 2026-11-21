@@ -166,7 +166,16 @@ class PreflightTest(unittest.TestCase):
             code, text = run_command(mode, self.cfg, self.world())
             self.assertEqual(code, 0, text)
             self.assertIn('Setup is right', text)
-            self.assertIn('connection caps, sort and filter settings and port all check out', text)
+            self.assertIn('connection caps, sort and filter settings', text)
+
+    def test_a_run_that_passes_names_the_machine_checks_too(self):
+        record(self.cfg)
+        code, text = run_command('run', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+        self.assertIn('the machine is idle (1-minute load below 1.00), HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves '
+                      'outside 10.x', text)
+        code, text = run_command('record', self.cfg, self.world())
+        self.assertNotIn('idle', text)
 
     def test_a_busy_machine_stops_a_run(self):
         record(self.cfg)

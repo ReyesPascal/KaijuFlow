@@ -66,8 +66,9 @@ class FakeIO(Copies):
     LIST_S, START_S, SEEKS_S = 2.0, 1.5, 0.5  # a visit whose top pick plays takes the three together: 4 s
     FAILED_PLAY_S = 10.0                      # a top pick that fails gives up after this long: the visit takes 12 s
 
-    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=()):
+    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=(), load=0.4):
         Copies.__init__(self, up)
+        self.load = load
         self.calls, self.clock, self.visits = [], datetime.datetime(2026, 11, 10, 18, 0, 0, tzinfo=UTC), 0
         self.limit_at_visit, self._marker, self.commit = limit_at_visit, marker, commit
         self.settings = settings or {'kaijuflow': {'healthChecks.sampleCount': 3, 'altmountApiKey': '***'}}
@@ -93,6 +94,10 @@ class FakeIO(Copies):
 
     def image_label(self):
         return self.commit
+
+    def load_average(self):
+        self.calls.append(('load',))
+        return self.load
 
     def preflight(self, mode):
         self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
@@ -247,6 +252,12 @@ class RunTest(unittest.TestCase):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO(commit='c-from-label'))
         meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
         self.assertEqual((meta['commit'], meta['head']), ('c-from-label', 'repo-head'))
+
+    def test_run_record_keeps_the_machines_load_at_the_start(self):
+        io = FakeIO(load=0.4271)
+        run = brainrun.run_all(make_cfg(self.tmp), io)
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['start_load'], 0.43)
+        self.assertLess(io.calls.index(('load',)), next(i for i, c in enumerate(io.calls) if c[0] == 'standin-start'))
 
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())

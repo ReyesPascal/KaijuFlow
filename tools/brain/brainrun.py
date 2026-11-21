@@ -856,7 +856,9 @@ def preflight_command(mode, cfg, io):
     if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
         print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
-        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out.')
+        machine = (f'; the machine is idle (1-minute load below {BUSY_LOAD:.2f}), HOST_IP and altmountUrl are its addresses, '
+                   f'{NEWS_HOST} resolves outside 10.x and the recording is complete' if mode == 'run' else '')
+        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
     return 1 if problems else 0
 
 
@@ -1024,6 +1026,7 @@ def run_all(cfg, io):
     if problems:
         raise PreflightFailed(problems)
     started = io.now()
+    start_load = round(io.load_average(), 2)  # the machine's 1-minute load average as the run starts (#217)
     root = cfg['runs_root']
     run_dir = br.create_run_dir(root, cfg['name'], started)
     logs_dir = os.path.join(run_dir, 'logs')
@@ -1036,7 +1039,7 @@ def run_all(cfg, io):
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off', 'browse pause': br.pause_text(cfg['browse_pause']),
                      'one-page side': 'yes' if 'kaijuflow-1page' in run_sides(cfg) else 'no'},
            'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []},
-           'lists': title_lists(cfg['titles'])}
+           'lists': title_lists(cfg['titles']), 'start_load': start_load}
     wait = cfg.get('wait', True)
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     try:
@@ -1118,7 +1121,7 @@ def write_run_ending(cfg, io, run, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
-                                    'standin_misses', 'changes', 'timing', 'browse_pause_s')}
+                                    'standin_misses', 'changes', 'timing', 'browse_pause_s', 'start_load')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
         meta['lists'] = run['lists']
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
