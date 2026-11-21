@@ -15,7 +15,7 @@ What the owner types next (the `/kf` report ends with it, `docs/agents/resume.md
 
 Type it **inside herdr** (owner, 2026-11-20: phase 1's implementers and fix-up each run as their own Claude Code in a herdr pane; spec #183, "Implementers run in herdr panes"). Open a terminal, run `herdr`, type `kf` in its first pane, then the command above. The run stops if `HERDR_ENV` is not set.
 
-**Alert voice:** the three Piper voices were played on 2026-11-20 and none was picked: the owner wants a more human, soft ASMR-style voice. Research in `docs/kaijuflow/research/REALISTIC_ALERT_VOICE.md` (when its agent has finished); Jenny stays the default meanwhile. Closing the notification (X, a click, or "Stop voice") now stops the voice: `kf-alert` shows it with `~/.local/bin/kf-notify-wait`, because `notify-send -w` never returned on GNOME Shell 50. `kf-alert stop` ends every alert.
+**Alert voice:** the three Piper voices were played on 2026-11-20 and none was picked: the owner wants a more human, soft ASMR-style voice. Research in `docs/kaijuflow/research/REALISTIC_ALERT_VOICE.md` (top pick Pocket TTS with a soft cloned clip; nothing installed yet); Jenny stays the default meanwhile. Closing the notification (X, a click, or "Stop voice") now stops the voice: `kf-alert` shows it with `~/.local/bin/kf-notify-wait`, because `notify-send -w` never returned on GNOME Shell 50. `kf-alert stop` ends every alert.
 
 Phase 1 of spec #183's "Building it": builds #217, #190, and the six tuning tickets into `tuning-183`; merges #217's PR and PR #210 itself once ready and green. After it reports phase 1 done: `/kf phase 2 of #183` (runs, idle machine).
 
