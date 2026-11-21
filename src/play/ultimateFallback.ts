@@ -7,7 +7,9 @@
  *   2. Grab chain (NZB download from indexers)
  *   3. Health checks (NNTP article verification, streams per-candidate as grabs complete)
  *   4. Hand-off to the Backend (prepare, probe; cancel on a failed health check)
- * Runs only when the Backend has the ultimateFallback capability (AltMount: from #190).
+ * Runs only when the Backend has the ultimateFallback capability (AltMount: since #190). It is the Play-time
+ * check's engine (playTimeCheck.ts): it hands the Backend only a Source its check found healthy, the first in
+ * list order, checking candidateCount Sources at a time from the top down.
  */
 
 import * as fs from 'fs';

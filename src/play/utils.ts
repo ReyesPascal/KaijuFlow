@@ -37,8 +37,8 @@ export function buildDateEpisodePattern(episodeAired: string | undefined): strin
 }
 
 /**
- * Ultimate Fallback needs the Backend's ultimateFallback capability (off for AltMount until #190): until then it acts as
- * off even if the saved setting is enabled. Use instead of reading `ultimateFallback.enabled`.
+ * Ultimate Fallback needs the Backend's ultimateFallback capability (on for AltMount since #190): without it, it acts as
+ * off even if the saved setting is enabled. When on, it is the Play-time check (playTimeCheck.ts). Use instead of reading `ultimateFallback.enabled`.
  */
 export function isUltimateFallbackActive(): boolean {
   return globalConfig.ultimateFallback?.enabled === true && backendCapabilities().ultimateFallback;

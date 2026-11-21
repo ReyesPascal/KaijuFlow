@@ -45,7 +45,7 @@ test('no NzbDAV client code is left', () => {
 
 // Retro of #16: callers ask what the Backend can do (its capabilities,
 // src/backends/capabilities.ts) rather than checking which Backend id is
-// selected, so turning a capability on (Ultimate Fallback for AltMount, #190)
+// selected, so turning a capability on (Ultimate Fallback for AltMount, done in #190)
 // touches only src/backends/.
 const ID_COMPARE_OWNERS = ['backends/', 'config/'];
 
