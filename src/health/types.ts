@@ -33,4 +33,10 @@ export interface NzbParseResult {
 export interface HealthCheckOptions {
   archiveInspection: boolean;
   sampleCount: 3 | 7;
+  /**
+   * The episode selector the Source is played with (`BackendSource.episodePattern`, #203): the video
+   * file whose name it matches is the one sampled, as that is the file AltMount is asked to play.
+   * Without it, or when no video file matches, the first video file is sampled.
+   */
+  episodePattern?: string;
 }

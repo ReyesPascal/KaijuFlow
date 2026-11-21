@@ -61,3 +61,22 @@ export async function nzbWithNews(files: F[], { served = true, password, missing
 export function archiveFixture(name: string): Buffer {
   return readFileSync(new URL(`../fixtures/archives/${name}`, import.meta.url));
 }
+
+/**
+ * A captured NZB from tests/fixtures/nzbs (scrubbed, see scrub.py there),
+ * cached under a fresh URL, with a fake news server holding every article
+ * except those of the files whose name contains one of `missing`.
+ */
+export async function capturedNzbWithNews(fixture: string, { missing = [] }: { missing?: string[] } = {}) {
+  const xml = readFileSync(new URL(`../fixtures/nzbs/${fixture}`, import.meta.url), 'utf8');
+  const articles = new Map<string, Buffer>();
+  for (const [, subject, body] of xml.matchAll(/<file [^>]*subject="([^"]*)"[^>]*>([\s\S]*?)<\/file>/g)) {
+    if (missing.some(m => subject.includes(m))) continue;
+    for (const [, id] of body.matchAll(/<segment [^>]*>([^<]+)<\/segment>/g)) articles.set(id, Buffer.alloc(100, 0x41));
+  }
+  const news = await startFakeNntp({ articles });
+  servers.push(news);
+  const url = `http://indexer.invalid/captured-${++n}.nzb`;
+  cacheNzbContent(url, xml);
+  return { url, provider: news.provider(), state: news.state };
+}

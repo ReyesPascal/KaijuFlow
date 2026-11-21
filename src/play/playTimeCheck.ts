@@ -30,6 +30,8 @@ export interface SourceToCheck {
   indexerName?: string;
   /** Proxy exit IP hash from search time, checked when grabbing the NZB. */
   searchExitIp?: string;
+  /** The episode selector AltMount is sent (#203): the check samples the file it picks. */
+  episodePattern?: string;
 }
 
 /** True for a result the Backend may be handed (the statuses the health check calls healthy). */
@@ -51,7 +53,7 @@ export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPo
     ? { status: 'error', message: 'No health-check provider: a Source is checked before it is played', playable: false }
     : await performHealthCheck(
       source.nzbUrl, providers, globalConfig.userAgents?.nzbDownload || getLatestVersions().chrome,
-      { archiveInspection: true, sampleCount: globalConfig.ultimateFallback?.sampleCount ?? 3 },
+      { archiveInspection: true, sampleCount: globalConfig.ultimateFallback?.sampleCount ?? 3, episodePattern: source.episodePattern },
       pool, source.indexerName, source.searchExitIp,
     );
   logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ms: Date.now() - t0 });

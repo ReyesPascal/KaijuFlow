@@ -43,6 +43,23 @@ function offerEpisode({ backend, indexer }, specs) {
   return { id: `${show}:1:2`, sources: items };
 }
 
+/**
+ * Offer, for S01E02 of a new show, a season pack of loose videos (S01E01 to S01E03, one file per episode, the
+ * layout of #189's edge2020 pack) on top, then a single-episode Source. `deadEpisodes`: the pack episodes whose
+ * articles are missing. Returns { id, pack, single }.
+ */
+function offerPackThenEpisode({ backend, indexer }, tag, deadEpisodes) {
+  const show = `tt${nextImdb++}`;
+  const packTitle = `KaijuFlow.PlayTime.Pack.S01.2160p.WEB-DL.H265-${tag}`;
+  const episodes = [1, 2, 3].map(episode => ({ season: 1, episode, media: mediaFor(`${tag}-e${episode}`) }));
+  const pack = { tag: `${tag}-pack`, title: packTitle, media: episodes[1].media, size: 30 * GB };
+  pack.link = backend.addSeries(pack.tag, packTitle, episodes, { deadEpisodes });
+  const single = { tag: `${tag}-single`, title: `KaijuFlow.PlayTime.Pack.S01E02.2160p.WEB-DL.H265-${tag}`, media: mediaFor(`${tag}-single`), size: 8 * GB };
+  single.link = backend.addSeries(single.tag, single.title, [{ season: 1, episode: 2, media: single.media }]);
+  indexer.offer(show, [pack, single]);
+  return { id: `${show}:1:2`, pack, single };
+}
+
 async function play(url, range) {
   const res = await fetch(url, { headers: range ? { Range: range } : {}, signal: AbortSignal.timeout(30000) });
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
@@ -219,6 +236,46 @@ export const playTimeScenarios = [
       assert.equal(w.backend.submitsFor('epdead'), 0);
       const f = w.backend.submitFields.at(-1);
       assert.equal(`${f.season}x${f.episode}`, '1x2', 'AltMount is told the episode');
+    },
+  },
+  {
+    // #203: in a season pack of loose videos the check samples the wanted episode's file, not the first one.
+    // Its first episode is complete but S01E02 is gone: Best does not hand the pack to AltMount.
+    id: 'best-checks-the-wanted-episode-of-a-pack',
+    async run(w) {
+      const { id, pack, single } = offerPackThenEpisode(w, 'packbest', [2]);
+      const streams = await w.list('series', id);
+      assert.equal(entryTitle(streams[1]), pack.title, 'the pack is the top Source');
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, single.media, 'Best plays the next Source');
+      assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose wanted episode is gone never reaches AltMount');
+    },
+  },
+  {
+    // #203, the reverse: the pack's first episode is gone but S01E02 is complete, so the pack passes the check
+    // and is the first Source Best hands AltMount, told the episode.
+    id: 'best-passes-a-pack-whose-wanted-episode-is-complete',
+    async run(w) {
+      const { id, pack } = offerPackThenEpisode(w, 'packok', [1]);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('series', id);
+      await play(streams[0].url);
+      assert.equal(w.backend.submitted[before], pack.tag, 'the pack is the first Source AltMount gets');
+      const f = w.backend.submitFields[before];
+      assert.equal(`${f.season}x${f.episode}`, '1x2', 'AltMount is told the episode the check sampled');
+    },
+  },
+  {
+    // #203 from a list entry: a click on the pack checks the wanted episode's file and falls back to the next Source.
+    id: 'list-entry-checks-the-wanted-episode-of-a-pack',
+    async run(w) {
+      const { id, pack, single } = offerPackThenEpisode(w, 'packpick', [2]);
+      const streams = await w.list('series', id);
+      const r = await play(streams[1].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, single.media, 'the click falls back to the next Source');
+      assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose wanted episode is gone never reaches AltMount');
     },
   },
   {
