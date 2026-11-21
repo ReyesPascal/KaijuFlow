@@ -44,7 +44,6 @@ jobs:
           path: |
             a4-results.json
             a4-react-results.json
-            a4-coordinator-results.json
             a4-cache-results.json
           if-no-files-found: warn
           retention-days: 14

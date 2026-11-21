@@ -16,7 +16,7 @@ import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getSt
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
-import { isPlayTimeCheckOn, requireHealthySource } from './playTimeCheck.js';
+import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
@@ -225,7 +225,8 @@ export async function prepareStream(
   // Steps 1-3: hand the Source to the Backend and wait for its video.
   // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
-  if (isPlayTimeCheckOn()) await requireHealthySource(source, logPrefix);
+  // It is the only health check since #191, so it runs whatever the fallback setting.
+  await requireHealthySource(source, logPrefix);
 
   const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
   const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;
@@ -325,12 +326,13 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
 }
 
 /**
- * What a failed list entry does: the userPickFallback setting, except that with the Play-time check
- * on a failure always falls back (#190), so an old config's 'failure-video' walks on down the list.
+ * What a failed list entry does: the userPickFallback setting, except that a failure always
+ * falls back (#190; the Play-time check is always on since #191), so an old config's
+ * 'failure-video' walks on down the list.
  */
-function userPickFallbackMode(): 'uf-lobby' | 'failure-video' | 'fallback-chain' {
+function userPickFallbackMode(): 'uf-lobby' | 'fallback-chain' {
   const mode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
-  return mode === 'failure-video' && isPlayTimeCheckOn() ? 'fallback-chain' : mode;
+  return mode === 'failure-video' ? 'fallback-chain' : mode;
 }
 
 /** Delivery method for the first response of a Stream: the streaming-method setting. */
@@ -1017,8 +1019,6 @@ export async function handleStream(
 
       // User-pick failure: fall straight into the UF lobby instead of walking the candidate chain.
       // The user explicitly chose this NZB; when it fails, UF's pre-vetted pool is the fallback.
-      // userPickFallback='failure-video' skips the redirect and lets the natural fall-through
-      // serve the failure video.
       if (
         userPick
         && sessionKey
@@ -1038,15 +1038,6 @@ export async function handleStream(
         console.log(`👑 User-pick failed — redirecting to UF lobby (rc=${redirectCount + 1})`);
         res.redirect(302, lobbyUrl.href);
         return;
-      }
-      if (
-        userPick
-        && isUltimateFallbackActive()
-        && userPickFallbackMode() === 'failure-video'
-        && !res.headersSent
-      ) {
-        console.log(`👑 User-pick failed — userPickFallback=failure-video, serving failure video`);
-        // Loop's natural fall-through hits sendFailureVideo below.
       }
     }
   }
@@ -1078,11 +1069,7 @@ export async function handleStream(
   // ensures Stremio never considers the episode "completed", so it won't mark it
   // as watched or auto-advance to the next episode. The user sees the
   // "Stream Unavailable" message and goes back to the stream list manually.
-  if (userPick && userPickFallbackMode() === 'failure-video') {
-    console.error(`\u274C User-pick attempt failed (userPickFallback=failure-video) — serving failure video`);
-  } else {
-    console.error(`\u274C All ${maxCandidates} candidate(s) exhausted, serving failure video`);
-  }
+  console.error(`\u274C All ${maxCandidates} candidate(s) exhausted, serving failure video`);
   if (!res.headersSent) {
     await sendFailureVideo(req, res);
   }

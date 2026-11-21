@@ -20,6 +20,7 @@ import 'dotenv/config';
 import crypto from 'crypto';
 import { configData, saveConfigFile } from './schema.js';
 import { migratePlaySettings } from './playSettingsMigration.js';
+import { dropListTimeCheckSettings } from './listTimeCheckMigration.js';
 
 // Migrate from .env if config is empty and .env has indexers
 if (configData.indexers.length === 0) {
@@ -48,7 +49,6 @@ if (configData.indexers.length === 0) {
 if (configData.healthChecks?.usenetHost && !configData.healthChecks.providers?.length) {
   const hc = configData.healthChecks;
   configData.healthChecks = {
-    enabled: hc.enabled,
     providers: [{
       id: crypto.randomUUID(),
       name: 'Primary Provider',
@@ -60,10 +60,7 @@ if (configData.healthChecks?.usenetHost && !configData.healthChecks.providers?.l
       enabled: true,
       type: 'pool'
     }],
-    nzbsToInspect: hc.nzbsToInspect,
-    maxConnections: hc.maxConnections ?? 12,
     autoQueueMode: hc.autoQueueMode,
-    hideBlocked: hc.hideBlocked
   };
   saveConfigFile(configData);
   console.log('✅ Migrated health check config to multi-provider format');
@@ -388,6 +385,19 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   if (dropped) {
     saveConfigFile(configData);
     console.log('✅ AltMount is the only Backend: removed the NzbDAV and library settings');
+  }
+}
+
+// The list-time Smart and Fixed checks are deleted (#191): the health check runs only
+// at play time, so their settings go. Runs after the single-provider migration above,
+// which still writes some of them.
+{
+  if (dropListTimeCheckSettings(configData as unknown as Record<string, unknown>)) {
+    saveConfigFile(configData);
+    console.log('✅ The list-time health checks are gone (#191): removed their settings');
+  }
+  if (process.env.HEALTH_CHECK_ENABLED !== undefined && process.env.HEALTH_CHECK_ENABLED !== '') {
+    console.warn('⚠️  Deprecated env var set but ignored: HEALTH_CHECK_ENABLED. A Source is always checked when it is played.');
   }
 }
 

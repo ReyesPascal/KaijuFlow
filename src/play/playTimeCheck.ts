@@ -1,12 +1,13 @@
 /**
  * Play-time check (GLOSSARY, spec #183, #190).
  *
- * The health check runs when a Source is about to be played, not before the
- * stream list is sent: the list goes out at once, unchecked, with the Best
- * entry on top. Ultimate Fallback's engine is its engine (the Best entry);
- * a list entry is checked when it is clicked (`prepareStream`). KaijuFlow
- * never hands the Backend an Unchecked Source: a Source this check did not
- * find healthy is not handed over.
+ * The health check runs when a Source is about to be played, never before the
+ * stream list is sent (the list-time Smart and Fixed checks were deleted in
+ * #191): the list goes out at once, unchecked, with the Best entry on top when
+ * Ultimate Fallback is on. Ultimate Fallback's engine is the Best entry's
+ * engine; a list entry is checked when it is clicked (`prepareStream`),
+ * whatever the fallback setting. KaijuFlow never hands the Backend an
+ * Unchecked Source: a Source this check did not find healthy is not handed over.
  */
 
 import { config as globalConfig } from '../config/index.js';
@@ -16,12 +17,6 @@ import type { NntpConnectionPool } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import { logStep } from '../utils/stepTiming.js';
 import { sourceFailure } from '../backends/types.js';
-import { isUltimateFallbackActive } from './utils.js';
-
-/** True when the Play-time check is on: Ultimate Fallback is on and the Backend can run it (AltMount since #190). */
-export function isPlayTimeCheckOn(): boolean {
-  return isUltimateFallbackActive();
-}
 
 /** The Source to check. */
 export interface SourceToCheck {
@@ -39,9 +34,9 @@ export function isHealthy(result: HealthCheckResult): boolean {
 
 /**
  * Check one Source before it is played: the health check with the pass rule
- * (ADR 0009, archive inspection always on). It runs whatever the list-time
- * health-check switches say; with no enabled health-check provider nothing can
- * be checked, so the answer is an error and the Source is not played.
+ * (ADR 0009, archive inspection always on). No setting turns it off; with no
+ * enabled health-check provider nothing can be checked, so the answer is an
+ * error and the Source is not played.
  * `pool`: share NNTP connections across the checks of one Best press.
  */
 export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPool): Promise<HealthCheckResult> {

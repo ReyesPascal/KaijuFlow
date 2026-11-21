@@ -1,5 +1,6 @@
 // Parity suite against fake AltMount. Application modules are real; the Backend is fake.
-// Ultimate Fallback off: the list-time route, until #191 (the owner's setup, with the Play-time check, is parity-play-time-check), proxy delivery.
+// Ultimate Fallback off (no Best entry; the owner's setup, with it on, is parity-play-time-check), proxy delivery.
+// Every Source is checked when it is played (#191), so each one gets an NZB the fake news server can answer for.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,6 +21,7 @@ try {
   const { config, configData } = await load('config/index');
   backend.configure(configData);
   const news = await useFakeNews(configData, config);
+  backend.useNews(news);
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream } = await load('play/streamHandler');
   const { createPlayStreamRoutes } = await load('routes/play');

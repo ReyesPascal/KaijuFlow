@@ -224,29 +224,17 @@ export const config: Config = {
   },
   get healthChecks(): HealthCheckConfig {
     const hc = configData.healthChecks;
-    const envEnabled = envBool('HEALTH_CHECK_ENABLED');
 
     if (!hc) {
       const defaults: HealthCheckConfig = {
-        enabled: envEnabled ?? false,
-        archiveInspection: true,
-        sampleCount: 3,
         providers: [],
-        nzbsToInspect: 6,
-        inspectionMethod: 'smart' as const,
-        smartBatchSize: 3,
-        smartAdditionalRuns: 1,
-        smartMinHealthy: 1,
-        maxConnections: 12,
         maxTotalConnections: DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
         verifyTlsCertificates: true,
         autoQueueMode: 'all' as const,
-        hideBlocked: true,
       };
       // Inject env-based NNTP provider if configured
       const envHost = envStr('HEALTH_CHECK_NNTP_HOST');
       if (envHost) {
-        defaults.enabled = envEnabled ?? true;
         defaults.providers = [{
           id: 'env-provider',
           name: 'Primary Provider (env)',
@@ -261,26 +249,10 @@ export const config: Config = {
       }
       return defaults;
     }
-    // Migrate legacy mode field to granular controls
-    let archiveInspection = hc.archiveInspection;
-    let sampleCount = hc.sampleCount;
-    if (archiveInspection === undefined || sampleCount === undefined) {
-      const legacyMode = hc.mode || 'full';
-      archiveInspection = archiveInspection ?? (legacyMode === 'full');
-      sampleCount = sampleCount ?? (legacyMode === 'full' ? 7 : 3);
-    }
 
     // Build the result with defaults
     const result: HealthCheckConfig = {
       ...hc,
-      enabled: envEnabled ?? hc.enabled,
-      archiveInspection,
-      sampleCount,
-      inspectionMethod: hc.inspectionMethod || 'smart',
-      smartBatchSize: hc.smartBatchSize ?? 3,
-      smartAdditionalRuns: hc.smartAdditionalRuns ?? 1,
-      smartMinHealthy: hc.smartMinHealthy ?? 1,
-      maxConnections: hc.maxConnections ?? 12,
       maxTotalConnections: hc.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
       verifyTlsCertificates: hc.verifyTlsCertificates !== false,
       autoQueueMode: hc.autoQueueMode ?? 'all',
