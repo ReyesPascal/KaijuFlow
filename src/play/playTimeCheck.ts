@@ -15,6 +15,7 @@ import { performHealthCheck } from '../health/healthCheckPipeline.js';
 import type { NntpConnectionPool } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import { logStep } from '../utils/stepTiming.js';
+import { sourceFailure } from '../backends/types.js';
 import { isUltimateFallbackActive } from './utils.js';
 
 /** True when the Play-time check is on: Ultimate Fallback is on and the Backend can run it (AltMount since #190). */
@@ -55,4 +56,21 @@ export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPo
     );
   logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ms: Date.now() - t0 });
   return result;
+}
+
+/**
+ * Check a Source the player clicked, right before it is handed to the Backend.
+ * Returns when it is healthy. Throws a Source failure (it is marked dead) when the
+ * check blocks it, and a plain error (not dead, ADR 0004) when the check could not
+ * answer, for example the indexer or the news server did not.
+ */
+export async function requireHealthySource(source: SourceToCheck, logPrefix = ''): Promise<void> {
+  const result = await checkSource(source);
+  if (isHealthy(result)) {
+    console.log(`${logPrefix}✅ Play-time check: healthy (${result.message})`);
+    return;
+  }
+  console.log(`${logPrefix}❌ Play-time check: ${result.status} (${result.message}) — not handed to the Backend`);
+  if (result.status === 'blocked') throw sourceFailure(`Play-time check: ${result.message}`);
+  throw new Error(`Play-time check could not check the Source: ${result.message}`);
 }

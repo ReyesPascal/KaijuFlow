@@ -351,7 +351,7 @@ export interface UltimateFallbackConfig {
   enabled: boolean;
   healthCheckEnabled?: boolean;        // No longer read: the Play-time check always checks before the hand-off (#190)
   whenToResolve: 'on-results' | 'on-tile-selection';   // When to fire UF — on search results or on user tile click (default on-tile-selection)
-  userPickFallback: 'uf-lobby' | 'failure-video' | 'fallback-chain';      // When an individual stream tile fails — show failure video (default), fall into UF lobby, or walk the chain
+  userPickFallback: 'uf-lobby' | 'failure-video' | 'fallback-chain';      // When a list entry fails — walk on down the list (default, #190), fall into the Best entry, or show the failure video
   candidateCount: number;              // Sources the Play-time check checks at once, top down (1-10, default 3)
   preferenceMode: 'priority' | 'speed';
   archiveInspection: boolean;

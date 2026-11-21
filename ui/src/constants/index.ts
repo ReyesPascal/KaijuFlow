@@ -185,8 +185,9 @@ export const DEFAULT_ULTIMATE_FALLBACK = {
   enabled: false,
   healthCheckEnabled: false,
   whenToResolve: 'on-tile-selection' as 'on-results' | 'on-tile-selection',
-  userPickFallback: 'failure-video' as 'uf-lobby' | 'failure-video' | 'fallback-chain',
-  candidateCount: 1,
+  // Keep in sync with src/config/accessors.ts (Play-time check defaults, #190).
+  userPickFallback: 'fallback-chain' as 'uf-lobby' | 'failure-video' | 'fallback-chain',
+  candidateCount: 3,
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
   sampleCount: 3 as 3 | 7,

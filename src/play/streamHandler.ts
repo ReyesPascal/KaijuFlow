@@ -16,6 +16,7 @@ import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getSt
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
 import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
+import { isPlayTimeCheckOn, requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
@@ -171,8 +172,9 @@ function getAttemptBudgetMs(_contentType?: string, _isSeasonPack?: boolean): num
 /**
  * Complete stream preparation pipeline:
  * 0. Already prepared on the Backend, or remembered ready (and its first byte still served)?
- * 1. Hand the Source to the Backend and wait for its video
- * 2. Probe the first byte
+ * 1. Play-time check (when on): only a healthy Source goes on
+ * 2. Hand the Source to the Backend and wait for its video
+ * 3. Probe the first byte
  */
 export async function prepareStream(
   nzbUrl: string,
@@ -222,6 +224,9 @@ export async function prepareStream(
 
   // Steps 1-3: hand the Source to the Backend and wait for its video.
   // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
+  // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
+  if (isPlayTimeCheckOn()) await requireHealthySource(source, logPrefix);
+
   const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
   const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;
   const video = await backend.prepare(source, { logPrefix, timeoutMs: remainingMs });
@@ -766,10 +771,10 @@ export async function handleStream(
   const ufLobbyAvailable = isUltimateFallbackActive();
   const sessionBackups = sessionKey ? getSessionBackups(sessionKey) : null;
   if (userPick && redirectCount === 0) {
-    console.log(`🎯 User-pick attempt: userPickFallback=${globalConfig.ultimateFallback?.userPickFallback ?? 'failure-video'}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
+    console.log(`🎯 User-pick attempt: userPickFallback=${globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain'}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
   }
   const candidateOrder: number[] = [];
-  const userPickMode = globalConfig.ultimateFallback?.userPickFallback ?? 'failure-video';
+  const userPickMode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
   if (userPick && ufLobbyAvailable && userPickMode !== 'fallback-chain') {
     candidateOrder.push(candidateStart);
   } else if (userPick && userPickMode === 'fallback-chain') {

@@ -396,7 +396,8 @@ export const config: Config = {
     const enabled = envBool('ULTIMATE_FALLBACK_ENABLED') ?? ur?.enabled ?? false;
     const healthCheckEnabled = envBool('ULTIMATE_FALLBACK_HEALTH_CHECK_ENABLED') ?? ur?.healthCheckEnabled ?? false;
     const whenToResolve = envEnum('ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', ['on-results', 'on-tile-selection']) ?? ur?.whenToResolve ?? 'on-tile-selection';
-    const userPickFallback = envEnum('ULTIMATE_FALLBACK_USER_PICK_FALLBACK', ['uf-lobby', 'failure-video', 'fallback-chain']) ?? ur?.userPickFallback ?? 'failure-video';
+    // A clicked list entry that fails falls back to the next Source of the list (#190).
+    const userPickFallback = envEnum('ULTIMATE_FALLBACK_USER_PICK_FALLBACK', ['uf-lobby', 'failure-video', 'fallback-chain']) ?? ur?.userPickFallback ?? 'fallback-chain';
     // How many Sources the Play-time check checks at once, from the top of the list down (#190, default 3).
     const candidateCount = Math.max(1, Math.min(10, envInt('ULTIMATE_FALLBACK_CANDIDATE_COUNT') ?? ur?.candidateCount ?? 3));
     const preferenceMode = envEnum('ULTIMATE_FALLBACK_PREFERENCE_MODE', ['priority', 'speed']) ?? ur?.preferenceMode ?? 'priority';

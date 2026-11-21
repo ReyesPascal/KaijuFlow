@@ -97,6 +97,26 @@ export const playTimeScenarios = [
     },
   },
   {
+    // A list entry is checked when it is clicked: a healthy one plays after its articles are checked; a dead one
+    // never reaches AltMount and the play falls back to the next Source of the list.
+    id: 'list-entry-is-checked-on-click',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'pick-dead', kind: 'dead' }, { tag: 'pick-next' }, { tag: 'pick-ok' }]);
+      const streams = await w.list('movie', id);
+      const checked = tag => w.news.state.stats.filter(x => x.startsWith(`${tag}-s`)).length;
+      assert.equal(checked('pick-ok'), 0, 'not checked before the click');
+      const ok = await play(streams[3].url);
+      assert.equal(ok.status, 200);
+      assertBytes(ok.body, sources[2].media, 'the clicked healthy entry plays');
+      assert.ok(checked('pick-ok') > 0, 'its articles were checked on click');
+      const r = await play(streams[1].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[1].media, 'a dead entry falls back to the next Source');
+      assert.ok(checked('pick-dead') > 0, 'the dead entry was checked on click');
+      assert.equal(w.backend.submitsFor('pick-dead'), 0, 'and never reached AltMount');
+    },
+  },
+  {
     // No Healthy Source left: the play shows the failure video and nothing reaches AltMount.
     id: 'best-shows-the-failure-video-when-no-source-is-healthy',
     async run(w) {
