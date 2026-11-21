@@ -305,6 +305,52 @@ export const playTimeScenarios = [
     },
   },
   {
+    // A clicked list entry whose check cannot answer (the indexer does not hand out the NZB): the failure video,
+    // nothing reaches AltMount, and the Source is not dead, so it plays once the indexer answers (ADR 0004).
+    id: 'list-entry-check-that-cannot-answer-is-not-dead',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'unanswered-a' }, { tag: 'unanswered-b' }]);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      w.backend.setIndexerDown(503);
+      try {
+        assertFailureVideo(await play(streams[1].url));
+      } finally {
+        w.backend.setIndexerDown(0);
+      }
+      assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
+      const again = await w.list('movie', id);
+      const entry = again.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+      assert.ok(entry, 'the Source is still offered');
+      const r = await play(entry.url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[0].media, 'it plays once the indexer answers');
+    },
+  },
+  {
+    // No enabled health-check provider: nothing can be checked, so nothing is handed to AltMount, from Best or
+    // from a list entry, and no Source is dead: once a provider is back, Best plays the first.
+    id: 'no-health-check-provider-nothing-is-handed-over',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'noprov-a' }, { tag: 'noprov-b' }]);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      const saved = w.configData.healthChecks;
+      w.configData.healthChecks = { ...saved, providers: saved.providers.map(p => ({ ...p, enabled: false })) };
+      try {
+        assertFailureVideo(await play(streams[0].url));
+        assertFailureVideo(await play(streams[1].url));
+      } finally {
+        w.configData.healthChecks = saved;
+      }
+      assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
+      const again = await w.list('movie', id);
+      const r = await play(again[0].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[0].media, 'Best plays the first Source once a provider is back');
+    },
+  },
+  {
     // No Healthy Source left: the play shows the failure video and nothing reaches AltMount.
     id: 'best-shows-the-failure-video-when-no-source-is-healthy',
     async run(w) {
