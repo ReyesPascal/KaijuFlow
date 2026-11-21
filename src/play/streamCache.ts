@@ -258,6 +258,12 @@ export function logPrepareStart(logPrefix: string, title: string): void {
   console.log(`${logPrefix}\u{1F195} Starting new stream preparation: ${title}`);
 }
 
+/** The line a press of Best writes when it plays what its session prepared, e.g. in a Head start (#206).
+ *  The brain tools read the played Source from it (brainreport.played_source). */
+export function logBestPlays(title: string): void {
+  console.log(`\u{1F451} Best plays: ${title}`);
+}
+
 export function setPrepareFn(fn: PrepareFn): void {
   prepareFn = fn;
 }

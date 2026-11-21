@@ -349,7 +349,7 @@ export interface HealthCheckConfig {
 // Ultimate-Fallback: combines retry-on-failure with Health Checking for fastest resolution
 export interface UltimateFallbackConfig {
   enabled: boolean;
-  whenToResolve: 'on-results' | 'on-tile-selection';   // When to fire UF — on search results or on user tile click (default on-tile-selection)
+  whenToResolve: 'on-results' | 'on-tile-selection';   // When to fire UF — on the list request (the Head start, default since #206) or on a press of Best
   userPickFallback: 'uf-lobby' | 'fallback-chain';      // When a list entry fails — walk on down the list (default, #190) or fall into the Best entry
   candidateCount: number;              // Sources the Play-time check checks at once, top down (1-10, default 3)
   preferenceMode: 'priority' | 'speed';  // Picks the wait times below; Best hands over the first healthy Source in list order whatever it says (#190)

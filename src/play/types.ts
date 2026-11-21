@@ -9,6 +9,8 @@ export interface StreamData {
   videoSize: number;
   /** Files the Backend said it holds for this Source (names or paths), for the first-byte log line. */
   offered?: string[];
+  /** Release name of the Source, set on Best's session so a press can name what it plays (#206). */
+  sourceTitle?: string;
 }
 
 export type CacheStatus = 'pending' | 'ready' | 'failed';

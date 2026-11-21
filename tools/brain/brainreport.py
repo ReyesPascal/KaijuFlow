@@ -349,14 +349,16 @@ def _norm(text):
 
 def played_source(text):
     """The release name of the Source KaijuFlow played in one visit, from its own log: the name on the first
-    'Starting new stream preparation' (a cold play) or 'Streaming' (a play that reused what the Backend held) line
-    after the '/stream hit' line. None when the log shows neither."""
+    'Starting new stream preparation' (a cold play), 'Best plays' (a press of Best playing what its session prepared,
+    a Head start's too, #206) or 'Streaming' (a play that reused what the Backend held) line after the '/stream hit'
+    line. None when the log shows none of them."""
     seen = False
     for _, msg in _lines(text):
         if '/stream hit' in msg:
             seen = True
         elif seen:
-            m = re.search(r'Starting new stream preparation: (.+?)\s*$', msg) or re.search(r'Streaming (.+?): \d+ requests', msg)
+            m = (re.search(r'Starting new stream preparation: (.+?)\s*$', msg) or re.search(r'Best plays: (.+?)\s*$', msg)
+                 or re.search(r'Streaming (.+?): \d+ requests', msg))
             if m:
                 return m.group(1)
     return None
