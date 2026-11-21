@@ -371,15 +371,8 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // Auto-mark EasyNews and Zyclops results as verified
       autoMarkRemainingResults(allResults, healthMap);
 
-      // Auto-queue to the Backend if enabled. Safe alongside Ultimate Fallback in
-      // on-tile-selection mode (UF defers submit until click). Skipped when UF
-      // is in on-results mode — UF already submits at search time and would
-      // race auto-queue on the same NZBs.
-      const ufSubmitsAtSearch = isUltimateFallbackActive()
-        && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
-      if (!ufSubmitsAtSearch) {
-        autoQueueToBackend(allResults, healthMap, titleMeta.type, titleMeta.season, titleMeta.episode, titleMeta.episodesInSeason);
-      }
+      // Auto-queue to the Backend if enabled; off with the Play-time check (#192).
+      autoQueueToBackend(allResults, healthMap, titleMeta.type, titleMeta.season, titleMeta.episode, titleMeta.episodesInSeason);
 
       // Build streams
       const { streams, fallbackGroupId, fallbackCandidates } = buildStreams({

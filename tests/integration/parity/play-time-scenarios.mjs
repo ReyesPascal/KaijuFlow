@@ -152,6 +152,33 @@ export const playTimeScenarios = [
     },
   },
   {
+    // Auto-queue makes no import before a play (#192): a list KaijuFlow remembers from before the Play-time check
+    // was on carries health verdicts, and Auto-queue (on, all Healthy Sources) would prepare them all; with the
+    // Play-time check on, asking for that list again reaches AltMount with nothing.
+    id: 'auto-queue-makes-no-import-before-a-play',
+    async run(w) {
+      const savedFallback = w.configData.ultimateFallback, savedChecks = w.configData.healthChecks;
+      try {
+        // Before: the list-time check, with Auto-queue off so this step imports nothing either.
+        w.configData.ultimateFallback = { ...savedFallback, enabled: false };
+        w.configData.healthChecks = { ...savedChecks, inspectionMethod: 'fixed', nzbsToInspect: 2, autoQueueMode: 'off' };
+        const { id } = offerMovie(w, [{ tag: 'aq-a' }, { tag: 'aq-b' }]);
+        const checkedList = await w.list('movie', id);
+        assert.ok(checkedList.some(s => `${s.name} ${s.title}`.includes('✅')), 'the list-time check found Healthy Sources');
+        // Now: the Play-time check on, Auto-queue on for all.
+        w.configData.ultimateFallback = savedFallback;
+        w.configData.healthChecks = { ...savedChecks, autoQueueMode: 'all' };
+        const before = w.backend.submitted.length;
+        await w.list('movie', id);
+        await new Promise(r => setTimeout(r, 2000)); // Auto-queue sends its prepares in the background
+        assert.deepEqual(w.backend.submitted.slice(before), [], 'nothing reaches AltMount before a play');
+      } finally {
+        w.configData.ultimateFallback = savedFallback;
+        w.configData.healthChecks = savedChecks;
+      }
+    },
+  },
+  {
     // #189's only fail: the first Sources are all dead. Best keeps checking, 3 at a time from the top down, with
     // no fixed cap, and plays the 8th; no Source it did not find healthy reaches AltMount.
     id: 'best-plays-the-8th-when-the-first-7-are-dead',
