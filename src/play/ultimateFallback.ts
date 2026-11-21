@@ -587,10 +587,9 @@ export async function ultimateFallbackFromCandidates(
       if (primaryResolved) {
         // No backups wanted — block any post-primary grab. Catches the
         // inline-call race where `backupLimitReached` hasn't been set yet
-        // by the top of the loop. Already-grabbed candidates still flow
-        // through the Backend hand-off (free backups); we just refuse to
-        // start *new* work. Free library hits are picked up by the
-        // post-drain sweep below regardless.
+        // by the top of the loop. Already-grabbed candidates are not handed
+        // to the Backend either (selectNext, #192). Free library hits are
+        // picked up by the post-drain sweep below regardless.
         if (options.desiredBackups === 0) return null;
         if (options.desiredBackups > 0 && backupCount >= options.desiredBackups) return null;
         // Cap NEW post-primary grabs only. Pre-primary refills (added before
@@ -630,6 +629,10 @@ export async function ultimateFallbackFromCandidates(
 
     // Only a Source the check found healthy is handed to the Backend, never one still being checked.
     const selectNext = (): CandidateState | null => {
+      // Prepare only the Source being played (#192): with no backups wanted, the healthy Sources
+      // checked alongside the played one are not handed to the Backend; the next is prepared only
+      // when the one being prepared fails.
+      if (primaryResolved && options.desiredBackups === 0) return null;
       // Speed mode only for primary selection — after primary, always use priority order
       if (options.preferenceMode === 'speed' && !primaryResolved) {
         return activePool.find(cs => cs.healthStatus === 'healthy' && cs.prepareStatus === 'idle') ?? null;

@@ -357,7 +357,7 @@ export interface UltimateFallbackConfig {
   archiveInspection: boolean;
   sampleCount: 3 | 7;
   maxAttempts: number;                 // Cap on total primary search attempts before giving up (0 = unlimited, 1-20 = cap, default 0). Library hits don't count.
-  desiredBackups: number;              // Target backups post-primary (0 = no replacement pulls; free library/in-flight still cache. 1-10 = target count, default 0)
+  desiredBackups: number;              // Target backups post-primary (0 = none: only the Source played is prepared, the next only when it fails, #192; free library hits still count. 1-10 = target count, default 0)
   backupProcessingLimit: number;       // Max candidates to evaluate for backup (0 = all, 1-20 = limit, default 3)
   // Per-mode Backend prepare wait times (0-90s, 0 = wait forever). Active set picked by preferenceMode at runtime.
   priorityMoviesTimeoutSeconds: number;

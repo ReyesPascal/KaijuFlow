@@ -48,13 +48,25 @@ async function play(url, range) {
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
-/** Run fn and collect what KaijuFlow logs meanwhile (its console.log lines). */
+/** Run fn(lines) and collect what KaijuFlow logs meanwhile (its console.log lines). */
 async function withLogs(fn) {
   const lines = [];
   const saved = console.log;
   console.log = (...a) => { lines.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); };
-  try { return { result: await fn(), lines }; } finally { console.log = saved; }
+  try { return { result: await fn(lines), lines }; } finally { console.log = saved; }
 }
+
+/** Wait until Best's run has ended (its summary line "N checked · N healthy"), so every import it makes has been made. */
+async function bestDone(lines) {
+  const deadline = Date.now() + 20000;
+  while (!lines.some(l => /Ultimate-Fallback \[[^\]]+\]\s+\d+ checked · \d+ healthy/.test(l))) {
+    if (Date.now() > deadline) throw new Error('Best did not finish within 20 s');
+    await new Promise(r => setTimeout(r, 25));
+  }
+}
+
+/** How many of a Source's articles the fake news server was asked about (it was checked). */
+const checked = (w, tag) => w.news.state.stats.filter(x => x.startsWith(`${tag}-s`)).length;
 
 /** The failure video is a long video/mp4, much bigger than the synthetic media. */
 function assertFailureVideo(r) {
@@ -98,6 +110,45 @@ export const playTimeScenarios = [
       const again = await play(streams[0].url);
       assertBytes(again.body, sources[1].media, 'a second press plays the same Source');
       assert.equal(w.backend.submitsFor('second-ok'), 1, 'without a new import');
+    },
+  },
+  {
+    // Prepare only the Source being played (#192): Best checks the top 3, all healthy, and AltMount gets one
+    // import, the one played; the other two healthy Sources are checked but never imported.
+    id: 'one-play-makes-one-altmount-import',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'one-a' }, { tag: 'one-b' }, { tag: 'one-c' }]);
+      const streams = await w.list('movie', id);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const out = await play(streams[0].url);
+        await bestDone(lines);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[0].media, 'Best plays the top Source');
+      for (const s of sources) assert.ok(checked(w, s.tag) > 0, `${s.tag} was checked`);
+      assert.deepEqual(w.backend.submitted.slice(before), ['one-a'], 'one play makes one AltMount import');
+    },
+  },
+  {
+    // A failure makes the next import (#192): AltMount refuses the top Source, so the next healthy one is
+    // imported and played; the third, also healthy, is not imported.
+    id: 'a-failure-makes-the-next-altmount-import',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'next-refused', kind: 'rejected' }, { tag: 'next-b' }, { tag: 'next-c' }]);
+      const streams = await w.list('movie', id);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const out = await play(streams[0].url);
+        await bestDone(lines);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the next Source after the refusal');
+      assert.ok(checked(w, 'next-c') > 0, 'the third Source was checked');
+      assert.equal(w.backend.submitsFor('next-refused'), 1, 'the refused Source was imported once');
+      assert.deepEqual(w.backend.submitted.slice(before).filter(t => t !== 'next-refused'), ['next-b'], 'the failure makes one more import, the next Source');
     },
   },
   {
