@@ -176,9 +176,12 @@ export async function createFakeAltmount(listen) {
       const nzb = this.addMovie(tag, title, media);
       sources.get(tag).nzb = set.nzb;
       for (const p of set.parts) volumeOf.set(p.firstId, p.volume);
-      // With a news server the parts' later articles are there too (the scenario posts the first ones), so
-      // the play-time check can sample them.
-      if (news) for (const p of set.parts) for (const n of [2, 3]) news.articles.set(`${tag}-v${p.volume}-s${n}@fake`, Buffer.alloc(200, 0x41));
+      // With a news server the parts' later articles and the .nfo and .par2 are there too (the scenario
+      // posts the first ones), so the play-time check can sample them and AltMount's probe finds them.
+      if (news) {
+        for (const p of set.parts) for (const n of [2, 3]) news.articles.set(`${tag}-v${p.volume}-s${n}@fake`, Buffer.alloc(200, 0x41));
+        for (const id of [`${tag}-nfo@fake`, `${tag}-par2@fake`]) news.articles.set(id, Buffer.alloc(200, 0x41));
+      }
       return nzb;
     },
     /** Why real AltMount v0.4.0 would fail this NZB's RAR set, or null if it would accept it. */
