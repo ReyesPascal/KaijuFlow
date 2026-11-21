@@ -122,10 +122,10 @@ def judged_lines(run_dir, meta, visits):
     prev = br.run_before(run_dir, recording)
     if prev is None:
         return [f'Against the previous run: not compared, no earlier run on the same recording ({recording}).']
-    pauses = [br.pause_text(br.browse_pause_of(m)) for m in (prev, meta)]
-    if pauses[0] != pauses[1]:  # #205: the pause lets work begun at list time show in the start, so it is no like for like
+    was, now = (br.browse_pause_of(m) for m in (prev, meta))
+    if was != now:  # #205: the pause lets work begun at list time show in the start, so it is no like for like
         return [f"Against the previous run on the same recording ({recording}): {prev['folder']}: not compared, its Browse pause "
-                f"was {pauses[0]} and this run's is {pauses[1]}; a run is judged only against a run with the same pause."]
+                f"was {br.pause_text(was)} and this run's is {br.pause_text(now)}; a run is judged only against a run with the same pause."]
     out, verdicts = [f"Against the previous run on the same recording ({recording}): {prev['folder']}."], []
     why_not = _why_not_judged(meta)
     for x in br.run_lists(visits) or [None]:
