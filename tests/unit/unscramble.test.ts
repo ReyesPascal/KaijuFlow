@@ -70,7 +70,8 @@ test('names are zero-padded to the part count', async () => {
 test('a non-RAR number-named split next to a Scrambled RAR set is left alone, the RAR set is still renamed', async () => {
   const rar = scrambledRarSet({ base: 'movie', parts: 4, startAt: 10, tag: 'rar' });
   const sevenZip = Buffer.concat([Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), Buffer.alloc(64)]);
-  const split = scrambledRarSet({ base: 'extras.7z', parts: 3, startAt: 1, width: 3, tag: '7z', firstArticle: () => sevenZip });
+  // A hash base with no .7z (like f0729944.001), so the name doesn't give it away.
+  const split = scrambledRarSet({ base: 'b81e4c07', parts: 3, startAt: 1, width: 3, tag: 'split', firstArticle: () => sevenZip });
   const splitFiles = [...split.nzb.matchAll(/<file [\s\S]*?<\/file>/g)].map(m => m[0]).join('\n');
   const nzb = rar.nzb.replace('</nzb>', `${splitFiles}\n</nzb>`);
   const news = await startFakeNntp({ articles: new Map([...rar.articles, ...split.articles]) });
@@ -80,4 +81,7 @@ test('a non-RAR number-named split next to a Scrambled RAR set is left alone, th
 
   assert.equal(r.changed, true, `expected a rename, got reason ${r.reason}`);
   assert.equal(r.nzb, expectedNzb(nzb, rar.parts, 'movie', 2));
+  // The split is read and found not RAR5 (not skipped by its name).
+  const reads = new Set<string>(news.state.reads);
+  assert.ok(split.parts.some((p: Part) => reads.has(p.firstId)), 'the split should be read');
 });
