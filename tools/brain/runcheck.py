@@ -38,14 +38,41 @@ def _visit_name(v):
     return f"{_side(v['side'])}, {v['phase']} {v['round']}, {v['title']}"
 
 
+def _from_the_play(v):
+    """The visit with its steps and imports cut to what ran after its play began, its list and its Browse pause over: work
+    KaijuFlow does before the play (today's Auto-queue, during the pause, #205) is no part of the start. A step that began
+    before counts from the play on. A step or import without its end time is kept whole."""
+    try:
+        play_at = br.parse_ts(v['t_start']).timestamp() + v['list_s'] + (v.get('browse_pause_s') or 0)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return v
+
+    def cut(begin, end):  # seconds of [begin, end] after the play began, or None when all of it was before
+        return None if end <= play_at else end - max(begin, play_at)
+    steps, imports = [], []
+    for s in v.get('steps') or []:
+        if not s.get('t') or s.get('ms') is None:
+            steps.append(s)
+        elif (left := cut(br.parse_ts(s['t']).timestamp() - s['ms'] / 1000, br.parse_ts(s['t']).timestamp())) is not None:
+            steps.append({**s, 'ms': round(left * 1000)})
+    for i in v.get('imports') or []:
+        if not (i.get('start') and i.get('end')):
+            imports.append(i)
+        elif (left := cut(br.parse_ts(i['start']).timestamp(), br.parse_ts(i['end']).timestamp())) is not None:
+            imports.append({**i, 'seconds': round(left, 3)})
+    return {**v, 'steps': steps, 'imports': imports}
+
+
 def _step_gap(v):
-    """Seconds between the step times a visit reports and its measured start; None when the visit has no such steps."""
+    """Seconds between the step times a visit reports from its play on (_from_the_play), its Play-time checks included
+    (#190), and its measured start; None when the visit has no such steps."""
     if not any(s.get('step') == 'first_byte' for s in v.get('steps') or []):
         return None
     if v.get('start_s') is None:
         return None
-    m = br.visit_metrics(v)
-    total = sum(m[k] or 0 for k in ('nzb_fetch_s', 'unscramble_s', 'import_s', 'probe_s'))
+    fv = _from_the_play(v)
+    m = br.visit_metrics(fv)
+    total = sum(m[k] or 0 for k in ('nzb_fetch_s', 'unscramble_s', 'import_s', 'probe_s')) + (br.play_check_s(fv) or 0)
     return round(abs(total - v['start_s']), 2)
 
 
@@ -116,11 +143,16 @@ def judged_lines(run_dir, meta, visits):
     run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
     and kept or not kept; then the verdict over every list. Each list's line also shows, against the previous run's, its
     median warm title to video (spec #183) and its fallback time (the fallbacks' extra seconds added up,
-    brainreport.fallback_total_s, #187); the verdict leaves those out."""
+    brainreport.fallback_total_s, #187); the verdict leaves those out. A previous run with another Browse pause is not
+    compared, with why (#205, rules.md "Browse pause")."""
     side, recording = br.JUDGED, meta.get('recording')
     prev = br.run_before(run_dir, recording)
     if prev is None:
         return [f'Against the previous run: not compared, no earlier run on the same recording ({recording}).']
+    was, now = (br.browse_pause_of(m) for m in (prev, meta))
+    if was != now:  # #205: the pause lets work begun at list time show in the start, so it is no like for like
+        return [f"Against the previous run on the same recording ({recording}): {prev['folder']}: not compared, its Browse pause "
+                f"was {br.pause_text(was)} and this run's is {br.pause_text(now)}; a run is judged only against a run with the same pause."]
     out, verdicts = [f"Against the previous run on the same recording ({recording}): {prev['folder']}."], []
     why_not = _why_not_judged(meta)
     for x in br.run_lists(visits) or [None]:

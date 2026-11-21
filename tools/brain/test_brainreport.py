@@ -714,7 +714,7 @@ class WallClockTest(unittest.TestCase):
     def test_the_parts_are_measured_from_the_visits_rounds_and_resets_and_the_rest_is_what_is_left(self):
         self.assertEqual(self.timed_run()['timing']['parts'], {
             'measured_s': 44.0,   # list 5 s + start: KaijuFlow 4 x (5 + 2), the one-page side warm 2 x (5 + 3)
-            'pauses_s': 18.0, 'resets_s': 40.8,
+            'pauses_s': 18.0, 'browse_s': 0.0, 'resets_s': 40.8,
             'failed_s': 14.0,     # two failed visits of 7 s, start to end
             'other_s': 83.2})     # 200 - 44 - 18 - 14 - 40.8
 
@@ -728,7 +728,7 @@ class WallClockTest(unittest.TestCase):
 
     def test_the_parts_as_printed_are_within_a_second_of_the_whole_run(self):
         # every part ends on .44 s: printed to a whole second they would lose 2.2 s between them
-        run = self.timed_run(measured_s=110.44, pauses_s=18.44, failed_s=14.44, resets_s=40.44, other_s=16.44)
+        run = self.timed_run(measured_s=110.44, pauses_s=18.44, browse_s=0.0, failed_s=14.44, resets_s=40.44, other_s=16.44)
         run['timing']['seconds'] = 200.2
         rows = br.render_report(run, ['x']).split('| Part | Seconds | Minutes |\n|---|---|---|\n')[1].split('\n\n')[0].split('\n')
         seconds = [float(r.split(' | ')[1]) for r in rows]
@@ -878,6 +878,56 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual({r['kind'] for r in rows}, {'HIT'})
         self.assertEqual(rows[0]['wait_ms'], 499)
         self.assertEqual(rows[0]['ip'], '192.168.80.6')
+
+
+class BestPressFixtureTest(unittest.TestCase):
+    """A Best press from KaijuFlow's own log (#190): captured from the Play-time check Parity suite
+    (tests/integration/parity/play-time-scenarios.mjs, best-press-log-lines-the-brain-tools-read), real KaijuFlow with
+    fakes for indexer, news server and AltMount. The first Source is dead, the second plays, the third is Best's backup.
+    Captured before #192, when Best still prepared its backup; the brain tools must leave a backup's prepare steps out."""
+    DEAD, OK, BACKUP = (f'KaijuFlow.PlayTime.{t}.2026.2160p.WEB-DL.H265-GRP' for t in ('log-dead', 'log-ok', 'log-backup'))
+    PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-21-best', 'kaijuflow-best-dead-first.txt')
+
+    def visit(self):
+        with open(self.PATH, encoding='utf-8') as f:
+            text = f.read()
+        # the list came 5 s before the press (the Browse pause); the press is the '/stream hit' line at 02:34:08.722
+        v = dict(side='kaijuflow', id='tt1000002', t_start='2026-11-21T02:34:03.622Z', list_s=0.1, browse_pause_s=5,
+                 start_s=0.206, ok=True, tries=[{'title': 'KaijuFlow ▶ Best'}], played_source=br.played_source(text))
+        v['steps'] = br.attribute_steps(v, br.parse_step_lines(text))
+        return text, v
+
+    def test_fixture_holds_no_keys(self):
+        text, _ = self.visit()
+        self.assertIsNone(re.search(r'(?i)api_?key|(?:key|token|password|secret)=\S', text))
+
+    def test_the_played_source_is_the_first_healthy_one(self):
+        _, v = self.visit()
+        self.assertEqual(v['played_source'], self.OK)
+
+    def test_every_checked_source_keeps_its_check_and_only_the_played_one_its_prepare_steps(self):
+        _, v = self.visit()
+        self.assertEqual([(s['title'], s['ok']) for s in v['steps'] if s['step'] == 'play_check'],
+                         [(self.DEAD, False), (self.OK, True), (self.BACKUP, True)])
+        self.assertEqual([(s['step'], s['title']) for s in v['steps'] if s['step'] != 'play_check'],
+                         [(n, self.OK) for n in ('nzb_fetch', 'unscramble', 'import_wait', 'first_byte')])
+
+    def test_the_wait_for_the_checks_is_the_health_time(self):
+        # dead 08.767-08.841 and played 08.779-08.845 checked together: 78 ms; the backup's check ended later
+        _, v = self.visit()
+        self.assertEqual(br.play_check_s(v), 0.078)
+        self.assertEqual(br.visit_metrics(v)['health_s'], 0.078)
+
+    def test_the_checks_are_part_of_the_steps_the_start_is_measured_against(self):
+        # nzb_fetch 1 + unscramble 1 + import 41 + first byte 14 ms + 78 ms of checks against a 206 ms start
+        _, v = self.visit()
+        self.assertEqual(runcheck._step_gap(v), 0.07)
+
+    def test_without_a_play_check_line_there_is_no_check_time(self):
+        _, v = self.visit()
+        v['steps'] = [s for s in v['steps'] if s['step'] != 'play_check']
+        self.assertIsNone(br.play_check_s(v))
+        self.assertIsNone(br.visit_metrics(v)['health_s'])
 
 
 class RunRecordTest(unittest.TestCase):
