@@ -52,6 +52,10 @@ const EXO_PLAYER_BUDGET_MS = 8_000;      // Max blocking time per post-redirect 
 // ready next time. Only applies when Ultimate Fallback gives a next candidate.
 // PTP 1.0.2.1 gives up on a source at ~42 s (30 s soft + 12 s hard), so 25 s
 // leaves room for the backup. 0 disables.
+// The one exception to "the next Source is prepared only when the one being
+// played fails" (#192, owner's decision on #192, 2026-11-20: keep it): a first
+// Source still loading after 25 s gets the next one beside it, and whichever is
+// ready first plays.
 const FIRST_SOURCE_SWITCH_MS = (() => {
   const raw = process.env.PLAY_FIRST_SOURCE_SWITCH_MS;
   const n = raw === undefined || raw === '' ? NaN : Number(raw);
