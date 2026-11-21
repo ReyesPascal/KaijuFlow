@@ -35,6 +35,14 @@ async function play(url, range) {
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
+/** Run fn and collect what KaijuFlow logs meanwhile (its console.log lines). */
+async function withLogs(fn) {
+  const lines = [];
+  const saved = console.log;
+  console.log = (...a) => { lines.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); };
+  try { return { result: await fn(), lines }; } finally { console.log = saved; }
+}
+
 /** The failure video is a long video/mp4, much bigger than the synthetic media. */
 function assertFailureVideo(r) {
   assert.equal(r.status, 200);
@@ -114,6 +122,57 @@ export const playTimeScenarios = [
       assertBytes(r.body, sources[1].media, 'a dead entry falls back to the next Source');
       assert.ok(checked('pick-dead') > 0, 'the dead entry was checked on click');
       assert.equal(w.backend.submitsFor('pick-dead'), 0, 'and never reached AltMount');
+    },
+  },
+  {
+    // ADR 0009 at play time: an archive the pass rule blocks (a Scrambled RAR4 set, which AltMount refused in Test 1,
+    // and a bare disc image) is skipped; Best plays the next Source and AltMount never sees the blocked ones.
+    id: 'pass-rule-blocks-at-play-time',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'rule-rar4', kind: 'scrambled-rar4' }, { tag: 'rule-iso', kind: 'disc-image' }, { tag: 'rule-ok' }]);
+      const streams = await w.list('movie', id);
+      const { result: r, lines } = await withLogs(() => play(streams[0].url));
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[2].media, 'Best plays the Source the pass rule lets through');
+      assert.ok(lines.some(l => l.includes('Blocked: RAR4 archive')), 'the RAR4 set is blocked by the pass rule');
+      assert.ok(lines.some(l => l.includes('Blocked: disc image')), 'the disc image is blocked by the pass rule');
+      assert.equal(w.backend.submitsFor('rule-rar4'), 0, 'the Scrambled RAR4 set never reaches AltMount');
+      assert.equal(w.backend.submitsFor('rule-iso'), 0, 'the disc image never reaches AltMount');
+      const pick = await play(streams[1].url);
+      assertBytes(pick.body, sources[2].media, 'a click on the blocked archive falls back to the next playable Source');
+      assert.equal(w.backend.submitsFor('rule-rar4'), 0, 'still never reaches AltMount');
+    },
+  },
+  {
+    // An AltMount refusal of a checked Source marks it dead and moves on to the next Source that passes the
+    // check, from Best and from a list entry (the fallback-to-next path on AltMount, owner 2026-11-20).
+    id: 'altmount-refusal-marks-dead-and-moves-on',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'refuse-top', kind: 'rejected' }, { tag: 'refuse-dead', kind: 'dead' }, { tag: 'refuse-ok' }]);
+      const streams = await w.list('movie', id);
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[2].media, 'Best moves on to the next healthy Source');
+      assert.equal(w.backend.submitsFor('refuse-top'), 1, 'the refused Source was handed over once');
+      assert.equal(w.backend.submitsFor('refuse-dead'), 0, 'the dead one is skipped');
+      const pick = await play(streams[1].url);
+      assertBytes(pick.body, sources[2].media, 'a click on the refused entry falls back to the next Source');
+      assert.equal(w.backend.submitsFor('refuse-top'), 1, 'the refused Source is dead: not handed over again');
+      const relisted = await w.list('movie', id);
+      assert.ok(!relisted.some(s => !isBest(s) && entryTitle(s) === sources[0].title), 'a dead Source is not offered again');
+    },
+  },
+  {
+    // A list entry AltMount refuses falls back to the next Source (fresh title, nothing remembered).
+    id: 'list-entry-refused-falls-back-to-next',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'entry-refused', kind: 'rejected' }, { tag: 'entry-next' }]);
+      const streams = await w.list('movie', id);
+      const r = await play(streams[1].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[1].media, 'the next Source plays');
+      assert.equal(w.backend.submitsFor('entry-refused'), 1);
+      assert.equal(w.backend.submitsFor('entry-next'), 1);
     },
   },
   {

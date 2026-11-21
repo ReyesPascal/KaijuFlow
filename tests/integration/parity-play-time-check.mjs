@@ -41,7 +41,8 @@ try {
   const { config, configData } = await load('config/index');
   backend.configure(configData);
   const news = await useFakeNews(configData, config);
-  backend.useNews(news);
+  // Real archives (tests/fixtures/archives), copied next to the scenarios by in-namespace.sh.
+  backend.useNews(news, { archiveFixture: name => fs.readFileSync(`${root}/fixtures/archives/${name}`) });
   const indexer = await createFakeIndexer();
   Object.assign(configData, {
     indexManager: 'manual',

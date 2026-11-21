@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { serveBytes } from './serve-bytes.mjs';
 import { fault } from './first-byte-fault.mjs';
 import { nzbTag, rarVolumeCheck } from './fake-rar-rules.mjs';
-import { rar4FirstArticle, scrambledRarSet } from './fake-nntp.mjs';
+import { scrambledRarSet } from './fake-nntp.mjs';
 
 // A release name ending in one of these is filed by real AltMount v0.4.0 as a folder holding the file.
 /**
@@ -37,6 +37,7 @@ export async function createFakeAltmount(listen) {
   const uploads = new Map(); // tag -> uploaded NZB texts
   const volumeOf = new Map(); // first-article id -> real RAR5 volume, for Scrambled RAR sets
   let news = null; // fake news server (useNews): Sources then get NZBs KaijuFlow's health check can read
+  let fixture = () => { throw new Error('useNews was given no archive fixtures'); };
 
   /**
    * With a fake news server: an NZB naming one file, 3 segments, its articles on
@@ -198,8 +199,10 @@ export async function createFakeAltmount(listen) {
       const nzb = this.addMovie(tag, title, Buffer.from('unused'));
       sources.get(tag).refused = kind;
       if (news && kind === 'scrambled-rar4') {
-        // Its RAR parts as posted: number-named, RAR4 first articles, every article on the news server.
-        const set = scrambledRarSet({ base: `${tag}-rar4`, parts: 4, startAt: 10, tag, firstArticle: rar4FirstArticle });
+        // Its RAR parts as posted: a real stored RAR4 set (tests/fixtures/archives) number-named out of
+        // volume order, every article on the news server.
+        const rar4 = ['rar4-stored.rar', 'rar4-stored.r00', 'rar4-stored.r01', 'rar4-stored.r02'];
+        const set = scrambledRarSet({ base: `${tag}-rar4`, parts: 4, startAt: 10, tag, firstArticle: v => fixture(rar4[v]) });
         for (const [id, bytes] of set.articles) news.articles.set(id, bytes);
         for (const p of set.parts) for (const n of [2, 3]) news.articles.set(`${tag}-v${p.volume}-s${n}@fake`, Buffer.alloc(200, 0x41));
         sources.get(tag).nzb = set.nzb;
@@ -244,8 +247,9 @@ export async function createFakeAltmount(listen) {
      * Give every Source registered from now on an NZB KaijuFlow's health check can
      * read, its articles on this fake news server (startFakeNntp). addMovie and
      * addSeries take { dead: true } for a Source whose articles are missing.
+     * archiveFixture(name): the bytes of a real archive from tests/fixtures/archives.
      */
-    useNews(server) { news = server; },
+    useNews(server, { archiveFixture } = {}) { news = server; if (archiveFixture) fixture = archiveFixture; },
     /** Tags of the Sources KaijuFlow submitted, in submit order. */
     submitted,
     /** Make the Backend unreachable (true) or reachable again (false). */
