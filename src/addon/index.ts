@@ -25,7 +25,7 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, ultimateFallbackOptions, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStart, ultimateFallbackOptions, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
@@ -308,8 +308,6 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
     // === SHARED: Trigger auto-resolve or Ultimate-Fallback if enabled ===
     const triggerAutoResolve = (fallbackCandidates: any[] | undefined, episodesInSeason?: number, episodeAired?: string) => {
-      if (!fallbackCandidates?.length) return;
-
       const contentKey = `${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
       const ufManifestKey = requestContext.getStore()?.manifestKey || '';
       const sessionKey = `${ufManifestKey}:${contentKey}`;
@@ -321,19 +319,16 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         filePattern = datePattern ? `(?:${cachePattern}|${datePattern})` : cachePattern;
       }
 
-      // Ultimate-Fallback takes priority — handles health checking + the Backend hand-off internally.
+      // Head start (#206): the list goes out now; Best's check and prepare begin in the background.
+      // On-tile-selection turns it off: UF waits for a press of Best (the lobby in streamHandler.ts).
       if (isUltimateFallbackActive() && config.ultimateFallback) {
-        // On-tile-selection: defer UF until the user clicks the lobby tile.
-        // The lobby handler in streamHandler.ts triggers UF there.
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
-        const ur = config.ultimateFallback;
-        ultimateFallbackFromCandidates(
-          sessionKey, fallbackCandidates, ultimateFallbackOptions(ur),
+        // Every list request counts, one with nothing to check too: it stops the Head start before it.
+        headStart(
+          sessionKey, fallbackCandidates ?? [], ultimateFallbackOptions(config.ultimateFallback),
           cachePattern, filePattern, type, episodesInSeason,
-        ).catch(err => console.error('❌ Ultimate-Fallback error:', err));
-        return;
+        );
       }
-
     };
 
     // === SHARED: Process from raw results → streams (filter, sort, health check, build) ===

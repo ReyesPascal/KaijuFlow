@@ -12,10 +12,10 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
-import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
+import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, logBestPlays } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
-import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
+import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -572,12 +572,9 @@ export async function handleStream(
   // stream tile (user_pick=1), await its session promise instead of starting
   // our own Backend submission. Self-redirect keeps ExoPlayer alive.
   if (!userPick && isUltimateFallbackActive() && sessionKey) {
-    // On-tile-selection mode: UF didn't fire on search; trigger it here so
-    // the existing await-flow below picks up the new session promise.
-    if (
-      globalConfig.ultimateFallback?.whenToResolve === 'on-tile-selection'
-      && !getSessionPromise(sessionKey)
-    ) {
+    // No session for this title (no Head start: off, stopped by a newer list request, or a player that only
+    // asks at play): Best starts here, so the await-flow below picks up the new session promise.
+    if (!getSessionPromise(sessionKey)) {
       const group = fallbackGroupId ? getFallbackGroup(fallbackGroupId) : undefined;
       if (!group?.candidates?.length) {
         console.log(`👑 UF tile click but no fallback group (sk=${sessionKey}, fbg=${fallbackGroupId}) — falling through`);
@@ -596,6 +593,8 @@ export async function handleStream(
       }
     }
     const sessionPromise = getSessionPromise(sessionKey);
+    // This press waits on the session: a newer list request no longer stops it (#206).
+    claimSession(sessionKey);
     if (sessionPromise) {
       const elapsed = Date.now() - streamStartTime;
       const remainingMs = STREMIO_TIMEOUT_MS - elapsed - STREMIO_SAFETY_MARGIN_MS;
@@ -638,6 +637,8 @@ export async function handleStream(
           }
           if (shouldLogLobby) console.log(`👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}`);
           else if (shouldLogCached) console.log(`👑 Lobby: cached resolve served (sk=${sessionKey})`);
+          // A Head start prepared it before the press, so no prepare line follows this press's '/stream hit'.
+          if ((shouldLogLobby || shouldLogCached) && streamData.sourceTitle) logBestPlays(streamData.sourceTitle);
           const lobbySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
           if (mode !== 'direct') {
             const inline = proxyFn && !lobbyFallbackOn;

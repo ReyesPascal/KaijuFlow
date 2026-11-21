@@ -73,13 +73,20 @@ async function withLogs(fn) {
   try { return { result: await fn(lines), lines }; } finally { console.log = saved; }
 }
 
-/** Wait until Best's run has ended (its summary line "N checked · N healthy"), so every import it makes has been made. */
-async function bestDone(lines) {
+/** Wait until a log line passes test, or fail after 20 s naming what. */
+async function until(test, what) {
   const deadline = Date.now() + 20000;
-  while (!lines.some(l => /Ultimate-Fallback \[[^\]]+\]\s+\d+ checked · \d+ healthy/.test(l))) {
-    if (Date.now() > deadline) throw new Error('Best did not finish within 20 s');
+  while (!test()) {
+    if (Date.now() > deadline) throw new Error(`${what} not within 20 s`);
     await new Promise(r => setTimeout(r, 25));
   }
+}
+
+/** Wait until Best's run has ended (its summary line "N checked · N healthy"), so every import it makes has been made.
+ *  With a title id, only that title's run counts. */
+async function bestDone(lines, id = '') {
+  const done = new RegExp(`Ultimate-Fallback \\[[^\\]]*${id}[^\\]]*\\]\\s+\\d+ checked · \\d+ healthy`);
+  await until(() => lines.some(l => done.test(l)), `Best's run${id ? ` for ${id}` : ''}`);
 }
 
 /** How many of a Source's articles the fake news server was asked about (it was checked). */
@@ -121,34 +128,142 @@ const entryTitle = s => JSON.parse(Buffer.from(new URL(s.url).searchParams.get('
 
 export const playTimeScenarios = [
   {
-    // The list goes out at once, sorted and unchecked, with the Best entry on top and the full list below.
+    // The list goes out at once, sorted and unchecked, with the Best entry on top and the full list below: it waits
+    // for no check (the Head start's checks answer after it).
     id: 'list-at-once-unchecked-best-on-top',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'list-a' }, { tag: 'list-b' }, { tag: 'list-c', kind: 'dead' }]);
-      const asked = w.news.state.stats.length + w.news.state.reads.length;
-      const streams = await w.list('movie', id);
-      assert.equal(streams.length, 4, 'Best plus every Source');
-      assert.ok(isBest(streams[0]), `Best is on top (got ${streams[0].name})`);
-      assert.equal(streams.slice(1).map(entryTitle).join(' | '), sources.map(s => s.title).join(' | '), 'the full list below, in sort order');
-      assert.equal(w.news.state.stats.length + w.news.state.reads.length, asked, 'no article is checked before the list goes out');
-      assert.equal(w.backend.submitted.length, 0, 'nothing reaches AltMount before a play');
-      assert.ok(!streams.some(s => /✅|❌|🚫/.test(s.title)), 'no Source shows a health verdict');
+      w.news.slow('list-', 500);
+      try {
+        const streams = await w.list('movie', id);
+        const listed = Date.now();
+        assert.equal(streams.length, 4, 'Best plus every Source');
+        assert.ok(isBest(streams[0]), `Best is on top (got ${streams[0].name})`);
+        assert.equal(streams.slice(1).map(entryTitle).join(' | '), sources.map(s => s.title).join(' | '), 'the full list below, in sort order');
+        const answered = w.news.state.asks.filter(a => a.id.startsWith('list-') && a.answered !== null && a.answered <= listed);
+        assert.equal(answered.length, 0, 'no check had answered when the list went out');
+        assert.ok(!streams.some(s => /✅|❌|🚫/.test(s.title)), 'no Source shows a health verdict');
+      } finally {
+        w.news.slow('list-', 0);
+      }
     },
   },
   {
-    // The brain tools read a Best press from KaijuFlow's log (tools/brain/docs/formats.md): one play_check line per
-    // Source Best checked, the dead one too, and the played Source's name on the first prepare line after the
-    // press's '/stream hit' line; the other healthy Source it checked is never prepared (#192). A scrubbed capture of these lines is
-    // tools/brain/fixtures/2026-11-21-best/, which the brain tests read.
+    // Head start (#206): a list request alone starts Best's check and one AltMount import, the first healthy
+    // Source; a press of Best then plays it with no new import.
+    id: 'head-start-checks-and-prepares-best-before-a-play',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'hs-dead', kind: 'dead' }, { tag: 'hs-ok' }, { tag: 'hs-other' }]);
+      const before = w.backend.submitted.length;
+      const { result: streams } = await withLogs(async lines => {
+        const out = await w.list('movie', id);
+        await bestDone(lines, id);
+        return out;
+      });
+      for (const s of sources) assert.ok(checked(w, s.tag) > 0, `${s.tag} was checked before any play`);
+      assert.deepEqual(w.backend.submitted.slice(before), ['hs-ok'], 'one AltMount import before any play, the first healthy Source');
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the Source its Head start prepared');
+      assert.deepEqual(w.backend.submitted.slice(before), ['hs-ok'], 'the press makes no new import');
+    },
+  },
+  {
+    // Head start, one title at a time (#206): a list request for another title stops the unfinished check of the
+    // one before, so none of its Sources reaches AltMount; a press of its Best later still plays, checked then.
+    id: 'a-newer-list-request-stops-the-head-start-before-it',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'stop-a1' }, { tag: 'stop-a2' }]);
+      const b = offerMovie(w, [{ tag: 'stop-b1' }]);
+      const before = w.backend.submitted.length;
+      const aTags = ['stop-a1', 'stop-a2'];
+      w.news.slow('stop-a', 1500);
+      let streamsA;
+      try {
+        await withLogs(async lines => {
+          streamsA = await w.list('movie', a.id);
+          await until(() => w.news.state.asks.some(x => x.id.startsWith('stop-a')), 'the first title\'s check');
+          await w.list('movie', b.id);
+          await bestDone(lines, a.id);
+          const answered = w.news.state.asks.filter(x => x.id.startsWith('stop-a') && x.answered !== null);
+          assert.equal(answered.length, 0, 'the first title\'s run ended mid-check, stopped');
+          await bestDone(lines, b.id);
+        });
+        await new Promise(r => setTimeout(r, 1700)); // the first title's checks would have answered by now
+        for (const tag of aTags) assert.equal(w.backend.submitsFor(tag), 0, `${tag} never reaches AltMount`);
+        assert.deepEqual(w.backend.submitted.slice(before), ['stop-b1'], 'only the newest title\'s Head start imports');
+      } finally {
+        w.news.slow('stop-a', 0);
+      }
+      const r = await play(streamsA[0].url);
+      assert.equal(r.status, 200, 'a press of the stopped title\'s Best still plays');
+      assertBytes(r.body, a.sources[0].media, 'its Best checks and prepares on the press');
+      assert.equal(w.backend.submitsFor('stop-a1'), 1);
+    },
+  },
+  {
+    // A player that asks for the list only when it plays (no Browse pause): the press joins the Head start just
+    // begun and plays, with one import.
+    id: 'a-player-that-asks-only-at-play-still-plays',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'atplay-a' }, { tag: 'atplay-b' }]);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
+        const out = await play(streams[0].url);
+        await bestDone(lines, id);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[0].media, 'Best plays the top Source');
+      assert.deepEqual(w.backend.submitted.slice(before), ['atplay-a'], 'one import');
+    },
+  },
+  {
+    // A press of Best makes its title's run a play: a list request for another title that comes while Best is
+    // still checking does not stop it (Stremio asks for the next episode's list during a play).
+    id: 'a-newer-list-request-does-not-stop-a-pressed-best',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'claim-a' }]);
+      const b = offerMovie(w, [{ tag: 'claim-b' }]);
+      w.news.slow('claim-a', 800);
+      try {
+        const { result: r } = await withLogs(async lines => {
+          const streams = await w.list('movie', a.id);
+          const pressed = play(streams[0].url);
+          await until(() => lines.some(l => l.includes(a.id) && l.includes('Best pressed')), 'the press');
+          await w.list('movie', b.id);
+          const out = await pressed;
+          await bestDone(lines, b.id);
+          return out;
+        });
+        assert.equal(r.status, 200, 'the pressed Best plays');
+        assertBytes(r.body, a.sources[0].media, 'its Source, though another title\'s list came meanwhile');
+        assert.equal(w.backend.submitsFor('claim-a'), 1);
+        assert.equal(w.backend.submitsFor('claim-b'), 1, 'the newer title has its Head start too');
+      } finally {
+        w.news.slow('claim-a', 0);
+      }
+    },
+  },
+  {
+    // The brain tools read a visit from KaijuFlow's log (tools/brain/docs/formats.md), from its list request on: one
+    // play_check line per Source Best checked, the dead one too, and the played Source's name on the first prepare
+    // or 'Best plays' line after the press's '/stream hit' line (with a Head start the prepare comes before the press,
+    // #206); the other healthy Source it checked is never prepared (#192). A scrubbed capture of the check and prepare
+    // lines is tools/brain/fixtures/2026-11-21-best/, which the brain tests read.
     id: 'best-press-log-lines-the-brain-tools-read',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'log-dead', kind: 'dead' }, { tag: 'log-ok' }, { tag: 'log-backup' }]);
-      const streams = await w.list('movie', id);
       const lines = [];
       const saved = console.log;
       console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
       let r;
-      try { r = await play(streams[0].url); } finally { console.log = saved; }
+      try {
+        const streams = await w.list('movie', id);
+        await bestDone(lines, id); // a Browse pause long enough for the Head start
+        r = await play(streams[0].url);
+      } finally { console.log = saved; }
       assertBytes(r.body, sources[1].media, 'Best plays the first healthy Source');
       const steps = lines.filter(l => l.includes('[KF-STEP] ')).map(l => JSON.parse(l.split('[KF-STEP] ')[1]));
       const check = tag => steps.filter(s => s.step === 'play_check' && s.title === sources.find(x => x.tag === tag).title);
@@ -156,10 +271,10 @@ export const playTimeScenarios = [
       assert.deepEqual(check('log-ok').map(s => [s.ok, s.status]), [[true, 'verified']], 'the played Source\'s check is one line');
       const hit = lines.findIndex(l => l.includes('/stream hit'));
       assert.ok(hit >= 0, 'the press writes its /stream hit line');
-      const prepared = lines.slice(hit).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
-      assert.equal(prepared[0], sources[1].title, 'the first prepare line after the press names the played Source');
-      assert.ok(!prepared.includes(sources[0].title), 'the dead Source is never prepared');
-      assert.ok(!prepared.includes(sources[2].title), 'the other healthy Source is never prepared (#192)');
+      const played = lines.slice(hit).map(l => l.match(/(?:Starting new stream preparation|Best plays): (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.equal(played[0], sources[1].title, 'the first prepare or Best plays line after the press names the played Source');
+      const prepared = lines.map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.deepEqual(prepared, [sources[1].title], 'only the played Source is prepared: not the dead one, not the other healthy one (#192)');
     },
   },
   {
@@ -185,11 +300,11 @@ export const playTimeScenarios = [
     id: 'one-play-makes-one-altmount-import',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'one-a' }, { tag: 'one-b' }, { tag: 'one-c' }]);
-      const streams = await w.list('movie', id);
       const before = w.backend.submitted.length;
       const { result: r } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
         const out = await play(streams[0].url);
-        await bestDone(lines);
+        await bestDone(lines, id);
         return out;
       });
       assert.equal(r.status, 200, 'Best plays');
@@ -204,11 +319,11 @@ export const playTimeScenarios = [
     id: 'a-failure-makes-the-next-altmount-import',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'next-refused', kind: 'rejected' }, { tag: 'next-b' }, { tag: 'next-c' }]);
-      const streams = await w.list('movie', id);
       const before = w.backend.submitted.length;
       const { result: r } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
         const out = await play(streams[0].url);
-        await bestDone(lines);
+        await bestDone(lines, id);
         return out;
       });
       assert.equal(r.status, 200, 'Best plays');
@@ -285,9 +400,10 @@ export const playTimeScenarios = [
   },
   {
     // A list entry is checked when it is clicked: a healthy one plays after its articles are checked; a dead one
-    // never reaches AltMount and the play falls back to the next Source of the list.
+    // never reaches AltMount and the play falls back to the next Source of the list. With the Head start off, so
+    // nothing is checked before the click.
     id: 'list-entry-is-checked-on-click',
-    async run(w) {
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
       const { id, sources } = offerMovie(w, [{ tag: 'pick-dead', kind: 'dead' }, { tag: 'pick-next' }, { tag: 'pick-ok' }]);
       const streams = await w.list('movie', id);
       const checked = tag => w.news.state.stats.filter(x => x.startsWith(`${tag}-s`)).length;
@@ -301,7 +417,7 @@ export const playTimeScenarios = [
       assertBytes(r.body, sources[1].media, 'a dead entry falls back to the next Source');
       assert.ok(checked('pick-dead') > 0, 'the dead entry was checked on click');
       assert.equal(w.backend.submitsFor('pick-dead'), 0, 'and never reached AltMount');
-    },
+    }),
   },
   {
     // ADR 0009 at play time: an archive the pass rule blocks (a Scrambled RAR4 set, which AltMount refused in Test 1,
@@ -342,9 +458,10 @@ export const playTimeScenarios = [
     },
   },
   {
-    // A list entry AltMount refuses falls back to the next Source (fresh title, nothing remembered).
+    // A list entry AltMount refuses falls back to the next Source (fresh title, nothing remembered: the Head start
+    // off, so no Best run has met the refusal first).
     id: 'list-entry-refused-falls-back-to-next',
-    async run(w) {
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
       const { id, sources } = offerMovie(w, [{ tag: 'entry-refused', kind: 'rejected' }, { tag: 'entry-next' }]);
       const streams = await w.list('movie', id);
       const r = await play(streams[1].url);
@@ -352,7 +469,7 @@ export const playTimeScenarios = [
       assertBytes(r.body, sources[1].media, 'the next Source plays');
       assert.equal(w.backend.submitsFor('entry-refused'), 1);
       assert.equal(w.backend.submitsFor('entry-next'), 1);
-    },
+    }),
   },
   {
     // A failed list entry falls back to the next Source even when an older config still says "failure video"
@@ -433,9 +550,9 @@ export const playTimeScenarios = [
     id: 'best-with-altmount-unreachable-not-dead',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'down-ok' }]);
-      const streams = await w.list('movie', id);
-      w.backend.setDown(true);
+      w.backend.setDown(true); // before the list: its Head start meets AltMount down too
       try {
+        const streams = await w.list('movie', id);
         assertFailureVideo(await play(streams[0].url));
       } finally {
         w.backend.setDown(false);
@@ -454,9 +571,9 @@ export const playTimeScenarios = [
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'unanswered-a' }, { tag: 'unanswered-b' }]);
       const before = w.backend.submitted.length;
-      const streams = await w.list('movie', id);
-      w.backend.setIndexerDown(503);
+      w.backend.setIndexerDown(503); // before the list: its Head start cannot get the NZBs either
       try {
+        const streams = await w.list('movie', id);
         assertFailureVideo(await play(streams[1].url));
       } finally {
         w.backend.setIndexerDown(0);
@@ -477,10 +594,11 @@ export const playTimeScenarios = [
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'noprov-a' }, { tag: 'noprov-b' }]);
       const before = w.backend.submitted.length;
-      const streams = await w.list('movie', id);
       const saved = w.configData.healthChecks;
+      // Before the list: its Head start has no provider either.
       w.configData.healthChecks = { ...saved, providers: saved.providers.map(p => ({ ...p, enabled: false })) };
       try {
+        const streams = await w.list('movie', id);
         assertFailureVideo(await play(streams[0].url));
         assertFailureVideo(await play(streams[1].url));
       } finally {

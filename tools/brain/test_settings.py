@@ -45,8 +45,9 @@ def rules(films=3000, episodes=1000):
     return {'movieFilters': one(films), 'tvFilters': one(episodes)}
 
 
-# The Play-time check's settings of the committed expected settings file (#190), as an applied copy holds them.
-PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-tile-selection', 'maxAttempts': 0,
+# The Play-time check's settings of the committed expected settings file (#190; its Head start on, #206), as an applied
+# copy holds them.
+PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-results', 'maxAttempts': 0,
                    'desiredBackups': 0}
 
 

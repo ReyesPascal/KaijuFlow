@@ -392,7 +392,7 @@ export const config: Config = {
   get ultimateFallback(): UltimateFallbackConfig {
     const ur = configData.ultimateFallback;
     const enabled = envBool('ULTIMATE_FALLBACK_ENABLED') ?? ur?.enabled ?? false;
-    const whenToResolve = envEnum('ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', ['on-results', 'on-tile-selection']) ?? ur?.whenToResolve ?? 'on-tile-selection';
+    const whenToResolve = envEnum('ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', ['on-results', 'on-tile-selection']) ?? ur?.whenToResolve ?? 'on-results';
     // A clicked list entry that fails falls back to the next Source of the list (#190); an old config's
     // 'failure-video' is read as that too, since the Play-time check always falls back.
     const savedPick = envEnum('ULTIMATE_FALLBACK_USER_PICK_FALLBACK', ['uf-lobby', 'failure-video', 'fallback-chain']) ?? ur?.userPickFallback ?? 'fallback-chain';

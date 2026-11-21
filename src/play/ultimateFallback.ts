@@ -241,6 +241,50 @@ export function cancelAllUltimateFallbacks(): void {
   }
 }
 
+// ── Head start (#206) ───────────────────────────────────────────────
+
+/** Sessions a press of Best is waiting on: a newer list request never stops them. Emptied as each session ends. */
+const claimedSessions = new Set<string>();
+/** The title of the newest list request's Head start, until a press of Best claims it. */
+let headStartKey: string | null = null;
+
+/**
+ * Head start (GLOSSARY): a title's stream list was asked for, so Best's check and prepare begin now in the
+ * background. Only the newest list request has one: the one before is stopped unless a press of Best is waiting
+ * on it. A title whose Best already runs or is done keeps that session (a press joins it).
+ */
+export function headStart(
+  sessionKey: string,
+  candidates: FallbackCandidate[],
+  options: UltimateFallbackOptions,
+  cachePattern?: string,
+  filePattern?: string,
+  contentType?: string,
+  episodesInSeason?: number,
+): void {
+  const before = headStartKey;
+  headStartKey = sessionKey;
+  if (before && before !== sessionKey && !claimedSessions.has(before)) {
+    const controller = activeSessions.get(before);
+    if (controller) {
+      console.log(`👑 Ultimate-Fallback [${before}] Head start stopped: a newer list request [${sessionKey}] has it`);
+      controller.abort();
+    }
+  }
+  if (candidates.length === 0 || sessionPromises.has(sessionKey)) return;
+  console.log(`👑 Ultimate-Fallback [${sessionKey}] Head start: checking Best's Sources before a press`);
+  ultimateFallbackFromCandidates(sessionKey, candidates, options, cachePattern, filePattern, contentType, episodesInSeason)
+    .catch(err => console.error('❌ Ultimate-Fallback error (Head start):', err));
+}
+
+/** A press of Best waits on this title's session: from now on it is a play, which no newer list request stops. */
+export function claimSession(sessionKey: string): void {
+  if (!activeSessions.has(sessionKey) || claimedSessions.has(sessionKey)) return;
+  console.log(`👑 Ultimate-Fallback [${sessionKey}] Best pressed: a play now, no newer list request stops it`);
+  claimedSessions.add(sessionKey);
+  if (headStartKey === sessionKey) headStartKey = null;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Limit concurrency for a batch of async tasks. */
@@ -293,13 +337,15 @@ export async function ultimateFallbackFromCandidates(
   const deferred: DeferredStream = { promise: sessionPromise, resolve: sessionResolveRaw, reject: sessionReject, backupUrls: new Set(), backupStreams: [] };
   // Wrap resolve to stamp the persistable fields and write to disk so the
   // session survives an addon restart.
-  const sessionResolve = (data: StreamData) => {
+  // The played Source's release name rides along, so a press can name what it plays (brain tools' played_source).
+  const sessionResolve = (video: StreamData, sourceTitle: string) => {
+    const data = { ...video, sourceTitle };
     deferred.resolvedData = data;
     deferred.expiresAt = Date.now() + SESSION_TTL_MS;
     sessionResolveRaw(data);
     saveSessionsToDisk();
   };
-  deferred.resolve = sessionResolve;
+  deferred.resolve = data => sessionResolve(data, data.sourceTitle ?? '');
   sessionPromises.set(sessionKey, deferred);
 
   const tag = `👑 Ultimate-Fallback [${sessionKey}]`;
@@ -407,7 +453,7 @@ export async function ultimateFallbackFromCandidates(
         cs.prepareStatus = 'skipped';
         cs.containerType = hitExt || undefined;
         cs.videoSize = hit.data.videoSize;
-        sessionResolve(hit.data);
+        sessionResolve(hit.data, hit.candidate.title);
         console.log(`${tag} 📦 Container locked: ${requiredContainerType || 'unknown'} (from library hit #${cs.poolIndex + 1}, videoPath: ${hit.data.videoPath})`);
         console.log(`${tag} ✅ Resolved via library in ${libElapsed}s`);
         return 'primary';
@@ -640,6 +686,8 @@ export async function ultimateFallbackFromCandidates(
     // ── Event loop (continues after primary for backup pre-caching) ──
     let activePrepareCs: CandidateState | null = null;
     let preparePromise: Promise<StreamData | null> | null = null;
+    // A stop (a newer list request's Head start, a settings change) wakes the loop at once.
+    const stopped = new Promise<void>(resolve => controller.signal.addEventListener('abort', () => resolve(), { once: true }));
 
     while (!controller.signal.aborted) {
       // Backup limit checks
@@ -679,7 +727,7 @@ export async function ultimateFallbackFromCandidates(
         break;
       }
 
-      if (pending.length > 0) await Promise.race(pending);
+      if (pending.length > 0) await Promise.race([...pending, stopped]);
       if (controller.signal.aborted) break;
 
       // Process grab completions → start health checks
@@ -726,7 +774,7 @@ export async function ultimateFallbackFromCandidates(
           activePrepareCs.videoSize = resolvedStreamData.videoSize;
           const elapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
           console.log(`${tag} ✅ Resolved in ${elapsed}s — ${activePrepareCs.candidate.title} [${activePrepareCs.candidate.indexerName}]`);
-          sessionResolve(resolvedStreamData);
+          sessionResolve(resolvedStreamData, activePrepareCs.candidate.title);
           if (requiredContainerType) {
             console.log(`${tag} 📦 Container locked: ${requiredContainerType} (from primary #${activePrepareCs.poolIndex + 1}, videoPath: ${resolvedStreamData.videoPath})`);
           } else {
@@ -836,6 +884,14 @@ export async function ultimateFallbackFromCandidates(
         }
         break;
       }
+    }
+
+    // Stopped: a Source not yet handed over is not handed over (AltMount cannot stop an import it has begun).
+    if (controller.signal.aborted && activePrepareCs?.prepareStatus === 'submitted') {
+      activePrepareCs.cancelled = true;
+      activePrepareCs.prepareStatus = 'failed';
+      preparePromise?.catch(() => {});
+      if (activePrepareCs.nzoId) backend.cancel(activePrepareCs.nzoId, 'stopped').catch(() => {});
     }
 
     // ── Post-drain library sweep ─────────────────────────────────
@@ -978,6 +1034,7 @@ export async function ultimateFallbackFromCandidates(
   } finally {
     pool?.destroyAll();
     activeSessions.delete(sessionKey);
+    claimedSessions.delete(sessionKey);
     // Persist end-of-pipeline state — captures final backup arrays + lastVettedUrl
     // so a UF tile click after addon restart can serve from the vetted backups.
     saveSessionsToDisk();

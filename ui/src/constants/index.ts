@@ -182,7 +182,7 @@ export const DEFAULT_CARD_ORDER = ['streaming', 'indexManager', 'proxy', 'zyclop
 
 export const DEFAULT_ULTIMATE_FALLBACK = {
   enabled: false,
-  whenToResolve: 'on-tile-selection' as 'on-results' | 'on-tile-selection',
+  whenToResolve: 'on-results' as 'on-results' | 'on-tile-selection',
   // Keep in sync with src/config/accessors.ts (Play-time check defaults, #190).
   userPickFallback: 'fallback-chain' as 'uf-lobby' | 'fallback-chain',
   candidateCount: 3,

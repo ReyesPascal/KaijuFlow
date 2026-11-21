@@ -625,7 +625,7 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         entry = brainrun.load_expected_settings()[1]  # #185: a fallback counts as played, so KaijuFlow plays as at home
         self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {  # #190: the Play-time check's settings
             'ultimateFallback.enabled': True, 'ultimateFallback.candidateCount': 3, 'ultimateFallback.preferenceMode': 'priority',
-            'ultimateFallback.whenToResolve': 'on-tile-selection', 'ultimateFallback.maxAttempts': 0,
+            'ultimateFallback.whenToResolve': 'on-results', 'ultimateFallback.maxAttempts': 0,  # the Head start (#206)
             'ultimateFallback.desiredBackups': 0}))
 
     def test_a_kaijuflow_copy_with_its_fallback_off_stops_with_one_sentence(self):
