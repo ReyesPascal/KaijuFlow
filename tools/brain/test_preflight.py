@@ -14,7 +14,7 @@ import unittest
 
 import brainrun
 import testbed
-from test_settings import SECRET, make_copies, rules, tempdir
+from test_settings import HOST_IP, SECRET, make_copies, rules, tempdir
 
 COMMIT = 'a' * 40
 OLDER = 'b' * 40
@@ -27,10 +27,11 @@ class FakeWorld(brainrun.RealIO):
     about any other commit it has no answer, as git has none for a commit the repository does not have.
     """
 
-    def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3):
+    def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3,
+                 machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1')):
         super().__init__(cfg)
         self.label, self.head, self.dirty, self.free, self.changed = label, head, dirty, free, dict(changed or {})
-        self.load = load
+        self.load, self.machine = load, list(machine)
         self.repo = None  # no real repository behind this world
         self.rebuilt = []
 
@@ -52,6 +53,9 @@ class FakeWorld(brainrun.RealIO):
 
     def load_average(self):
         return self.load
+
+    def machine_addresses(self):
+        return list(self.machine)
 
 
 class RepoWorld(FakeWorld):
@@ -171,6 +175,41 @@ class PreflightTest(unittest.TestCase):
 
     def test_the_load_is_not_checked_for_a_record(self):
         code, text = run_command('record', self.cfg, self.world(load=3.0))
+        self.assertEqual(code, 0, text)
+
+    def copies(self, **kw):
+        """Another fixture test folder in place of setUp's (make_copies' options), with a recording for a run."""
+        self.td = make_copies(self, **kw)
+        self.cfg = make_cfg(self.td)
+        record(self.cfg)
+
+    def test_a_host_ip_the_machine_does_not_have_stops_a_run(self):
+        self.copies(host_ip='192.0.2.99')
+        self.assert_stops('run', self.world(), 'HOST_IP', '192.0.2.99', os.path.join(self.td, '.env'),
+                          'not an address this machine has', HOST_IP)
+
+    def test_an_altmount_url_on_an_address_the_machine_does_not_have_stops_a_run(self):
+        self.copies(altmount_url='http://192.0.2.99:8087')
+        self.assert_stops('run', self.world(), 'altmountUrl', '192.0.2.99', 'not an address this machine has', HOST_IP)
+
+    def test_a_login_in_the_altmount_url_is_never_printed(self):
+        self.copies(altmount_url=f'http://kf:{SECRET}@192.0.2.99:8087')
+        self.assert_stops('run', self.world(), 'altmountUrl', '192.0.2.99')
+
+    def test_a_missing_host_ip_or_altmount_url_stops_a_run(self):
+        self.copies(host_ip=None)
+        self.assert_stops('run', self.world(), 'no HOST_IP', os.path.join(self.td, '.env'))
+        self.copies(altmount_url=None)
+        self.assert_stops('run', self.world(), 'no altmountUrl')
+
+    def test_an_altmount_url_on_a_host_name_is_left_to_docker(self):
+        self.copies(altmount_url='http://altmount-kf-test:8080')
+        code, text = run_command('run', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
+    def test_the_pinned_addresses_are_not_checked_for_a_record(self):
+        self.copies(host_ip='192.0.2.99', altmount_url='http://192.0.2.98:8087')
+        code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
     def test_image_from_an_earlier_commit_stops_when_a_build_input_changed_since(self):
@@ -656,10 +695,6 @@ class AddressesTest(unittest.TestCase):
     def test_addresses_are_read_with_docker_inspect_for_test_containers_only(self):
         asked = []
 
-        class R:
-            def __init__(self, out, code=0):
-                self.stdout, self.returncode = out, code
-
         def run(argv, **kw):
             asked.append(argv)
             return R({'kaijuflow-test': '172.20.0.5\n'}.get(argv[-1], ''))
@@ -669,6 +704,46 @@ class AddressesTest(unittest.TestCase):
         self.assertTrue(all(a[:2] == ['docker', 'inspect'] for a in asked))
         self.assertTrue(all(a[-1] in testbed.TEST_CONTAINERS for a in asked))
         self.assertTrue(all('kaijuflow-test-net' in a[3] for a in asked))
+
+
+MACHINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-20-machine')
+
+
+class R:
+    """A finished subprocess.run."""
+    def __init__(self, out, code=0):
+        self.stdout, self.returncode = out, code
+
+
+class MachineReadersTest(unittest.TestCase):
+    """The readers of the machine's own state (#217), on output captured on Brain (fixtures/2026-11-20-machine/)."""
+
+    def test_the_machines_addresses_are_every_address_ip_shows_on_every_interface(self):
+        with open(os.path.join(MACHINE, 'ip-addr.json')) as f:
+            sample = f.read()
+        asked = []
+        got = brainrun.read_machine_addresses(run=lambda argv, **kw: asked.append(argv) or R(sample))
+        self.assertEqual(asked, [['ip', '-j', 'addr', 'show']])
+        for address in ('127.0.0.1', '192.168.4.48', '172.17.0.1', '172.18.0.1', 'fd64:30da:fe2c:1:dd7c:c27:aa34:8c70'):
+            self.assertIn(address, got)
+        self.assertEqual(len(got), 10)
+
+    def test_no_addresses_when_ip_fails_or_says_nothing_readable(self):
+        self.assertEqual(brainrun.read_machine_addresses(run=lambda argv, **kw: R('', 1)), [])
+        self.assertEqual(brainrun.read_machine_addresses(run=lambda argv, **kw: R('not json')), [])
+
+    def test_only_host_ip_and_the_altmount_host_are_read_from_the_test_folder(self):
+        td = make_copies(self, altmount_url=f'http://kf:{SECRET}@192.0.2.10:8087/api')
+        self.assertEqual(brainrun.read_pinned(td), {'HOST_IP': HOST_IP, 'altmountUrl': '192.0.2.10'})
+
+    def test_host_ip_in_quotes_or_after_export_is_read_and_a_folder_without_env_has_none(self):
+        td = make_copies(self)
+        for line in ('HOST_IP="192.0.2.10"', "export HOST_IP='192.0.2.10'", '  HOST_IP = 192.0.2.10'):
+            with open(os.path.join(td, '.env'), 'w') as f:
+                f.write(f'# the LAN address\nJWT_SECRET={SECRET}\n{line}\n')
+            self.assertEqual(brainrun.read_pinned(td)['HOST_IP'], HOST_IP, line)
+        os.remove(os.path.join(td, '.env'))
+        self.assertIsNone(brainrun.read_pinned(td)['HOST_IP'])
 
 
 class FirstInARunTest(unittest.TestCase):

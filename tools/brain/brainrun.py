@@ -30,6 +30,7 @@ import argparse
 import contextlib
 import copy
 import datetime
+import ipaddress
 import json
 import os
 import re
@@ -40,6 +41,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
@@ -272,6 +274,12 @@ class RealIO:
     def load_average(self):
         return os.getloadavg()[0]
 
+    def machine_addresses(self):
+        return read_machine_addresses()
+
+    def pinned_addresses(self):
+        return read_pinned(self.cfg['test_dir'])
+
     def port_free(self, port):
         with socket.socket() as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -410,6 +418,51 @@ def read_addresses(run=subprocess.run):
         if ip:
             out[container] = ip
     return out
+
+
+def read_machine_addresses(run=subprocess.run):
+    """Every address this machine has now, on any interface, read with `ip -j addr show` (read-only); [] when it cannot say."""
+    r = run(['ip', '-j', 'addr', 'show'], capture_output=True, text=True, timeout=30)
+    try:
+        links = json.loads(r.stdout) if r.returncode == 0 else []
+    except ValueError:
+        return []
+    return [a['local'] for link in links for a in link.get('addr_info', []) if a.get('local')]
+
+
+def _env_value(path, key):
+    """The value of `key` in a compose .env file (KEY=VALUE lines, quotes taken off); None when the file or the key is missing.
+    Only that key is kept: the file holds secrets."""
+    try:
+        with open(path) as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        name, eq, value = line.strip().removeprefix('export ').partition('=')
+        if eq and name.strip() == key:
+            value = value.strip()
+            return value[1:-1] if len(value) > 1 and value[0] == value[-1] and value[0] in '"\'' else value
+    return None
+
+
+def read_pinned(test_dir):
+    """The two addresses the test setup pins (#217), and nothing else of the files they are in: `HOST_IP` from the test
+    folder's .env and the host of KaijuFlow's `altmountUrl` (its login, if any, left out). A value that is missing is None."""
+    url = (_read_json(os.path.join(test_dir, 'config', 'config.json')) or {}).get('altmountUrl')
+    try:
+        host = urllib.parse.urlsplit(url).hostname if isinstance(url, str) else None
+    except ValueError:
+        host = None
+    return {'HOST_IP': _env_value(os.path.join(test_dir, '.env'), 'HOST_IP') or None, 'altmountUrl': host or None}
+
+
+def _is_address(text):
+    try:
+        ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    return True
 
 
 def note_addresses(io, run):
@@ -728,7 +781,25 @@ def preflight(mode, cfg, io):
             problems.append(f'The machine is busy: its 1-minute load average is {load:.2f}, at or above {BUSY_LOAD:.2f}, which slows a timed '
                             'run: stop what keeps it busy (other agents, test suites, builds) and wait until it is idle.')
 
-    # 8. (run only) the recording exists and holds an answer for every enabled indexer
+    # 8. (run only) the pinned addresses are this machine's (#217): a stale altmountUrl made every play fail on 2026-11-20
+    if mode == 'run':
+        pinned, have = io.pinned_addresses(), io.machine_addresses()
+        shown = _list([a for a in have if _is_address(a) and not ipaddress.ip_address(a).is_loopback
+                       and not ipaddress.ip_address(a).is_link_local])
+        env = os.path.join(cfg['test_dir'], '.env')
+        if not pinned['HOST_IP']:
+            problems.append(f'The test folder\'s {env} has no HOST_IP: set it to this machine\'s address ({shown}).')
+        elif pinned['HOST_IP'] not in have:
+            problems.append(f'HOST_IP in {env} is {pinned["HOST_IP"]}, which is not an address this machine has now ({shown}): '
+                            'set it to the current one, then start the test copies again.')
+        host = pinned['altmountUrl']
+        if not host:
+            problems.append("KaijuFlow's config has no altmountUrl, so it cannot reach its AltMount: set it, with the owner's go.")
+        elif _is_address(host) and host not in have:
+            problems.append(f"KaijuFlow's altmountUrl points at {host}, which is not an address this machine has now ({shown}), so "
+                            "every play would fail: change it to the current address, with the owner's go.")
+
+    # 9. (run only) the recording exists and holds an answer for every enabled indexer
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})

@@ -1,0 +1,6 @@
+us.na.news.geo.newshosting.com.
+news.iad.newshosting.com.
+85.12.62.225
+85.12.62.250
+85.12.62.251
+85.12.62.214
