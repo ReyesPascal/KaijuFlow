@@ -416,8 +416,8 @@ class WallClockTest(unittest.TestCase):
             self.assertEqual((count[0], count[-4:]), ('[', '/16]'), line)
             self.assertLessEqual(int(count[1:-4]), 16)
 
-    def run_with_one_page(self, io=None, settle=3):
-        run, _ = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=settle), io or FakeIO())
+    def run_with_one_page(self, io=None, settle=3, **kw):
+        run, _ = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=settle, **kw), io or FakeIO())
         return run, json.loads(read(os.path.join(run['dir'], 'meta.json')))
 
     def time_section(self, run):
@@ -439,15 +439,30 @@ class WallClockTest(unittest.TestCase):
         self.assertEqual(parts, {
             'Measured list and start time': 28.0,  # 8 top picks played: 2.0 s list + 1.5 s start each
             'Pauses (`--settle`)': 32.0,           # 16 plays, 2 s after each
+            'Browse pauses (`--browse-pause`)': 0.0,  # the run's Browse pause is 0 s here
             'Failed plays': 96.0,                  # 8 visits of 12 s
             'Resets': 80.0,                        # 4 of 20 s
             'Everything else': 11.0,               # 8 seek checks of 0.5 s, 2 s stand-in start, 5 s to stop the copies
             'The whole run': 247.0})
         whole = parts.pop('The whole run')
         self.assertLessEqual(abs(sum(parts.values()) - whole), 1.0)
-        self.assertEqual(meta['timing']['parts'], {'measured_s': 28.0, 'pauses_s': 32.0, 'failed_s': 96.0, 'resets_s': 80.0,
+        self.assertEqual(meta['timing']['parts'], {'measured_s': 28.0, 'pauses_s': 32.0, 'browse_s': 0.0, 'failed_s': 96.0, 'resets_s': 80.0,
                                                    'other_s': 11.0})
         self.assertEqual((meta['timing']['seconds'], meta['timing']['settle_s']), (247.0, 2))
+
+    def test_the_browse_pauses_are_a_part_of_their_own_and_a_failed_play_leaves_its_pause_out(self):
+        # As above with a Browse pause of 5 s in every visit (#205): 16 visits, a top pick that plays 9 s, one that fails
+        # 17 s. Main pass 2 x 20 + 4 x 2 x (9 + 2) = 128 s, one-page side 2 x 20 + 4 x 2 x (17 + 2) = 192 s; 2 + 128 + 192 + 5.
+        run, meta = self.run_with_one_page(FakeIO(fail_http_for='kaijuflow-1page'), settle=2, browse_pause=5)
+        sentence, parts, lines = self.time_section(run)
+        self.assertEqual(parts, {
+            'Measured list and start time': 28.0, 'Pauses (`--settle`)': 32.0,
+            'Browse pauses (`--browse-pause`)': 80.0,  # 16 visits, 5 s between the list and the play of each
+            'Failed plays': 96.0,                      # 8 visits of 12 s: 17 s each, less the Browse pause
+            'Resets': 80.0, 'Everything else': 11.0, 'The whole run': 327.0})
+        self.assertIn('- **Browse pauses (`--browse-pause`)**: the Browse pause between a list arriving and its play, '
+                      '5 s each (16 visits); it is no part of title to video.', lines)
+        self.assertEqual(meta['timing']['parts']['browse_s'], 80.0)
 
     def test_no_part_of_the_time_is_counted_twice(self):
         """Held against the clock, not against the remainder: every play and every pause lies inside a round, the rounds and
@@ -795,13 +810,13 @@ class InterruptedRunTest(unittest.TestCase):
         timing = meta['timing']
         self.assertEqual((meta['stopped']['time'], meta['finished'], timing['seconds']),
                          ('2026-11-10T18:00:29.000Z', '2026-11-10T18:00:34.000Z', 34.0))
-        self.assertEqual(timing['parts'], {'measured_s': 3.5, 'pauses_s': 3.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 7.5})
+        self.assertEqual(timing['parts'], {'measured_s': 3.5, 'pauses_s': 3.0, 'browse_s': 0.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 7.5})
         self.assertEqual(timing['passes'], [{'name': 'main sides', 'sides': ['kaijuflow'],
                                              'start': '2026-11-10T18:00:02.000Z', 'end': '2026-11-10T18:00:29.000Z', 'seconds': 27.0}])
         self.assertEqual(timing['rounds'], [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'plays': 1, 'pause_s': 3.0,
                                              'start': '2026-11-10T18:00:22.000Z', 'end': '2026-11-10T18:00:29.000Z', 'seconds': 7.0}])
         self.assertEqual(self.time_table(run, '| Part | Seconds | Minutes |'), [
-            '| Measured list and start time | 3.5 | 0.1 |', '| Pauses (`--settle`) | 3.0 | 0.1 |', '| Failed plays | 0.0 | 0.0 |',
+            '| Measured list and start time | 3.5 | 0.1 |', '| Pauses (`--settle`) | 3.0 | 0.1 |', '| Browse pauses (`--browse-pause`) | 0.0 | 0.0 |', '| Failed plays | 0.0 | 0.0 |',
             '| Resets | 20.0 | 0.3 |', '| Everything else | 7.5 | 0.1 |', '| The whole run | 34.0 | 0.6 |'])
         self.assertEqual(self.time_table(run, '| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |'),
                          ['| Main sides | Cold 1 | 18:00:22 | 20.0 | 1 | 7.0 | 0.1 |'])
@@ -821,7 +836,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual((run['status'], run['stopped']['time'], run['stopped']['during']), ('stopped', '2026-11-10T18:00:45.000Z', None))
         timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
         self.assertEqual([(r['phase'], r['round'], r['seconds']) for r in timing['resets']], [('cold', 1, 20.0), ('cold', 2, 7.0)])
-        self.assertEqual(timing['parts'], {'measured_s': 14.0, 'pauses_s': 0.0, 'failed_s': 0.0, 'resets_s': 27.0, 'other_s': 9.0})
+        self.assertEqual(timing['parts'], {'measured_s': 14.0, 'pauses_s': 0.0, 'browse_s': 0.0, 'failed_s': 0.0, 'resets_s': 27.0, 'other_s': 9.0})
         self.assertEqual(timing['seconds'], 50.0)
         self.assertEqual(self.time_table(run, '| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |'), [
             '| Main sides | Cold 1 | 18:00:22 | 20.0 | 2 | 8.0 | 0.1 |',
@@ -844,14 +859,14 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual((run['status'], timing['rounds'][0]['plays'], timing['rounds'][0]['pause_s']), ('stopped', 2, 4.0))
         # 2 s stand-in, 20 s reset, two plays of 4 s, pauses of 3 s and 1 s, 5 s to stop the copies
         self.assertEqual((timing['seconds'], timing['parts']), (39.0, {
-            'measured_s': 7.0, 'pauses_s': 4.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 8.0}))
+            'measured_s': 7.0, 'pauses_s': 4.0, 'browse_s': 0.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 8.0}))
 
     def test_a_null_run_that_made_no_play_still_has_its_time_in_the_meta(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}))
         timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
         self.assertEqual(run['status'], 'null')
         self.assertEqual((timing['seconds'], timing['passes'], timing['rounds'], timing['resets']), (5.0, [], [], []))  # 5 s to stop the copies
-        self.assertEqual(timing['parts'], {'measured_s': 0.0, 'pauses_s': 0.0, 'failed_s': 0.0, 'resets_s': 0.0, 'other_s': 5.0})
+        self.assertEqual(timing['parts'], {'measured_s': 0.0, 'pauses_s': 0.0, 'browse_s': 0.0, 'failed_s': 0.0, 'resets_s': 0.0, 'other_s': 5.0})
 
     def test_an_interrupt_between_two_plays_names_no_play(self):
         io = FakeIO()

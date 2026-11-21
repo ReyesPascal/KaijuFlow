@@ -1083,7 +1083,8 @@ def not_recorded_section(run):
 
 # The five parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
 TIME_PARTS = [('measured_s', 'Measured list and start time'), ('pauses_s', 'Pauses (`--settle`)'),
-              ('failed_s', 'Failed plays'), ('resets_s', 'Resets'), ('other_s', 'Everything else')]
+              ('browse_s', 'Browse pauses (`--browse-pause`)'), ('failed_s', 'Failed plays'), ('resets_s', 'Resets'),
+              ('other_s', 'Everything else')]
 
 
 def visit_wall_s(v):
@@ -1102,15 +1103,18 @@ def failed_result(v, cause):
 
 
 def time_parts(run):
-    """Where the wall-clock time of a run went, in seconds, as the five TIME_PARTS. They add up to the run's total
-    (timing.seconds): four are measured (the list and start times of the top picks that played, the pauses and the resets
-    as the run timed them, the whole visits of the top picks that failed), and `other_s` is what is left of the total.
+    """Where the wall-clock time of a run went, in seconds, as the six TIME_PARTS. They add up to the run's total
+    (timing.seconds): five are measured (the list and start times of the top picks that played, the pauses and the resets
+    as the run timed them, the Browse pauses of every visit (#205), the whole visits of the top picks that failed less their
+    Browse pause), and `other_s` is what is left of the total.
     Works on a run that ended early: it takes whatever visits, rounds and resets the run holds."""
     timing = run.get('timing') or {}
     visits = run.get('visits') or []
     parts = {'measured_s': sum((v.get('list_s') or 0) + (v.get('start_s') or 0) for v in visits if v.get('ok')),
              'pauses_s': sum(r.get('pause_s') or 0 for r in timing.get('rounds') or []),
-             'failed_s': sum(visit_wall_s(v) or 0 for v in visits if not v.get('ok')),
+             'browse_s': sum(v.get('browse_pause_s') or 0 for v in visits),
+             'failed_s': sum(visit_wall_s(v) - (v.get('browse_pause_s') or 0) for v in visits
+                             if not v.get('ok') and visit_wall_s(v) is not None),
              'resets_s': sum(r.get('seconds') or 0 for r in timing.get('resets') or [])}
     parts = {k: round(x, 3) for k, x in parts.items()}
     parts['other_s'] = round((timing.get('seconds') or 0) - sum(parts.values()), 3)
@@ -1155,8 +1159,11 @@ def time_section(run):
             'the seconds from pressing play to the first byte. The tables above are made from these.',
             f"- **Pauses (`--settle`)**: the pause after every play, {_cell(timing.get('settle_s'))} s each "
             f"({sum(r.get('plays') or 0 for r in rounds)} plays).",
+            f"- **Browse pauses (`--browse-pause`)**: the Browse pause between a list arriving and its play, "
+            f"{pause_text(browse_pause_of(run))} each ({sum(1 for v in visits if v.get('browse_pause_s'))} visits); "
+            "it is no part of title to video.",
             f"- **Failed plays**: the whole visit of every top pick that did not play, from asking for the list until the play "
-            f"gave up ({failed} visit{'' if failed == 1 else 's'}; each one's time is in the Result column of \"Per title\").",
+            f"gave up, less its Browse pause ({failed} visit{'' if failed == 1 else 's'}; each one's time is in the Result column of \"Per title\").",
             '- **Resets**: emptying and restarting the test copies before each cold round. The first reset of the one-page '
             'side includes the switch to one page.',
             '- **Everything else**: what is left of the whole run: the seek checks after a top pick played, reading the logs '
