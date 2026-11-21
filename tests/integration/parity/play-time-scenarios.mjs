@@ -65,6 +65,26 @@ async function play(url, range) {
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
+/** Run fn(lines) and collect what KaijuFlow logs meanwhile (its console.log lines). */
+async function withLogs(fn) {
+  const lines = [];
+  const saved = console.log;
+  console.log = (...a) => { lines.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); };
+  try { return { result: await fn(lines), lines }; } finally { console.log = saved; }
+}
+
+/** Wait until Best's run has ended (its summary line "N checked · N healthy"), so every import it makes has been made. */
+async function bestDone(lines) {
+  const deadline = Date.now() + 20000;
+  while (!lines.some(l => /Ultimate-Fallback \[[^\]]+\]\s+\d+ checked · \d+ healthy/.test(l))) {
+    if (Date.now() > deadline) throw new Error('Best did not finish within 20 s');
+    await new Promise(r => setTimeout(r, 25));
+  }
+}
+
+/** How many of a Source's articles the fake news server was asked about (it was checked). */
+const checked = (w, tag) => w.news.state.stats.filter(x => x.startsWith(`${tag}-s`)).length;
+
 /** The failure video is a long video/mp4, much bigger than the synthetic media. */
 function assertFailureVideo(r) {
   assert.equal(r.status, 200);
@@ -118,7 +138,7 @@ export const playTimeScenarios = [
   {
     // The brain tools read a Best press from KaijuFlow's log (tools/brain/docs/formats.md): one play_check line per
     // Source Best checked, the dead one too, and the played Source's name on the first prepare line after the
-    // press's '/stream hit' line. Best's backups are prepared after it. A scrubbed capture of these lines is
+    // press's '/stream hit' line; the other healthy Source it checked is never prepared (#192). A scrubbed capture of these lines is
     // tools/brain/fixtures/2026-11-21-best/, which the brain tests read.
     id: 'best-press-log-lines-the-brain-tools-read',
     async run(w) {
@@ -139,6 +159,7 @@ export const playTimeScenarios = [
       const prepared = lines.slice(hit).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
       assert.equal(prepared[0], sources[1].title, 'the first prepare line after the press names the played Source');
       assert.ok(!prepared.includes(sources[0].title), 'the dead Source is never prepared');
+      assert.ok(!prepared.includes(sources[2].title), 'the other healthy Source is never prepared (#192)');
     },
   },
   {
@@ -156,6 +177,72 @@ export const playTimeScenarios = [
       const again = await play(streams[0].url);
       assertBytes(again.body, sources[1].media, 'a second press plays the same Source');
       assert.equal(w.backend.submitsFor('second-ok'), 1, 'without a new import');
+    },
+  },
+  {
+    // Prepare only the Source being played (#192): Best checks the top 3, all healthy, and AltMount gets one
+    // import, the one played; the other two healthy Sources are checked but never imported.
+    id: 'one-play-makes-one-altmount-import',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'one-a' }, { tag: 'one-b' }, { tag: 'one-c' }]);
+      const streams = await w.list('movie', id);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const out = await play(streams[0].url);
+        await bestDone(lines);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[0].media, 'Best plays the top Source');
+      for (const s of sources) assert.ok(checked(w, s.tag) > 0, `${s.tag} was checked`);
+      assert.deepEqual(w.backend.submitted.slice(before), ['one-a'], 'one play makes one AltMount import');
+    },
+  },
+  {
+    // A failure makes the next import (#192): AltMount refuses the top Source, so the next healthy one is
+    // imported and played; the third, also healthy, is not imported.
+    id: 'a-failure-makes-the-next-altmount-import',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'next-refused', kind: 'rejected' }, { tag: 'next-b' }, { tag: 'next-c' }]);
+      const streams = await w.list('movie', id);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const out = await play(streams[0].url);
+        await bestDone(lines);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the next Source after the refusal');
+      assert.ok(checked(w, 'next-c') > 0, 'the third Source was checked');
+      assert.equal(w.backend.submitsFor('next-refused'), 1, 'the refused Source was imported once');
+      assert.deepEqual(w.backend.submitted.slice(before).filter(t => t !== 'next-refused'), ['next-b'], 'the failure makes one more import, the next Source');
+    },
+  },
+  {
+    // Auto-queue makes no import before a play (#192): a list KaijuFlow remembers from before the Play-time check
+    // was on carries health verdicts, and Auto-queue (on, all Healthy Sources) would prepare them all; with the
+    // Play-time check on, asking for that list again reaches AltMount with nothing.
+    id: 'auto-queue-makes-no-import-before-a-play',
+    async run(w) {
+      const savedFallback = w.configData.ultimateFallback, savedChecks = w.configData.healthChecks;
+      try {
+        // Before: the list-time check, with Auto-queue off so this step imports nothing either.
+        w.configData.ultimateFallback = { ...savedFallback, enabled: false };
+        w.configData.healthChecks = { ...savedChecks, inspectionMethod: 'fixed', nzbsToInspect: 2, autoQueueMode: 'off' };
+        const { id } = offerMovie(w, [{ tag: 'aq-a' }, { tag: 'aq-b' }]);
+        const checkedList = await w.list('movie', id);
+        assert.ok(checkedList.some(s => `${s.name} ${s.title}`.includes('✅')), 'the list-time check found Healthy Sources');
+        // Now: the Play-time check on, Auto-queue on for all.
+        w.configData.ultimateFallback = savedFallback;
+        w.configData.healthChecks = { ...savedChecks, autoQueueMode: 'all' };
+        const before = w.backend.submitted.length;
+        await w.list('movie', id);
+        await new Promise(r => setTimeout(r, 2000)); // Auto-queue sends its prepares in the background
+        assert.deepEqual(w.backend.submitted.slice(before), [], 'nothing reaches AltMount before a play');
+      } finally {
+        w.configData.ultimateFallback = savedFallback;
+        w.configData.healthChecks = savedChecks;
+      }
     },
   },
   {

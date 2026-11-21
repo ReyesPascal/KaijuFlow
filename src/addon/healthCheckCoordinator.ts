@@ -410,13 +410,11 @@ export function autoQueueToBackend(
   episodesInSeason?: number,
 ): void {
   const mode = config.healthChecks?.autoQueueMode;
-  // UF in on-results mode submits NZBs at search time itself; running auto-queue
-  // would race on the same titles.
-  // on-tile-selection defers UF's submit until click, so auto-queue is safe there.
-  const ufSubmitsAtSearch = isUltimateFallbackActive()
-    && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
+  // Off with the Play-time check (Ultimate Fallback on, either mode): only the Source
+  // being played is prepared, the next only when it fails (#192). A list it gets then
+  // carries health only from a list remembered from before, or auto-marked results.
   if (!config.healthChecks?.enabled || !mode || mode === 'off'
-      || allResults.length === 0 || ufSubmitsAtSearch) {
+      || allResults.length === 0 || isUltimateFallbackActive()) {
     return;
   }
 

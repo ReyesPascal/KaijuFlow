@@ -883,7 +883,8 @@ class FixtureTest(unittest.TestCase):
 class BestPressFixtureTest(unittest.TestCase):
     """A Best press from KaijuFlow's own log (#190): captured from the Play-time check Parity suite
     (tests/integration/parity/play-time-scenarios.mjs, best-press-log-lines-the-brain-tools-read), real KaijuFlow with
-    fakes for indexer, news server and AltMount. The first Source is dead, the second plays, the third is Best's backup."""
+    fakes for indexer, news server and AltMount. The first Source is dead, the second plays, the third is Best's backup.
+    Captured before #192, when Best still prepared its backup; the brain tools must leave a backup's prepare steps out."""
     DEAD, OK, BACKUP = (f'KaijuFlow.PlayTime.{t}.2026.2160p.WEB-DL.H265-GRP' for t in ('log-dead', 'log-ok', 'log-backup'))
     PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-21-best', 'kaijuflow-best-dead-first.txt')
 
