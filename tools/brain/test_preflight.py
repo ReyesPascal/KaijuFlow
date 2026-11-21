@@ -28,10 +28,11 @@ class FakeWorld(brainrun.RealIO):
     """
 
     def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3,
-                 machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1')):
+                 machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1'), dns=('85.12.62.251', '85.12.62.214')):
         super().__init__(cfg)
         self.label, self.head, self.dirty, self.free, self.changed = label, head, dirty, free, dict(changed or {})
-        self.load, self.machine = load, list(machine)
+        self.load, self.machine, self.dns = load, list(machine), list(dns)
+        self.asked_dns = []
         self.repo = None  # no real repository behind this world
         self.rebuilt = []
 
@@ -56,6 +57,10 @@ class FakeWorld(brainrun.RealIO):
 
     def machine_addresses(self):
         return list(self.machine)
+
+    def dns_answer(self, name, server):
+        self.asked_dns.append((name, server))
+        return list(self.dns)
 
 
 class RepoWorld(FakeWorld):
@@ -211,6 +216,26 @@ class PreflightTest(unittest.TestCase):
         self.copies(host_ip='192.0.2.99', altmount_url='http://192.0.2.98:8087')
         code, text = run_command('record', self.cfg, self.world())
         self.assertEqual(code, 0, text)
+
+    def test_a_sinkholed_newshosting_dns_stops_a_run(self):
+        record(self.cfg)
+        world = self.world(dns=('10.10.10.1',))
+        self.assert_stops('run', world, 'news.newshosting.com', '192.168.4.1', '10.10.10.1', 'sinkhole')
+        self.assertEqual(world.asked_dns, [('news.newshosting.com', '192.168.4.1')])
+
+    def test_one_10_x_address_among_good_ones_stops_a_run(self):
+        record(self.cfg)
+        self.assert_stops('run', self.world(dns=('85.12.62.251', '10.0.0.7')), '10.0.0.7')
+
+    def test_no_dns_answer_stops_a_run(self):
+        record(self.cfg)
+        self.assert_stops('run', self.world(dns=()), 'news.newshosting.com', 'no address')
+
+    def test_the_dns_is_not_checked_for_a_record(self):
+        world = self.world(dns=('10.10.10.1',))
+        code, text = run_command('record', self.cfg, world)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(world.asked_dns, [])
 
     def test_image_from_an_earlier_commit_stops_when_a_build_input_changed_since(self):
         self.assert_stops('record', self.world(label=OLDER, changed={OLDER: True}),
@@ -731,6 +756,24 @@ class MachineReadersTest(unittest.TestCase):
     def test_no_addresses_when_ip_fails_or_says_nothing_readable(self):
         self.assertEqual(brainrun.read_machine_addresses(run=lambda argv, **kw: R('', 1)), [])
         self.assertEqual(brainrun.read_machine_addresses(run=lambda argv, **kw: R('not json')), [])
+
+    def test_the_dns_answer_is_the_addresses_dig_gives_after_the_cnames(self):
+        with open(os.path.join(MACHINE, 'dig-newshosting.txt')) as f:
+            sample = f.read()
+        asked = []
+        got = brainrun.read_dns('news.newshosting.com', '192.168.4.1', run=lambda argv, **kw: asked.append(argv) or R(sample))
+        self.assertEqual(sorted(got), ['85.12.62.214', '85.12.62.225', '85.12.62.250', '85.12.62.251'])
+        self.assertEqual(asked[0][:1], ['dig'])
+        self.assertIn('+short', asked[0])
+        self.assertIn('@192.168.4.1', asked[0])
+        self.assertIn('news.newshosting.com', asked[0])
+
+    def test_no_dns_answer_when_dig_fails_or_times_out(self):
+        self.assertEqual(brainrun.read_dns('a.example', '192.0.2.1', run=lambda argv, **kw: R(';; connection timed out; no servers could be reached\n', 9)), [])
+
+        def times_out(argv, **kw):
+            raise subprocess.TimeoutExpired(argv, kw.get('timeout'))
+        self.assertEqual(brainrun.read_dns('a.example', '192.0.2.1', run=times_out), [])
 
     def test_only_host_ip_and_the_altmount_host_are_read_from_the_test_folder(self):
         td = make_copies(self, altmount_url=f'http://kf:{SECRET}@192.0.2.10:8087/api')

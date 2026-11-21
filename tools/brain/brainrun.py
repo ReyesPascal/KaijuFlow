@@ -280,6 +280,9 @@ class RealIO:
     def pinned_addresses(self):
         return read_pinned(self.cfg['test_dir'])
 
+    def dns_answer(self, name, server):
+        return read_dns(name, server)
+
     def port_free(self, port):
         with socket.socket() as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -430,6 +433,16 @@ def read_machine_addresses(run=subprocess.run):
     return [a['local'] for link in links for a in link.get('addr_info', []) if a.get('local')]
 
 
+def read_dns(name, server, run=subprocess.run):
+    """The addresses `server` answers for `name`, read with `dig +short` (the CNAMEs it prints first are left out); [] when it
+    gives none, fails or times out."""
+    try:
+        r = run(['dig', '+short', '+time=3', '+tries=2', name, '@' + server], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return [w for w in r.stdout.split() if _is_address(w)] if r.returncode == 0 else []
+
+
 def _env_value(path, key):
     """The value of `key` in a compose .env file (KEY=VALUE lines, quotes taken off); None when the file or the key is missing.
     Only that key is kept: the file holds secrets."""
@@ -512,6 +525,8 @@ EXPECTED_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__))
 
 # A timed run starts only on an idle machine (#217): a busy one made the #205 re-run's cold lists 30-70% slower.
 BUSY_LOAD = 1.0  # the 1-minute load average at or above which the machine is busy
+# The router has answered Newshosting's name with a dead 10.x address (2026-11-17): every Usenet read then fails.
+NEWS_HOST, ROUTER, SINKHOLE = 'news.newshosting.com', '192.168.4.1', ipaddress.ip_network('10.0.0.0/8')
 
 
 class PreflightFailed(Exception):
@@ -799,7 +814,18 @@ def preflight(mode, cfg, io):
             problems.append(f"KaijuFlow's altmountUrl points at {host}, which is not an address this machine has now ({shown}), so "
                             "every play would fail: change it to the current address, with the owner's go.")
 
-    # 9. (run only) the recording exists and holds an answer for every enabled indexer
+    # 9. (run only) the router answers Newshosting's name with a real address, not its sinkhole (#217)
+    if mode == 'run':
+        answer = io.dns_answer(NEWS_HOST, ROUTER)
+        sunk = [a for a in answer if ipaddress.ip_address(a) in SINKHOLE]
+        if not answer:
+            problems.append(f'The router ({ROUTER}) gives no address for {NEWS_HOST}, so the health check and AltMount cannot reach '
+                            f'Usenet: check the network (dig +short {NEWS_HOST} @{ROUTER}).')
+        elif sunk:
+            problems.append(f'The router ({ROUTER}) answers {NEWS_HOST} with {_list(sunk)}, its sinkhole, so every Usenet read would fail: '
+                            f'fix the router\'s DNS until dig +short {NEWS_HOST} @{ROUTER} gives no 10.x address.')
+
+    # 10. (run only) the recording exists and holds an answer for every enabled indexer
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})
