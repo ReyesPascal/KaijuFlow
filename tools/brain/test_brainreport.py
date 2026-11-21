@@ -880,6 +880,55 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(rows[0]['ip'], '192.168.80.6')
 
 
+class BestPressFixtureTest(unittest.TestCase):
+    """A Best press from KaijuFlow's own log (#190): captured from the Play-time check Parity suite
+    (tests/integration/parity/play-time-scenarios.mjs, best-press-log-lines-the-brain-tools-read), real KaijuFlow with
+    fakes for indexer, news server and AltMount. The first Source is dead, the second plays, the third is Best's backup."""
+    DEAD, OK, BACKUP = (f'KaijuFlow.PlayTime.{t}.2026.2160p.WEB-DL.H265-GRP' for t in ('log-dead', 'log-ok', 'log-backup'))
+    PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-21-best', 'kaijuflow-best-dead-first.txt')
+
+    def visit(self):
+        with open(self.PATH, encoding='utf-8') as f:
+            text = f.read()
+        # the list came 5 s before the press (the Browse pause); the press is the '/stream hit' line at 02:34:08.722
+        v = dict(side='kaijuflow', id='tt1000002', t_start='2026-11-21T02:34:03.622Z', list_s=0.1, browse_pause_s=5,
+                 start_s=0.206, ok=True, tries=[{'title': 'KaijuFlow ▶ Best'}], played_source=br.played_source(text))
+        v['steps'] = br.attribute_steps(v, br.parse_step_lines(text))
+        return text, v
+
+    def test_fixture_holds_no_keys(self):
+        text, _ = self.visit()
+        self.assertIsNone(re.search(r'(?i)api_?key|(?:key|token|password|secret)=\S', text))
+
+    def test_the_played_source_is_the_first_healthy_one(self):
+        _, v = self.visit()
+        self.assertEqual(v['played_source'], self.OK)
+
+    def test_every_checked_source_keeps_its_check_and_only_the_played_one_its_prepare_steps(self):
+        _, v = self.visit()
+        self.assertEqual([(s['title'], s['ok']) for s in v['steps'] if s['step'] == 'play_check'],
+                         [(self.DEAD, False), (self.OK, True), (self.BACKUP, True)])
+        self.assertEqual([(s['step'], s['title']) for s in v['steps'] if s['step'] != 'play_check'],
+                         [(n, self.OK) for n in ('nzb_fetch', 'unscramble', 'import_wait', 'first_byte')])
+
+    def test_the_wait_for_the_checks_is_the_health_time(self):
+        # dead 08.767-08.841 and played 08.779-08.845 checked together: 78 ms; the backup's check ended later
+        _, v = self.visit()
+        self.assertEqual(br.play_check_s(v), 0.078)
+        self.assertEqual(br.visit_metrics(v)['health_s'], 0.078)
+
+    def test_the_checks_are_part_of_the_steps_the_start_is_measured_against(self):
+        # nzb_fetch 1 + unscramble 1 + import 41 + first byte 14 ms + 78 ms of checks against a 206 ms start
+        _, v = self.visit()
+        self.assertEqual(runcheck._step_gap(v), 0.07)
+
+    def test_without_a_play_check_line_there_is_no_check_time(self):
+        _, v = self.visit()
+        v['steps'] = [s for s in v['steps'] if s['step'] != 'play_check']
+        self.assertIsNone(br.play_check_s(v))
+        self.assertIsNone(br.visit_metrics(v)['health_s'])
+
+
 class RunRecordTest(unittest.TestCase):
     def setUp(self):
         self.root = tempdir(self)

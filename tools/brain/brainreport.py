@@ -46,7 +46,8 @@ COLUMN_HELP = {
     'Indexer wait': 'KaijuFlow only: seconds spent waiting for indexers during the search (the slowest indexer, its '
                     'pages added up; indexers are asked at the same time).',
     'Health checks': 'seconds spent checking whether Sources look downloadable (the checks of one list added up; '
-                     'if they overlap, the real wait was shorter). KaijuFlow only.',
+                     'if they overlap, the real wait was shorter), plus the wait for the Play-time checks after the press '
+                     '(#190; checks run together count once). KaijuFlow only.',
     'Unscramble': 'KaijuFlow only: seconds spent putting scrambled RAR parts in order before the import.',
     'Backend probe': 'KaijuFlow only: seconds KaijuFlow waited for the Backend to deliver the first byte after the import.',
     'Indexers': 'seconds of the search time that were the indexers\' answering time (for a replayed answer, the time the real '
@@ -72,7 +73,7 @@ COLUMN_HELP = {
     'Size': 'the size of the top pick\'s file as the Backend served it, in GB of 1000 x 1000 x 1000 bytes. For a top pick that '
             'did not play it is the size the side states in its list, marked "listed": the indexer\'s figure for the post, '
             'not the measured size of the file (KaijuFlow counts it in GB of 1024 x 1024 x 1024 bytes).',
-    'Sources': 'how many Sources the side listed.',
+    'Sources': 'how many Sources the side listed (KaijuFlow\'s Best entry is none, #190).',
     'Result': '"plays" when the top pick delivered video on the first try; "played after N fallbacks, S s extra" when video '
               'arrived only after N imports failed, the top pick\'s own among them, and S seconds is what those imports took; '
               'otherwise the failure kind and a short note.',
@@ -437,7 +438,7 @@ def fallback_text(v):
 
 
 def plays(v):
-    """Whether a visit's top pick played: video arrived, on the first try or after a fallback. A fallback counts as played
+    """Whether a visit's play gave video, on the first try or after a fallback. A fallback counts as played
     (#185). Since #190 a round plays the Best entry: video from the first healthy Source counts as played, and a Source
     AltMount refused before it is a fallback; fallbacks() and fallback_s() say how many and how slow (rules.md)."""
     return bool(v.get('ok'))

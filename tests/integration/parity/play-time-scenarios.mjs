@@ -1,7 +1,7 @@
 // Play-time check scenarios (#190, spec #183; GLOSSARY: Play-time check, Best entry, Unchecked Source).
 // Each scenario asks for a title's stream list through the fake indexer, then plays an entry of it,
 // and asserts only on what the player receives, what the fake news server was asked and what
-// reached the fake AltMount.
+// reached the fake AltMount; one scenario asserts on the log lines the brain tools read.
 import assert from 'node:assert/strict';
 import { assertBytes } from './bytes.mjs';
 
@@ -96,6 +96,32 @@ export const playTimeScenarios = [
       assert.equal(w.news.state.stats.length + w.news.state.reads.length, asked, 'no article is checked before the list goes out');
       assert.equal(w.backend.submitted.length, 0, 'nothing reaches AltMount before a play');
       assert.ok(!streams.some(s => /✅|❌|🚫/.test(s.title)), 'no Source shows a health verdict');
+    },
+  },
+  {
+    // The brain tools read a Best press from KaijuFlow's log (tools/brain/docs/formats.md): one play_check line per
+    // Source Best checked, the dead one too, and the played Source's name on the first prepare line after the
+    // press's '/stream hit' line. Best's backups are prepared after it. A scrubbed capture of these lines is
+    // tools/brain/fixtures/2026-11-21-best/, which the brain tests read.
+    id: 'best-press-log-lines-the-brain-tools-read',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'log-dead', kind: 'dead' }, { tag: 'log-ok' }, { tag: 'log-backup' }]);
+      const streams = await w.list('movie', id);
+      const lines = [];
+      const saved = console.log;
+      console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
+      let r;
+      try { r = await play(streams[0].url); } finally { console.log = saved; }
+      assertBytes(r.body, sources[1].media, 'Best plays the first healthy Source');
+      const steps = lines.filter(l => l.includes('[KF-STEP] ')).map(l => JSON.parse(l.split('[KF-STEP] ')[1]));
+      const check = tag => steps.filter(s => s.step === 'play_check' && s.title === sources.find(x => x.tag === tag).title);
+      assert.deepEqual(check('log-dead').map(s => [s.ok, s.status]), [[false, 'blocked']], 'the dead Source\'s check is one line');
+      assert.deepEqual(check('log-ok').map(s => [s.ok, s.status]), [[true, 'verified']], 'the played Source\'s check is one line');
+      const hit = lines.findIndex(l => l.includes('/stream hit'));
+      assert.ok(hit >= 0, 'the press writes its /stream hit line');
+      const prepared = lines.slice(hit).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.equal(prepared[0], sources[1].title, 'the first prepare line after the press names the played Source');
+      assert.ok(!prepared.includes(sources[0].title), 'the dead Source is never prepared');
     },
   },
   {
