@@ -143,6 +143,10 @@ _Avoid_: baseline, benchmark
 A timed run that plays a title list again, so a change to KaijuFlow or its AltMount can be judged against the run before it on the same titles.
 _Avoid_: speed test (when the titles are reused), rerun
 
+**Grouped run**:
+A tuning test that carries several changes at once and is judged as one against the previous run. When it is not kept, its changes are split in halves, each half run on its own, until the change that made it not kept shows.
+_Avoid_: batch run, combined test
+
 **Target**:
 A goal the Speed Check page holds KaijuFlow to, most of them against another setup: met, not met, or not measured when the run holds no figure for it; a time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by. A run itself is judged against the previous run, not on targets.
 _Avoid_: goal, KPI, threshold
