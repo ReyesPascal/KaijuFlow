@@ -6,11 +6,13 @@ The tests of ticket #113 (which commits ask for a new image) put those git quest
 """
 import contextlib
 import io
+import ipaddress
 import json
 import os
 import re
 import subprocess
 import unittest
+from unittest import mock
 
 import brainrun
 import testbed
@@ -31,8 +33,11 @@ class FakeWorld(brainrun.RealIO):
                  machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1'), dns=('85.12.62.251', '85.12.62.214')):
         super().__init__(cfg)
         self.label, self.head, self.dirty, self.free, self.changed = label, head, dirty, free, dict(changed or {})
-        self.load, self.machine, self.dns = load, list(machine), list(dns)
-        self.asked_dns = []
+        # load: one reading, or the readings in turn (the last one stays); machine and dns: the addresses, or the
+        # LookupFailed the real reader raises when it gets no answer
+        self.loads = list(load) if isinstance(load, (list, tuple)) else [load]
+        self.machine, self.dns = machine, dns
+        self.asked_dns, self.slept = [], []
         self.repo = None  # no real repository behind this world
         self.rebuilt = []
 
@@ -52,15 +57,25 @@ class FakeWorld(brainrun.RealIO):
     def port_free(self, port):
         return self.free
 
+    def sleep(self, s):
+        self.slept.append(s)
+
     def load_average(self):
-        return self.load
+        return self.loads.pop(0) if len(self.loads) > 1 else self.loads[0]
 
     def machine_addresses(self):
-        return list(self.machine)
+        return answer(self.machine)
 
     def dns_answer(self, name, server):
         self.asked_dns.append((name, server))
-        return list(self.dns)
+        return answer(self.dns)
+
+
+def answer(addresses):
+    """What a reader of the machine's state gives: the addresses as ipaddress objects, or the LookupFailed it raises."""
+    if isinstance(addresses, Exception):
+        raise addresses
+    return [ipaddress.ip_address(a) for a in addresses]
 
 
 class RepoWorld(FakeWorld):
@@ -173,14 +188,17 @@ class PreflightTest(unittest.TestCase):
         code, text = run_command('run', self.cfg, self.world())
         self.assertEqual(code, 0, text)
         self.assertIn('the machine is idle (1-minute load below 1.00), HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves '
-                      'outside 10.x', text)
+                      'outside 10.x and the recording is complete', text)
         code, text = run_command('record', self.cfg, self.world())
+        self.assertIn('HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves outside 10.x.', text)
         self.assertNotIn('idle', text)
 
     def test_a_busy_machine_stops_a_run(self):
         record(self.cfg)
         for load in (1.0, 2.37):
-            self.assert_stops('run', self.world(load=load), f'load average is {load:.2f}', '1.00', 'idle')
+            world = self.world(load=load)
+            self.assert_stops('run', world, f'load average is {load:.2f}, at or above 1.00', 'idle')
+            self.assertEqual(world.slept, [])  # no image build: judged at once
 
     def test_a_machine_just_under_the_load_limit_passes_a_run(self):
         record(self.cfg)
@@ -191,20 +209,58 @@ class PreflightTest(unittest.TestCase):
         code, text = run_command('record', self.cfg, self.world(load=3.0))
         self.assertEqual(code, 0, text)
 
+    def test_after_its_image_build_a_run_preflight_waits_for_the_load_to_settle(self):
+        record(self.cfg)
+        self.cfg['rebuild_image'] = True
+        world, seen = self.world(label=OLDER, load=[6.2, 3.1, 1.4, 0.8, 0.5]), {}
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(brainrun.preflight('run', self.cfg, world, seen), [])
+        self.assertEqual((world.rebuilt, world.slept), ([COMMIT], [10, 10, 10]))
+        self.assertEqual(seen, {'load': 0.8})
+        self.assertIn('Waiting up to 3 minutes', out.getvalue())
+
+    def test_a_load_that_does_not_settle_3_minutes_after_the_image_build_stops_a_run(self):
+        record(self.cfg)
+        self.cfg['rebuild_image'] = True
+        world = self.world(label=OLDER, load=2.5)
+        code, text = run_command('run', self.cfg, world)
+        self.assertEqual(code, 1, text)
+        self.assertIn('load average is 2.50 3 minutes after the image build, at or above 1.00', text)
+        self.assertEqual(sum(world.slept), 180)
+
+    def test_a_build_that_leaves_the_machine_idle_takes_no_wait(self):
+        record(self.cfg)
+        self.cfg['rebuild_image'] = True
+        world = self.world(label=OLDER, load=0.6)
+        code, text = run_command('run', self.cfg, world)
+        self.assertEqual((code, world.rebuilt, world.slept), (0, [COMMIT], []), text)
+        self.assertNotIn('Waiting', text)
+
+    def test_a_run_preflight_hands_back_the_load_it_judged(self):
+        record(self.cfg)
+        seen = {}
+        self.assertEqual(brainrun.preflight('run', self.cfg, self.world(load=[0.42, 1.7]), seen), [])
+        self.assertEqual(seen, {'load': 0.42})
+        seen = {}
+        brainrun.preflight('record', self.cfg, self.world(), seen)
+        self.assertEqual(seen, {})
+
     def copies(self, **kw):
         """Another fixture test folder in place of setUp's (make_copies' options), with a recording for a run."""
         self.td = make_copies(self, **kw)
         self.cfg = make_cfg(self.td)
         record(self.cfg)
 
-    def test_a_host_ip_the_machine_does_not_have_stops_a_run(self):
+    def test_a_host_ip_the_machine_does_not_have_stops_a_run_and_a_record(self):
         self.copies(host_ip='192.0.2.99')
-        self.assert_stops('run', self.world(), 'HOST_IP', '192.0.2.99', os.path.join(self.td, '.env'),
-                          'not an address this machine has', HOST_IP)
+        for mode in ('run', 'record'):
+            self.assert_stops(mode, self.world(), 'HOST_IP', '192.0.2.99', os.path.join(self.td, '.env'),
+                              'not an address this machine has', HOST_IP)
 
-    def test_an_altmount_url_on_an_address_the_machine_does_not_have_stops_a_run(self):
+    def test_an_altmount_url_on_an_address_the_machine_does_not_have_stops_a_run_and_a_record(self):
         self.copies(altmount_url='http://192.0.2.99:8087')
-        self.assert_stops('run', self.world(), 'altmountUrl', '192.0.2.99', 'not an address this machine has', HOST_IP)
+        for mode in ('run', 'record'):
+            self.assert_stops(mode, self.world(), 'altmountUrl', '192.0.2.99', 'not an address this machine has', HOST_IP)
 
     def test_a_login_in_the_altmount_url_is_never_printed(self):
         self.copies(altmount_url=f'http://kf:{SECRET}@192.0.2.99:8087')
@@ -216,21 +272,35 @@ class PreflightTest(unittest.TestCase):
         self.copies(altmount_url=None)
         self.assert_stops('run', self.world(), 'no altmountUrl')
 
+    def test_an_altmount_url_without_a_scheme_is_named_for_what_it_is(self):
+        self.copies(altmount_url=f'kf:{SECRET}@{HOST_IP}:8087')
+        self.assert_stops('run', self.world(), 'altmountUrl names no host', 'http://<address>:<port>')
+
     def test_an_altmount_url_on_a_host_name_is_left_to_docker(self):
         self.copies(altmount_url='http://altmount-kf-test:8080')
         code, text = run_command('run', self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
-    def test_the_pinned_addresses_are_not_checked_for_a_record(self):
-        self.copies(host_ip='192.0.2.99', altmount_url='http://192.0.2.98:8087')
-        code, text = run_command('record', self.cfg, self.world())
+    def test_addresses_are_compared_as_addresses_not_as_text(self):
+        self.copies(host_ip='2001:DB8:0::10', altmount_url='http://[2001:db8:0:0::10]:8087')
+        code, text = run_command('run', self.cfg, self.world(machine=('127.0.0.1', '2001:db8::10')))
         self.assertEqual(code, 0, text)
 
-    def test_a_sinkholed_newshosting_dns_stops_a_run(self):
+    def test_a_machine_whose_addresses_cannot_be_read_stops_with_one_sentence(self):
         record(self.cfg)
-        world = self.world(dns=('10.10.10.1',))
-        self.assert_stops('run', world, 'news.newshosting.com', '192.168.4.1', '10.10.10.1', 'sinkhole')
-        self.assertEqual(world.asked_dns, [('news.newshosting.com', '192.168.4.1')])
+        self.assert_stops('run', self.world(machine=brainrun.LookupFailed('ip is not installed')),
+                          "This machine's addresses cannot be read (ip is not installed)", 'HOST_IP', 'altmountUrl')
+
+    def test_a_machine_with_only_loopback_addresses_says_so(self):
+        self.copies(altmount_url='http://altmount-kf-test:8080')
+        self.assert_stops('run', self.world(machine=('127.0.0.1', '::1')), 'not an address this machine has now (only loopback')
+
+    def test_a_sinkholed_newshosting_dns_stops_a_run_and_a_record(self):
+        record(self.cfg)
+        for mode in ('run', 'record'):
+            world = self.world(dns=('10.10.10.1',))
+            self.assert_stops(mode, world, 'news.newshosting.com', '192.168.4.1', '10.10.10.1', 'sinkhole')
+            self.assertEqual(world.asked_dns, [('news.newshosting.com', '192.168.4.1')])
 
     def test_one_10_x_address_among_good_ones_stops_a_run(self):
         record(self.cfg)
@@ -238,13 +308,14 @@ class PreflightTest(unittest.TestCase):
 
     def test_no_dns_answer_stops_a_run(self):
         record(self.cfg)
-        self.assert_stops('run', self.world(dns=()), 'news.newshosting.com', 'no address')
+        self.assert_stops('run', self.world(dns=()), 'The router (192.168.4.1) gives no address for news.newshosting.com')
 
-    def test_the_dns_is_not_checked_for_a_record(self):
-        world = self.world(dns=('10.10.10.1',))
-        code, text = run_command('record', self.cfg, world)
-        self.assertEqual(code, 0, text)
-        self.assertEqual(world.asked_dns, [])
+    def test_a_failed_dns_lookup_says_how_it_failed_not_that_the_router_has_no_address(self):
+        record(self.cfg)
+        for mode in ('run', 'record'):
+            world = self.world(dns=brainrun.LookupFailed('dig is not installed'))
+            self.assert_stops(mode, world, 'The lookup of news.newshosting.com at the router (192.168.4.1) failed (dig is not installed)')
+            self.assertNotIn('gives no address', run_command(mode, self.cfg, world)[1])
 
     def test_image_from_an_earlier_commit_stops_when_a_build_input_changed_since(self):
         self.assert_stops('record', self.world(label=OLDER, changed={OLDER: True}),
@@ -725,6 +796,12 @@ class BuildImageTest(unittest.TestCase):
         self.assertNotIn('/repo', build_argv)  # no folder is handed to docker, so nothing untracked can get in
 
 
+class R:
+    """A finished subprocess.run."""
+    def __init__(self, out, code=0, err=''):
+        self.stdout, self.returncode, self.stderr = out, code, err
+
+
 class AddressesTest(unittest.TestCase):
     def test_addresses_are_read_with_docker_inspect_for_test_containers_only(self):
         asked = []
@@ -743,50 +820,66 @@ class AddressesTest(unittest.TestCase):
 MACHINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-20-machine')
 
 
-class R:
-    """A finished subprocess.run."""
-    def __init__(self, out, code=0):
-        self.stdout, self.returncode = out, code
+def sample(name):
+    with open(os.path.join(MACHINE, name)) as f:
+        return f.read()
+
+
+def raises(error, *args):
+    """A subprocess.run that raises error(*args), as the real one does when the command is missing, cannot start or hangs."""
+    def run(argv, **kw):
+        raise error(*args)
+    return run
 
 
 class MachineReadersTest(unittest.TestCase):
     """The readers of the machine's own state (#217), on output captured on Brain (fixtures/2026-11-20-machine/)."""
 
     def test_the_machines_addresses_are_every_address_ip_shows_on_every_interface(self):
-        with open(os.path.join(MACHINE, 'ip-addr.json')) as f:
-            sample = f.read()
         asked = []
-        got = brainrun.read_machine_addresses(run=lambda argv, **kw: asked.append(argv) or R(sample))
+        got = brainrun.read_machine_addresses(run=lambda argv, **kw: asked.append(argv) or R(sample('ip-addr.json')))
         self.assertEqual(asked, [['ip', '-j', 'addr', 'show']])
         for address in ('127.0.0.1', '192.168.4.48', '172.17.0.1', '172.18.0.1', 'fd64:30da:fe2c:1:dd7c:c27:aa34:8c70'):
-            self.assertIn(address, got)
+            self.assertIn(ipaddress.ip_address(address), got)
         self.assertEqual(len(got), 10)
 
-    def test_no_addresses_when_ip_fails_or_says_nothing_readable(self):
-        self.assertEqual(brainrun.read_machine_addresses(run=lambda argv, **kw: R('', 1)), [])
-        self.assertEqual(brainrun.read_machine_addresses(run=lambda argv, **kw: R('not json')), [])
+    def test_ip_that_fails_lists_nothing_or_cannot_start_says_how(self):
+        for run, how in ((lambda argv, **kw: R('', 1, 'Cannot open netlink socket'), 'ip stopped with exit code 1: "Cannot open netlink socket"'),
+                         (lambda argv, **kw: R('not json'), 'printed nothing readable'),
+                         (lambda argv, **kw: R('[]'), 'lists no address'),
+                         (raises(FileNotFoundError, 2, 'No such file or directory'), 'ip is not installed'),
+                         (raises(PermissionError, 13, 'Permission denied'), 'ip could not start: Permission denied'),
+                         (raises(subprocess.TimeoutExpired, ['x'], 30), 'ip gave no answer within 30 s')):
+            with self.assertRaises(brainrun.LookupFailed) as e:
+                brainrun.read_machine_addresses(run=run)
+            self.assertIn(how, str(e.exception))
 
     def test_the_dns_answer_is_the_addresses_dig_gives_after_the_cnames(self):
-        with open(os.path.join(MACHINE, 'dig-newshosting.txt')) as f:
-            sample = f.read()
         asked = []
-        got = brainrun.read_dns('news.newshosting.com', '192.168.4.1', run=lambda argv, **kw: asked.append(argv) or R(sample))
-        self.assertEqual(sorted(got), ['85.12.62.214', '85.12.62.225', '85.12.62.250', '85.12.62.251'])
-        self.assertEqual(asked[0][:1], ['dig'])
-        self.assertIn('+short', asked[0])
-        self.assertIn('@192.168.4.1', asked[0])
-        self.assertIn('news.newshosting.com', asked[0])
+        got = brainrun.read_dns('news.newshosting.com', '192.168.4.1', run=lambda argv, **kw: asked.append(argv) or R(sample('dig-newshosting.txt')))
+        self.assertEqual(sorted(map(str, got)), ['85.12.62.214', '85.12.62.225', '85.12.62.250', '85.12.62.251'])
+        self.assertEqual(asked, [['dig', '+short', '+time=3', '+tries=2', 'news.newshosting.com', '@192.168.4.1']])  # as captured
 
-    def test_no_dns_answer_when_dig_fails_or_times_out(self):
-        self.assertEqual(brainrun.read_dns('a.example', '192.0.2.1', run=lambda argv, **kw: R(';; connection timed out; no servers could be reached\n', 9)), [])
+    def test_a_dig_that_reaches_no_server_times_out_or_is_missing_says_how(self):
+        unreachable = sample('dig-unreachable.txt')  # captured: dig exits 9 when no server answers
+        for run, how in ((lambda argv, **kw: R(unreachable, 9), 'dig stopped with exit code 9: ";; no servers could be reached"'),
+                         (raises(subprocess.TimeoutExpired, ['x'], 30), 'dig gave no answer within 30 s'),
+                         (raises(FileNotFoundError, 2, 'No such file or directory'), 'dig is not installed')):
+            with self.assertRaises(brainrun.LookupFailed) as e:
+                brainrun.read_dns('news.newshosting.com', '192.0.2.1', run=run)
+            self.assertIn(how, str(e.exception))
 
-        def times_out(argv, **kw):
-            raise subprocess.TimeoutExpired(argv, kw.get('timeout'))
-        self.assertEqual(brainrun.read_dns('a.example', '192.0.2.1', run=times_out), [])
+    def test_a_name_the_server_does_not_know_is_no_address_not_a_failure(self):
+        self.assertEqual(brainrun.read_dns('no-such.example', '192.168.4.1', run=lambda argv, **kw: R('')), [])
 
     def test_only_host_ip_and_the_altmount_host_are_read_from_the_test_folder(self):
         td = make_copies(self, altmount_url=f'http://kf:{SECRET}@192.0.2.10:8087/api')
-        self.assertEqual(brainrun.read_pinned(td), {'HOST_IP': HOST_IP, 'altmountUrl': '192.0.2.10'})
+        self.assertEqual(brainrun.read_pinned(td), {'HOST_IP': HOST_IP, 'altmount_host': '192.0.2.10', 'altmount_url': 'set'})
+
+    def test_an_altmount_url_that_is_missing_or_names_no_host_is_told_apart(self):
+        self.assertEqual(brainrun.read_pinned(make_copies(self, altmount_url=None))['altmount_url'], 'missing')
+        pinned = brainrun.read_pinned(make_copies(self, altmount_url=f'{HOST_IP}:8087'))
+        self.assertEqual((pinned['altmount_url'], pinned['altmount_host']), ('no host', None))
 
     def test_host_ip_in_quotes_or_after_export_is_read_and_a_folder_without_env_has_none(self):
         td = make_copies(self)
@@ -796,6 +889,43 @@ class MachineReadersTest(unittest.TestCase):
             self.assertEqual(brainrun.read_pinned(td)['HOST_IP'], HOST_IP, line)
         os.remove(os.path.join(td, '.env'))
         self.assertIsNone(brainrun.read_pinned(td)['HOST_IP'])
+
+
+class MachineWiringTest(unittest.TestCase):
+    """The preflight through RealIO's own readers of the machine (#217): only os.getloadavg and subprocess.run are stubbed,
+    answering with the samples captured on Brain."""
+
+    class World(FakeWorld):
+        load_average = brainrun.RealIO.load_average
+        machine_addresses = brainrun.RealIO.machine_addresses
+        dns_answer = brainrun.RealIO.dns_answer
+
+    def setUp(self):
+        self.td = make_copies(self, host_ip='192.168.4.48', altmount_url='http://192.168.4.48:8087')
+        self.cfg = make_cfg(self.td)
+        record(self.cfg)
+        self.asked = []
+
+    def run_(self, argv, **kw):
+        self.asked.append(argv[0])
+        return {'ip': R(sample('ip-addr.json')), 'dig': R(sample('dig-newshosting.txt'))}[argv[0]]
+
+    def preflight(self, mode, load):
+        with mock.patch.object(subprocess, 'run', self.run_), mock.patch.object(os, 'getloadavg', lambda: (load, 0.2, 0.1)):
+            return run_command(mode, self.cfg, self.World(self.cfg))
+
+    def test_a_run_reads_the_load_the_addresses_and_the_dns_from_the_machine(self):
+        code, text = self.preflight('run', 0.31)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.asked, ['ip', 'dig'])
+        code, text = self.preflight('run', 1.52)
+        self.assertEqual(code, 1, text)
+        self.assertIn('load average is 1.52', text)
+
+    def test_a_record_reads_the_addresses_and_the_dns_but_not_the_load(self):
+        code, text = self.preflight('record', 4.0)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.asked, ['ip', 'dig'])
 
 
 class FirstInARunTest(unittest.TestCase):

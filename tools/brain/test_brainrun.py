@@ -95,12 +95,11 @@ class FakeIO(Copies):
     def image_label(self):
         return self.commit
 
-    def load_average(self):
-        self.calls.append(('load',))
-        return self.load
-
-    def preflight(self, mode):
+    def preflight(self, mode, seen=None):
+        """As the real preflight: a run's preflight hands back the load it judged (`load`)."""
         self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
+        if mode == 'run' and seen is not None:
+            seen['load'] = self.load
         return list(getattr(self, 'problems', []))
 
     def snapshot(self):
@@ -253,11 +252,11 @@ class RunTest(unittest.TestCase):
         meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
         self.assertEqual((meta['commit'], meta['head']), ('c-from-label', 'repo-head'))
 
-    def test_run_record_keeps_the_machines_load_at_the_start(self):
+    def test_run_record_keeps_the_load_the_preflight_judged(self):
         io = FakeIO(load=0.4271)
+        io.load_average = lambda: 1.7  # a later reading, busy: the run must not take it
         run = brainrun.run_all(make_cfg(self.tmp), io)
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['start_load'], 0.43)
-        self.assertLess(io.calls.index(('load',)), next(i for i, c in enumerate(io.calls) if c[0] == 'standin-start'))
 
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
@@ -1171,7 +1170,7 @@ class RecordIO(FakeIO):
         self.up = set()
         self.seen = set()  # (side, title) already visited: the next visit is a warm one
 
-    def preflight(self, mode):
+    def preflight(self, mode, seen=None):
         self.calls.append(('preflight', mode))
         return list(getattr(self, 'problems', []))
 
