@@ -439,7 +439,7 @@ class WallClockTest(unittest.TestCase):
         self.assertEqual(parts, {
             'Measured list and start time': 28.0,  # 8 top picks played: 2.0 s list + 1.5 s start each
             'Pauses (`--settle`)': 32.0,           # 16 plays, 2 s after each
-            'Browse pauses (`--browse-pause`)': 0.0,  # the run's Browse pause is 0 s here
+            'Browse pauses': 0.0,  # the run's Browse pause is 0 s here
             'Failed plays': 96.0,                  # 8 visits of 12 s
             'Resets': 80.0,                        # 4 of 20 s
             'Everything else': 11.0,               # 8 seek checks of 0.5 s, 2 s stand-in start, 5 s to stop the copies
@@ -457,10 +457,10 @@ class WallClockTest(unittest.TestCase):
         sentence, parts, lines = self.time_section(run)
         self.assertEqual(parts, {
             'Measured list and start time': 28.0, 'Pauses (`--settle`)': 32.0,
-            'Browse pauses (`--browse-pause`)': 80.0,  # 16 visits, 5 s between the list and the play of each
+            'Browse pauses': 80.0,  # 16 visits, 5 s between the list and the play of each
             'Failed plays': 96.0,                      # 8 visits of 12 s: 17 s each, less the Browse pause
             'Resets': 80.0, 'Everything else': 11.0, 'The whole run': 327.0})
-        self.assertIn('- **Browse pauses (`--browse-pause`)**: the Browse pause between a list arriving and its play, '
+        self.assertIn('- **Browse pauses**: the Browse pause between a list arriving and its play, '
                       '5 s each (16 visits); it is no part of title to video.', lines)
         self.assertEqual(meta['timing']['parts']['browse_s'], 80.0)
 
@@ -651,6 +651,22 @@ class SignalGuard(unittest.TestCase):
 TAGGED = [['movie', 'tt1', 'Matrix', 'easy'], ['series', 'tt2:1:1', 'Show S01E01', 'hard']]  # #165's tagged title list
 
 
+class BrowsePauseCommandTest(SignalGuard):
+    """#205: the Browse pause is fixed, 5 s; no flag sets another, so no run waits a pause that blocks the next comparison."""
+
+    def test_every_run_waits_the_fixed_browse_pause(self):
+        code, _, folder = self.command(['run'], lambda cfg: CleanIO())
+        self.assertEqual(code, 0)
+        meta = json.loads(read(os.path.join(folder, 'meta.json')))
+        self.assertEqual((meta['browse_pause_s'], meta['facts']['browse pause']), (5, '5 s'))
+        raw = json.loads(read(os.path.join(folder, 'raw.json')))
+        self.assertEqual({v['browse_pause_s'] for v in raw['visits']}, {5})
+
+    def test_no_flag_sets_another_browse_pause(self):
+        with contextlib.redirect_stderr(io_module.StringIO()), self.assertRaises(SystemExit):
+            brainrun.build_parser().parse_args(['run', '--browse-pause', '0'])
+
+
 class TaggedListTest(SignalGuard):
     """#167: a speed test's tagged title list ([type, id, label, list]) goes through run and record, and each title's list
     lands in the run folder."""
@@ -816,7 +832,7 @@ class InterruptedRunTest(unittest.TestCase):
         self.assertEqual(timing['rounds'], [{'pass': 'main sides', 'phase': 'cold', 'round': 1, 'plays': 1, 'pause_s': 3.0,
                                              'start': '2026-11-10T18:00:22.000Z', 'end': '2026-11-10T18:00:29.000Z', 'seconds': 7.0}])
         self.assertEqual(self.time_table(run, '| Part | Seconds | Minutes |'), [
-            '| Measured list and start time | 3.5 | 0.1 |', '| Pauses (`--settle`) | 3.0 | 0.1 |', '| Browse pauses (`--browse-pause`) | 0.0 | 0.0 |', '| Failed plays | 0.0 | 0.0 |',
+            '| Measured list and start time | 3.5 | 0.1 |', '| Pauses (`--settle`) | 3.0 | 0.1 |', '| Browse pauses | 0.0 | 0.0 |', '| Failed plays | 0.0 | 0.0 |',
             '| Resets | 20.0 | 0.3 |', '| Everything else | 7.5 | 0.1 |', '| The whole run | 34.0 | 0.6 |'])
         self.assertEqual(self.time_table(run, '| Pass | Round | Started (UTC) | Reset before it (s) | Plays | Round (s) | Round (minutes) |'),
                          ['| Main sides | Cold 1 | 18:00:22 | 20.0 | 1 | 7.0 | 0.1 |'])

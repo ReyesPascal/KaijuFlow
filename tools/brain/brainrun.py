@@ -2,7 +2,7 @@
 
     python3 -I tools/brain/brainrun.py run --name baseline --store <standin-store> --list <title-list>
            [--runs-root DIR] [--one-page | --quick | --sides LIST --rounds 1|2] [--titles-file titles.json] [--user-id ID] [--tries 1]
-           [--rebuild-image] [--provider-limit 100] [--no-wait] [--browse-pause 5]
+           [--rebuild-image] [--provider-limit 100] [--no-wait]
     python3 -I tools/brain/brainrun.py record --name baseline --store <standin-store> --list <title-list> [--key-file PATH]
            [--runs-root DIR] [--one-page] [--titles-file titles.json] [--tries 1] [--rebuild-image]   (record, or top up)
     python3 -I tools/brain/brainrun.py preflight [--for run|record] --store <standin-store> --list <title-list>
@@ -10,8 +10,8 @@
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke [--one-page]   (stand-in reachability check, see README)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
-indexer time for every answer unless --no-wait; every visit waits the Browse pause, 5 s unless --browse-pause, between
-its list and its play, #205; the stand-in's lines say which test container asked and when, so the report
+indexer time for every answer unless --no-wait; every visit waits the fixed Browse pause between its list and
+its play, #205; the stand-in's lines say which test container asked and when, so the report
 matches them to the right side and visit) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
@@ -1338,8 +1338,6 @@ def build_parser():
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
     ap.add_argument('--settle', type=float, default=3, help='seconds to pause after every play (default 3)')
-    ap.add_argument('--browse-pause', type=float, default=BROWSE_PAUSE_S,
-                    help=f'run only: the Browse pause, seconds between a list arriving and its play (default {BROWSE_PAUSE_S:g})')
     return ap
 
 
@@ -1398,7 +1396,7 @@ def main(argv):
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),
                one_page=a.one_page, sides=sides, rounds=rounds, titles=titles,
-               partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle, browse_pause=a.browse_pause,
+               partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle, browse_pause=BROWSE_PAUSE_S,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))

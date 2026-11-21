@@ -1083,7 +1083,7 @@ def not_recorded_section(run):
 
 # The five parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
 TIME_PARTS = [('measured_s', 'Measured list and start time'), ('pauses_s', 'Pauses (`--settle`)'),
-              ('browse_s', 'Browse pauses (`--browse-pause`)'), ('failed_s', 'Failed plays'), ('resets_s', 'Resets'),
+              ('browse_s', 'Browse pauses'), ('failed_s', 'Failed plays'), ('resets_s', 'Resets'),
               ('other_s', 'Everything else')]
 
 
@@ -1159,7 +1159,7 @@ def time_section(run):
             'the seconds from pressing play to the first byte. The tables above are made from these.',
             f"- **Pauses (`--settle`)**: the pause after every play, {_cell(timing.get('settle_s'))} s each "
             f"({sum(r.get('plays') or 0 for r in rounds)} plays).",
-            f"- **Browse pauses (`--browse-pause`)**: the Browse pause between a list arriving and its play, "
+            f"- **Browse pauses**: the Browse pause between a list arriving and its play, "
             f"{pause_text(browse_pause_of(run))} each ({sum(1 for v in visits if v.get('browse_pause_s'))} visits); "
             "it is no part of title to video.",
             f"- **Failed plays**: the whole visit of every top pick that did not play, from asking for the list until the play "
