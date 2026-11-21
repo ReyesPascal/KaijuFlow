@@ -78,26 +78,16 @@ export interface ConfigData {
   filters?: FilterConfig;
   movieFilters?: FilterConfig;
   tvFilters?: FilterConfig;
+  // The list-time check settings (enabled, mode, sample count, Smart/Fixed, hideBlocked,
+  // maxConnections, healthCheckIndexers) were deleted in #191; an old config loses them at startup.
   healthChecks?: {
-    enabled: boolean;
-    mode?: 'full' | 'quick';           // Legacy — migrated to archiveInspection + sampleCount
-    archiveInspection?: boolean;
-    sampleCount?: 3 | 7;
     providers: UsenetProvider[];
-    nzbsToInspect: number;
-    inspectionMethod?: 'fixed' | 'smart';
-    smartBatchSize?: number;
-    smartAdditionalRuns?: number;
-    smartMinHealthy?: number;
-    hideBlocked: boolean;
-    healthCheckIndexers?: Record<string, boolean>;
     // Legacy single-provider fields (auto-migrated to providers array)
     usenetHost?: string;
     usenetPort?: number;
     useTLS?: boolean;
     usenetUsername?: string;
     usenetPassword?: string;
-    maxConnections?: number;
     maxTotalConnections?: number;
     verifyTlsCertificates?: boolean;
   };

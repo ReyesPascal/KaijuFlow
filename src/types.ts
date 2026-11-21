@@ -70,7 +70,6 @@ export interface ZyclopsIndexerConfig {
   preZyclopsState?: {                  // Snapshot of settings before Zyclops was enabled — restored on disable
     enabled: boolean;
     proxy: boolean;
-    healthCheck: boolean;
   };
 }
 
@@ -326,23 +325,12 @@ export interface UsenetProvider {
   type: 'pool' | 'backup';      // Pool = primary, Backup = fallback for missing articles
 }
 
-// Health check configuration for verifying NZB availability
+// Health check configuration for verifying NZB availability. The check runs when a
+// Source is played (Play-time check); the list-time Smart and Fixed settings were deleted in #191.
 export interface HealthCheckConfig {
-  enabled: boolean;              // Enable/disable health checking
-  mode?: 'full' | 'quick';      // Legacy — migrated to archiveInspection + sampleCount
-  archiveInspection: boolean;    // Download and inspect archive headers (encryption, nested archives, video content)
-  sampleCount: 3 | 7;           // Number of article segments to sample for availability
   providers: UsenetProvider[];   // Usenet providers for article checking
-  nzbsToInspect: number;         // Number of top results to health check (used in 'fixed' mode)
-  inspectionMethod: 'fixed' | 'smart'; // Fixed count vs smart stop-on-healthy
-  smartBatchSize: number;        // NZBs per batch in smart mode (1-6; default 3)
-  smartAdditionalRuns: number;   // Additional batches if threshold not met (0-5; default 1)
-  smartMinHealthy: number;       // Healthy results required before smart mode stops (1-10; default 1)
-  maxConnections: number;        // Max concurrent health check workers
-  maxTotalConnections: number;   // Total Usenet connections health checks may hold at once, all workers and providers combined (finding 6)
-  hideBlocked: boolean;          // Filter out blocked NZBs from results
+  maxTotalConnections: number;   // Total Usenet connections health checks may hold at once, all checks and providers combined (finding 6)
   verifyTlsCertificates: boolean; // Reject NNTP servers with invalid TLS certificates (finding 7; default on)
-  healthCheckIndexers?: Record<string, boolean>; // Per-indexer health check enable/disable
 }
 
 // Ultimate-Fallback: combines retry-on-failure with Health Checking for fastest resolution
@@ -396,7 +384,6 @@ export interface SyncedIndexer {
   id: string;                       // Prowlarr numeric ID (as string) or NZBHydra indexer name
   name: string;                     // Display name from remote service
   enabledForSearch: boolean;        // Include in searches
-  enabledForHealthCheck: boolean;   // Include in health checks
   movieSearchMethod: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
   tvSearchMethod: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
   animeMovieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];

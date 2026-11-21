@@ -8,6 +8,7 @@
 import type { UsenetProvider, SearchConfig, AutoPlayConfig, SyncedIndexer, StreamDisplayConfig } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS, SERIES_PACK_KEYWORDS } from '../types.js';
 import { configData, saveConfigFile } from './schema.js';
+import { dropListTimeCheckSettings } from './listTimeCheckMigration.js';
 import { enforceZyclopsEnabled } from './indexerCrud.js';
 import { validateRulesBlock } from '../rules/importers.js';
 
@@ -99,20 +100,9 @@ export function updateSettings(settings: {
   autoPlay?: AutoPlayConfig;
   streamDisplayConfig?: StreamDisplayConfig;
   healthChecks?: {
-    enabled: boolean;
-    mode?: 'full' | 'quick';
-    archiveInspection?: boolean;
-    sampleCount?: 3 | 7;
     providers?: UsenetProvider[];
-    nzbsToInspect: number;
-    inspectionMethod?: 'fixed' | 'smart';
-    smartBatchSize?: number;
-    smartAdditionalRuns?: number;
-    maxConnections?: number;
     maxTotalConnections?: number;
     verifyTlsCertificates?: boolean;
-    hideBlocked: boolean;
-    healthCheckIndexers?: Record<string, boolean>;
   };
   ultimateFallback?: {
     enabled: boolean;
@@ -382,6 +372,8 @@ export function updateSettings(settings: {
       ...settings.healthChecks,
       providers: settings.healthChecks.providers ?? existingProviders,
     };
+    // A UI loaded before #191 may still send the list-time check settings: they are not saved.
+    dropListTimeCheckSettings({ healthChecks: configData.healthChecks });
   }
   if (settings.streamDisplayConfig !== undefined) {
     configData.streamDisplayConfig = settings.streamDisplayConfig;

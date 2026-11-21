@@ -1,21 +1,22 @@
 // #184, ADR 0009: KaijuFlow's health check passes only what AltMount streams:
 // plain video, stored RAR5 (in volume order, hash-named, or Scrambled, which
 // Unscramble puts in order) and stored 7z. It blocks the rest before sampling
-// a segment. Goes through the batch call the health-check coordinator makes,
-// on real archives (tests/fixtures/archives/make.sh).
+// a segment. Goes through the health-check pipeline the Play-time check calls
+// (the list-time batch was deleted in #191), on real archives
+// (tests/fixtures/archives/make.sh); the Parity suite covers it end to end.
 // Run: npm run test:unit
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { performBatchHealthChecks } from '../../src/health/index.ts';
+import { performHealthCheck } from '../../src/health/index.ts';
 import { archiveFixture, nzbWithNews, type F } from './health-nzb.ts';
 
 type Opts = { served?: boolean; password?: string; missing?: string[]; archiveInspection?: boolean };
 
-/** Health-check one NZB the way the coordinator does (one batch). */
+/** Health-check one NZB. */
 async function check(files: F[], { archiveInspection = true, ...opts }: Opts = {}) {
   const { url, provider, state } = await nzbWithNews([...files, ...side()], opts);
-  const { results } = await performBatchHealthChecks([url], [provider], 'test-agent', 3, { archiveInspection, sampleCount: 3 });
-  return { result: results.get(url)!, reads: state.reads, stats: state.stats };
+  const result = await performHealthCheck(url, [provider], 'test-agent', { archiveInspection, sampleCount: 3 });
+  return { result, reads: state.reads, stats: state.stats };
 }
 
 const side = (): F[] => [{ name: 'Movie.nfo' }, { name: 'Movie.par2' }, { name: 'Movie.vol000+01.par2' }];

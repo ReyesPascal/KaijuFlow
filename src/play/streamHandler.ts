@@ -225,7 +225,8 @@ export async function prepareStream(
   // Steps 1-3: hand the Source to the Backend and wait for its video.
   // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
-  if (isUltimateFallbackActive()) await requireHealthySource(source, logPrefix);
+  // It is the only health check since #191, so it runs whatever the fallback setting.
+  await requireHealthySource(source, logPrefix);
 
   const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
   const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;

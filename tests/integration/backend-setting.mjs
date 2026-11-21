@@ -1,6 +1,7 @@
 // AltMount is KaijuFlow's only Backend (#188): an old config naming NzbDAV is read as AltMount,
 // its nzbdav* play settings load under the play* names with no streaming-mode key (#200),
-// Auto-queue's setting is dropped (#226), AltMount settings save and reload, AltMount "test connection".
+// the list-time health-check settings (#191) and Auto-queue's setting (#226) are dropped from an old config,
+// AltMount settings save and reload, AltMount "test connection".
 // Real config/settings/test routes over HTTP; the Backend is a fake AltMount on loopback.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -33,10 +34,14 @@ try {
     nzbdavMoviesCategory: 'M', nzbdavTvCategory: 'T' };
   // Its play settings under their old names (#200), each off its default.
   const OLD_PLAY = { streamingMode: 'nzbdav', nzbdavStreamingMethod: 'direct', nzbdavStreamBufferMB: 64, nzbdavPipeBufferMB: 4, nzbdavCacheTimeouts: false };
-  // Health checks with Auto-queue's setting, deleted in #226.
-  const OLD_CHECKS = { enabled: false, providers: [], nzbsToInspect: 4, hideBlocked: false, autoQueueMode: 'top' };
+  // Its list-time health-check settings (#191) and Auto-queue's setting (#226), beside the provider, cap and TLS choice that stay.
+  const provider = { id: 'p1', name: 'News', host: 'news.example', port: 563, useTLS: true, username: 'u', password: 'p', enabled: true, type: 'pool' };
+  const OLD_LIST_TIME = { enabled: true, mode: 'full', archiveInspection: true, sampleCount: 7, nzbsToInspect: 6, inspectionMethod: 'smart',
+    smartBatchSize: 3, smartAdditionalRuns: 1, smartMinHealthy: 1, hideBlocked: true, maxConnections: 12, healthCheckIndexers: { Ninja: false } };
+  const healthChecks = { ...OLD_LIST_TIME, providers: [provider], maxTotalConnections: 9, verifyTlsCertificates: false, autoQueueMode: 'top' };
   const old = { indexers: [], cacheEnabled: true, cacheTTL: 9000, indexManager: 'newznab',
-    altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY, healthChecks: OLD_CHECKS };
+    altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY, healthChecks,
+    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, enabledForHealthCheck: false, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] }] };
   fs.mkdirSync(root + '/config', { recursive: true });
   fs.writeFileSync(configFile, JSON.stringify(old));
 
@@ -88,10 +93,29 @@ try {
   await check('an old config holding Auto-queue loads without it; its other health-check settings are kept (#226)', async () => {
     const d = diskConfig().healthChecks;
     assert.equal('autoQueueMode' in d, false, 'on disk');
-    assert.equal(d.nzbsToInspect, 4); assert.equal(d.hideBlocked, false);
+    assert.deepEqual(d.providers, [provider]); assert.equal(d.maxTotalConnections, 9); assert.equal(d.verifyTlsCertificates, false);
     const { json } = await call('GET', '/api/config');
     assert.equal('autoQueueMode' in json.healthChecks, false, 'in the config the UI reads');
-    assert.equal(json.healthChecks.nzbsToInspect, 4); assert.equal(json.healthChecks.hideBlocked, false);
+    assert.equal(json.healthChecks.maxTotalConnections, 9); assert.equal(json.healthChecks.verifyTlsCertificates, false);
+  });
+
+  await check('an old config loses the list-time health-check settings and keeps the rest (#191)', async () => {
+    const d = diskConfig();
+    for (const k of Object.keys(OLD_LIST_TIME)) assert.equal(d.healthChecks[k], undefined, k);
+    assert.deepEqual(d.healthChecks.providers, [provider]);
+    assert.equal(d.healthChecks.maxTotalConnections, 9); assert.equal(d.healthChecks.verifyTlsCertificates, false);
+    assert.equal(d.syncedIndexers[0].enabledForHealthCheck, undefined); assert.equal(d.syncedIndexers[0].enabledForSearch, true);
+    const { json } = await call('GET', '/api/config');
+    for (const k of Object.keys(OLD_LIST_TIME)) assert.equal(json.healthChecks[k], undefined, k);
+    assert.equal(json.healthChecks.maxTotalConnections, 9);
+  });
+
+  await check('a list-time health-check setting sent by an old page is not saved (#191)', async () => {
+    const put = await call('PUT', '/api/settings', { healthChecks: { providers: [provider], maxTotalConnections: 9, inspectionMethod: 'fixed', nzbsToInspect: 4, hideBlocked: false } });
+    assert.equal(put.status, 200);
+    const d = diskConfig();
+    for (const k of ['inspectionMethod', 'nzbsToInspect', 'hideBlocked']) assert.equal(d.healthChecks[k], undefined, k);
+    assert.equal(d.healthChecks.maxTotalConnections, 9);
   });
 
   await check('AltMount settings save to disk and reload', async () => {

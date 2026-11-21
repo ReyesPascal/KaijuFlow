@@ -1,5 +1,6 @@
 // Pipe and direct delivery against fake AltMount (#23). Application modules are real; the Backend is fake.
-// Ultimate Fallback off: the list-time route, until #191 (the owner's setup, with the Play-time check, is parity-play-time-check). Checks what the player receives, and that seeking works.
+// Ultimate Fallback off (the owner's setup, with it on, is parity-play-time-check). Checks what the player receives, and that seeking works.
+// Every Source is checked when it is played (#191): the fake news server holds their articles.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -7,6 +8,7 @@ import http from 'node:http';
 import { createFakeAltmount } from './parity/fake-altmount.mjs';
 import { API_KEY } from './parity/fake-altmount.mjs';
 import { assertBytes } from './parity/bytes.mjs';
+import { useFakeNews } from './parity/fake-nntp.mjs';
 import crypto from 'node:crypto';
 const root = process.env.A4_APP_ROOT, output = process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root + '/../app-import.started'));
@@ -20,6 +22,7 @@ try {
   const backend = await createFakeAltmount(listen);
   const { config, configData } = await load('config/index');
   backend.configure(configData);
+  backend.useNews(await useFakeNews(configData, config));
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream } = await load('play/streamHandler');
   const { createPlayStreamRoutes } = await load('routes/play');

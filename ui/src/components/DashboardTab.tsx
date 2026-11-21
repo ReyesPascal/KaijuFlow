@@ -109,6 +109,8 @@ export function DashboardTab({
   // Ultimate Fallback needs the Backend's capability: off for AltMount until the play-time check (#190).
   const ufAvailable = false;
   const ufActive = ultimateFallback.enabled && ufAvailable;
+  // Each Source is checked when it is played (#191): that needs an enabled health-check provider.
+  const hasHealthProvider = healthChecks.providers.some(p => p.enabled);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 animate-fade-in-up">
@@ -641,23 +643,19 @@ export function DashboardTab({
                       <span className="text-slate-400 text-sm">Health Checks</span>
                     </div>
                     <div className="text-3xl font-bold group-hover:text-pink-400 group-active:text-pink-400 transition-colors">
-                      {healthChecks.enabled ? 'Enabled' : 'Disabled'}
+                      {hasHealthProvider ? 'At play' : 'No provider'}
                     </div>
                     <div className="text-xs text-slate-500 mt-1 group-hover:text-slate-400 group-active:text-slate-400 transition-colors">
-                      {healthChecks.enabled
+                      {hasHealthProvider
                         ? (() => {
                             const total = healthChecks.providers.length;
                             const enabled = healthChecks.providers.filter(p => p.enabled).length;
                             const disabled = total - enabled;
                             const parts = [`${enabled} active`];
                             if (disabled > 0) parts.push(`${disabled} disabled`);
-                            const inspectionSummary = healthChecks.inspectionMethod === 'smart'
-                              ? `Smart ${healthChecks.smartBatchSize * (1 + (healthChecks.smartAdditionalRuns || 0))} max`
-                              : `${healthChecks.nzbsToInspect} NZBs`;
-                            const modeSummary = `${healthChecks.sampleCount} samples${healthChecks.archiveInspection ? ' · inspection' : ''}`;
-                            return `${parts.join(', ')} of ${total} provider${total !== 1 ? 's' : ''} · ${inspectionSummary} · ${modeSummary}`;
+                            return `${parts.join(', ')} of ${total} provider${total !== 1 ? 's' : ''} · each Source checked when played`;
                           })()
-                        : 'Click to configure →'}
+                        : 'Click to add a provider →'}
                     </div>
                   </div>
                 ),

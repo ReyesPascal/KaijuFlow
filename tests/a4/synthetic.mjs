@@ -414,7 +414,7 @@ try {
     const unauth=await request(s.port,'/api/prowlarr/sync',jsonReq('POST',{url,apiKey:'fixture'},'invalid'));
     assert.equal(unauth.status,401);
     configData.syncedIndexers=[{id:'23',name:'OldA4',enabledForSearch:false,
-      enabledForHealthCheck:true,movieSearchMethod:['text'],tvSearchMethod:['text']}];
+      movieSearchMethod:['text'],tvSearchMethod:['text']}];
     const prowlarr=await request(s.port,'/api/prowlarr/sync',
       jsonReq('POST',{url,apiKey:'fixture'},jwt));
     assert.equal(prowlarr.status,200);
@@ -423,7 +423,7 @@ try {
     assert.equal(prowlarr.json?.indexers?.[0]?.enabledForSearch,false);
     assert.deepEqual(prowlarr.json?.indexers?.[0]?.movieSearchMethod,['text']);
     assert.equal((await request(s.port,'/api/synced-indexers/23',
-      jsonReq('PUT',{enabledForHealthCheck:false,id:'override'},jwt))).json?.id,'23');
+      jsonReq('PUT',{enabledForSearch:true,id:'override'},jwt))).json?.id,'23');
     const hydra=await request(s.port,'/api/nzbhydra/sync',
       jsonReq('POST',{url,apiKey:'fixture'},jwt));
     assert.equal(hydra.status,200);

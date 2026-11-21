@@ -29,7 +29,7 @@ import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStar
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
-import { coordinateHealthChecks, autoMarkRemainingResults } from './healthCheckCoordinator.js';
+import { autoMarkRemainingResults } from './healthCheckCoordinator.js';
 import { buildStreams } from './streamBuilder.js';
 import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../play/streamCache.js';
 import { requestContext } from '../requestContext.js';
@@ -276,7 +276,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     // === SHARED: Filter dead NZBs from raw results ===
     const filterDeadFromRaw = (results: any[]) => {
       if (!config.filterDeadNzbs) return results;
-      const SELF_URL = getSelfUrl(); // must match healthCheckCoordinator's dead-NZB keys
+      const SELF_URL = getSelfUrl(); // must match the EasyNews NZB URLs the play side marks dead
       const manifestKey = requestContext.getStore()?.manifestKey || '';
       let cachePattern: string | undefined;
       if (type === 'series' && season !== undefined && episode !== undefined) {
@@ -331,7 +331,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       }
     };
 
-    // === SHARED: Process from raw results → streams (filter, sort, health check, build) ===
+    // === SHARED: Process from raw results → streams (filter, sort, build) ===
     const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], healthMap: Map<string, any>, titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
       // season packs of remade shows take the deprioritized path (applyRemakeFilter)
@@ -342,24 +342,8 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // Apply current user filter/sort preferences (deprioritized packs appended after sort)
       allResults = applyUserFilters(allResults, titleMeta.type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks);
 
-      // Play-time check on (#190): the list goes out at once, unchecked; each
-      // Source is checked when it is about to be played. Otherwise the list-time
-      // check pre-filters results (pre-existing health data lets the coordinator
-      // skip already-checked results; its inner gate respects
-      // config.healthChecks.enabled). #191 deletes the list-time check.
-      if (!isUltimateFallbackActive()) {
-        const { healthResults: newHealth, filteredResults } = await coordinateHealthChecks({
-          allResults,
-          type: titleMeta.type,
-          season: titleMeta.season,
-          episode: titleMeta.episode,
-          episodesInSeason: titleMeta.episodesInSeason,
-          episodeAired: titleMeta.episodeAired,
-          preExistingHealth: healthMap.size > 0 ? healthMap : undefined,
-        });
-        for (const [key, val] of newHealth) healthMap.set(key, val);
-        allResults = filteredResults;
-      }
+      // No health check here (#191): the list goes out at once, unchecked; each
+      // Source is checked when it is about to be played (Play-time check, #190).
 
       // Auto-mark EasyNews and Zyclops results as verified
       autoMarkRemainingResults(allResults, healthMap);
@@ -390,7 +374,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         const now = Date.now();
         const healthMap = new Map<string, any>(Object.entries(cached.healthMap || {}));
 
-        // Re-apply filters, sort, health checks, and build streams with current settings
+        // Re-apply filters and sort, and build streams with current settings
         const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
           cached.rawResults, cached.deprioritizedPacks || [], healthMap,
           { type, season, episode, episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime }
