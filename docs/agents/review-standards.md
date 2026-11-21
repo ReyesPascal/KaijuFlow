@@ -24,4 +24,4 @@ Example: record and run started the one-page side differently. They should have 
 
 Why: a test that pins only a new helper still passes when the caller never uses it.
 
-Example: #131's test checked `healthCheckWorkerCount` but not that the coordinator passes its value to the health-check workers. The test should have gone through the coordinator, or through the batch call it makes.
+Example: #131's test checked `healthCheckWorkerCount` but not that the coordinator passes its value to the health-check workers (both deleted since, #191). The test should have gone through the coordinator, or through the batch call it makes.

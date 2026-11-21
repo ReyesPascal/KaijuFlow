@@ -66,8 +66,8 @@ The Play-time check of the Best entry's Sources and the prepare of the first Hea
 _Avoid_: prefetch, pre-warm, auto-queue (once built)
 
 **Play-time check**:
-The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then. Replaces checking a whole list before it is shown.
-_Avoid_: lazy check, on-demand check, deferred check
+The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then. KaijuFlow's only health check: it replaced checking the list before it is shown (the list-time Smart and Fixed checks, deleted in #191), and no setting turns it off.
+_Avoid_: lazy check, on-demand check, deferred check, list-time check (deleted)
 
 **Best entry**:
 The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source.
