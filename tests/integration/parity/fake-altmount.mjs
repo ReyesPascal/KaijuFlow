@@ -111,6 +111,11 @@ export async function createFakeAltmount(listen) {
       }
       // AltMount v0.4.0 RAR volume rules: a failed queue item, answered like any other.
       if (fileMatch && rarVolumeCheck(fileMatch[1], volumeOf)) return json(500, { error: 'NZB processing failed' });
+      // Articles gone from the news server: real AltMount's import probe fails the queue item
+      // ("fast-fail segment check failed", #189), answered like any failed item.
+      if (news && fileMatch && [...fileMatch[1].matchAll(/<segment\b[^>]*>([^<]+)<\/segment>/g)].some(m => !news.articles.has(m[1]))) {
+        return json(500, { error: 'NZB processing failed' });
+      }
       // Scripted answer (status + body) for a Source, to exercise AltMount's other error answers.
       if (src.scripted) return json(src.scripted.status, src.scripted.body);
       // Failed queue item: pinned handler answers 500 "NZB processing failed" (not 400/422).

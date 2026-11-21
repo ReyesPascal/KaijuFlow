@@ -397,7 +397,8 @@ export const config: Config = {
     const healthCheckEnabled = envBool('ULTIMATE_FALLBACK_HEALTH_CHECK_ENABLED') ?? ur?.healthCheckEnabled ?? false;
     const whenToResolve = envEnum('ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', ['on-results', 'on-tile-selection']) ?? ur?.whenToResolve ?? 'on-tile-selection';
     const userPickFallback = envEnum('ULTIMATE_FALLBACK_USER_PICK_FALLBACK', ['uf-lobby', 'failure-video', 'fallback-chain']) ?? ur?.userPickFallback ?? 'failure-video';
-    const candidateCount = Math.max(1, Math.min(10, envInt('ULTIMATE_FALLBACK_CANDIDATE_COUNT') ?? ur?.candidateCount ?? 1));
+    // How many Sources the Play-time check checks at once, from the top of the list down (#190, default 3).
+    const candidateCount = Math.max(1, Math.min(10, envInt('ULTIMATE_FALLBACK_CANDIDATE_COUNT') ?? ur?.candidateCount ?? 3));
     const preferenceMode = envEnum('ULTIMATE_FALLBACK_PREFERENCE_MODE', ['priority', 'speed']) ?? ur?.preferenceMode ?? 'priority';
     // Archive inspection is mandatory for UF — its container-matching guarantee
     // (each backup matches the primary's container type) depends on reading

@@ -217,14 +217,14 @@ KaijuFlow writes one line per timed step to stdout (`src/utils/stepTiming.ts`): 
 
 | Field | Meaning |
 |---|---|
-| `step` | `indexer_page`, `health_batch`, `nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte` |
+| `step` | `indexer_page`, `health_batch`, `play_check`, `nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte` |
 | `source` | Source or indexer name (none for `health_batch`) |
 | `ms` | whole milliseconds the step took |
 | `ok` | false when the step threw (the line is still written) |
 | `t` | end time, ISO UTC |
 | `ref` | Stremio id (`tt0133093`, `tt1234567:1:2`), on the search-side steps `indexer_page` and `health_batch` only |
-| `title` | release title of the Source, on the prepare-side steps (`nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte`) |
+| `title` | release title of the Source, on the prepare-side steps (`play_check`, `nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte`) |
 | `job` | Backend job id on `upload`, `import_wait`, `first_byte` |
-| extras | `page` (`indexer_page`, 1 = first page); `count`, `checked`, `indexers` (`health_batch`); `result`, `parts`, `wait_ms` (`unscramble`; `wait_ms` is the part of `ms` spent waiting for its turn, #119); `includes_upload` (`import_wait` on AltMount: one request uploads and waits, so there is no `upload` line) |
+| extras | `page` (`indexer_page`, 1 = first page); `count`, `checked`, `indexers` (`health_batch`); `result`, `parts`, `wait_ms` (`unscramble`; `wait_ms` is the part of `ms` spent waiting for its turn, #119); `includes_upload` (`import_wait` on AltMount: one request uploads and waits, so there is no `upload` line); `status` (`play_check`: the health check's answer, `verified`, `verified_stored`, `blocked` or `error`; one line per Source the Play-time check checked, #190) |
 
 `brainrun.py` ties lines to a title like this: search-side lines by `ref`, for that side's visit until the next visit that used the same KaijuFlow container starts (a late `health_batch` is kept); prepare-side lines to the Source that was played (its release title appears in the played Stream's text; otherwise the work that began after the visit began), so background work of the previous title cannot land in the next one. This runs once at the end of the run (`finalize_steps`).

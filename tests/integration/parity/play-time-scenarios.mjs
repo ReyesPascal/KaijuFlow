@@ -62,6 +62,23 @@ export const playTimeScenarios = [
       assert.ok(!streams.some(s => /✅|❌|🚫/.test(s.title)), 'no Source shows a health verdict');
     },
   },
+  {
+    // Best checks the top Sources and hands AltMount the first healthy one in list order; the dead top pick
+    // (articles missing) never reaches AltMount. A second press plays the same Source without a new import.
+    id: 'best-plays-first-healthy-when-first-is-dead',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'first-dead', kind: 'dead' }, { tag: 'second-ok' }, { tag: 'third-ok' }]);
+      const streams = await w.list('movie', id);
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the first healthy Source in list order');
+      assert.equal(w.backend.submitsFor('first-dead'), 0, 'the dead Source never reaches AltMount');
+      assert.equal(w.backend.submitsFor('second-ok'), 1);
+      const again = await play(streams[0].url);
+      assertBytes(again.body, sources[1].media, 'a second press plays the same Source');
+      assert.equal(w.backend.submitsFor('second-ok'), 1, 'without a new import');
+    },
+  },
 ];
 
 /** Run every play-time scenario. Returns per-scenario results. */

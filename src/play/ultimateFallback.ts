@@ -17,8 +17,6 @@ import { config as globalConfig } from '../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-import { getLatestVersions } from '../versionFetcher.js';
-import { performHealthCheck } from '../health/healthCheckPipeline.js';
 import { NntpConnectionPool, setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk } from './streamCache.js';
@@ -27,6 +25,7 @@ import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, StreamData } from './types.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
+import { checkSource, isHealthy } from './playTimeCheck.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -242,10 +241,6 @@ export function cancelAllUltimateFallbacks(): void {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function isHealthy(result: HealthCheckResult): boolean {
-  return result.status === 'verified' || result.status === 'verified_stored' || result.status === 'verified_archive';
-}
-
 /** Limit concurrency for a batch of async tasks. */
 async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
   const results: T[] = [];
@@ -295,15 +290,12 @@ export async function ultimateFallbackFromCandidates(
   sessionPromises.set(sessionKey, deferred);
 
   const tag = `👑 Ultimate-Fallback [${sessionKey}]`;
+  // The Play-time check: every Source is checked before the Backend gets it, whatever the
+  // health-check switches say (GLOSSARY: Unchecked Source). With no enabled provider every
+  // check answers an error, so nothing is handed over and the play shows the failure video.
   const providers = (globalConfig.healthChecks?.providers ?? []).filter(p => p.enabled);
-  const userAgent = globalConfig.userAgents?.nzbDownload || getLatestVersions().chrome;
-  const healthCheckEnabled = globalConfig.ultimateFallback?.healthCheckEnabled !== false;
-  const hasProviders = healthCheckEnabled && providers.length > 0;
-  if (hasProviders) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
-  const pool = hasProviders ? new NntpConnectionPool() : undefined;
-  if (!healthCheckEnabled) {
-    console.log(`${tag} 🏥 Health checking disabled — handing candidates straight to the Backend`);
-  }
+  if (providers.length > 0) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
+  const pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
 
   try {
     // Filter out opted-out indexers
@@ -504,17 +496,11 @@ export async function ultimateFallbackFromCandidates(
     };
 
     const startHealthCheck = (cs: CandidateState) => {
-      if (!hasProviders) { cs.healthStatus = 'healthy'; return; }
       cs.healthStatus = 'checking';
-      cs.healthPromise = performHealthCheck(
-        cs.candidate.nzbUrl, providers, userAgent,
-        { archiveInspection: options.archiveInspection, sampleCount: options.sampleCount },
-        pool,
-        cs.candidate.indexerName,
-        cs.candidate.searchExitIp,
-      ).then(result => {
-        cs.healthStatus = isHealthy(result) ? 'healthy' : 'dead';
+      cs.healthPromise = checkSource(cs.candidate, pool).then(result => {
+        cs.healthStatus = isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'dead' : 'error';
         cs.containerType = result.containerType;
+        if (!isHealthy(result)) console.log(`${tag} ❌ #${cs.poolIndex + 1} not healthy (${result.message}) — ${cs.candidate.title}`);
         return { cs, result };
       }).catch(err => {
         cs.healthStatus = 'error';
@@ -530,6 +516,8 @@ export async function ultimateFallbackFromCandidates(
         // Cancel checkpoint: before HTTP starts
         if (cs.cancelled) { cs.prepareStatus = 'failed'; return null; }
 
+        // Same words as prepareStream's line: the brain tools name the played Source from it.
+        console.log(`${logPrefix}🆕 Starting new stream preparation: ${cs.candidate.title}`);
         // Steps 1-3: submit (uses cached XML from grab chain), wait for the
         // job (per-mode, per-content-type budget), find the video. Cancel
         // checkpoints between steps: the health check may fail meanwhile.
@@ -635,21 +623,18 @@ export async function ultimateFallbackFromCandidates(
       return null;
     };
 
+    // Only a Source the check found healthy is handed to the Backend, never one still being checked.
     const selectNext = (): CandidateState | null => {
       // Speed mode only for primary selection — after primary, always use priority order
       if (options.preferenceMode === 'speed' && !primaryResolved) {
-        const healthy = activePool.find(cs => cs.healthStatus === 'healthy' && cs.prepareStatus === 'idle');
-        if (healthy) return healthy;
-        return activePool.find(cs => cs.grabStatus === 'done' && cs.healthStatus !== 'dead' && cs.healthStatus !== 'error' && cs.prepareStatus === 'idle') ?? null;
+        return activePool.find(cs => cs.healthStatus === 'healthy' && cs.prepareStatus === 'idle') ?? null;
       }
-      // Priority: iterate in order — if a higher-priority candidate is still grabbing/checking, wait
+      // Priority: the first healthy Source in list order — wait while an earlier one is still grabbed or checked
       for (const cs of activePool) {
         if (cs.prepareStatus !== 'idle') continue;
         if (cs.healthStatus === 'dead' || cs.healthStatus === 'error') continue;
-        if (cs.grabStatus === 'grabbing') return null;
-        // After primary: wait for health check so containerType is available for matching
-        if (primaryResolved && cs.healthStatus !== 'healthy') return null;
-        if (cs.grabStatus === 'done') return cs;
+        if (cs.healthStatus !== 'healthy') return null;
+        return cs;
       }
       return null;
     };
@@ -659,7 +644,6 @@ export async function ultimateFallbackFromCandidates(
     // ── Event loop (continues after primary for backup pre-caching) ──
     let activePrepareCs: CandidateState | null = null;
     let preparePromise: Promise<StreamData | null> | null = null;
-    const skipContainerMatching = !hasProviders;
 
     while (!controller.signal.aborted) {
       // Backup limit checks
@@ -752,10 +736,6 @@ export async function ultimateFallbackFromCandidates(
           } else {
             console.log(`${tag} 📦 Primary videoPath has no file extension (${resolvedStreamData.videoPath}) — submitting all healthy backups without container filtering`);
           }
-          if (skipContainerMatching) {
-            const reason = !healthCheckEnabled ? 'health checking disabled' : 'no NNTP providers configured';
-            console.log(`${tag} 📦 ${reason} — skipping container matching, submitting all healthy backups`);
-          }
         } else {
           // ── Backup completion ──
           const videoPath = resolvedStreamData.videoPath;
@@ -818,7 +798,7 @@ export async function ultimateFallbackFromCandidates(
           }
 
           // Container match gate (only for backups after primary)
-          if (primaryResolved && !skipContainerMatching && requiredContainerType) {
+          if (primaryResolved && requiredContainerType) {
             evaluatedAfterPrimary++;
             if (!next.containerType) {
               // Archive inspection couldn't determine the container. Health check
