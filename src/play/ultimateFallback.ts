@@ -24,6 +24,7 @@ import type { HealthCheckResult } from '../health/types.js';
 import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk, logPrepareStart } from './streamCache.js';
 import { prefetchNzb } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
+import { sourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, StreamData } from './types.js';
 import type { UltimateFallbackConfig } from '../types.js';
@@ -53,6 +54,7 @@ interface CandidateState {
   prepareDeadWritten?: boolean; // setDeadNzbEntry already wrote a specific Backend-failure entry — don't shadow it with a generic URL-only one at end-of-pipeline
   grabFailed?: boolean;        // Grab never produced an NZB (indexer/network/VPN transient) — don't persist to dead NZB DB
   backendFailed?: boolean;     // Prepare failed for a reason that is not the Source's (Backend unreachable, ADR 0004) — don't persist to dead NZB DB
+  episodeOnlyDead?: boolean;   // Its check blocked the wanted episode of a pack of loose videos (#203): dead for this episode only
   libraryHitDeferred?: LibraryHit; // Priority mode: library hit waiting for an earlier in-flight candidate to terminate
 }
 
@@ -552,6 +554,7 @@ export async function ultimateFallbackFromCandidates(
       cs.healthPromise = checkSource({ ...cs.candidate, episodePattern: filePattern }, pool).then(result => {
         cs.healthStatus = isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'dead' : 'error';
         cs.containerType = result.containerType;
+        cs.episodeOnlyDead = result.episodeOnly === true;
         if (!isHealthy(result)) console.log(`${tag} ❌ #${cs.poolIndex + 1} not healthy (${result.message}) — ${cs.candidate.title}`);
         return { cs, result };
       }).catch(err => {
@@ -1022,7 +1025,12 @@ export async function ultimateFallbackFromCandidates(
     let deadWrites = 0;
     for (const cs of activePool) {
       if (cs.healthStatus === 'dead' && !cs.prepareDeadWritten && !cs.grabFailed && !cs.backendFailed) {
-        addDeadNzbByUrl(cs.candidate.nzbUrl, cs.candidate.title, cs.candidate.indexerName, cs.candidate.size);
+        // A pack blocked on its wanted episode is remembered for that episode only, as a prepare failure is (#203).
+        if (cs.episodeOnlyDead) {
+          setDeadNzbEntry(cs.candidate.nzbUrl, cs.candidate.title, sourceFailure('Health check: blocked', false, true), cachePattern, cs.candidate.indexerName, cs.candidate.size, cs.candidate.isSeasonPack);
+        } else {
+          addDeadNzbByUrl(cs.candidate.nzbUrl, cs.candidate.title, cs.candidate.indexerName, cs.candidate.size);
+        }
         deadWrites++;
       }
     }

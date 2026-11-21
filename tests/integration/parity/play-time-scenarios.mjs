@@ -60,6 +60,16 @@ function offerPackThenEpisode({ backend, indexer }, tag, deadEpisodes) {
   return { id: `${show}:1:2`, pack, single };
 }
 
+/**
+ * A pack blocked on its wanted episode (S01E02, `id`) is remembered dead for that episode only (#203): S01E02's list no
+ * longer offers it, S01E03's still does.
+ */
+async function assertDeadForThisEpisodeOnly(w, id, pack) {
+  const titles = async episodeId => (await w.list('series', episodeId)).filter(s => !isBest(s)).map(entryTitle);
+  assert.ok(!(await titles(id)).includes(pack.title), 'the pack is dead for the episode its check blocked');
+  assert.ok((await titles(id.replace(/:2$/, ':3'))).includes(pack.title), 'another episode\'s list still offers the pack');
+}
+
 async function play(url, range) {
   const res = await fetch(url, { headers: range ? { Range: range } : {}, signal: AbortSignal.timeout(30000) });
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
@@ -538,7 +548,8 @@ export const playTimeScenarios = [
   },
   {
     // #203: in a season pack of loose videos the check samples the wanted episode's file, not the first one.
-    // Its first episode is complete but S01E02 is gone: Best does not hand the pack to AltMount.
+    // Its first episode is complete but S01E02 is gone: Best does not hand the pack to AltMount. The pack is
+    // remembered dead for S01E02 only: S01E03's list still offers it.
     id: 'best-checks-the-wanted-episode-of-a-pack',
     async run(w) {
       const { id, pack, single } = offerPackThenEpisode(w, 'packbest', [2]);
@@ -548,6 +559,7 @@ export const playTimeScenarios = [
       assert.equal(r.status, 200);
       assertBytes(r.body, single.media, 'Best plays the next Source');
       assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose wanted episode is gone never reaches AltMount');
+      await assertDeadForThisEpisodeOnly(w, id, pack);
     },
   },
   {
@@ -565,7 +577,8 @@ export const playTimeScenarios = [
     },
   },
   {
-    // #203 from a list entry: a click on the pack checks the wanted episode's file and falls back to the next Source.
+    // #203 from a list entry: a click on the pack checks the wanted episode's file and falls back to the next Source;
+    // the pack is remembered dead for that episode only.
     id: 'list-entry-checks-the-wanted-episode-of-a-pack',
     async run(w) {
       const { id, pack, single } = offerPackThenEpisode(w, 'packpick', [2]);
@@ -574,6 +587,7 @@ export const playTimeScenarios = [
       assert.equal(r.status, 200);
       assertBytes(r.body, single.media, 'the click falls back to the next Source');
       assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose wanted episode is gone never reaches AltMount');
+      await assertDeadForThisEpisodeOnly(w, id, pack);
     },
   },
   {

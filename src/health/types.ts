@@ -18,6 +18,9 @@ export interface HealthCheckResult {
   providersUsed?: string[];
   password?: string;
   containerType?: string;    // Video container (e.g. 'MKV', 'MP4') — from NZB subjects or archive file listing
+  /** The check sampled the wanted episode's file of a pack of loose videos (#203): its verdict holds for that episode
+   *  only, so a blocked pack is remembered dead for that episode, not for the others. */
+  episodeOnly?: boolean;
 }
 
 export interface NzbFile {

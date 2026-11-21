@@ -106,9 +106,13 @@ export async function performHealthCheck(
     // since only the first part has the archive header/signature
     let fileToCheck = null;
     let fileType = '';
+    // A pack of loose videos checked on the wanted episode's file: a verdict for that episode only.
+    let episodeOnly = false;
 
     if (videoFiles.length > 0) {
-      fileToCheck = wantedVideoFile(videoFiles, options.episodePattern) ?? videoFiles[0];
+      const wanted = wantedVideoFile(videoFiles, options.episodePattern);
+      episodeOnly = wanted !== undefined && videoFiles.length > 1;
+      fileToCheck = wanted ?? videoFiles[0];
       fileType = 'video';
     } else if (archiveFiles.length > 0) {
       fileToCheck = findFirstArchivePart(archiveFiles) || archiveFiles[0];
@@ -357,6 +361,7 @@ export async function performHealthCheck(
         providersUsed: providerNames,
         password,
         containerType,
+        ...(episodeOnly ? { episodeOnly } : {}),
       };
     }
 

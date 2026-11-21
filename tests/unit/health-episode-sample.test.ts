@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { configData } from '../../src/config/index.ts';
 import { checkSource } from '../../src/play/playTimeCheck.ts';
 import { buildEpisodePattern } from '../../src/play/utils.ts';
-import { capturedNzbWithNews } from './health-nzb.ts';
+import { capturedNzbWithNews, nzbWithNews } from './health-nzb.ts';
 
 const savedHealthChecks = configData.healthChecks;
 after(() => { configData.healthChecks = savedHealthChecks; });
@@ -62,3 +62,32 @@ for (const [what, fixture, video, episodePattern] of [
     assert.equal(gone.result.status, 'blocked');
   });
 }
+
+// What a blocked verdict is remembered for (#203's review): a check that sampled the wanted episode's file of a pack
+// of loose videos speaks for that episode only, so the pack is remembered dead for that episode, not for the others.
+test('a pack blocked on its wanted episode says its verdict holds for that episode only', async () => {
+  const { result } = await check(PACK, { missing: [S02E06], episodePattern: wanted(2, 6) });
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.episodeOnly, true);
+});
+
+test('a verdict on a film, a single episode or a pack checked on its first video holds for the whole NZB', async () => {
+  for (const [fixture, missing, episodePattern] of [
+    ['film-thief-1981.nzb', 'Thief.1981.', undefined],
+    ['episode-ted-lasso-s01e01.nzb', 'Ted.Lasso.S01E01.', wanted(1, 1)],
+    [PACK, S02E01, wanted(3, 6)],
+  ] as const) {
+    const { result } = await check(fixture, { missing: [missing], episodePattern });
+    assert.equal(result.status, 'blocked', fixture);
+    assert.notEqual(result.episodeOnly, true, fixture);
+  }
+});
+
+test('a RAR season pack, sampled across its parts, is blocked for the whole NZB as before', async () => {
+  const parts = [1, 2, 3].map(n => ({ name: `Show.S01.2160p.WEB-DL-GRP.part${n}.rar`, segs: 3 }));
+  const { url, provider } = await nzbWithNews(parts, { served: false });
+  configData.healthChecks = { ...savedHealthChecks, providers: [provider] } as typeof savedHealthChecks;
+  const result = await checkSource({ nzbUrl: url, title: 'Show.S01', indexerName: 'Parity', episodePattern: wanted(1, 2) });
+  assert.equal(result.status, 'blocked', result.message);
+  assert.notEqual(result.episodeOnly, true);
+});

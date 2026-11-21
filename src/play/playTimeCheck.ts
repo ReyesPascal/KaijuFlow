@@ -74,6 +74,7 @@ export async function requireHealthySource(source: SourceToCheck, logPrefix = ''
     return;
   }
   console.log(`${logPrefix}❌ Play-time check: ${result.status} (${result.message}) — not handed to the Backend`);
-  if (result.status === 'blocked') throw sourceFailure(`Play-time check: ${result.message}`);
+  // A pack blocked on its wanted episode is dead for that episode only (#203).
+  if (result.status === 'blocked') throw sourceFailure(`Play-time check: ${result.message}`, false, result.episodeOnly === true);
   throw new Error(`Play-time check could not check the Source: ${result.message}`);
 }
