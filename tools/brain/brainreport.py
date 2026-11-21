@@ -720,6 +720,7 @@ def _settings_and_facts(meta):
         if (old.get('stand-in') or {}).get('replay wait'):
             facts['stand-in replay wait'] = old['stand-in']['replay wait']
         facts['one-page side'] = 'yes' if 'kaijuflow-1page' in old or 'kaijuflow-1page' in (meta.get('sides') or []) else 'no'
+    facts.setdefault('browse pause', pause_text(browse_pause_of(meta)))  # a run from before #205 waited none
     return settings, facts
 
 
@@ -807,6 +808,16 @@ def null_runs_between(root, since, exclude=None):
 
 JUDGED = 'kaijuflow'  # the side a run is judged on: KaijuFlow
 NO_FIGURE = 'no figure'  # the run holds no visit to make the figure from (a side or a round is not in it)
+
+
+def browse_pause_of(meta):
+    """The Browse pause of a run, in seconds (#205, rules.md "Browse pause"); a run from before #205 waited none."""
+    return meta.get('browse_pause_s') or 0
+
+
+def pause_text(x):
+    """A Browse pause as meta.json's facts and `check` print it: '5 s', '0 s'."""
+    return f'{x:g} s'
 
 
 def secs_text(x):
@@ -1091,9 +1102,10 @@ def not_recorded_section(run):
 
 # --------------------------------------------------------------------------- where the time went (#112)
 
-# The five parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
+# The six parts the wall-clock time of a run is split into: key in meta.json's timing.parts, name in the report.
 TIME_PARTS = [('measured_s', 'Measured list and start time'), ('pauses_s', 'Pauses (`--settle`)'),
-              ('failed_s', 'Failed plays'), ('resets_s', 'Resets'), ('other_s', 'Everything else')]
+              ('browse_s', 'Browse pauses'), ('failed_s', 'Failed plays'), ('resets_s', 'Resets'),
+              ('other_s', 'Everything else')]
 
 
 def visit_wall_s(v):
@@ -1104,23 +1116,36 @@ def visit_wall_s(v):
         return None
 
 
-def failed_result(v, cause):
-    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long the whole visit took."""
-    text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
+def failed_visit_s(v):
+    """The time of a top pick that did not play, as "Failed plays" counts it: its whole visit less its Browse pause (#205);
+    None without both times."""
     took = visit_wall_s(v)
-    return text if took is None else f'{text} (the whole visit took {took:.1f} s)'
+    return None if took is None else round(took - (v.get('browse_pause_s') or 0), 3)
+
+
+def failed_result(v, cause):
+    """The Result cell of a top pick that did not play: the failure kind, the cause or note, and how long its visit took
+    less its Browse pause, the time "Failed plays" adds up."""
+    text = f"{dict(CAUSES)[cause].lower()}: {visit_cause(v) or v.get('note') or ''}".strip(': ')
+    took, pause = failed_visit_s(v), v.get('browse_pause_s') or 0
+    if took is None:
+        return text
+    return f'{text} (the visit took {took:.1f} s, less its {pause_text(pause)} Browse pause)' if pause else \
+        f'{text} (the whole visit took {took:.1f} s)'
 
 
 def time_parts(run):
-    """Where the wall-clock time of a run went, in seconds, as the five TIME_PARTS. They add up to the run's total
-    (timing.seconds): four are measured (the list and start times of the top picks that played, the pauses and the resets
-    as the run timed them, the whole visits of the top picks that failed), and `other_s` is what is left of the total.
+    """Where the wall-clock time of a run went, in seconds, as the six TIME_PARTS. They add up to the run's total
+    (timing.seconds): five are measured (the list and start times of the top picks that played, the pauses and the resets
+    as the run timed them, the Browse pauses of every visit (#205), the whole visits of the top picks that failed less their
+    Browse pause), and `other_s` is what is left of the total.
     Works on a run that ended early: it takes whatever visits, rounds and resets the run holds."""
     timing = run.get('timing') or {}
     visits = run.get('visits') or []
     parts = {'measured_s': sum((v.get('list_s') or 0) + (v.get('start_s') or 0) for v in visits if v.get('ok')),
              'pauses_s': sum(r.get('pause_s') or 0 for r in timing.get('rounds') or []),
-             'failed_s': sum(visit_wall_s(v) or 0 for v in visits if not v.get('ok')),
+             'browse_s': sum(v.get('browse_pause_s') or 0 for v in visits),
+             'failed_s': sum(failed_visit_s(v) or 0 for v in visits if not v.get('ok')),
              'resets_s': sum(r.get('seconds') or 0 for r in timing.get('resets') or [])}
     parts = {k: round(x, 3) for k, x in parts.items()}
     parts['other_s'] = round((timing.get('seconds') or 0) - sum(parts.values()), 3)
@@ -1144,7 +1169,7 @@ def _time_of_day(iso_time):
 
 
 def time_section(run):
-    """The report's section on the run's wall-clock time: the whole run and each pass in one sentence, the five parts that
+    """The report's section on the run's wall-clock time: the whole run and each pass in one sentence, the six parts that
     add up to the whole run, then each round with the reset before it. Seconds are shown to one decimal, so the parts as
     printed are within a second of the total. [] for a run that holds no timing (made before #112)."""
     timing = run.get('timing') or {}
@@ -1165,8 +1190,11 @@ def time_section(run):
             'the seconds from pressing play to the first byte. The tables above are made from these.',
             f"- **Pauses (`--settle`)**: the pause after every play, {_cell(timing.get('settle_s'))} s each "
             f"({sum(r.get('plays') or 0 for r in rounds)} plays).",
+            f"- **Browse pauses**: the Browse pause between a list arriving and its play, "
+            f"{pause_text(browse_pause_of(run))} each ({sum(1 for v in visits if v.get('browse_pause_s'))} visits); "
+            "it is no part of title to video.",
             f"- **Failed plays**: the whole visit of every top pick that did not play, from asking for the list until the play "
-            f"gave up ({failed} visit{'' if failed == 1 else 's'}; each one's time is in the Result column of \"Per title\").",
+            f"gave up, less its Browse pause ({failed} visit{'' if failed == 1 else 's'}; each one's time is in the Result column of \"Per title\").",
             '- **Resets**: emptying and restarting the test copies before each cold round. The first reset of the one-page '
             'side includes the switch to one page.',
             '- **Everything else**: what is left of the whole run: the seek checks after a top pick played, reading the logs '

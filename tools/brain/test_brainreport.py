@@ -714,7 +714,7 @@ class WallClockTest(unittest.TestCase):
     def test_the_parts_are_measured_from_the_visits_rounds_and_resets_and_the_rest_is_what_is_left(self):
         self.assertEqual(self.timed_run()['timing']['parts'], {
             'measured_s': 44.0,   # list 5 s + start: KaijuFlow 4 x (5 + 2), the one-page side warm 2 x (5 + 3)
-            'pauses_s': 18.0, 'resets_s': 40.8,
+            'pauses_s': 18.0, 'browse_s': 0.0, 'resets_s': 40.8,
             'failed_s': 14.0,     # two failed visits of 7 s, start to end
             'other_s': 83.2})     # 200 - 44 - 18 - 14 - 40.8
 
@@ -728,7 +728,7 @@ class WallClockTest(unittest.TestCase):
 
     def test_the_parts_as_printed_are_within_a_second_of_the_whole_run(self):
         # every part ends on .44 s: printed to a whole second they would lose 2.2 s between them
-        run = self.timed_run(measured_s=110.44, pauses_s=18.44, failed_s=14.44, resets_s=40.44, other_s=16.44)
+        run = self.timed_run(measured_s=110.44, pauses_s=18.44, browse_s=0.0, failed_s=14.44, resets_s=40.44, other_s=16.44)
         run['timing']['seconds'] = 200.2
         rows = br.render_report(run, ['x']).split('| Part | Seconds | Minutes |\n|---|---|---|\n')[1].split('\n\n')[0].split('\n')
         seconds = [float(r.split(' | ')[1]) for r in rows]
