@@ -10,7 +10,8 @@
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke [--one-page]   (stand-in reachability check, see README)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
-indexer time for every answer unless --no-wait; the stand-in's lines say which test container asked and when, so the report
+indexer time for every answer unless --no-wait; every visit waits the fixed Browse pause between its list and
+its play, #205; the stand-in's lines say which test container asked and when, so the report
 matches them to the right side and visit) and resets the test copies with
 testbed.py before each cold round, plays the top pick of every title on every side one side at a time, reads KaijuFlow's
 [KF-STEP] lines and the Backends' import start/end from the test containers' logs, and writes a run folder, one INDEX.md
@@ -58,6 +59,7 @@ ALL_TESTBED = ['altmount-kf', 'kaijuflow']  # the test copies a record or a run 
 # every side's containers: KaijuFlow's, with the [KF-STEP] lines, and its AltMount's, whose log holds the imports
 KF_CONTAINER, ALTMOUNT_CONTAINER = br.CLIENT_CONTAINER, 'altmount-kf-test'
 GRACE_S = 5
+BROWSE_PAUSE_S = 5  # the Browse pause of every run (#205): a viewer reading the page between the list and the play
 RECORDING_FILE = 'RECORDING.json'  # next to a list's answers: {"state": "complete"|"incomplete"|"stopped", "why", "when", "errors", "misses"}
 EXIT_STOPPED, EXIT_INCOMPLETE = 2, 3  # the record command's own exit codes (0 complete, 1 setup problem or failure)
 EXIT_INTERRUPTED = 130  # run and record: stopped by Ctrl-C or SIGTERM (130 is the shell's own code for Ctrl-C)
@@ -170,9 +172,11 @@ def switch_to_one_page(io, log=print):
     io.reset(ALL_TESTBED, log)
 
 
-def visit_answer(got, tries, play=None, seek=None):
+def visit_answer(got, tries, play=None, seek=None, pause_s=0, sleep=time.sleep):
     """One visit's result from one common.get() of a side's list address (status None: the copy did not answer), then the
-    top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same."""
+    top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same.
+    A list with something to play is read for `pause_s` seconds first, the Browse pause (#205, rules.md "Browse pause"):
+    `browse_pause_s` says how long it waited; it is in neither `list_s` nor `start_s`, so title to video leaves it out."""
     play, seek = play or common.play_stream, seek or common.seek_reads
     st, h, body, t = got
     out = {'list_status': st, 'list_s': round(t.get('total', t['ready']), 2), 'note': None}
@@ -183,6 +187,9 @@ def visit_answer(got, tries, play=None, seek=None):
     if st != 200:
         out['note'] = h.get('error') or f'HTTP {st}'
     out['sources'] = len(streams)
+    out['browse_pause_s'] = pause_s if streams[:tries] and pause_s else 0
+    if out['browse_pause_s']:
+        sleep(pause_s)
     plays = [play(s) for s in streams[:tries]]
     out['tries'] = plays
     top = plays[0] if plays else None
@@ -354,9 +361,10 @@ class RealIO:
             shutil.copyfile(self.backup, os.path.join(self.cfg['test_dir'], 'config', 'config.json'))
             os.remove(self.backup)
 
-    def visit_http(self, side, kind, vid, tries):
+    def visit_http(self, side, kind, vid, tries, browse_pause_s=0):
         base = list_base(self.cfg)
-        return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries)
+        return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries,
+                            pause_s=browse_pause_s, sleep=self.sleep)
 
     def logs(self, container, since):
         if container not in self.testbed.TEST_CONTAINERS:
@@ -760,7 +768,7 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     kind, vid, label = title[:3]
     kf_c, be_c = KF_CONTAINER, ALTMOUNT_CONTAINER
     t0 = io.now()
-    http = io.visit_http(side, kind, vid, cfg['tries'])
+    http = io.visit_http(side, kind, vid, cfg['tries'], browse_pause_s=cfg['browse_pause'])
     t1 = io.now()
     since = br.iso(t0 - datetime.timedelta(seconds=1))
     lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
@@ -779,6 +787,7 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
             't_start': br.iso(t0), 't_end': br.iso(t1), 'list_status': http.get('list_status'),
             'list_s': http.get('list_s'), 'sources': http.get('sources'), 'start_s': http.get('start_s'),
             'seeks': http.get('seeks', {}), 'note': http.get('note'), 'tries': http.get('tries', []),
+            'browse_pause_s': http.get('browse_pause_s', 0),
             'steps': steps, 'imports': imports, 'limit': limit, 'played_source': played,
             'cause': '' if ok else br.failure_cause(kf_text), **({'list': title[3]} if len(title) > 3 else {})}
 
@@ -912,8 +921,8 @@ def run_all(cfg, io):
            'error': None, 'recording': cfg['listname'], 'titles': [t[2] for t in cfg['titles']], 'indexers': list(cfg['indexers']),
            'sides': run_sides(cfg), 'rounds': cfg.get('rounds', 2), 'short': short_run(cfg), 'standin_misses': 0,
            'settings': {}, 'commit': None, 'head': None, 'dirty': None, 'topup_command': cfg.get('topup_command'),
-           'started_at': started, 'addresses': {}, 'standin_unmatched': 0,
-           'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off',
+           'started_at': started, 'addresses': {}, 'standin_unmatched': 0, 'browse_pause_s': cfg['browse_pause'],
+           'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off', 'browse pause': br.pause_text(cfg['browse_pause']),
                      'one-page side': 'yes' if 'kaijuflow-1page' in run_sides(cfg) else 'no'},
            'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []},
            'lists': title_lists(cfg['titles'])}
@@ -998,7 +1007,7 @@ def write_run_ending(cfg, io, run, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
-                                    'standin_misses', 'changes', 'timing')}
+                                    'standin_misses', 'changes', 'timing', 'browse_pause_s')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
         meta['lists'] = run['lists']
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
@@ -1387,7 +1396,7 @@ def main(argv):
     cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),
                one_page=a.one_page, sides=sides, rounds=rounds, titles=titles,
-               partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle,
+               partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle, browse_pause=BROWSE_PAUSE_S,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))

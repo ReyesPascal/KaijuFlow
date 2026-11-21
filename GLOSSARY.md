@@ -104,7 +104,7 @@ The sides that are played together, title by title in turn, through every round,
 _Avoid_: batch, phase (cold or warm is the phase)
 
 **Browse pause**:
-The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video.
+The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("Browse pause").
 _Avoid_: think time, settle (the settle is the pause after a play)
 
 **Round**:
