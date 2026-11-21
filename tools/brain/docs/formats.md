@@ -48,6 +48,7 @@ The previous run's top picks are read from its folder's `raw.json`, so a run mad
   | `resets` | one entry per reset: `pass`, `phase` and `round` of the cold round it came before, `start`, `end`, `seconds`. The first reset of the one-page side is the switch to one page, which resets too |
   | `parts` | where the whole run went: `measured_s`, `pauses_s`, `browse_s`, `failed_s`, `resets_s`, `other_s` |
 
+- `meta.json` also has `start_load`, the machine's 1-minute load average as the run started, to the hundredth (none in a run from before #217; the preflight refuses a run at 1.0 or more, [rules](rules.md#settings-table-and-preflight-spec-72-ticket-74)).
 - `meta.json` also has `browse_pause_s`, the run's [Browse pause](rules.md#browse-pause-205) in seconds (none in a run from before #205), and the run-level fact `browse pause` (`5 s`). Every visit in `raw.json` has `browse_pause_s`, the seconds it waited between its list and its play (0 when its list had nothing to play).
 - The six `parts` add up to `seconds`. `measured_s` is the list time plus the start time of every top pick that played; `pauses_s` the pauses of all rounds; `browse_s` the Browse pauses of every visit; `failed_s` the whole visit (`t_start` to `t_end`) of every top pick that did not play, less its Browse pause; `resets_s` all resets; `other_s` is what is left: the seek checks after a top pick played, reading the logs after each play, starting and stopping the stand-in and the test copies.
 - `raw.json`: every visit has `t_start` and `t_end`, so its own wall-clock time is the difference.
