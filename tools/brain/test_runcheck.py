@@ -140,6 +140,23 @@ class CheckTests(unittest.TestCase):
         self.assertIn("- KaijuFlow, warm 1, Beta: HTTP 503", out)
         self.assertIn('KaijuFlow, cold 1, Alpha (', out)
 
+    def test_work_done_during_the_browse_pause_is_no_step_gap(self):
+        # #205: list 1 s, then the 5 s Browse pause, so the play begins at 6 s. Work KaijuFlow does before that (today's
+        # Auto-queue) is no part of the start: an NZB fetch inside the pause is left out, and a step that began in the pause
+        # counts only from the play on (3 s of unscramble ending at 6.1 s counts 0.1 s). Start 1.0 s = 0.1 + 0.6 + 0.3.
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+
+            def pause(raw):
+                visit_of(raw, 'kaijuflow', 'cold', 'Alpha').update(browse_pause_s=5, list_s=1.0, start_s=1.0, steps=[
+                    {'step': 'nzb_fetch', 'ms': 2000, 'ok': True, 't': '2026-01-01T00:00:04.000Z'},
+                    {'step': 'unscramble', 'ms': 3000, 'ok': True, 't': '2026-01-01T00:00:06.100Z'},
+                    {'step': 'import_wait', 'ms': 600, 'ok': True, 'includes_upload': True, 't': '2026-01-01T00:00:06.700Z'},
+                    {'step': 'first_byte', 'ms': 300, 'ok': True, 't': '2026-01-01T00:00:07.000Z'}])
+            edit(run, 'raw.json', pause)
+            _, out = run_check(run)
+        self.assertIn('Visits whose step times and measured start differ by more than 0.5 s: none.', out.splitlines())
+
     def test_side_without_import_time_is_named(self):
         with tempdir() as tmp:
             run = copy_run(tmp)
@@ -315,6 +332,26 @@ class PreviousRunTests(unittest.TestCase):
         lines = out.splitlines()
         self.assertIn('Against the previous run: not compared, no earlier run on the same recording (another).', lines)
         self.assertFalse([x for x in lines if x.startswith('Verdict against the previous run')], out)
+
+    def test_a_previous_run_with_another_browse_pause_is_not_compared_and_check_says_why(self):
+        # #205: the previous run (from before #205, so no Browse pause) against this run's 5 s pause
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            edit(run, 'meta.json', lambda m: m.update(browse_pause_s=5))
+            code, out = run_check(run)
+        lines = out.splitlines()
+        self.assertIn('Against the previous run on the same recording (l): 2026-01-01T000000Z-before: not compared, its '
+                      "Browse pause was 0 s and this run's is 5 s; a run is judged only against a run with the same pause.", lines)
+        self.assertFalse([x for x in lines if x.startswith('Verdict against the previous run') or '(was ' in x], out)
+        self.assertEqual(code, 0)  # still usable as a baseline: the next run with its pause is judged against it
+
+    def test_two_runs_with_the_same_browse_pause_are_judged(self):
+        with tempdir() as tmp:
+            run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
+            for folder in (run, os.path.join(os.path.dirname(run), '2026-01-01T000000Z-before')):
+                edit(folder, 'meta.json', lambda m: m.update(browse_pause_s=5))
+            _, out = run_check(run)
+        self.assertEqual(judged_lines(out)[3], 'Verdict against the previous run: kept.')
 
     def test_an_earlier_run_marked_never_compared_with_or_archived_is_passed_over(self):
         with tempdir() as tmp:

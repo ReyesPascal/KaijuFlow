@@ -14,9 +14,8 @@ interface UltimateFallbackOverlayProps {
   onClose: () => void;
   ultimateFallback: {
     enabled: boolean;
-    healthCheckEnabled: boolean;
     whenToResolve: 'on-results' | 'on-tile-selection';
-    userPickFallback: 'uf-lobby' | 'failure-video' | 'fallback-chain';
+    userPickFallback: 'uf-lobby' | 'fallback-chain';
     candidateCount: number;
     preferenceMode: 'priority' | 'speed';
     archiveInspection: boolean;
@@ -145,7 +144,7 @@ export function UltimateFallbackOverlay({
 
   const enabledPoolProviders = healthChecks.providers.filter(p => p.enabled && p.type === 'pool').length;
   const hasProviders = enabledPoolProviders > 0 || healthChecks.providers.some(p => p.enabled && p.type === 'backup');
-  const maxConnections = ultimateFallback.healthCheckEnabled ? ultimateFallback.candidateCount * Math.max(1, enabledPoolProviders) : 0;
+  const maxConnections = ultimateFallback.candidateCount * Math.max(1, enabledPoolProviders);
 
   const handleProvidersChange = useCallback((providers: UsenetProvider[]) => {
     setHealthChecks(prev => ({ ...prev, providers }));
@@ -315,7 +314,7 @@ export function UltimateFallbackOverlay({
           )}
 
           {/* Empty providers warning */}
-          {ultimateFallback.enabled && ultimateFallback.healthCheckEnabled && !hasProviders && (
+          {ultimateFallback.enabled && !hasProviders && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
               <p className="text-xs text-amber-400">
                 Configure at least one Usenet provider in Health Checks to use Ultimate Fallback.
@@ -358,19 +357,6 @@ export function UltimateFallbackOverlay({
           {/* Fallback Behavior on Individual Stream Failure */}
           <div className={clsx("bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-3 transition-opacity", !ultimateFallback.enabled && "opacity-40 pointer-events-none")}>
             <div className="text-sm font-medium text-slate-300">Fallback Behavior on Individual Stream Failure</div>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="radio"
-                name="userPickFallback"
-                checked={ultimateFallback.userPickFallback === 'failure-video'}
-                onChange={() => update('userPickFallback', 'failure-video')}
-                className="mt-1 accent-amber-400"
-              />
-              <div>
-                <div className="text-sm text-slate-200 font-medium">Show Failure Video</div>
-                <p className="text-xs text-slate-500">Skip Fallback and show the "Stream Unavailable" video.</p>
-              </div>
-            </label>
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="radio"
@@ -719,33 +705,14 @@ export function UltimateFallbackOverlay({
             </div>
           </div>
 
-          {/* Health Checking — toggle, provider config, sample count, archive inspection */}
+          {/* Health Checking — provider config, sample count, archive inspection (always on: the Play-time check, #190) */}
           <div className={clsx("bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-4 transition-opacity", !ultimateFallback.enabled && "opacity-40 pointer-events-none")}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <div className="text-sm font-medium text-slate-300">Health Checking</div>
-                <ul className="text-xs text-slate-500 mt-0.5 list-disc list-inside space-y-1">
-                  <li>Enabling verifies every candidate in parallel before and during the hand-off to the Backend, sampling articles to confirm the NZB is alive and detecting its container format up front. Evicting a Backend job if necessary and cleansing the submission pipeline at the same time.</li>
-                  <li>Disable to skip this parallel phase, Ultimate Fallback will hand candidates straight to the Backend and detect each container after extraction.</li>
-                </ul>
-              </div>
-              <button
-                aria-label="Enable Health Checking"
-                aria-pressed={ultimateFallback.healthCheckEnabled}
-                onClick={() => update('healthCheckEnabled', !ultimateFallback.healthCheckEnabled)}
-                className={clsx(
-                  "relative w-10 h-6 rounded-full transition-colors flex-shrink-0",
-                  ultimateFallback.healthCheckEnabled ? "bg-amber-500" : "bg-slate-600"
-                )}
-              >
-                <div className={clsx(
-                  "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
-                  ultimateFallback.healthCheckEnabled ? "left-5" : "left-1"
-                )} />
-              </button>
+            <div>
+              <div className="text-sm font-medium text-slate-300">Health Checking</div>
+              <p className="text-xs text-slate-500 mt-0.5">Always on: every Source is checked right before it is handed to the Backend, sampling articles to confirm the NZB is alive and detecting its container format up front. A Source no check found healthy is never handed over.</p>
             </div>
 
-            <div className={clsx("space-y-4 transition-opacity", !ultimateFallback.healthCheckEnabled && "opacity-40 pointer-events-none")}>
+            <div className="space-y-4">
               {/* Usenet Providers (shared with Health Checks) */}
               <ProviderManager
                 providers={healthChecks.providers}
@@ -786,14 +753,12 @@ export function UltimateFallbackOverlay({
                     best when detecting each candidate's format up front.
                   </p>
                 </div>
-                {ultimateFallback.healthCheckEnabled && (
-                  <span
-                    className="text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1 flex-shrink-0"
-                    aria-label="Always on"
-                  >
-                    Always On
-                  </span>
-                )}
+                <span
+                  className="text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1 flex-shrink-0"
+                  aria-label="Always on"
+                >
+                  Always On
+                </span>
               </div>
             </div>
           </div>

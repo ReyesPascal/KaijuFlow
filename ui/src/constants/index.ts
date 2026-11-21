@@ -173,10 +173,9 @@ export const DEFAULT_CARD_ORDER = ['streaming', 'indexManager', 'proxy', 'zyclop
 
 export const DEFAULT_ULTIMATE_FALLBACK = {
   enabled: false,
-  healthCheckEnabled: false,
   whenToResolve: 'on-tile-selection' as 'on-results' | 'on-tile-selection',
   // Keep in sync with src/config/accessors.ts (Play-time check defaults, #190).
-  userPickFallback: 'fallback-chain' as 'uf-lobby' | 'failure-video' | 'fallback-chain',
+  userPickFallback: 'fallback-chain' as 'uf-lobby' | 'fallback-chain',
   candidateCount: 3,
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
@@ -197,9 +196,8 @@ export const DEFAULT_ULTIMATE_FALLBACK = {
 // Preset profiles for the UF overlay's Presets card. Spread over current state
 // so `enabled` and `healthCheckIndexers` are preserved across preset clicks.
 export const UF_PRESET_CLASSIC = {
-  healthCheckEnabled: false,
   whenToResolve: 'on-tile-selection' as 'on-results' | 'on-tile-selection',
-  userPickFallback: 'failure-video' as 'uf-lobby' | 'failure-video' | 'fallback-chain',
+  userPickFallback: 'fallback-chain' as 'uf-lobby' | 'fallback-chain',
   candidateCount: 1,
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
@@ -216,9 +214,8 @@ export const UF_PRESET_CLASSIC = {
 };
 
 export const UF_PRESET_LITE = {
-  healthCheckEnabled: true,
   whenToResolve: 'on-results' as 'on-results' | 'on-tile-selection',
-  userPickFallback: 'failure-video' as 'uf-lobby' | 'failure-video' | 'fallback-chain',
+  userPickFallback: 'fallback-chain' as 'uf-lobby' | 'fallback-chain',
   candidateCount: 2,
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
@@ -235,9 +232,8 @@ export const UF_PRESET_LITE = {
 };
 
 export const UF_PRESET_ENHANCED = {
-  healthCheckEnabled: true,
   whenToResolve: 'on-results' as 'on-results' | 'on-tile-selection',
-  userPickFallback: 'failure-video' as 'uf-lobby' | 'failure-video' | 'fallback-chain',
+  userPickFallback: 'fallback-chain' as 'uf-lobby' | 'fallback-chain',
   candidateCount: 3,
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,

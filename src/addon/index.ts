@@ -25,7 +25,7 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, ultimateFallbackOptions, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
@@ -328,8 +328,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
         const ur = config.ultimateFallback;
         ultimateFallbackFromCandidates(
-          sessionKey, fallbackCandidates,
-          { candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, archiveInspection: ur.archiveInspection, sampleCount: ur.sampleCount, maxAttempts: ur.maxAttempts, desiredBackups: ur.desiredBackups, backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds, priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds, speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds, speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers },
+          sessionKey, fallbackCandidates, ultimateFallbackOptions(ur),
           cachePattern, filePattern, type, episodesInSeason,
         ).catch(err => console.error('❌ Ultimate-Fallback error:', err));
         return;

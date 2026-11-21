@@ -50,8 +50,10 @@ export function createPlayStreamRoutes(deps: PlayDeps): Router {
   const router = Router({ mergeParams: true });
   const { config, handleStream, getLatestVersions } = deps;
 
-  // Throttle the /stream entry log to first-hit-per-(kind,filename) per 60 s —
-  // Range probes and seek bursts otherwise spam the log during active playback.
+  // Throttle the /stream entry log to the first hit per entry (its address and `t` payload) per 15 s:
+  // Range probes and seek bursts otherwise spam the log during active playback. The payload is part of
+  // the key because every Best press goes to /stream/ultimate-fallback, and each list's Best entry has its
+  // own payload: the brain tools find a visit's played Source after this line (brainreport.played_source, #190).
   const loggedStreamHits = new Set<string>();
   const STREAM_HIT_LOG_TTL_MS = 15_000;
 
@@ -63,7 +65,7 @@ export function createPlayStreamRoutes(deps: PlayDeps): Router {
     const kind = req.params.filename === 'ultimate-fallback' ? 'UF'
       : req.query.t ? 'user_pick'
       : 'other';
-    const hitKey = `${kind}::${req.params.filename ?? '-'}`;
+    const hitKey = `${kind}::${req.params.filename ?? '-'}::${typeof req.query.t === 'string' ? req.query.t : ''}`;
     if (!loggedStreamHits.has(hitKey)) {
       loggedStreamHits.add(hitKey);
       setTimeout(() => loggedStreamHits.delete(hitKey), STREAM_HIT_LOG_TTL_MS);

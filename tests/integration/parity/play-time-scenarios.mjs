@@ -1,7 +1,7 @@
 // Play-time check scenarios (#190, spec #183; GLOSSARY: Play-time check, Best entry, Unchecked Source).
 // Each scenario asks for a title's stream list through the fake indexer, then plays an entry of it,
 // and asserts only on what the player receives, what the fake news server was asked and what
-// reached the fake AltMount.
+// reached the fake AltMount; one scenario asserts on the log lines the brain tools read.
 import assert from 'node:assert/strict';
 import { assertBytes } from './bytes.mjs';
 
@@ -48,19 +48,34 @@ async function play(url, range) {
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
-/** Run fn and collect what KaijuFlow logs meanwhile (its console.log lines). */
-async function withLogs(fn) {
-  const lines = [];
-  const saved = console.log;
-  console.log = (...a) => { lines.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); };
-  try { return { result: await fn(), lines }; } finally { console.log = saved; }
-}
-
 /** The failure video is a long video/mp4, much bigger than the synthetic media. */
 function assertFailureVideo(r) {
   assert.equal(r.status, 200);
   assert.equal(r.headers.get('content-type'), 'video/mp4', 'player should get the failure video');
   assert.ok(r.body.length > 10_000, 'failure video is not Backend media');
+}
+
+/** Run fn with these Ultimate Fallback settings on top of the suite's, then put the suite's back. */
+async function withSettings(w, patch, fn) {
+  const saved = w.configData.ultimateFallback;
+  w.configData.ultimateFallback = { ...saved, ...patch };
+  try { return await fn(); } finally { w.configData.ultimateFallback = saved; }
+}
+
+/** Per Source tag, when the fake news server was first asked for one of its articles and when it last answered. */
+function checkTimes(news, tags) {
+  return tags.map(tag => {
+    const mine = news.state.asks.filter(a => a.id.startsWith(`${tag}-`));
+    return { tag, from: Math.min(...mine.map(a => a.asked)), to: Math.max(...mine.map(a => a.answered ?? Infinity)) };
+  });
+}
+
+/** The most Sources whose checks were under way at one time. */
+function mostAtOnce(times) {
+  const edges = times.flatMap(t => [[t.from, 1], [t.to, -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let now = 0, most = 0;
+  for (const [, d] of edges) { now += d; most = Math.max(most, now); }
+  return most;
 }
 
 const isBest = s => s.name.includes('KaijuFlow ▶ Best');
@@ -81,6 +96,32 @@ export const playTimeScenarios = [
       assert.equal(w.news.state.stats.length + w.news.state.reads.length, asked, 'no article is checked before the list goes out');
       assert.equal(w.backend.submitted.length, 0, 'nothing reaches AltMount before a play');
       assert.ok(!streams.some(s => /✅|❌|🚫/.test(s.title)), 'no Source shows a health verdict');
+    },
+  },
+  {
+    // The brain tools read a Best press from KaijuFlow's log (tools/brain/docs/formats.md): one play_check line per
+    // Source Best checked, the dead one too, and the played Source's name on the first prepare line after the
+    // press's '/stream hit' line. Best's backups are prepared after it. A scrubbed capture of these lines is
+    // tools/brain/fixtures/2026-11-21-best/, which the brain tests read.
+    id: 'best-press-log-lines-the-brain-tools-read',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'log-dead', kind: 'dead' }, { tag: 'log-ok' }, { tag: 'log-backup' }]);
+      const streams = await w.list('movie', id);
+      const lines = [];
+      const saved = console.log;
+      console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
+      let r;
+      try { r = await play(streams[0].url); } finally { console.log = saved; }
+      assertBytes(r.body, sources[1].media, 'Best plays the first healthy Source');
+      const steps = lines.filter(l => l.includes('[KF-STEP] ')).map(l => JSON.parse(l.split('[KF-STEP] ')[1]));
+      const check = tag => steps.filter(s => s.step === 'play_check' && s.title === sources.find(x => x.tag === tag).title);
+      assert.deepEqual(check('log-dead').map(s => [s.ok, s.status]), [[false, 'blocked']], 'the dead Source\'s check is one line');
+      assert.deepEqual(check('log-ok').map(s => [s.ok, s.status]), [[true, 'verified']], 'the played Source\'s check is one line');
+      const hit = lines.findIndex(l => l.includes('/stream hit'));
+      assert.ok(hit >= 0, 'the press writes its /stream hit line');
+      const prepared = lines.slice(hit).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.equal(prepared[0], sources[1].title, 'the first prepare line after the press names the played Source');
+      assert.ok(!prepared.includes(sources[0].title), 'the dead Source is never prepared');
     },
   },
   {
@@ -118,6 +159,54 @@ export const playTimeScenarios = [
     },
   },
   {
+    // Best hands AltMount the first healthy Source in list order, whatever the preference mode says: a later
+    // Source whose check finishes first waits for the earlier one (owner, 2026-11-20).
+    id: 'best-plays-the-earlier-healthy-source-when-a-later-check-finishes-first',
+    async run(w) {
+      await withSettings(w, { preferenceMode: 'speed' }, async () => {
+        const { id, sources } = offerMovie(w, [{ tag: 'order-slow' }, { tag: 'order-fast' }]);
+        w.news.slow('order-slow-', 800);
+        try {
+          const before = w.backend.submitted.length;
+          const streams = await w.list('movie', id);
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          const [slow, fast] = checkTimes(w.news, ['order-slow', 'order-fast']);
+          assert.ok(fast.to < slow.to, 'the later Source\'s check finished first');
+          assertBytes(r.body, sources[0].media, 'Best plays the earlier healthy Source');
+          assert.equal(w.backend.submitted[before], 'order-slow', 'the earlier Source is the first AltMount gets');
+        } finally {
+          w.news.slow('order-slow-', 0);
+        }
+      });
+    },
+  },
+  {
+    // Best checks 3 Sources at a time, from the top down, until one is healthy or the list runs out, whatever
+    // the attempts cap says (owner, 2026-11-20); 3 is candidateCount's default.
+    id: 'best-checks-3-at-a-time-with-no-cap',
+    async run(w) {
+      await withSettings(w, { maxAttempts: 2 }, async () => {
+        const tags = [...Array(7).keys()].map(i => `cap-dead-${i + 1}`).concat(['cap-ok-8']);
+        const { id, sources } = offerMovie(w, tags.map(tag => ({ tag, kind: tag === 'cap-ok-8' ? 'healthy' : 'dead' })));
+        w.news.slow('cap-', 150);
+        try {
+          const streams = await w.list('movie', id);
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, sources[7].media, 'Best plays the 8th Source: no cap');
+          const times = checkTimes(w.news, tags);
+          assert.equal(mostAtOnce(times), 3, `3 Sources are checked at a time (${JSON.stringify(times)})`);
+          const [a, b, c] = times;
+          assert.ok(Math.max(a.from, b.from, c.from) < Math.min(a.to, b.to, c.to), 'the first 3 are checked together');
+          assert.ok(times.slice(3).every(t => t.from >= Math.min(a.to, b.to, c.to)), 'the 4th starts once one of the first 3 is done');
+        } finally {
+          w.news.slow('cap-', 0);
+        }
+      });
+    },
+  },
+  {
     // A list entry is checked when it is clicked: a healthy one plays after its articles are checked; a dead one
     // never reaches AltMount and the play falls back to the next Source of the list.
     id: 'list-entry-is-checked-on-click',
@@ -144,11 +233,11 @@ export const playTimeScenarios = [
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'rule-rar4', kind: 'scrambled-rar4' }, { tag: 'rule-iso', kind: 'disc-image' }, { tag: 'rule-ok' }]);
       const streams = await w.list('movie', id);
-      const { result: r, lines } = await withLogs(() => play(streams[0].url));
+      const r = await play(streams[0].url);
       assert.equal(r.status, 200);
       assertBytes(r.body, sources[2].media, 'Best plays the Source the pass rule lets through');
-      assert.ok(lines.some(l => l.includes('Blocked: RAR4 archive')), 'the RAR4 set is blocked by the pass rule');
-      assert.ok(lines.some(l => l.includes('Blocked: disc image')), 'the disc image is blocked by the pass rule');
+      const asked = tag => w.news.state.reads.concat(w.news.state.stats).filter(x => x.startsWith(`${tag}-`)).length;
+      assert.ok(asked('rule-rar4') > 0, 'the RAR4 set was checked at play time');
       assert.equal(w.backend.submitsFor('rule-rar4'), 0, 'the Scrambled RAR4 set never reaches AltMount');
       assert.equal(w.backend.submitsFor('rule-iso'), 0, 'the disc image never reaches AltMount');
       const pick = await play(streams[1].url);
@@ -242,6 +331,52 @@ export const playTimeScenarios = [
     },
   },
   {
+    // A clicked list entry whose check cannot answer (the indexer does not hand out the NZB): the failure video,
+    // nothing reaches AltMount, and the Source is not dead, so it plays once the indexer answers (ADR 0004).
+    id: 'list-entry-check-that-cannot-answer-is-not-dead',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'unanswered-a' }, { tag: 'unanswered-b' }]);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      w.backend.setIndexerDown(503);
+      try {
+        assertFailureVideo(await play(streams[1].url));
+      } finally {
+        w.backend.setIndexerDown(0);
+      }
+      assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
+      const again = await w.list('movie', id);
+      const entry = again.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+      assert.ok(entry, 'the Source is still offered');
+      const r = await play(entry.url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[0].media, 'it plays once the indexer answers');
+    },
+  },
+  {
+    // No enabled health-check provider: nothing can be checked, so nothing is handed to AltMount, from Best or
+    // from a list entry, and no Source is dead: once a provider is back, Best plays the first.
+    id: 'no-health-check-provider-nothing-is-handed-over',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'noprov-a' }, { tag: 'noprov-b' }]);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      const saved = w.configData.healthChecks;
+      w.configData.healthChecks = { ...saved, providers: saved.providers.map(p => ({ ...p, enabled: false })) };
+      try {
+        assertFailureVideo(await play(streams[0].url));
+        assertFailureVideo(await play(streams[1].url));
+      } finally {
+        w.configData.healthChecks = saved;
+      }
+      assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
+      const again = await w.list('movie', id);
+      const r = await play(again[0].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[0].media, 'Best plays the first Source once a provider is back');
+    },
+  },
+  {
     // No Healthy Source left: the play shows the failure video and nothing reaches AltMount.
     id: 'best-shows-the-failure-video-when-no-source-is-healthy',
     async run(w) {
@@ -268,5 +403,3 @@ export async function runPlayTimeParity(w) {
   }
   return results;
 }
-
-export { play, assertFailureVideo, assertBytes };

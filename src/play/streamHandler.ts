@@ -15,7 +15,7 @@ import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } f
 import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
-import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
+import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -325,16 +325,6 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
   return `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (pattern ? `:${pattern}` : '');
 }
 
-/**
- * What a failed list entry does: the userPickFallback setting, except that a failure always
- * falls back (#190; the Play-time check is always on since #191), so an old config's
- * 'failure-video' walks on down the list.
- */
-function userPickFallbackMode(): 'uf-lobby' | 'fallback-chain' {
-  const mode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
-  return mode === 'failure-video' ? 'fallback-chain' : mode;
-}
-
 /** Delivery method for the first response of a Stream: the streaming-method setting. */
 function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
   return globalConfig.playDeliveryMethod ?? 'proxy';
@@ -601,8 +591,7 @@ export async function handleStream(
         // Group envelope does not carry aired, so file pattern matches cache pattern here.
         const onTileFilePattern = onTileCachePattern;
         ultimateFallbackFromCandidates(
-          sessionKey, group.candidates,
-          { candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, archiveInspection: ur.archiveInspection, sampleCount: ur.sampleCount, maxAttempts: ur.maxAttempts, desiredBackups: ur.desiredBackups, backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds, priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds, speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds, speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers },
+          sessionKey, group.candidates, ultimateFallbackOptions(ur),
           onTileCachePattern, onTileFilePattern, group.type, group.episodesInSeason,
         ).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
       }
@@ -781,11 +770,12 @@ export async function handleStream(
   // resume sequential from after the last vetted URL.
   const ufLobbyAvailable = isUltimateFallbackActive();
   const sessionBackups = sessionKey ? getSessionBackups(sessionKey) : null;
+  // What a failed list entry does: walk on down the list (the default, #190) or fall into the Best entry.
+  const userPickMode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
   if (userPick && redirectCount === 0) {
-    console.log(`🎯 User-pick attempt: userPickFallback=${userPickFallbackMode()}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
+    console.log(`🎯 User-pick attempt: userPickFallback=${userPickMode}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
   }
   const candidateOrder: number[] = [];
-  const userPickMode = userPickFallbackMode();
   if (userPick && ufLobbyAvailable && userPickMode !== 'fallback-chain') {
     candidateOrder.push(candidateStart);
   } else if (userPick && userPickMode === 'fallback-chain') {
@@ -1023,7 +1013,7 @@ export async function handleStream(
         userPick
         && sessionKey
         && isUltimateFallbackActive()
-        && userPickFallbackMode() === 'uf-lobby'
+        && userPickMode === 'uf-lobby'
         && redirectCount < MAX_SELF_REDIRECTS
         && !res.headersSent
       ) {
@@ -1049,7 +1039,7 @@ export async function handleStream(
     userPick
     && sessionKey
     && isUltimateFallbackActive()
-    && userPickFallbackMode() === 'uf-lobby'
+    && userPickMode === 'uf-lobby'
     && redirectCount < MAX_SELF_REDIRECTS
     && !res.headersSent
   ) {

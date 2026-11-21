@@ -104,7 +104,7 @@ The sides that are played together, title by title in turn, through every round,
 _Avoid_: batch, phase (cold or warm is the phase)
 
 **Browse pause**:
-The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video.
+The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("Browse pause").
 _Avoid_: think time, settle (the settle is the pause after a play)
 
 **Round**:
@@ -112,11 +112,11 @@ Every title played once, cold or warm, on every side of a pass. A timed run play
 _Avoid_: iteration, lap
 
 **Top pick**:
-The first Source in a side's list for a title, the one a round plays. Two top picks are the same Source when their sizes match. Video that arrives only after the top pick's own import failed is a **fallback**: counted as played, with its extra seconds in its title to video.
+The first Source in a side's list for a title. Two top picks are the same Source when their sizes match. A round plays the first entry of a side's list: the top pick, or on KaijuFlow's list (since #190) the Best entry above it, which plays the first Healthy Source. Video that arrives only after an import failed (the played entry's own, or with Best a checked Source that AltMount refused) is a **fallback**: counted as played, with its extra seconds in its title to video. A Source Best skips because its check failed costs no import, so it is no fallback.
 _Avoid_: first result, winner
 
 **Fail**:
-A play whose top pick gives no video: the viewer presses it and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
+A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Previous run**:
@@ -142,6 +142,10 @@ _Avoid_: baseline, benchmark
 **Tuning test**:
 A timed run that plays a title list again, so a change to KaijuFlow or its AltMount can be judged against the run before it on the same titles.
 _Avoid_: speed test (when the titles are reused), rerun
+
+**Grouped run**:
+A tuning test that carries several changes at once and is judged as one against the previous run. When it is not kept, its changes are split in halves, each half run on its own, until the change that made it not kept shows.
+_Avoid_: batch run, combined test
 
 **Target**:
 A goal the Speed Check page holds KaijuFlow to, most of them against another setup: met, not met, or not measured when the run holds no figure for it; a time target is "inside the noise" when KaijuFlow's own two rounds of that kind differ by more than the target is met or missed by. A run itself is judged against the previous run, not on targets.
