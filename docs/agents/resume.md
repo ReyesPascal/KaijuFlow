@@ -16,4 +16,6 @@ A few lines, status first:
 - Where work left off, from the handoff note.
 - The next step: the frontier's tickets in its order, telling `ready-for-agent` (an agent can build it) from `ready-for-human` (needs the owner), plus any frontier warning.
 
+- **What to type next**, last, in a code block the owner can copy: the handoff note's "Next command" section, as written. It is there when the next step is a command only the owner can start (a skill hidden from agents, such as `/mattpocock-skills:implement-spec`, or a `! ` command). When the section is empty or missing, say what to type for the first frontier ticket, or leave the line out if nothing waits on the owner.
+
 Then start on the task the user gave; without one, stop after the report.
