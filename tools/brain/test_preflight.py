@@ -27,9 +27,10 @@ class FakeWorld(brainrun.RealIO):
     about any other commit it has no answer, as git has none for a commit the repository does not have.
     """
 
-    def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None):
+    def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3):
         super().__init__(cfg)
         self.label, self.head, self.dirty, self.free, self.changed = label, head, dirty, free, dict(changed or {})
+        self.load = load
         self.repo = None  # no real repository behind this world
         self.rebuilt = []
 
@@ -48,6 +49,9 @@ class FakeWorld(brainrun.RealIO):
 
     def port_free(self, port):
         return self.free
+
+    def load_average(self):
+        return self.load
 
 
 class RepoWorld(FakeWorld):
@@ -154,6 +158,20 @@ class PreflightTest(unittest.TestCase):
             self.assertEqual(code, 0, text)
             self.assertIn('Setup is right', text)
             self.assertIn('connection caps, sort and filter settings and port all check out', text)
+
+    def test_a_busy_machine_stops_a_run(self):
+        record(self.cfg)
+        for load in (1.0, 2.37):
+            self.assert_stops('run', self.world(load=load), f'load average is {load:.2f}', '1.00', 'idle')
+
+    def test_a_machine_just_under_the_load_limit_passes_a_run(self):
+        record(self.cfg)
+        code, text = run_command('run', self.cfg, self.world(load=0.99))
+        self.assertEqual(code, 0, text)
+
+    def test_the_load_is_not_checked_for_a_record(self):
+        code, text = run_command('record', self.cfg, self.world(load=3.0))
+        self.assertEqual(code, 0, text)
 
     def test_image_from_an_earlier_commit_stops_when_a_build_input_changed_since(self):
         self.assert_stops('record', self.world(label=OLDER, changed={OLDER: True}),

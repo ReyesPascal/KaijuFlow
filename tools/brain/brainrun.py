@@ -269,6 +269,9 @@ class RealIO:
     def recording_state(self):
         return _read_json(os.path.join(self.cfg['store'], self.cfg['listname'], RECORDING_FILE))
 
+    def load_average(self):
+        return os.getloadavg()[0]
+
     def port_free(self, port):
         with socket.socket() as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -452,6 +455,10 @@ BUILD_INPUTS = ('Dockerfile', '.dockerignore', '.gitattributes', 'package.json',
                 'src', 'ui', 'scripts/docker-entrypoint.sh')
 # The settings every test copy is expected to have (sort and filter rules); the preflight compares each copy with it (#109).
 EXPECTED_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
+
+
+# A timed run starts only on an idle machine (#217): a busy one made the #205 re-run's cold lists 30-70% slower.
+BUSY_LOAD = 1.0  # the 1-minute load average at or above which the machine is busy
 
 
 class PreflightFailed(Exception):
@@ -714,7 +721,14 @@ def preflight(mode, cfg, io):
     if not io.port_free(port):
         problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (an earlier indexer stand-in?) and try again.")
 
-    # 7. (run only) the recording exists and holds an answer for every enabled indexer
+    # 7. (run only) the machine is idle (#217)
+    if mode == 'run':
+        load = io.load_average()
+        if load >= BUSY_LOAD:
+            problems.append(f'The machine is busy: its 1-minute load average is {load:.2f}, at or above {BUSY_LOAD:.2f}, which slows a timed '
+                            'run: stop what keeps it busy (other agents, test suites, builds) and wait until it is idle.')
+
+    # 8. (run only) the recording exists and holds an answer for every enabled indexer
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})
