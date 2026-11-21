@@ -40,7 +40,7 @@ def _visit_name(v):
 
 def _from_the_play(v):
     """The visit with its steps and imports cut to what ran after its play began, its list and its Browse pause over: work
-    KaijuFlow does before the play (today's Auto-queue, during the pause, #205) is no part of the start. A step that began
+    KaijuFlow does before the play (the Head start, #206, during the pause, #205) is no part of the start. A step that began
     before counts from the play on. A step or import without its end time is kept whole."""
     try:
         play_at = br.parse_ts(v['t_start']).timestamp() + v['list_s'] + (v.get('browse_pause_s') or 0)
