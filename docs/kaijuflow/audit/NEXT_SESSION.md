@@ -13,6 +13,8 @@ What the owner types next (the `/kf` report ends with it, `docs/agents/resume.md
 
     /mattpocock-skills:implement-spec #183
 
+**First, before phase 1: the voice test** (owner, 2026-11-20: "save the voices to test next session when i start with kf"). The run's owner alert (`~/.local/bin/kf-alert`, spec #183) speaks with a Piper voice; the owner has not picked one. Play the three, one at a time, each waiting for the owner to close its notification (X) before the next: `KF_VOICE=<voice> ~/.local/bin/kf-alert "voice one"` (then two, three) with `en_GB-jenny_dioco-medium` (now the default), `en_US-amy-medium`, `en_US-hfc_female-medium`. Ask which they want, set it as the default `voice=` in `~/.local/bin/kf-alert`, clear this paragraph, then give the command above.
+
 Phase 1 of spec #183's "Building it": builds #217, #190, and the six tuning tickets into `tuning-183`; merges #217's PR and PR #210 itself once ready and green. After it reports phase 1 done: `/kf phase 2 of #183` (runs, idle machine).
 
 ## The machine
