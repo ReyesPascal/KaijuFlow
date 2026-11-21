@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+<file poster="poster@example.invalid" date="1731548239" subject="[1/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.par2&quot; yEnc  48624 (1/1)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="50243" number="1">f1-1@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548239" subject="[3/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.vol001+002.par2&quot; yEnc  33021560 (1/47)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739639" number="1">f2-1@fixture</segment>
+  <segment bytes="739656" number="2">f2-2@fixture</segment>
+  <segment bytes="739623" number="24">f2-24@fixture</segment>
+  <segment bytes="739846" number="46">f2-46@fixture</segment>
+  <segment bytes="50426" number="47">f2-47@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548239" subject="[2/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.vol000+001.par2&quot; yEnc  16535092 (1/24)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739683" number="1">f3-1@fixture</segment>
+  <segment bytes="739724" number="2">f3-2@fixture</segment>
+  <segment bytes="739612" number="13">f3-13@fixture</segment>
+  <segment bytes="739653" number="23">f3-23@fixture</segment>
+  <segment bytes="50332" number="24">f3-24@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548239" subject="[4/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.vol003+004.par2&quot; yEnc  66043000 (1/93)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739678" number="1">f4-1@fixture</segment>
+  <segment bytes="739583" number="2">f4-2@fixture</segment>
+  <segment bytes="739524" number="47">f4-47@fixture</segment>
+  <segment bytes="739692" number="92">f4-92@fixture</segment>
+  <segment bytes="100639" number="93">f4-93@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548240" subject="[5/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.vol007+008.par2&quot; yEnc  132037376 (1/185)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739588" number="1">f5-1@fixture</segment>
+  <segment bytes="739702" number="2">f5-2@fixture</segment>
+  <segment bytes="739555" number="93">f5-93@fixture</segment>
+  <segment bytes="739897" number="184">f5-184@fixture</segment>
+  <segment bytes="150990" number="185">f5-185@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548240" subject="[6/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.vol015+016.par2&quot; yEnc  263977624 (1/369)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739607" number="1">f6-1@fixture</segment>
+  <segment bytes="739775" number="2">f6-2@fixture</segment>
+  <segment bytes="739672" number="185">f6-185@fixture</segment>
+  <segment bytes="739689" number="368">f6-368@fixture</segment>
+  <segment bytes="201582" number="369">f6-369@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548241" subject="[7/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.vol031+032.par2&quot; yEnc  527809616 (1/737)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739517" number="1">f7-1@fixture</segment>
+  <segment bytes="739645" number="2">f7-2@fixture</segment>
+  <segment bytes="739496" number="369">f7-369@fixture</segment>
+  <segment bytes="739645" number="736">f7-736@fixture</segment>
+  <segment bytes="252642" number="737">f7-737@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548244" subject="[8/8] - &quot;3Jj23nqUNC11ZEWdsRbIQjqwIikRjswX.vol063+037.par2&quot; yEnc  610241956 (1/852)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739683" number="1">f8-1@fixture</segment>
+  <segment bytes="739515" number="2">f8-2@fixture</segment>
+  <segment bytes="739703" number="427">f8-427@fixture</segment>
+  <segment bytes="739708" number="851">f8-851@fixture</segment>
+  <segment bytes="253051" number="852">f8-852@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548246" subject="[1/1] - &quot;The.Twilight.Zone.S02E01.King.Nine.Will.Not.Return.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1250273466 (1/1745)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739436" number="1">f9-1@fixture</segment>
+  <segment bytes="739530" number="2">f9-2@fixture</segment>
+  <segment bytes="739759" number="873">f9-873@fixture</segment>
+  <segment bytes="739596" number="1744">f9-1744@fixture</segment>
+  <segment bytes="179684" number="1745">f9-1745@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548251" subject="[1/1] - &quot;The.Twilight.Zone.S02E02.The.Man.in.the.Bottle.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  878415818 (1/1226)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="740014" number="1">f10-1@fixture</segment>
+  <segment bytes="739889" number="2">f10-2@fixture</segment>
+  <segment bytes="739759" number="614">f10-614@fixture</segment>
+  <segment bytes="739903" number="1225">f10-1225@fixture</segment>
+  <segment bytes="347401" number="1226">f10-1226@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548255" subject="[1/1] - &quot;The.Twilight.Zone.S02E03.Nervous.Man.in.a.Four.Dollar.Room.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  922351390 (1/1287)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739401" number="1">f11-1@fixture</segment>
+  <segment bytes="739737" number="2">f11-2@fixture</segment>
+  <segment bytes="739787" number="644">f11-644@fixture</segment>
+  <segment bytes="739546" number="1286">f11-1286@fixture</segment>
+  <segment bytes="563812" number="1287">f11-1287@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548258" subject="[1/1] - &quot;The.Twilight.Zone.S02E04.A.Thing.About.Machines.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  905437996 (1/1264)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739281" number="1">f12-1@fixture</segment>
+  <segment bytes="739731" number="2">f12-2@fixture</segment>
+  <segment bytes="739648" number="633">f12-633@fixture</segment>
+  <segment bytes="739592" number="1263">f12-1263@fixture</segment>
+  <segment bytes="123420" number="1264">f12-1264@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548262" subject="[1/1] - &quot;The.Twilight.Zone.S02E05.The.Howling.Man.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1032726609 (1/1441)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739210" number="1">f13-1@fixture</segment>
+  <segment bytes="739634" number="2">f13-2@fixture</segment>
+  <segment bytes="739553" number="721">f13-721@fixture</segment>
+  <segment bytes="739625" number="1440">f13-1440@fixture</segment>
+  <segment bytes="551438" number="1441">f13-1441@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548266" subject="[1/1] - &quot;The.Twilight.Zone.S02E06.Eye.of.the.Beholder.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  986389285 (1/1377)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739460" number="1">f14-1@fixture</segment>
+  <segment bytes="739853" number="2">f14-2@fixture</segment>
+  <segment bytes="739639" number="689">f14-689@fixture</segment>
+  <segment bytes="739387" number="1376">f14-1376@fixture</segment>
+  <segment bytes="74697" number="1377">f14-1377@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548269" subject="[1/1] - &quot;The.Twilight.Zone.S02E07.Nick.of.Time.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1243493075 (1/1735)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739343" number="1">f15-1@fixture</segment>
+  <segment bytes="739679" number="2">f15-2@fixture</segment>
+  <segment bytes="739745" number="868">f15-868@fixture</segment>
+  <segment bytes="739703" number="1734">f15-1734@fixture</segment>
+  <segment bytes="579645" number="1735">f15-1735@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548274" subject="[1/1] - &quot;The.Twilight.Zone.S02E08.The.Lateness.of.the.Hour.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1281336560 (1/1788)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739232" number="1">f16-1@fixture</segment>
+  <segment bytes="739611" number="2">f16-2@fixture</segment>
+  <segment bytes="739746" number="895">f16-895@fixture</segment>
+  <segment bytes="739593" number="1787">f16-1787@fixture</segment>
+  <segment bytes="427954" number="1788">f16-1788@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548279" subject="[1/1] - &quot;The.Twilight.Zone.S02E09.The.Trouble.with.Templeton.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1157784298 (1/1616)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739290" number="1">f17-1@fixture</segment>
+  <segment bytes="739602" number="2">f17-2@fixture</segment>
+  <segment bytes="739662" number="809">f17-809@fixture</segment>
+  <segment bytes="739549" number="1615">f17-1615@fixture</segment>
+  <segment bytes="157041" number="1616">f17-1616@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548284" subject="[1/1] - &quot;The.Twilight.Zone.S02E10.A.Most.Unusual.Camera.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1486014123 (1/2074)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739455" number="1">f18-1@fixture</segment>
+  <segment bytes="739501" number="2">f18-2@fixture</segment>
+  <segment bytes="739748" number="1038">f18-1038@fixture</segment>
+  <segment bytes="739615" number="2073">f18-2073@fixture</segment>
+  <segment bytes="90494" number="2074">f18-2074@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548290" subject="[1/1] - &quot;The.Twilight.Zone.S02E11.The.Night.of.the.Meek.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1645973900 (1/2297)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739130" number="1">f19-1@fixture</segment>
+  <segment bytes="739736" number="2">f19-2@fixture</segment>
+  <segment bytes="739497" number="1149">f19-1149@fixture</segment>
+  <segment bytes="739721" number="2296">f19-2296@fixture</segment>
+  <segment bytes="207218" number="2297">f19-2297@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548296" subject="[1/1] - &quot;The.Twilight.Zone.S02E12.Dust.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1026671237 (1/1433)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739548" number="1">f20-1@fixture</segment>
+  <segment bytes="739728" number="2">f20-2@fixture</segment>
+  <segment bytes="739644" number="717">f20-717@fixture</segment>
+  <segment bytes="739458" number="1432">f20-1432@fixture</segment>
+  <segment bytes="220424" number="1433">f20-1433@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548300" subject="[1/1] - &quot;The.Twilight.Zone.S02E13.Back.There.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  886703406 (1/1238)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739499" number="1">f21-1@fixture</segment>
+  <segment bytes="739830" number="2">f21-2@fixture</segment>
+  <segment bytes="739655" number="620">f21-620@fixture</segment>
+  <segment bytes="739804" number="1237">f21-1237@fixture</segment>
+  <segment bytes="22572" number="1238">f21-1238@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548305" subject="[1/1] - &quot;The.Twilight.Zone.S02E14.The.Whole.Truth.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1582496224 (1/2208)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739307" number="1">f22-1@fixture</segment>
+  <segment bytes="739599" number="2">f22-2@fixture</segment>
+  <segment bytes="739738" number="1105">f22-1105@fixture</segment>
+  <segment bytes="739615" number="2207">f22-2207@fixture</segment>
+  <segment bytes="534646" number="2208">f22-2208@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548311" subject="[1/1] - &quot;The.Twilight.Zone.S02E15.The.Invaders.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  694406768 (1/969)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739388" number="1">f23-1@fixture</segment>
+  <segment bytes="739582" number="2">f23-2@fixture</segment>
+  <segment bytes="739678" number="485">f23-485@fixture</segment>
+  <segment bytes="739463" number="968">f23-968@fixture</segment>
+  <segment bytes="561694" number="969">f23-969@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548314" subject="[1/1] - &quot;The.Twilight.Zone.S02E16.A.Penny.For.Your.Thoughts.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1269077986 (1/1771)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739301" number="1">f24-1@fixture</segment>
+  <segment bytes="739665" number="2">f24-2@fixture</segment>
+  <segment bytes="739497" number="886">f24-886@fixture</segment>
+  <segment bytes="739716" number="1770">f24-1770@fixture</segment>
+  <segment bytes="352678" number="1771">f24-1771@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548319" subject="[1/1] - &quot;The.Twilight.Zone.S02E17.Twenty.Two.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1085641463 (1/1515)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739508" number="1">f25-1@fixture</segment>
+  <segment bytes="739595" number="2">f25-2@fixture</segment>
+  <segment bytes="739616" number="758">f25-758@fixture</segment>
+  <segment bytes="739805" number="1514">f25-1514@fixture</segment>
+  <segment bytes="419048" number="1515">f25-1515@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548323" subject="[1/1] - &quot;The.Twilight.Zone.S02E18.The.Odyssey.of.Flight.33.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  960657612 (1/1341)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739234" number="1">f26-1@fixture</segment>
+  <segment bytes="739833" number="2">f26-2@fixture</segment>
+  <segment bytes="739710" number="671">f26-671@fixture</segment>
+  <segment bytes="739531" number="1340">f26-1340@fixture</segment>
+  <segment bytes="150188" number="1341">f26-1341@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548327" subject="[1/1] - &quot;The.Twilight.Zone.S02E19.Mr.Dingle.the.Strong.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1048135813 (1/1463)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739544" number="1">f27-1@fixture</segment>
+  <segment bytes="739715" number="2">f27-2@fixture</segment>
+  <segment bytes="739750" number="732">f27-732@fixture</segment>
+  <segment bytes="739668" number="1462">f27-1462@fixture</segment>
+  <segment bytes="179761" number="1463">f27-1463@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548331" subject="[1/1] - &quot;The.Twilight.Zone.S02E20.Static.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1536197935 (1/2144)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739314" number="1">f28-1@fixture</segment>
+  <segment bytes="739638" number="2">f28-2@fixture</segment>
+  <segment bytes="739692" number="1073">f28-1073@fixture</segment>
+  <segment bytes="739759" number="2143">f28-2143@fixture</segment>
+  <segment bytes="98487" number="2144">f28-2144@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548338" subject="[1/1] - &quot;The.Twilight.Zone.S02E21.The.Prime.Mover.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1408681503 (1/1966)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739251" number="1">f29-1@fixture</segment>
+  <segment bytes="739441" number="2">f29-2@fixture</segment>
+  <segment bytes="739432" number="984">f29-984@fixture</segment>
+  <segment bytes="739950" number="1965">f29-1965@fixture</segment>
+  <segment bytes="174725" number="1966">f29-1966@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548343" subject="[1/1] - &quot;The.Twilight.Zone.S02E22.Long.Distance.Call.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1334068995 (1/1862)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739556" number="1">f30-1@fixture</segment>
+  <segment bytes="739525" number="2">f30-2@fixture</segment>
+  <segment bytes="739568" number="932">f30-932@fixture</segment>
+  <segment bytes="739588" number="1861">f30-1861@fixture</segment>
+  <segment bytes="107359" number="1862">f30-1862@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548349" subject="[1/1] - &quot;The.Twilight.Zone.S02E23.A.Hundred.Yards.Over.the.Rim.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1392692875 (1/1943)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739456" number="1">f31-1@fixture</segment>
+  <segment bytes="739561" number="2">f31-2@fixture</segment>
+  <segment bytes="739821" number="972">f31-972@fixture</segment>
+  <segment bytes="739716" number="1942">f31-1942@fixture</segment>
+  <segment bytes="688463" number="1943">f31-1943@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548353" subject="[1/1] - &quot;The.Twilight.Zone.S02E24.The.Rip.Van.Winkle.Caper.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1449064177 (1/2022)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739425" number="1">f32-1@fixture</segment>
+  <segment bytes="739725" number="2">f32-2@fixture</segment>
+  <segment bytes="739750" number="1012">f32-1012@fixture</segment>
+  <segment bytes="739713" number="2021">f32-2021@fixture</segment>
+  <segment bytes="424356" number="2022">f32-2022@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548359" subject="[1/1] - &quot;The.Twilight.Zone.S02E25.The.Silence.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  886154184 (1/1237)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739242" number="1">f33-1@fixture</segment>
+  <segment bytes="739743" number="2">f33-2@fixture</segment>
+  <segment bytes="739684" number="619">f33-619@fixture</segment>
+  <segment bytes="739743" number="1236">f33-1236@fixture</segment>
+  <segment bytes="195387" number="1237">f33-1237@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548362" subject="[1/1] - &quot;The.Twilight.Zone.S02E26.Shadow.Play.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  586441990 (1/819)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739406" number="1">f34-1@fixture</segment>
+  <segment bytes="739893" number="2">f34-2@fixture</segment>
+  <segment bytes="739632" number="410">f34-410@fixture</segment>
+  <segment bytes="739708" number="818">f34-818@fixture</segment>
+  <segment bytes="102706" number="819">f34-819@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548364" subject="[1/1] - &quot;The.Twilight.Zone.S02E27.The.Mind.and.the.Matter.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  1142233330 (1/1594)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739407" number="1">f35-1@fixture</segment>
+  <segment bytes="739635" number="2">f35-2@fixture</segment>
+  <segment bytes="739526" number="798">f35-798@fixture</segment>
+  <segment bytes="739864" number="1593">f35-1593@fixture</segment>
+  <segment bytes="382540" number="1594">f35-1594@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548369" subject="[1/1] - &quot;The.Twilight.Zone.S02E28.Will.the.Real.Martian.Please.Stand.Up.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  828614360 (1/1156)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739403" number="1">f36-1@fixture</segment>
+  <segment bytes="739725" number="2">f36-2@fixture</segment>
+  <segment bytes="739689" number="579">f36-579@fixture</segment>
+  <segment bytes="739445" number="1155">f36-1155@fixture</segment>
+  <segment bytes="732485" number="1156">f36-1156@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1731548372" subject="[1/1] - &quot;The.Twilight.Zone.S02E29.The.Obsolete.Man.1080p.BluRay.DDP.2.0.x265-edge2020.mkv&quot; yEnc  631490968 (1/881)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739311" number="1">f37-1@fixture</segment>
+  <segment bytes="739590" number="2">f37-2@fixture</segment>
+  <segment bytes="739689" number="441">f37-441@fixture</segment>
+  <segment bytes="739610" number="880">f37-880@fixture</segment>
+  <segment bytes="729290" number="881">f37-881@fixture</segment>
+ </segments>
+</file>
+<!-- newznab 2024-11-14 01:44:04 -->
+</nzb>

@@ -502,7 +502,8 @@ export async function ultimateFallbackFromCandidates(
 
     const startHealthCheck = (cs: CandidateState) => {
       cs.healthStatus = 'checking';
-      cs.healthPromise = checkSource(cs.candidate, pool).then(result => {
+      // The check samples the file AltMount is told to play (#203): the episode selector it is sent.
+      cs.healthPromise = checkSource({ ...cs.candidate, episodePattern: filePattern }, pool).then(result => {
         cs.healthStatus = isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'dead' : 'error';
         cs.containerType = result.containerType;
         if (!isHealthy(result)) console.log(`${tag} ❌ #${cs.poolIndex + 1} not healthy (${result.message}) — ${cs.candidate.title}`);
