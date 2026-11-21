@@ -62,8 +62,8 @@ _Avoid_: pre-warm, preload, prefetch
 Off while the Play-time check is on, so only the Source being played is prepared (#192). To be replaced by Head start (owner, 2026-11-20).
 
 **Head start**:
-The Play-time check of the Best entry's Sources and the prepare of the first Healthy one, begun in the background as soon as any player asks for a title's stream list, so a press of Best finds the check done and the video ready. In Stremio the list is asked for when a film's page opens or an episode is picked. Only the newest list request has a Head start: a new one stops what is unfinished for the one before.
-_Avoid_: prefetch, pre-warm, auto-queue (once built)
+The Play-time check of the Best entry's Sources and the prepare of the first Healthy one, begun in the background as soon as any player asks for a title's stream list, so a press of Best finds the check done and the video ready. In Stremio the list is asked for when a film's page opens or an episode is picked. Only the newest list request has a Head start: a new one stops what is unfinished for the one before, unless a press of Best is waiting on it (a press makes it a play). On by default (#206): Ultimate Fallback's "On Search" (`whenToResolve` on-results); "On Click" turns it off, and Best then starts on the press.
+_Avoid_: prefetch, pre-warm, auto-queue
 
 **Play-time check**:
 The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then. Replaces checking a whole list before it is shown.

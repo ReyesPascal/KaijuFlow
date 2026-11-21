@@ -468,9 +468,10 @@ export const playTimeScenarios = [
     },
   },
   {
-    // A list entry AltMount refuses falls back to the next Source (fresh title, nothing remembered).
+    // A list entry AltMount refuses falls back to the next Source (fresh title, nothing remembered: the Head start
+    // off, so no Best run has met the refusal first).
     id: 'list-entry-refused-falls-back-to-next',
-    async run(w) {
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
       const { id, sources } = offerMovie(w, [{ tag: 'entry-refused', kind: 'rejected' }, { tag: 'entry-next' }]);
       const streams = await w.list('movie', id);
       const r = await play(streams[1].url);
@@ -478,7 +479,7 @@ export const playTimeScenarios = [
       assertBytes(r.body, sources[1].media, 'the next Source plays');
       assert.equal(w.backend.submitsFor('entry-refused'), 1);
       assert.equal(w.backend.submitsFor('entry-next'), 1);
-    },
+    }),
   },
   {
     // A failed list entry falls back to the next Source even when an older config still says "failure video"
