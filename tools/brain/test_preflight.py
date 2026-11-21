@@ -376,7 +376,7 @@ class SettingDifferencesTest(unittest.TestCase):
     def settings(self, **changes):
         """What the settings reader gives for copies that match EXPECTED, then changed: settings(kaijuflow={name: value})."""
         rules_ = {'movieFilters.maxFileSize': 30, 'movieFilters.sortOrder[0]': 'a', 'movieFilters.sortOrder[1]': 'b',
-                  'movieFilters.none': '[]', 'cacheTTL': 9000, 'healthChecks.maxConnections': 12}
+                  'movieFilters.none': '[]', 'cacheTTL': 9000, 'healthChecks.maxTotalConnections': 12}
         got = {'kaijuflow': dict(rules_), 'altmount-kf': {'import.max_processor_workers': '2', 'streaming.max_prefetch': '3'}}
         for side, change in changes.items():
             got[side.replace('_', '-')].update(change)
