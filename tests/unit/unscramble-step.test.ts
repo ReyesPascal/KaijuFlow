@@ -9,6 +9,7 @@ import { cacheNzbContent } from '../../src/health/nzbContentCache.ts';
 import { grabSourceNzb } from '../../src/backends/sourceNzb.ts';
 import { scrambledRarSet, startFakeNntp } from '../integration/parity/fake-nntp.mjs';
 import { captureLogs } from './capture-logs.ts';
+import { sevenZipSet } from './health-nzb.ts';
 import { parseStepLine } from '../../src/utils/stepTiming.ts';
 
 const servers: Array<{ close(): Promise<void> }> = [];
@@ -112,4 +113,17 @@ test('a plain NZB logs unscramble with the not-scrambled answer; a skip logs its
   const set = scrambledRarSet({ base: 'steptimenoprov', parts: 3 });
   logs = await captureLogs(async () => { await grabSourceNzb(cachedSource(set.nzb)); });
   assert.deepEqual(stepRecs(logs).filter(r => r.step === 'unscramble').map(r => r.result), ['no-provider']);
+});
+
+test('a 7z set goes up as it is, its step line says not-scrambled, and no article is read (#193)', async () => {
+  const set = sevenZipSet();
+  const news = await startFakeNntp({ articles: set.articles });
+  servers.push(news);
+  useProviders([news.provider()]);
+  let nzb = '';
+  const logs = await captureLogs(async () => { ({ nzb } = await grabSourceNzb(cachedSource(set.nzb), { budgetMs: 60000 })); });
+  assert.equal(nzb, set.nzb, 'the original NZB should be uploaded unchanged');
+  assert.deepEqual(stepRecs(logs).filter(r => r.step === 'unscramble').map(r => [r.result, r.parts]), [['not-scrambled', 0]]);
+  assert.equal(news.state.reads.length, 0, 'no first article should be read');
+  assert.doesNotMatch(logs, /Unscramble skipped/);
 });
