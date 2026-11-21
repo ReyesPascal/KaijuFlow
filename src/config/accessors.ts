@@ -240,7 +240,6 @@ export const config: Config = {
         maxConnections: 12,
         maxTotalConnections: DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
         verifyTlsCertificates: true,
-        autoQueueMode: 'all' as const,
         hideBlocked: true,
       };
       // Inject env-based NNTP provider if configured
@@ -283,7 +282,6 @@ export const config: Config = {
       maxConnections: hc.maxConnections ?? 12,
       maxTotalConnections: hc.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
       verifyTlsCertificates: hc.verifyTlsCertificates !== false,
-      autoQueueMode: hc.autoQueueMode ?? 'all',
     };
 
     // Inject env-based NNTP provider (prepended so it takes priority)

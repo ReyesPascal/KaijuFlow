@@ -21,7 +21,6 @@ export function addProvider(provider: Omit<UsenetProvider, 'id'>): UsenetProvide
       sampleCount: 3,
       providers: [],
       nzbsToInspect: 6,
-      autoQueueMode: 'all',
       hideBlocked: true
     };
   }

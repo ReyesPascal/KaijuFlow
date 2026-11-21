@@ -15,7 +15,7 @@
  * original NZB with a reason, and the Backend decides (ADR 0004).
  *
  * At most one Unscramble reads first articles at a time, process-wide, first
- * come first served (#119): auto-queue prepares several Sources at once, and
+ * come first served (#119): several Sources can be prepared at once, and
  * sharing the connection cap made each one slower than its time limit.
  */
 

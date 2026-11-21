@@ -37,7 +37,7 @@ async function createFakeIndexer() {
 }
 
 try {
-  // KaijuFlow's own address is known before its modules load: Auto-queue calls its play route there (getSelfUrl reads PORT).
+  // KaijuFlow's own address is known before its modules load (getSelfUrl reads PORT).
   let app;
   const kaijuflow = await listen((req, res) => app(req, res));
   process.env.PORT = new URL(kaijuflow).port;
@@ -59,7 +59,7 @@ try {
   const { handleStream } = await load('play/streamHandler');
   const { createPlayStreamRoutes } = await load('routes/play');
   app = express();
-  // Both mounts, as server.ts has them: the player uses /stremio/…, Auto-queue the root one.
+  // Both mounts, as server.ts has them: the player uses /stremio/…, KaijuFlow's self-requests the root one.
   const playRoutes = createPlayStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) });
   app.use('/stremio/:manifestKey/play', playRoutes);
   app.use('/:manifestKey/play', playRoutes);

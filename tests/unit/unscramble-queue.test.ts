@@ -1,5 +1,5 @@
-// Unscramble one at a time (#119, ADR 0005): auto-queue prepares several
-// Sources at once, so at most one Unscramble reads first articles at a time,
+// Unscramble one at a time (#119, ADR 0005): several Sources can be prepared
+// at once, so at most one Unscramble reads first articles at a time,
 // process-wide, first come first served. Each gets its own time limit from
 // the start of its turn; the prepare budget still covers the wait.
 // Run: npm run test:unit

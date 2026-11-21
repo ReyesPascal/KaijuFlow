@@ -642,11 +642,6 @@ export function DashboardTab({
                     </div>
                     <div className="text-3xl font-bold group-hover:text-pink-400 group-active:text-pink-400 transition-colors">
                       {healthChecks.enabled ? 'Enabled' : 'Disabled'}
-                      {healthChecks.enabled && healthChecks.autoQueueMode !== 'off' && (
-                        <span className="text-lg font-normal text-pink-400 ml-2">
-                          + {healthChecks.autoQueueMode === 'top' ? 'Top Result' : 'All Healthy'}
-                        </span>
-                      )}
                     </div>
                     <div className="text-xs text-slate-500 mt-1 group-hover:text-slate-400 group-active:text-slate-400 transition-colors">
                       {healthChecks.enabled

@@ -145,7 +145,6 @@ export interface Config {
     providers: UsenetProvider[];
     nzbsToInspect: number;
     maxConnections: number;
-    autoQueueMode: 'off' | 'top' | 'all';
     hideBlocked: boolean;
     healthCheckIndexers?: Record<string, boolean>;
   };
@@ -212,7 +211,6 @@ export interface HealthChecksState {
   maxConnections: number;
   maxTotalConnections: number;
   verifyTlsCertificates: boolean;
-  autoQueueMode: 'off' | 'top' | 'all';
   hideBlocked: boolean;
   healthCheckIndexers: Record<string, boolean>;
 }

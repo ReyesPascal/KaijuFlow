@@ -62,7 +62,6 @@ if (configData.healthChecks?.usenetHost && !configData.healthChecks.providers?.l
     }],
     nzbsToInspect: hc.nzbsToInspect,
     maxConnections: hc.maxConnections ?? 12,
-    autoQueueMode: hc.autoQueueMode,
     hideBlocked: hc.hideBlocked
   };
   saveConfigFile(configData);
@@ -403,6 +402,16 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   const oldEnv = renamedEnv.filter(name => process.env[name] !== undefined && process.env[name] !== '');
   if (oldEnv.length > 0) {
     console.warn(`⚠️  Deprecated env vars set but ignored: ${oldEnv.join(', ')}. Use the PLAY_* names (see .env.example).`);
+  }
+}
+
+// Auto-queue is deleted (#226; Head start replaces it): an old config's setting is dropped.
+{
+  const hc = configData.healthChecks as unknown as Record<string, unknown> | undefined;
+  if (hc && 'autoQueueMode' in hc) {
+    delete hc.autoQueueMode;
+    saveConfigFile(configData);
+    console.log('✅ Removed the Auto-queue setting (autoQueueMode)');
   }
 }
 

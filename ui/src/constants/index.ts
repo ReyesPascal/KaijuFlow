@@ -126,7 +126,6 @@ export const DEFAULT_HEALTH_CHECKS = {
   maxConnections: 12,
   maxTotalConnections: 8,
   verifyTlsCertificates: true,
-  autoQueueMode: 'all' as 'off' | 'top' | 'all',
   hideBlocked: true,
   healthCheckIndexers: {} as Record<string, boolean>,
 };

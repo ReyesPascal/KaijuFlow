@@ -32,7 +32,7 @@ try {
   const {config,configData}=await load('config/index');
   alt.configure(configData);
   configData.easynewsHealthCheck=false;
-  configData.healthChecks={...configData.healthChecks,enabled:true,inspectionMethod:'fixed',nzbsToInspect:1,hideBlocked:false,autoQueue:false,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture',type:'pool'}]};
+  configData.healthChecks={...configData.healthChecks,enabled:true,inspectionMethod:'fixed',nzbsToInspect:1,hideBlocked:false,providers:[{host:'127.0.0.1',port:119,enabled:true,username:'fixture',password:'fixture',type:'pool'}]};
   const {parseNewznabXmlWithMeta}=await load('parsers/newznabClient');
   const parsed=await parseNewznabXmlWithMeta(await (await fetch(fake+'/search')).text());
   assert.equal(parsed.total,1);assert.equal(parsed.results[0].title,title);assert.equal(parsed.results[0].size,advertisedSize);

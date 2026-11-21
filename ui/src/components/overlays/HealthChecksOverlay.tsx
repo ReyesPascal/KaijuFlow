@@ -124,24 +124,6 @@ export default function HealthChecksOverlay({
 
               {/* Sub-options */}
               <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Auto-queue to the Backend</label>
-                  <select
-                    value={healthChecks.autoQueueMode}
-                    onChange={(e) => setHealthChecks({ ...healthChecks, autoQueueMode: e.target.value as 'off' | 'top' | 'all' })}
-                    className="input max-w-xs"
-                  >
-                    <option value="off">Off</option>
-                    <option value="top">Top Result</option>
-                    <option value="all">All Healthy</option>
-                  </select>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Automatically hand verified results to AltMount ahead of the click. Uses cached NZB data from health checks to save indexer grabs.
-                  </p>
-                  <p className="text-xs text-amber-400 mt-1">
-                    ⚠️ Suppressed when Ultimate Fallback is set to "On Search".
-                  </p>
-                </div>
                 {config?.easynewsEnabled && config?.easynewsMode === 'nzb' && (
                   <div>
                     <label className="flex items-center gap-3 cursor-pointer">
@@ -158,9 +140,6 @@ export default function HealthChecksOverlay({
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5 ml-7">
                       Disabled: EasyNews results auto-marked as healthy.
-                    </p>
-                    <p className="text-xs text-amber-400 mt-1 ml-7">
-                      ⚠️ With EasyNews bypassing health checks and auto-queue set to "All Healthy", this will queue all EasyNews results to AltMount. In this case, consider "Top Result" to avoid flooding your download client.
                     </p>
                   </div>
                 )}
@@ -467,7 +446,6 @@ export default function HealthChecksOverlay({
                     maxConnections: 12,
                     maxTotalConnections: DEFAULT_HEALTH_CHECKS.maxTotalConnections,
                     verifyTlsCertificates: DEFAULT_HEALTH_CHECKS.verifyTlsCertificates,
-                    autoQueueMode: 'all',
                     hideBlocked: true,
                     healthCheckIndexers: {},
                   }));
