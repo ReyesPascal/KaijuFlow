@@ -29,7 +29,7 @@ import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimate
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
-import { coordinateHealthChecks, autoMarkRemainingResults, autoQueueToBackend } from './healthCheckCoordinator.js';
+import { coordinateHealthChecks, autoMarkRemainingResults } from './healthCheckCoordinator.js';
 import { buildStreams } from './streamBuilder.js';
 import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../play/streamCache.js';
 import { requestContext } from '../requestContext.js';
@@ -368,9 +368,6 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
       // Auto-mark EasyNews and Zyclops results as verified
       autoMarkRemainingResults(allResults, healthMap);
-
-      // Auto-queue to the Backend if enabled; off with the Play-time check (#192).
-      autoQueueToBackend(allResults, healthMap, titleMeta.type, titleMeta.season, titleMeta.episode, titleMeta.episodesInSeason);
 
       // Build streams
       const { streams, fallbackGroupId, fallbackCandidates } = buildStreams({

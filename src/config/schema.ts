@@ -89,7 +89,6 @@ export interface ConfigData {
     smartBatchSize?: number;
     smartAdditionalRuns?: number;
     smartMinHealthy?: number;
-    autoQueueMode: 'off' | 'top' | 'all';
     hideBlocked: boolean;
     healthCheckIndexers?: Record<string, boolean>;
     // Legacy single-provider fields (auto-migrated to providers array)

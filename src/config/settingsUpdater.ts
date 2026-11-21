@@ -111,7 +111,6 @@ export function updateSettings(settings: {
     maxConnections?: number;
     maxTotalConnections?: number;
     verifyTlsCertificates?: boolean;
-    autoQueueMode?: 'off' | 'top' | 'all';
     hideBlocked: boolean;
     healthCheckIndexers?: Record<string, boolean>;
   };
@@ -382,7 +381,6 @@ export function updateSettings(settings: {
     configData.healthChecks = {
       ...settings.healthChecks,
       providers: settings.healthChecks.providers ?? existingProviders,
-      autoQueueMode: settings.healthChecks.autoQueueMode ?? configData.healthChecks?.autoQueueMode ?? 'all',
     };
   }
   if (settings.streamDisplayConfig !== undefined) {

@@ -859,7 +859,6 @@ export async function handleStream(
         FIRST_SOURCE_SWITCH_MS > 0
         && i === candidateOrder[0]
         && candidateOrder.length > 1
-        && req.query.auto !== 'true'
       ) {
         // KaijuFlow (finding 5): first source on a fresh request with a backup
         // available. candidateOrder already honors userPickFallback (it holds a
@@ -903,13 +902,6 @@ export async function handleStream(
       // Check again after await — client may have disconnected while waiting
       if (req.socket.destroyed) {
         console.log(`🔌 Client disconnected — aborting redirect for: ${candidate.title}`);
-        return;
-      }
-
-      // Auto-queue: only pre-cache the stream, don't proxy the video
-      if (req.query.auto === 'true') {
-        if (verbose) console.log(`  ✅ Auto-queue cached: ${candidate.title}`);
-        res.json({ cached: true, videoPath: streamData.videoPath });
         return;
       }
 

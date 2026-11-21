@@ -22,3 +22,5 @@ Auto-queue prepares several Sources at once (all Healthy Sources of the list by 
 - An NZB with no number-named set doesn't wait.
 - No priority for a play over auto-queued Unscrambles (owner's decision, 2026-11-15): a play of the top pick joins its prepare that is already running. Accepted cost: a Source picked by hand lower in the list waits behind the ones queued before it.
 - The `unscramble` step line gives `wait_ms`, the part of `ms` spent waiting for the turn.
+
+**Amended 2026-11-20** (#226): Auto-queue is deleted, so the several prepares at once described above no longer come from it. One at a time, first come first served, stays for prepares that still overlap (two players at once, a fallback beside a running prepare).

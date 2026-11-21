@@ -32,7 +32,7 @@ function bestEntryDisplay(): { name: string; title: string } {
 
 
 /** Resolve the base URL for stream/proxy URLs — uses the request's origin when available,
- *  falls back to BASE_URL env or loopback (127.0.0.1) for background tasks (auto-queue, health checks). */
+ *  falls back to BASE_URL env or loopback (127.0.0.1) for background tasks (health checks). */
 function getBaseUrl(): string {
   return requestContext.getStore()?.baseUrl || process.env.BASE_URL || getSelfUrl(1337);
 }

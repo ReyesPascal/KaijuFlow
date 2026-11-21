@@ -340,7 +340,6 @@ export interface HealthCheckConfig {
   smartMinHealthy: number;       // Healthy results required before smart mode stops (1-10; default 1)
   maxConnections: number;        // Max concurrent health check workers
   maxTotalConnections: number;   // Total Usenet connections health checks may hold at once, all workers and providers combined (finding 6)
-  autoQueueMode: 'off' | 'top' | 'all';  // Auto-queue mode: off, top verified result, or all verified results
   hideBlocked: boolean;          // Filter out blocked NZBs from results
   verifyTlsCertificates: boolean; // Reject NNTP servers with invalid TLS certificates (finding 7; default on)
   healthCheckIndexers?: Record<string, boolean>; // Per-indexer health check enable/disable
