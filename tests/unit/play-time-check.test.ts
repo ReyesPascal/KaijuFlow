@@ -14,7 +14,8 @@ const saved = configData.healthChecks;
 after(() => { configData.healthChecks = saved; });
 
 const useProviders = (providers: unknown[]) => { configData.healthChecks = { ...saved, providers } as typeof saved; };
-const playChecks = (logs: string) => logs.split('\n').map(parseStepLine).filter(r => r?.step === 'play_check');
+type StepRecord = NonNullable<ReturnType<typeof parseStepLine>>;
+const playChecks = (logs: string) => logs.split('\n').map(parseStepLine).filter((r): r is StepRecord => r?.step === 'play_check');
 
 /** requireHealthySource's answer and the console lines it wrote. */
 async function check(nzbUrl: string, title: string) {
