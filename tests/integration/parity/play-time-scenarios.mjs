@@ -122,6 +122,22 @@ function mostAtOnce(times) {
   return most;
 }
 
+/**
+ * A run's visit as the brain tools read it: the list request, a Browse pause long enough for the Head start, then a
+ * press of Best. Returns KaijuFlow's lines, each after its time as `docker logs --timestamps` writes it, and the play.
+ */
+async function capturedVisit(w, id) {
+  const lines = [];
+  const saved = console.log;
+  console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
+  try {
+    const streams = await w.list('movie', id);
+    await bestDone(lines, id);
+    const r = await play(streams[0].url);
+    return { lines, r };
+  } finally { console.log = saved; }
+}
+
 const isBest = s => s.name.includes('KaijuFlow ▶ Best');
 /** The release name a list entry plays (from its tile envelope). */
 const entryTitle = s => JSON.parse(Buffer.from(new URL(s.url).searchParams.get('t'), 'base64url').toString()).title;
@@ -248,22 +264,15 @@ export const playTimeScenarios = [
   },
   {
     // The brain tools read a visit from KaijuFlow's log (tools/brain/docs/formats.md), from its list request on: one
-    // play_check line per Source Best checked, the dead one too, and the played Source's name on the first prepare
-    // or 'Best plays' line after the press's '/stream hit' line (with a Head start the prepare comes before the press,
-    // #206); the other healthy Source it checked is never prepared (#192). A scrubbed capture of the check and prepare
-    // lines is tools/brain/fixtures/2026-11-21-best/, which the brain tests read.
+    // play_check line per Source Best checked, the dead one too, and the top pick's name on the first prepare line
+    // after the Head start's 'Head start: checking' line (#206), or after the press's '/stream hit' line without one;
+    // the press writes 'Best plays' with the Source it played; the other healthy Source it checked is never prepared
+    // (#192). The scenario's lines go out in its result (`capture`); scrubbed, they are
+    // tools/brain/fixtures/2026-11-21-best/kaijuflow-best-dead-first.txt, which the brain tests read.
     id: 'best-press-log-lines-the-brain-tools-read',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'log-dead', kind: 'dead' }, { tag: 'log-ok' }, { tag: 'log-backup' }]);
-      const lines = [];
-      const saved = console.log;
-      console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
-      let r;
-      try {
-        const streams = await w.list('movie', id);
-        await bestDone(lines, id); // a Browse pause long enough for the Head start
-        r = await play(streams[0].url);
-      } finally { console.log = saved; }
+      const { lines, r } = await capturedVisit(w, id);
       assertBytes(r.body, sources[1].media, 'Best plays the first healthy Source');
       const steps = lines.filter(l => l.includes('[KF-STEP] ')).map(l => JSON.parse(l.split('[KF-STEP] ')[1]));
       const check = tag => steps.filter(s => s.step === 'play_check' && s.title === sources.find(x => x.tag === tag).title);
@@ -275,6 +284,29 @@ export const playTimeScenarios = [
       assert.equal(played[0], sources[1].title, 'the first prepare or Best plays line after the press names the played Source');
       const prepared = lines.map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
       assert.deepEqual(prepared, [sources[1].title], 'only the played Source is prepared: not the dead one, not the other healthy one (#192)');
+      return { capture: lines };
+    },
+  },
+  {
+    // A refusal during a Head start (#206): AltMount refuses the first healthy Source before the press, so the
+    // Head start prepares the next one, and the press plays it with no new import. The brain tools count it a fallback
+    // like a press-started one: the first prepare line after 'Head start: checking' names the refused top pick.
+    // Scrubbed, the scenario's lines are tools/brain/fixtures/2026-11-21-best/kaijuflow-head-start-refused-first.txt.
+    id: 'head-start-refusal-log-lines-the-brain-tools-read',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'hsr-refused', kind: 'rejected' }, { tag: 'hsr-ok' }, { tag: 'hsr-other' }]);
+      const before = w.backend.submitted.length;
+      const { lines, r } = await capturedVisit(w, id);
+      assertBytes(r.body, sources[1].media, 'Best plays the next Source after the refusal');
+      assert.equal(w.backend.submitsFor('hsr-refused'), 1, 'the refused Source was imported once, before the press');
+      assert.deepEqual(w.backend.submitted.slice(before).filter(t => t !== 'hsr-refused'), ['hsr-ok'], 'the refusal makes one more import, the next Source');
+      const hit = lines.findIndex(l => l.includes('/stream hit'));
+      const start = lines.findLastIndex((l, i) => i < hit && l.includes('Head start: checking'));
+      assert.ok(start >= 0 && hit > start, 'the Head start began before the press');
+      const prepared = lines.slice(start).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.deepEqual(prepared, [sources[0].title, sources[1].title], 'the Head start prepared the top pick, then the next one');
+      assert.ok(lines.slice(hit).some(l => l.endsWith(`Best plays: ${sources[1].title}`)), 'the press names the Source it played');
+      return { capture: lines };
     },
   },
   {
@@ -622,6 +654,23 @@ export const playTimeScenarios = [
       assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
     },
   },
+  {
+    // A Best run that ends before checking anything settles its session (#206): here the Head start found every
+    // Source dead, so the press's own run finds them all remembered dead and ends at once. The press goes on to the
+    // failure video at once, not after the lobby's wait for a session that never answers.
+    id: 'a-press-whose-best-run-ends-early-goes-on-at-once',
+    async run(w) {
+      const { id } = offerMovie(w, [{ tag: 'gone-1', kind: 'dead' }, { tag: 'gone-2', kind: 'dead' }]);
+      const { result: streams } = await withLogs(async lines => {
+        const out = await w.list('movie', id);
+        await bestDone(lines, id);
+        return out;
+      });
+      const pressed = Date.now();
+      assertFailureVideo(await play(streams[0].url));
+      assert.ok(Date.now() - pressed < 10000, `the press ends at once (took ${Date.now() - pressed} ms)`);
+    },
+  },
 ];
 
 /** Run every play-time scenario. Returns per-scenario results. */
@@ -630,8 +679,9 @@ export async function runPlayTimeParity(w) {
   for (const s of playTimeScenarios) {
     const before = w.backend.requests.length;
     try {
-      await s.run(w);
-      results.push({ id: s.id, status: 'pass' });
+      const out = await s.run(w);
+      // A scenario's captured log lines (`capture`) ride in its result, for the brain tools' fixtures.
+      results.push({ id: s.id, status: 'pass', ...(out?.capture ? { capture: out.capture } : {}) });
     } catch (e) {
       results.push({ id: s.id, status: 'fail', error: String(e?.stack || e), requests: w.backend.requests.slice(before).slice(-15) });
     }

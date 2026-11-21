@@ -1035,6 +1035,11 @@ export async function ultimateFallbackFromCandidates(
     pool?.destroyAll();
     activeSessions.delete(sessionKey);
     claimedSessions.delete(sessionKey);
+    // A run that ends with nothing to play settles its session whatever the way out (an early end such as every
+    // Source remembered dead, or a stop), so a press waiting on it goes on at once. Settling twice does nothing.
+    if (deferred.resolvedData === undefined) {
+      sessionReject(new Error(controller.signal.aborted ? 'Ultimate-Fallback stopped' : 'Ultimate-Fallback found no Source to play'));
+    }
     // Persist end-of-pipeline state — captures final backup arrays + lastVettedUrl
     // so a UF tile click after addon restart can serve from the vetted backups.
     saveSessionsToDisk();
