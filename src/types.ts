@@ -349,14 +349,13 @@ export interface HealthCheckConfig {
 // Ultimate-Fallback: combines retry-on-failure with Health Checking for fastest resolution
 export interface UltimateFallbackConfig {
   enabled: boolean;
-  healthCheckEnabled?: boolean;        // No longer read: the Play-time check always checks before the hand-off (#190)
   whenToResolve: 'on-results' | 'on-tile-selection';   // When to fire UF — on search results or on user tile click (default on-tile-selection)
-  userPickFallback: 'uf-lobby' | 'failure-video' | 'fallback-chain';      // When a list entry fails — walk on down the list (default, #190), fall into the Best entry, or show the failure video
+  userPickFallback: 'uf-lobby' | 'fallback-chain';      // When a list entry fails — walk on down the list (default, #190) or fall into the Best entry
   candidateCount: number;              // Sources the Play-time check checks at once, top down (1-10, default 3)
-  preferenceMode: 'priority' | 'speed';
+  preferenceMode: 'priority' | 'speed';  // Picks the wait times below; Best hands over the first healthy Source in list order whatever it says (#190)
   archiveInspection: boolean;
   sampleCount: 3 | 7;
-  maxAttempts: number;                 // Cap on total primary search attempts before giving up (0 = unlimited, 1-20 = cap, default 0). Library hits don't count.
+  maxAttempts: number;                 // How many Sources a failed list entry walks through (0 = all, 1-20 = cap, default 0). Best has no cap (#190).
   desiredBackups: number;              // Target backups post-primary (0 = no replacement pulls; free library/in-flight still cache. 1-10 = target count, default 0)
   backupProcessingLimit: number;       // Max candidates to evaluate for backup (0 = all, 1-20 = limit, default 3)
   // Per-mode Backend prepare wait times (0-90s, 0 = wait forever). Active set picked by preferenceMode at runtime.

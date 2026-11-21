@@ -21,13 +21,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { NntpConnectionPool, setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
-import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk } from './streamCache.js';
+import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk, logPrepareStart } from './streamCache.js';
 import { prefetchNzb } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, StreamData } from './types.js';
+import type { UltimateFallbackConfig } from '../types.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
-import { checkSource, isHealthy } from './playTimeCheck.js';
+import { checkSource, isHealthy, enabledHealthCheckProviders } from './playTimeCheck.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -57,10 +58,8 @@ interface CandidateState {
 
 interface UltimateFallbackOptions {
   candidateCount: number;
+  /** Picks the wait times only: Best hands over the first healthy Source in list order whatever it says (#190). */
   preferenceMode: 'priority' | 'speed';
-  archiveInspection: boolean;
-  sampleCount: 3 | 7;
-  maxAttempts: number;
   desiredBackups: number;
   backupProcessingLimit: number;
   priorityMoviesTimeoutSeconds: number;
@@ -260,6 +259,17 @@ async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], limit: number)
 
 // ── Main pipeline ────────────────────────────────────────────────────
 
+/** The engine's options from the Ultimate Fallback settings (both ways in: on search results, on a press of Best). */
+export function ultimateFallbackOptions(ur: UltimateFallbackConfig): UltimateFallbackOptions {
+  return {
+    candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, desiredBackups: ur.desiredBackups,
+    backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds,
+    priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds,
+    speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds,
+    speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers,
+  };
+}
+
 export async function ultimateFallbackFromCandidates(
   sessionKey: string,
   candidates: FallbackCandidate[],
@@ -296,7 +306,7 @@ export async function ultimateFallbackFromCandidates(
   // The Play-time check: every Source is checked before the Backend gets it, whatever the
   // health-check switches say (GLOSSARY: Unchecked Source). With no enabled provider every
   // check answers an error, so nothing is handed over and the play shows the failure video.
-  const providers = (globalConfig.healthChecks?.providers ?? []).filter(p => p.enabled);
+  const providers = enabledHealthCheckProviders();
   if (providers.length > 0) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   const pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
 
@@ -319,7 +329,7 @@ export async function ultimateFallbackFromCandidates(
     const activeSet: TimeoutSet = options.preferenceMode === 'priority'
       ? { movies: options.priorityMoviesTimeoutSeconds, tv: options.priorityTvTimeoutSeconds, seasonPack: options.prioritySeasonPackTimeoutSeconds }
       : { movies: options.speedMoviesTimeoutSeconds, tv: options.speedTvTimeoutSeconds, seasonPack: options.speedSeasonPackTimeoutSeconds };
-    console.log(`${tag} Starting — ${allCandidates.length} candidate(s), pool size ${options.candidateCount}, mode: ${options.preferenceMode} (movies=${formatTimeoutSeconds(activeSet.movies)}, tv=${formatTimeoutSeconds(activeSet.tv)}, pack=${formatTimeoutSeconds(activeSet.seasonPack)})`);
+    console.log(`${tag} Starting — ${allCandidates.length} candidate(s), pool size ${options.candidateCount}, list order, wait times: ${options.preferenceMode} (movies=${formatTimeoutSeconds(activeSet.movies)}, tv=${formatTimeoutSeconds(activeSet.tv)}, pack=${formatTimeoutSeconds(activeSet.seasonPack)})`);
 
     // ── Stage 1: Already-prepared pre-check on ALL candidates ────────────
     const libraryTasks = allCandidates
@@ -371,12 +381,12 @@ export async function ultimateFallbackFromCandidates(
       if (libraryResolvedUrls.has(cs.candidate.nzbUrl)) return 'already-promoted';
       const hitExt = path.extname(hit.data.videoPath).slice(1).toUpperCase();
       if (!primaryResolved) {
-        // Priority mode: don't let a library hit leapfrog earlier candidates whose
+        // List order: don't let a library hit leapfrog earlier candidates whose
         // grabs/jobs are still in flight. Park it; pullReplacement re-checks on
         // every blocker-clear event and promotes once the path is clear.
-        if (options.preferenceMode === 'priority' && hasEarlierInFlight(cs.poolIndex)) {
+        if (hasEarlierInFlight(cs.poolIndex)) {
           cs.libraryHitDeferred = hit;
-          console.log(`${tag}   ⚠️ Library hit deferred (priority mode) — ${hit.candidate.title.substring(0, 60)} [${hit.candidate.indexerName}]`);
+          console.log(`${tag}   ⚠️ Library hit deferred (list order) — ${hit.candidate.title.substring(0, 60)} [${hit.candidate.indexerName}]`);
           return 'deferred';
         }
         const libElapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
@@ -439,8 +449,6 @@ export async function ultimateFallbackFromCandidates(
     const poolSize = Math.min(options.candidateCount, allCandidates.length);
     const activePool: CandidateState[] = [];
     let nextCandidateIdx = 0;
-    let primaryAttempts = 0;
-    let capLogged = false;
 
     const addToPool = (candidate: FallbackCandidate, idx: number): CandidateState => {
       const cs: CandidateState = {
@@ -454,7 +462,7 @@ export async function ultimateFallbackFromCandidates(
       return cs;
     };
 
-    // Priority mode: a library hit at poolIndex N must wait for any earlier
+    // List order: a library hit at poolIndex N must wait for any earlier
     // candidate still actively grabbing or preparing on the Backend to finish first.
     const hasEarlierInFlight = (poolIndex: number): boolean =>
       activePool.some(c =>
@@ -465,15 +473,9 @@ export async function ultimateFallbackFromCandidates(
     for (let i = 0; i < poolSize && nextCandidateIdx < allCandidates.length; i++) {
       const c = allCandidates[nextCandidateIdx];
       if (isDeadNzbByUrl(c.nzbUrl)) { nextCandidateIdx++; i--; continue; }
-      const isLibraryHit = hitUrls.has(c.nzbUrl);
-      // Honor maxAttempts cap on initial pool fill too. Library hits don't count
-      // (they resolve for free); library hits beyond this point will be picked up
-      // by the post-drain sweep.
-      if (!isLibraryHit && options.maxAttempts > 0 && primaryAttempts >= options.maxAttempts) break;
       const cs = addToPool(c, nextCandidateIdx);
       deferred.lastVettedUrl = c.nzbUrl;
-      if (isLibraryHit) promoteLibraryCandidate(cs);
-      else primaryAttempts++;
+      if (hitUrls.has(c.nzbUrl)) promoteLibraryCandidate(cs);
       nextCandidateIdx++;
     }
 
@@ -520,8 +522,7 @@ export async function ultimateFallbackFromCandidates(
         // Cancel checkpoint: before HTTP starts
         if (cs.cancelled) { cs.prepareStatus = 'failed'; return null; }
 
-        // Same words as prepareStream's line: the brain tools name the played Source from it.
-        console.log(`${logPrefix}🆕 Starting new stream preparation: ${cs.candidate.title}`);
+        logPrepareStart(logPrefix, cs.candidate.title);
         // Steps 1-3: submit (uses cached XML from grab chain), wait for the
         // job (per-mode, per-content-type budget), find the video. Cancel
         // checkpoints between steps: the health check may fail meanwhile.
@@ -566,10 +567,10 @@ export async function ultimateFallbackFromCandidates(
     };
 
     const pullReplacement = (): CandidateState | null => {
-      // Priority mode: a candidate may have been parked with a deferred library
-      // hit while an earlier candidate was in flight. Re-evaluate now — the
-      // caller fired this from a blocker-clearing transition.
-      if (!primaryResolved && options.preferenceMode === 'priority') {
+      // A candidate may have been parked with a deferred library hit while an
+      // earlier candidate was in flight. Re-evaluate now — the caller fired this
+      // from a blocker-clearing transition.
+      if (!primaryResolved) {
         const parked = activePool
           .filter(c => c.libraryHitDeferred)
           .sort((a, b) => a.poolIndex - b.poolIndex);
@@ -601,23 +602,13 @@ export async function ultimateFallbackFromCandidates(
           return null;
         }
       }
-      // Pre-primary attempts cap. Library hits don't count (free). Log emits
-      // once per session; pullReplacement is called from many completion sites
-      // so an unguarded log would spam dozens of times once the cap trips.
-      if (!primaryResolved && options.maxAttempts > 0 && primaryAttempts >= options.maxAttempts) {
-        if (!capLogged) {
-          console.log(`${tag} ⚠️ Gave up after ${primaryAttempts} primary attempts (maxAttempts cap)`);
-          capLogged = true;
-        }
-        return null;
-      }
+      // No attempts cap before the primary: Best checks until one is healthy or the list runs out (#190).
       while (nextCandidateIdx < allCandidates.length) {
         const c = allCandidates[nextCandidateIdx];
         nextCandidateIdx++;
         if (isDeadNzbByUrl(c.nzbUrl)) continue;
         const cs = addToPool(c, nextCandidateIdx - 1);
         if (primaryResolved && !hitUrls.has(c.nzbUrl)) postPrimaryGrabs++;
-        if (!primaryResolved && !hitUrls.has(c.nzbUrl)) primaryAttempts++;
         deferred.lastVettedUrl = c.nzbUrl;
         if (hitUrls.has(c.nzbUrl)) {
           promoteLibraryCandidate(cs);
@@ -629,13 +620,9 @@ export async function ultimateFallbackFromCandidates(
       return null;
     };
 
-    // Only a Source the check found healthy is handed to the Backend, never one still being checked.
+    // Only a Source the check found healthy is handed to the Backend, never one still being checked:
+    // the first healthy Source in list order, waiting while an earlier one is still grabbed or checked.
     const selectNext = (): CandidateState | null => {
-      // Speed mode only for primary selection — after primary, always use priority order
-      if (options.preferenceMode === 'speed' && !primaryResolved) {
-        return activePool.find(cs => cs.healthStatus === 'healthy' && cs.prepareStatus === 'idle') ?? null;
-      }
-      // Priority: the first healthy Source in list order — wait while an earlier one is still grabbed or checked
       for (const cs of activePool) {
         if (cs.prepareStatus !== 'idle') continue;
         if (cs.healthStatus === 'dead' || cs.healthStatus === 'error') continue;
@@ -887,12 +874,9 @@ export async function ultimateFallbackFromCandidates(
     const divider = '┄'.repeat(120);
     const settingsLine = [
       `pool: ${options.candidateCount}`,
-      `mode: ${options.preferenceMode}`,
-      `maxAttempts: ${options.maxAttempts === 0 ? 'all' : `${primaryAttempts}/${options.maxAttempts}`}`,
+      'list order',
       `desiredBackups: ${options.desiredBackups === 0 ? 'Off' : options.desiredBackups}`,
       `backupProcessingLimit: ${options.backupProcessingLimit === 0 ? 'all' : `${postPrimaryGrabs}/${options.backupProcessingLimit}`}`,
-      `sampleCount: ${options.sampleCount}`,
-      `archiveInspection: ${options.archiveInspection ? 'on' : 'off'}`,
     ].join(' · ');
     console.log(`${tag} ${divider}`);
     console.log(`${tag}   ${activePool.length} checked · ${healthy} healthy · ${dead} dead · ${skipped} skipped · ${totalElapsed}s`);

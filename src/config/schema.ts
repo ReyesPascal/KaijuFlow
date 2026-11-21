@@ -104,9 +104,8 @@ export interface ConfigData {
   };
   ultimateFallback?: {
     enabled: boolean;
-    healthCheckEnabled?: boolean;
     whenToResolve?: 'on-results' | 'on-tile-selection';
-    userPickFallback?: 'uf-lobby' | 'failure-video' | 'fallback-chain';
+    userPickFallback?: 'uf-lobby' | 'failure-video' | 'fallback-chain';  // 'failure-video' (old configs) is read as 'fallback-chain'
     candidateCount?: number;
     preferenceMode?: 'priority' | 'speed';
     archiveInspection?: boolean;
@@ -198,7 +197,7 @@ const ENV_OVERRIDES: readonly string[] = [
   'HEALTH_CHECK_NNTP_TLS', 'HEALTH_CHECK_NNTP_USER', 'HEALTH_CHECK_NNTP_PASS',
   'ZYCLOPS_ENDPOINT',
   'ULTIMATE_FALLBACK_ENABLED', 'ULTIMATE_FALLBACK_CANDIDATE_COUNT', 'ULTIMATE_FALLBACK_PREFERENCE_MODE',
-  'ULTIMATE_FALLBACK_SAMPLE_COUNT', 'ULTIMATE_FALLBACK_HEALTH_CHECK_ENABLED',
+  'ULTIMATE_FALLBACK_SAMPLE_COUNT',
   'ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', 'ULTIMATE_FALLBACK_USER_PICK_FALLBACK',
   'ULTIMATE_FALLBACK_MAX_ATTEMPTS', 'ULTIMATE_FALLBACK_DESIRED_BACKUPS', 'ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT',
   'ULTIMATE_FALLBACK_PRIORITY_MOVIES_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_TV_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_SEASON_PACK_TIMEOUT',

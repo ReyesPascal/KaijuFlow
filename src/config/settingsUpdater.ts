@@ -117,7 +117,6 @@ export function updateSettings(settings: {
   };
   ultimateFallback?: {
     enabled: boolean;
-    healthCheckEnabled?: boolean;
     whenToResolve?: 'on-results' | 'on-tile-selection';
     userPickFallback?: 'uf-lobby' | 'failure-video' | 'fallback-chain';
     candidateCount?: number;

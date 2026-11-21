@@ -14,13 +14,13 @@ import { getLatestVersions } from '../versionFetcher.js';
 import { performHealthCheck } from '../health/healthCheckPipeline.js';
 import type { NntpConnectionPool } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
+import type { UsenetProvider } from '../types.js';
 import { logStep } from '../utils/stepTiming.js';
 import { sourceFailure } from '../backends/types.js';
-import { isUltimateFallbackActive } from './utils.js';
 
-/** True when the Play-time check is on: Ultimate Fallback is on and the Backend can run it (AltMount since #190). */
-export function isPlayTimeCheckOn(): boolean {
-  return isUltimateFallbackActive();
+/** The health-check providers switched on: the only ones a Play-time check asks. */
+export function enabledHealthCheckProviders(): UsenetProvider[] {
+  return (globalConfig.healthChecks?.providers ?? []).filter(p => p.enabled);
 }
 
 /** The Source to check. */
@@ -48,7 +48,7 @@ export function isHealthy(result: HealthCheckResult): boolean {
  */
 export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPool): Promise<HealthCheckResult> {
   const t0 = Date.now();
-  const providers = (globalConfig.healthChecks?.providers ?? []).filter(p => p.enabled);
+  const providers = enabledHealthCheckProviders();
   const result: HealthCheckResult = providers.length === 0
     ? { status: 'error', message: 'No health-check provider: a Source is checked before it is played', playable: false }
     : await performHealthCheck(
