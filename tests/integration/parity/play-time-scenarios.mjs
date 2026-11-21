@@ -30,6 +30,19 @@ function offerMovie({ backend, indexer }, specs) {
   return { id, sources: items };
 }
 
+/** Offer single-episode Sources of S01E02 for a new show, in list order. Each spec: { tag, dead? }. */
+function offerEpisode({ backend, indexer }, specs) {
+  const show = `tt${nextImdb++}`;
+  const items = specs.map((spec, i) => {
+    const title = `KaijuFlow.PlayTime.Show.S01E02.2160p.WEB-DL.H265-${spec.tag}`;
+    const media = mediaFor(spec.tag);
+    const link = backend.addSeries(spec.tag, title, [{ season: 1, episode: 2, media }], { dead: spec.dead });
+    return { tag: spec.tag, title, media, link, size: (8 - i) * GB };
+  });
+  indexer.offer(show, items);
+  return { id: `${show}:1:2`, sources: items };
+}
+
 async function play(url, range) {
   const res = await fetch(url, { headers: range ? { Range: range } : {}, signal: AbortSignal.timeout(30000) });
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
@@ -173,6 +186,41 @@ export const playTimeScenarios = [
       assertBytes(r.body, sources[1].media, 'the next Source plays');
       assert.equal(w.backend.submitsFor('entry-refused'), 1);
       assert.equal(w.backend.submitsFor('entry-next'), 1);
+    },
+  },
+  {
+    // An episode: Best checks the episode's Sources and AltMount is told which episode to play.
+    id: 'best-plays-an-episode',
+    async run(w) {
+      const { id, sources } = offerEpisode(w, [{ tag: 'epdead', dead: true }, { tag: 'epok' }]);
+      const streams = await w.list('series', id);
+      assert.ok(isBest(streams[0]), 'Best is on top of an episode list too');
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[1].media, 'Best plays the healthy episode Source');
+      assert.equal(w.backend.submitsFor('epdead'), 0);
+      const f = w.backend.submitFields.at(-1);
+      assert.equal(`${f.season}x${f.episode}`, '1x2', 'AltMount is told the episode');
+    },
+  },
+  {
+    // AltMount unreachable while Best is pressed: the failure video, but the checked Source is not dead, so
+    // it plays once AltMount is back (ADR 0004).
+    id: 'best-with-altmount-unreachable-not-dead',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'down-ok' }]);
+      const streams = await w.list('movie', id);
+      w.backend.setDown(true);
+      try {
+        assertFailureVideo(await play(streams[0].url));
+      } finally {
+        w.backend.setDown(false);
+      }
+      const again = await w.list('movie', id);
+      assert.ok(again.some(s => !isBest(s) && entryTitle(s) === sources[0].title), 'the Source is still offered');
+      const r = await play(again[0].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, sources[0].media, 'it plays once AltMount is back');
     },
   },
   {

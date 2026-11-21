@@ -49,6 +49,7 @@ interface CandidateState {
   replaced?: boolean;          // Replacement already pulled for this dead candidate
   prepareDeadWritten?: boolean; // setDeadNzbEntry already wrote a specific Backend-failure entry — don't shadow it with a generic URL-only one at end-of-pipeline
   grabFailed?: boolean;        // Grab never produced an NZB (indexer/network/VPN transient) — don't persist to dead NZB DB
+  backendFailed?: boolean;     // Prepare failed for a reason that is not the Source's (Backend unreachable, ADR 0004) — don't persist to dead NZB DB
   libraryHitDeferred?: LibraryHit; // Priority mode: library hit waiting for an earlier in-flight candidate to terminate
 }
 
@@ -552,6 +553,8 @@ export async function ultimateFallbackFromCandidates(
         if ((err as any)?.isBadSource) {
           setDeadNzbEntry(cs.candidate.nzbUrl, cs.candidate.title, err as Error, cachePattern, cs.candidate.indexerName, cs.videoSize || cs.candidate.size, cs.candidate.isSeasonPack);
           cs.prepareDeadWritten = true;
+        } else {
+          cs.backendFailed = true;
         }
         cs.prepareStatus = 'failed';
         console.log(`${logPrefix}❌ Failed: ${(err as Error).message}`);
@@ -972,7 +975,7 @@ export async function ultimateFallbackFromCandidates(
     // indexer/network/VPN issues, not NZB-liveness signals, and should never be persisted.
     let deadWrites = 0;
     for (const cs of activePool) {
-      if (cs.healthStatus === 'dead' && !cs.prepareDeadWritten && !cs.grabFailed) {
+      if (cs.healthStatus === 'dead' && !cs.prepareDeadWritten && !cs.grabFailed && !cs.backendFailed) {
         addDeadNzbByUrl(cs.candidate.nzbUrl, cs.candidate.title, cs.candidate.indexerName, cs.candidate.size);
         deadWrites++;
       }
@@ -988,12 +991,19 @@ export async function ultimateFallbackFromCandidates(
     // Persist end-of-pipeline state — captures final backup arrays + lastVettedUrl
     // so a UF tile click after addon restart can serve from the vetted backups.
     saveSessionsToDisk();
-    // Keep session promise available for SESSION_TTL_MS so auto-play / binge watching can find it after episodes finish
-    const timer = setTimeout(() => {
+    // A session that found nothing to play is dropped at once, so the next press of Best checks again
+    // (dead Sources stay remembered and are skipped).
+    if (deferred.resolvedData === undefined && sessionPromises.get(sessionKey) === deferred) {
       sessionPromises.delete(sessionKey);
-      cleanupTimers.delete(sessionKey);
       saveSessionsToDisk();
-    }, SESSION_TTL_MS);
-    cleanupTimers.set(sessionKey, timer);
+    } else {
+      // Keep session promise available for SESSION_TTL_MS so auto-play / binge watching can find it after episodes finish
+      const timer = setTimeout(() => {
+        sessionPromises.delete(sessionKey);
+        cleanupTimers.delete(sessionKey);
+        saveSessionsToDisk();
+      }, SESSION_TTL_MS);
+      cleanupTimers.set(sessionKey, timer);
+    }
   }
 }
