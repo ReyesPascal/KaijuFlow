@@ -21,8 +21,6 @@ interface UltimateFallbackOverlayProps {
     archiveInspection: boolean;
     sampleCount: 3 | 7;
     maxAttempts: number;
-    desiredBackups: number;
-    backupProcessingLimit: number;
     priorityMoviesTimeoutSeconds: number;
     priorityTvTimeoutSeconds: number;
     prioritySeasonPackTimeoutSeconds: number;
@@ -86,10 +84,6 @@ export function UltimateFallbackOverlay({
     const newCandidateCount = newAttempts > 0 && prev.candidateCount > newAttempts ? newAttempts : prev.candidateCount;
     return { ...prev, maxAttempts: newAttempts, candidateCount: newCandidateCount };
   }), [setUltimateFallback]));
-  const backupsDec = useHoldRepeat(useCallback(() => setUltimateFallback(prev => ({ ...prev, desiredBackups: Math.max(0, prev.desiredBackups - 1) })), [setUltimateFallback]));
-  const backupsInc = useHoldRepeat(useCallback(() => setUltimateFallback(prev => ({ ...prev, desiredBackups: Math.min(10, prev.desiredBackups + 1) })), [setUltimateFallback]));
-  const bplDec = useHoldRepeat(useCallback(() => setUltimateFallback(prev => ({ ...prev, backupProcessingLimit: Math.max(0, prev.backupProcessingLimit - 1) })), [setUltimateFallback]));
-  const bplInc = useHoldRepeat(useCallback(() => setUltimateFallback(prev => ({ ...prev, backupProcessingLimit: Math.min(20, prev.backupProcessingLimit + 1) })), [setUltimateFallback]));
 
   // Wait-time +/- hooks. Each action reads prev.preferenceMode so the active set
   // is always the one being mutated — no stale closure across mode toggles.
@@ -644,48 +638,7 @@ export function UltimateFallbackOverlay({
             </div>
           </div>
 
-          {/* Desired Backups */}
-          <div className={clsx("bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-2 transition-opacity", !ultimateFallback.enabled && "opacity-40 pointer-events-none")}>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-slate-300 whitespace-nowrap">Desired Backups</span>
-              <div className="flex items-center gap-2">
-                <button
-                  {...backupsDec}
-                  className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                >−</button>
-                <span className="text-lg font-bold text-amber-400/90 tabular-nums w-10 text-center">{ultimateFallback.desiredBackups === 0 ? 'Off' : ultimateFallback.desiredBackups}</span>
-                <button
-                  {...backupsInc}
-                  className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                >+</button>
-              </div>
-            </div>
-            <div className="text-xs text-slate-500">Target number of grabbed backups to pre-resolve after the primary. Free library hits (NZBs already in your WebDAV library that match the primary's container) are always added on top of this target at zero NNTP cost, so the actual backup count can exceed the target when matching library hits exist. Backups must match the primary's container type (MKV, MP4, etc.).</div>
-            <div className="text-xs text-amber-400/50">Values: Off, 1–10</div>
-
-            {ultimateFallback.desiredBackups > 0 && (
-              <div className="border-l-2 border-amber-500/20 pl-3 ml-1 mt-3 space-y-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-400 whitespace-nowrap">Backup Processing Limit</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      {...bplDec}
-                      className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                    >−</button>
-                    <span className="text-lg font-bold text-amber-400/90 tabular-nums w-8 text-center">{ultimateFallback.backupProcessingLimit === 0 ? 'All' : ultimateFallback.backupProcessingLimit}</span>
-                    <button
-                      {...bplInc}
-                      className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                    >+</button>
-                  </div>
-                </div>
-                <div className="text-xs text-slate-500">A limit on extra NZB grabs after the primary resolves, in search of more backups. NZBs grabbed earlier (while still searching for the primary) flow through as free backups and don't count. Library hits don't count against the limit as well.</div>
-                <div className="text-xs text-amber-400/50">Values: All, 1–20</div>
-              </div>
-            )}
-          </div>
-
-          {/* Grab Estimate — always visible, dynamic by desiredBackups + maxAttempts */}
+          {/* Grab Estimate — always visible, dynamic by maxAttempts */}
           <div className={clsx("bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-2 transition-opacity", !ultimateFallback.enabled && "opacity-40 pointer-events-none")}>
             <div className="text-sm font-medium text-slate-300">Grab Estimate</div>
             <div className="text-xs text-amber-400/50">
@@ -694,13 +647,7 @@ export function UltimateFallbackOverlay({
               ) : (
                 <>At least <span className="text-sm font-semibold tabular-nums">{ultimateFallback.candidateCount}</span> NZB{ultimateFallback.candidateCount !== 1 ? 's' : ''} grabbed during primary search (more if early candidates fail)</>
               )}
-              {ultimateFallback.desiredBackups === 0 ? (
-                <>. No additional NZB grabs after primary. Library hits will still be cached as backups.</>
-              ) : ultimateFallback.backupProcessingLimit === 0 ? (
-                <>, then <span className="text-sm font-semibold">unlimited</span> additional grabs for backups.</>
-              ) : (
-                <>, then up to <span className="text-sm font-semibold tabular-nums">{ultimateFallback.backupProcessingLimit}</span> more additional grab{ultimateFallback.backupProcessingLimit !== 1 ? 's' : ''} for backups.</>
-              )}
+              <>. Only the Source being played is prepared, the next only when it fails: no grab after it.</>
             </div>
           </div>
 

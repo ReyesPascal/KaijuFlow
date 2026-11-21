@@ -8,7 +8,7 @@
 import type { UsenetProvider, SearchConfig, AutoPlayConfig, SyncedIndexer, StreamDisplayConfig } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS, SERIES_PACK_KEYWORDS } from '../types.js';
 import { configData, saveConfigFile } from './schema.js';
-import { dropListTimeCheckSettings } from './listTimeCheckMigration.js';
+import { dropDeletedSettings } from './deletedSettingsMigration.js';
 import { enforceZyclopsEnabled } from './indexerCrud.js';
 import { validateRulesBlock } from '../rules/importers.js';
 
@@ -113,8 +113,6 @@ export function updateSettings(settings: {
     archiveInspection?: boolean;
     sampleCount?: 3 | 7;
     maxAttempts?: number;
-    desiredBackups?: number;
-    backupProcessingLimit?: number;
     priorityMoviesTimeoutSeconds?: number;
     priorityTvTimeoutSeconds?: number;
     prioritySeasonPackTimeoutSeconds?: number;
@@ -372,8 +370,6 @@ export function updateSettings(settings: {
       ...settings.healthChecks,
       providers: settings.healthChecks.providers ?? existingProviders,
     };
-    // A UI loaded before #191 may still send the list-time check settings: they are not saved.
-    dropListTimeCheckSettings({ healthChecks: configData.healthChecks });
   }
   if (settings.streamDisplayConfig !== undefined) {
     configData.streamDisplayConfig = settings.streamDisplayConfig;
@@ -391,6 +387,9 @@ export function updateSettings(settings: {
     ufIndexersChanged =
       JSON.stringify(configData.ultimateFallback?.healthCheckIndexers ?? {}) !== prevHcIndexersJson;
   }
+
+  // A page loaded before a setting was deleted may still send it (the list-time checks, Auto-queue, backups): it is not saved.
+  dropDeletedSettings({ healthChecks: configData.healthChecks, ultimateFallback: configData.ultimateFallback });
 
   // Enforce minimum cacheTTL when auto play is enabled
   if ((configData.autoPlay?.enabled ?? true) && configData.cacheTTL < 9000) {

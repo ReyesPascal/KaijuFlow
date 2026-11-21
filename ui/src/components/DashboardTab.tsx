@@ -62,7 +62,6 @@ export interface DashboardTabProps {
     enabled: boolean;
     candidateCount: number;
     preferenceMode: 'priority' | 'speed';
-    desiredBackups: number;
   };
   statsData: any;
   fetchStats: () => void;
@@ -707,7 +706,7 @@ export function DashboardTab({
                         : "group-hover:text-amber-400 group-active:text-amber-400"
                     )}>
                       {ufActive
-                        ? <>Enabled{ultimateFallback.desiredBackups > 0 && <span className="text-lg font-normal text-amber-400 ml-2">+ {ultimateFallback.desiredBackups} NZB Backup{ultimateFallback.desiredBackups === 1 ? '' : 's'}</span>}</>
+                        ? 'Enabled'
                         : ufAvailable ? 'Disabled' : 'Unavailable'}
                     </div>
                     <div className="relative text-xs text-slate-500 mt-1">

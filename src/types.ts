@@ -343,8 +343,6 @@ export interface UltimateFallbackConfig {
   archiveInspection: boolean;
   sampleCount: 3 | 7;
   maxAttempts: number;                 // How many Sources a failed list entry walks through (0 = all, 1-20 = cap, default 0). Best has no cap (#190).
-  desiredBackups: number;              // Target backups post-primary (0 = none: only the Source played is prepared, the next only when it fails, #192; free library hits still count. 1-10 = target count, default 0)
-  backupProcessingLimit: number;       // Max candidates to evaluate for backup (0 = all, 1-20 = limit, default 3)
   // Per-mode Backend prepare wait times (0-90s, 0 = wait forever). Active set picked by preferenceMode at runtime.
   priorityMoviesTimeoutSeconds: number;
   priorityTvTimeoutSeconds: number;

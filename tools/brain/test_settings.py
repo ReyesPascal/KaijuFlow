@@ -47,8 +47,7 @@ def rules(films=3000, episodes=1000):
 
 # The Play-time check's settings of the committed expected settings file (#190; its Head start on, #206), as an applied
 # copy holds them.
-PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-results', 'maxAttempts': 0,
-                   'desiredBackups': 0}
+PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-results', 'maxAttempts': 0}
 
 
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 25),

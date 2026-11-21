@@ -62,8 +62,6 @@ interface UltimateFallbackOptions {
   candidateCount: number;
   /** Picks the wait times only: Best hands over the first healthy Source in list order whatever it says (#190). */
   preferenceMode: 'priority' | 'speed';
-  desiredBackups: number;
-  backupProcessingLimit: number;
   priorityMoviesTimeoutSeconds: number;
   priorityTvTimeoutSeconds: number;
   prioritySeasonPackTimeoutSeconds: number;
@@ -308,8 +306,7 @@ async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], limit: number)
 /** The engine's options from the Ultimate Fallback settings (both ways in: on search results, on a press of Best). */
 export function ultimateFallbackOptions(ur: UltimateFallbackConfig): UltimateFallbackOptions {
   return {
-    candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, desiredBackups: ur.desiredBackups,
-    backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds,
+    candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds,
     priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds,
     speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds,
     speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers,
@@ -414,7 +411,6 @@ export async function ultimateFallbackFromCandidates(
     let duplicateCount = 0;
     let failedBackupCount = 0;
     let backupLimitReached = false;
-    let postPrimaryGrabs = 0;
 
     const hits: LibraryHit[] = libraryResults
       .filter((r): r is LibraryHit => r.data !== null)
@@ -635,28 +631,17 @@ export async function ultimateFallbackFromCandidates(
       // is called inline from the completion handlers — without this, a fresh
       // candidate gets grabbed between backupCount incrementing and the next
       // iteration's drain signal.
-      if (primaryResolved) {
-        // No backups wanted — block any post-primary grab. Catches the
-        // inline-call race where `backupLimitReached` hasn't been set yet
-        // by the top of the loop. Already-grabbed candidates are not handed
-        // to the Backend either (selectNext, #192). Free library hits are
-        // picked up by the post-drain sweep below regardless.
-        if (options.desiredBackups === 0) return null;
-        if (options.desiredBackups > 0 && backupCount >= options.desiredBackups) return null;
-        // Cap NEW post-primary grabs only. Pre-primary refills (added before
-        // primary resolved while still searching) are free and flow through
-        // as backups via selectNext. Library hits don't charge either.
-        if (options.backupProcessingLimit > 0 && postPrimaryGrabs >= options.backupProcessingLimit) {
-          return null;
-        }
-      }
+      // Only the Source being played is prepared (#192): no grab once it is found. Catches the
+      // inline-call race where `backupLimitReached` hasn't been set yet by the top of the loop.
+      // Already-grabbed candidates are not handed to the Backend either (selectNext). Free
+      // library hits are picked up by the post-drain sweep below regardless.
+      if (primaryResolved) return null;
       // No attempts cap before the primary: Best checks until one is healthy or the list runs out (#190).
       while (nextCandidateIdx < allCandidates.length) {
         const c = allCandidates[nextCandidateIdx];
         nextCandidateIdx++;
         if (isDeadNzbByUrl(c.nzbUrl)) continue;
         const cs = addToPool(c, nextCandidateIdx - 1);
-        if (primaryResolved && !hitUrls.has(c.nzbUrl)) postPrimaryGrabs++;
         deferred.lastVettedUrl = c.nzbUrl;
         if (hitUrls.has(c.nzbUrl)) {
           promoteLibraryCandidate(cs);
@@ -671,10 +656,10 @@ export async function ultimateFallbackFromCandidates(
     // Only a Source the check found healthy is handed to the Backend, never one still being checked:
     // the first healthy Source in list order, waiting while an earlier one is still grabbed or checked.
     const selectNext = (): CandidateState | null => {
-      // Prepare only the Source being played (#192): with no backups wanted, the healthy Sources
-      // checked alongside the played one are not handed to the Backend; the next is prepared only
-      // when the one being prepared fails.
-      if (primaryResolved && options.desiredBackups === 0) return null;
+      // Prepare only the Source being played (#192), whatever an old config's backup settings said: the
+      // healthy Sources checked alongside the played one are not handed to the Backend; the next is
+      // prepared only when the one being prepared fails.
+      if (primaryResolved) return null;
       for (const cs of activePool) {
         if (cs.prepareStatus !== 'idle') continue;
         if (cs.healthStatus === 'dead' || cs.healthStatus === 'error') continue;
@@ -693,19 +678,10 @@ export async function ultimateFallbackFromCandidates(
     const stopped = new Promise<void>(resolve => controller.signal.addEventListener('abort', () => resolve(), { once: true }));
 
     while (!controller.signal.aborted) {
-      // Backup limit checks
-      if (primaryResolved) {
-        if (options.desiredBackups === 0 && !backupLimitReached) {
-          backupLimitReached = true;
-          console.log(`${tag} 📦 No replacement grabs (desiredBackups=0) — draining; free library hits still captured`);
-        } else if (options.desiredBackups > 0 && backupCount >= options.desiredBackups && !backupLimitReached) {
-          backupLimitReached = true;
-          console.log(`${tag} 📦 Desired backups reached (${backupCount}/${options.desiredBackups}) — draining pool`);
-        }
-        if (options.backupProcessingLimit > 0 && !backupLimitReached && postPrimaryGrabs >= options.backupProcessingLimit) {
-          backupLimitReached = true;
-          console.log(`${tag} 📦 Backup processing limit reached (${postPrimaryGrabs}/${options.backupProcessingLimit}) — draining pool`);
-        }
+      // Found the Source to play: no more grabs or prepares (#192), only the checks under way end
+      if (primaryResolved && !backupLimitReached) {
+        backupLimitReached = true;
+        console.log(`${tag} 📦 No more grabs: only the Source being played is prepared — draining; free library hits still captured`);
       }
 
       const pending: Promise<unknown>[] = [];
@@ -716,14 +692,14 @@ export async function ultimateFallbackFromCandidates(
       if (preparePromise) pending.push(preparePromise);
       if (pending.length === 0 && !selectNext()) {
         // Pool drained — try pulling more candidates before exiting.
-        // pullReplacement self-gates on backupLimitReached/desiredBackups/BPL,
-        // so it returns null when budget or candidates are exhausted. This
+        // pullReplacement self-gates on backupLimitReached and the primary,
+        // so it returns null when the primary is found or candidates are exhausted. This
         // matters especially when the initial pool was fully resolved by
         // library hits (status='skipped') and no grabs were ever started.
         if (!backupLimitReached) {
           const pulled = pullReplacement();
           if (pulled) {
-            console.log(`${tag} Pool drained — pulled replacement to satisfy desiredBackups`);
+            console.log(`${tag} Pool drained — pulled the next candidate`);
             continue;
           }
         }
@@ -877,13 +853,6 @@ export async function ultimateFallbackFromCandidates(
       if (allProcessed && nextCandidateIdx >= allCandidates.length) {
         if (!primaryResolved) {
           console.log(`${tag} ❌ Exhausted all ${allCandidates.length} candidates`);
-        } else if (options.desiredBackups > 0) {
-          const pipelineBackups = backupCount - libraryBackupCount;
-          if (pipelineBackups < options.desiredBackups) {
-            console.log(`${tag} 📦 Exhausted all candidates — ${pipelineBackups}/${options.desiredBackups} backups found`);
-          } else {
-            console.log(`${tag} 📦 Desired backups reached (${pipelineBackups}/${options.desiredBackups}) — stopping`);
-          }
         }
         break;
       }
@@ -899,9 +868,7 @@ export async function ultimateFallbackFromCandidates(
 
     // ── Post-drain library sweep ─────────────────────────────────
     // Library hits cost no NNTP grab, so the sweep is always exhaustive when
-    // primary resolved. desiredBackups is treated as a target for grabbed
-    // backups; free library hits are added on top of the target rather than
-    // counting against it. More mid-stream fallback protection at zero cost.
+    // primary resolved: more mid-stream fallback protection at zero cost.
     if (primaryResolved) {
       for (const hit of hits) {
         if (libraryResolvedUrls.has(hit.candidate.nzbUrl)) continue;
@@ -937,8 +904,7 @@ export async function ultimateFallbackFromCandidates(
     const settingsLine = [
       `pool: ${options.candidateCount}`,
       'list order',
-      `desiredBackups: ${options.desiredBackups === 0 ? 'Off' : options.desiredBackups}`,
-      `backupProcessingLimit: ${options.backupProcessingLimit === 0 ? 'all' : `${postPrimaryGrabs}/${options.backupProcessingLimit}`}`,
+      'only the Source played is prepared',
     ].join(' · ');
     console.log(`${tag} ${divider}`);
     console.log(`${tag}   ${activePool.length} checked · ${healthy} healthy · ${dead} dead · ${skipped} skipped · ${totalElapsed}s`);
@@ -1013,7 +979,7 @@ export async function ultimateFallbackFromCandidates(
         ? ` (${pipelineBackups} pipeline + ${libraryBackupCount} library)`
         : libraryBackupCount > 0 ? ' (library)' : '';
       console.log(`${tag} ${divider}`);
-      console.log(`${tag}   📦 Backups: ${backupCount}${options.desiredBackups > 0 ? `/${options.desiredBackups}` : ''}${sourceBreakdown} · ${evaluatedAfterPrimary} evaluated · ${skippedMismatch} mismatch · ${skippedUnknown} unknown · ${duplicateCount} duplicate · ${failedBackupCount} failed`);
+      console.log(`${tag}   📦 Backups: ${backupCount}${sourceBreakdown} · ${evaluatedAfterPrimary} evaluated · ${skippedMismatch} mismatch · ${skippedUnknown} unknown · ${duplicateCount} duplicate · ${failedBackupCount} failed`);
       console.log(`${tag} ${divider}`);
     }
 

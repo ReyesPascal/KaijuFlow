@@ -100,8 +100,6 @@ export interface ConfigData {
     archiveInspection?: boolean;
     sampleCount?: 3 | 7;
     maxAttempts?: number;
-    desiredBackups?: number;
-    backupProcessingLimit?: number;
     priorityMoviesTimeoutSeconds?: number;
     priorityTvTimeoutSeconds?: number;
     prioritySeasonPackTimeoutSeconds?: number;
@@ -115,6 +113,8 @@ export interface ConfigData {
   // row and merges case-variant indexer rows. Bumps once on update; never
   // runs again.
   staleIndexerStatsCleanupVersion?: number;
+  /** The one-time move to the Head start's whenToResolve has run (#206, headStartMigration.ts). */
+  headStartMigrated?: boolean;
 }
 
 // Load config from file or create default
@@ -182,13 +182,13 @@ const ENV_OVERRIDES: readonly string[] = [
   'PROXY_MODE', 'PROXY_URL',
   'INCLUDE_TIMEOUTS_AS_DEAD_NZBS', 'FILTER_DEAD_NZBS',
   'ENABLE_REMAKE_DETECTION', 'ALLOW_MULTI_EPISODE_FILES', 'URL_DEDUP', 'ABSOLUTE_EPISODE_FALLBACK', 'PARALLEL_ALTERNATE_TITLE_SEARCH',
-  'HEALTH_CHECK_ENABLED', 'HEALTH_CHECK_NNTP_HOST', 'HEALTH_CHECK_NNTP_PORT',
+  'HEALTH_CHECK_NNTP_HOST', 'HEALTH_CHECK_NNTP_PORT',
   'HEALTH_CHECK_NNTP_TLS', 'HEALTH_CHECK_NNTP_USER', 'HEALTH_CHECK_NNTP_PASS',
   'ZYCLOPS_ENDPOINT',
   'ULTIMATE_FALLBACK_ENABLED', 'ULTIMATE_FALLBACK_CANDIDATE_COUNT', 'ULTIMATE_FALLBACK_PREFERENCE_MODE',
   'ULTIMATE_FALLBACK_SAMPLE_COUNT',
   'ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', 'ULTIMATE_FALLBACK_USER_PICK_FALLBACK',
-  'ULTIMATE_FALLBACK_MAX_ATTEMPTS', 'ULTIMATE_FALLBACK_DESIRED_BACKUPS', 'ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT',
+  'ULTIMATE_FALLBACK_MAX_ATTEMPTS',
   'ULTIMATE_FALLBACK_PRIORITY_MOVIES_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_TV_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_SEASON_PACK_TIMEOUT',
   'ULTIMATE_FALLBACK_SPEED_MOVIES_TIMEOUT', 'ULTIMATE_FALLBACK_SPEED_TV_TIMEOUT', 'ULTIMATE_FALLBACK_SPEED_SEASON_PACK_TIMEOUT',
 ] as const;
