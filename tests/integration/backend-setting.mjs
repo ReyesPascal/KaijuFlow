@@ -1,6 +1,6 @@
 // AltMount is KaijuFlow's only Backend (#188): an old config naming NzbDAV is read as AltMount,
 // its nzbdav* play settings load under the play* names with no streaming-mode key (#200),
-// AltMount settings save and reload, AltMount "test connection".
+// Auto-queue's setting is dropped (#226), AltMount settings save and reload, AltMount "test connection".
 // Real config/settings/test routes over HTTP; the Backend is a fake AltMount on loopback.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -33,8 +33,10 @@ try {
     nzbdavMoviesCategory: 'M', nzbdavTvCategory: 'T' };
   // Its play settings under their old names (#200), each off its default.
   const OLD_PLAY = { streamingMode: 'nzbdav', nzbdavStreamingMethod: 'direct', nzbdavStreamBufferMB: 64, nzbdavPipeBufferMB: 4, nzbdavCacheTimeouts: false };
+  // Health checks with Auto-queue's setting, deleted in #226.
+  const OLD_CHECKS = { enabled: false, providers: [], nzbsToInspect: 4, hideBlocked: false, autoQueueMode: 'top' };
   const old = { indexers: [], cacheEnabled: true, cacheTTL: 9000, indexManager: 'newznab',
-    altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY };
+    altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY, healthChecks: OLD_CHECKS };
   fs.mkdirSync(root + '/config', { recursive: true });
   fs.writeFileSync(configFile, JSON.stringify(old));
 
@@ -81,6 +83,15 @@ try {
     for (const k of Object.keys(OLD_PLAY)) assert.equal(json[k], undefined, k);
     assert.equal(json.playDeliveryMethod, 'direct'); assert.equal(json.playStreamBufferMB, 64);
     assert.equal(json.playPipeBufferMB, 4); assert.equal(json.playCacheTimeouts, false);
+  });
+
+  await check('an old config holding Auto-queue loads without it; its other health-check settings are kept (#226)', async () => {
+    const d = diskConfig().healthChecks;
+    assert.equal('autoQueueMode' in d, false, 'on disk');
+    assert.equal(d.nzbsToInspect, 4); assert.equal(d.hideBlocked, false);
+    const { json } = await call('GET', '/api/config');
+    assert.equal('autoQueueMode' in json.healthChecks, false, 'in the config the UI reads');
+    assert.equal(json.healthChecks.nzbsToInspect, 4); assert.equal(json.healthChecks.hideBlocked, false);
   });
 
   await check('AltMount settings save to disk and reload', async () => {
