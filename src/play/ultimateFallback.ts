@@ -21,13 +21,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { NntpConnectionPool, setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
-import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk } from './streamCache.js';
+import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk, logPrepareStart } from './streamCache.js';
 import { prefetchNzb } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, StreamData } from './types.js';
+import type { UltimateFallbackConfig } from '../types.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
-import { checkSource, isHealthy } from './playTimeCheck.js';
+import { checkSource, isHealthy, enabledHealthCheckProviders } from './playTimeCheck.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -59,8 +60,6 @@ interface UltimateFallbackOptions {
   candidateCount: number;
   /** Picks the wait times only: Best hands over the first healthy Source in list order whatever it says (#190). */
   preferenceMode: 'priority' | 'speed';
-  archiveInspection: boolean;
-  sampleCount: 3 | 7;
   desiredBackups: number;
   backupProcessingLimit: number;
   priorityMoviesTimeoutSeconds: number;
@@ -260,6 +259,17 @@ async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], limit: number)
 
 // ── Main pipeline ────────────────────────────────────────────────────
 
+/** The engine's options from the Ultimate Fallback settings (both ways in: on search results, on a press of Best). */
+export function ultimateFallbackOptions(ur: UltimateFallbackConfig): UltimateFallbackOptions {
+  return {
+    candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, desiredBackups: ur.desiredBackups,
+    backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds,
+    priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds,
+    speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds,
+    speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers,
+  };
+}
+
 export async function ultimateFallbackFromCandidates(
   sessionKey: string,
   candidates: FallbackCandidate[],
@@ -296,7 +306,7 @@ export async function ultimateFallbackFromCandidates(
   // The Play-time check: every Source is checked before the Backend gets it, whatever the
   // health-check switches say (GLOSSARY: Unchecked Source). With no enabled provider every
   // check answers an error, so nothing is handed over and the play shows the failure video.
-  const providers = (globalConfig.healthChecks?.providers ?? []).filter(p => p.enabled);
+  const providers = enabledHealthCheckProviders();
   if (providers.length > 0) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   const pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
 
@@ -511,8 +521,7 @@ export async function ultimateFallbackFromCandidates(
         // Cancel checkpoint: before HTTP starts
         if (cs.cancelled) { cs.prepareStatus = 'failed'; return null; }
 
-        // Same words as prepareStream's line: the brain tools name the played Source from it.
-        console.log(`${logPrefix}🆕 Starting new stream preparation: ${cs.candidate.title}`);
+        logPrepareStart(logPrefix, cs.candidate.title);
         // Steps 1-3: submit (uses cached XML from grab chain), wait for the
         // job (per-mode, per-content-type budget), find the video. Cancel
         // checkpoints between steps: the health check may fail meanwhile.
@@ -867,8 +876,6 @@ export async function ultimateFallbackFromCandidates(
       'list order',
       `desiredBackups: ${options.desiredBackups === 0 ? 'Off' : options.desiredBackups}`,
       `backupProcessingLimit: ${options.backupProcessingLimit === 0 ? 'all' : `${postPrimaryGrabs}/${options.backupProcessingLimit}`}`,
-      `sampleCount: ${options.sampleCount}`,
-      `archiveInspection: ${options.archiveInspection ? 'on' : 'off'}`,
     ].join(' · ');
     console.log(`${tag} ${divider}`);
     console.log(`${tag}   ${activePool.length} checked · ${healthy} healthy · ${dead} dead · ${skipped} skipped · ${totalElapsed}s`);

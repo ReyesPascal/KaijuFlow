@@ -252,6 +252,12 @@ recalculateTTLExpirations();
 type PrepareFn = (nzbUrl: string, title: string, filePattern?: string, contentType?: string, episodesInSeason?: number, isSeasonPack?: boolean, logPrefix?: string, indexerName?: string, searchExitIp?: string) => Promise<StreamData>;
 let prepareFn: PrepareFn | null = null;
 
+/** The line that says a Source goes to the Backend now. brainreport.played_source names the played Source from it, so
+ * every prepare (a clicked list entry, Best) writes these words. */
+export function logPrepareStart(logPrefix: string, title: string): void {
+  console.log(`${logPrefix}\u{1F195} Starting new stream preparation: ${title}`);
+}
+
 export function setPrepareFn(fn: PrepareFn): void {
   prepareFn = fn;
 }
@@ -404,7 +410,7 @@ export async function getOrCreateStream(
   if (!prepareFn) throw new Error('Stream cache not initialised: prepareFn not set');
 
   // Create new preparation task
-  if (verbose) console.log(`${logPrefix}\u{1F195} Starting new stream preparation: ${title}`);
+  if (verbose) logPrepareStart(logPrefix, title);
 
   const promise = prepareFn(nzbUrl, title, filePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp);
 

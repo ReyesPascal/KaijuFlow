@@ -407,7 +407,7 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
 }
 
 // Migrate NZB Fallback → Ultimate Fallback. UF fully replaces fallback semantics;
-// migrants land on the new UF default baseline (on-tile-selection + failure-video)
+// migrants land on the new UF default baseline (on-tile-selection)
 // rather than deriving from prior NZB Fallback toggles — fresh start.
 {
   const c = configData as any;
@@ -423,7 +423,6 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
     if (fallbackWasEnabled && !userHasUR) {
       const ur = (c.ultimateFallback ??= {});
       ur.enabled = true;
-      ur.healthCheckEnabled = false;
       ur.candidateCount = 1;
       ur.desiredBackups = 0;
       ur.preferenceMode = 'priority';

@@ -15,8 +15,8 @@ import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } f
 import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
-import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, type UfBackupStream } from './ultimateFallback.js';
-import { isPlayTimeCheckOn, requireHealthySource } from './playTimeCheck.js';
+import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
+import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
@@ -225,7 +225,7 @@ export async function prepareStream(
   // Steps 1-3: hand the Source to the Backend and wait for its video.
   // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
-  if (isPlayTimeCheckOn()) await requireHealthySource(source, logPrefix);
+  if (isUltimateFallbackActive()) await requireHealthySource(source, logPrefix);
 
   const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
   const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;
@@ -322,15 +322,6 @@ async function sendFailureVideo(req: Request, res: ExpressResponse): Promise<voi
 /** Key for Stremio request dedup: Backend + Source + episode pattern. */
 function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }, pattern?: string): string {
   return `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (pattern ? `:${pattern}` : '');
-}
-
-/**
- * What a failed list entry does: the userPickFallback setting, except that with the Play-time check
- * on a failure always falls back (#190), so an old config's 'failure-video' walks on down the list.
- */
-function userPickFallbackMode(): 'uf-lobby' | 'failure-video' | 'fallback-chain' {
-  const mode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
-  return mode === 'failure-video' && isPlayTimeCheckOn() ? 'fallback-chain' : mode;
 }
 
 /** Delivery method for the first response of a Stream: the streaming-method setting. */
@@ -599,8 +590,7 @@ export async function handleStream(
         // Group envelope does not carry aired, so file pattern matches cache pattern here.
         const onTileFilePattern = onTileCachePattern;
         ultimateFallbackFromCandidates(
-          sessionKey, group.candidates,
-          { candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, archiveInspection: ur.archiveInspection, sampleCount: ur.sampleCount, desiredBackups: ur.desiredBackups, backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds, priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds, speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds, speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers },
+          sessionKey, group.candidates, ultimateFallbackOptions(ur),
           onTileCachePattern, onTileFilePattern, group.type, group.episodesInSeason,
         ).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
       }
@@ -779,11 +769,12 @@ export async function handleStream(
   // resume sequential from after the last vetted URL.
   const ufLobbyAvailable = isUltimateFallbackActive();
   const sessionBackups = sessionKey ? getSessionBackups(sessionKey) : null;
+  // What a failed list entry does: walk on down the list (the default, #190) or fall into the Best entry.
+  const userPickMode = globalConfig.ultimateFallback?.userPickFallback ?? 'fallback-chain';
   if (userPick && redirectCount === 0) {
-    console.log(`🎯 User-pick attempt: userPickFallback=${userPickFallbackMode()}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
+    console.log(`🎯 User-pick attempt: userPickFallback=${userPickMode}, sk=${sessionKey || 'none'}, fbg=${fallbackGroupId || 'none'}`);
   }
   const candidateOrder: number[] = [];
-  const userPickMode = userPickFallbackMode();
   if (userPick && ufLobbyAvailable && userPickMode !== 'fallback-chain') {
     candidateOrder.push(candidateStart);
   } else if (userPick && userPickMode === 'fallback-chain') {
@@ -1017,13 +1008,11 @@ export async function handleStream(
 
       // User-pick failure: fall straight into the UF lobby instead of walking the candidate chain.
       // The user explicitly chose this NZB; when it fails, UF's pre-vetted pool is the fallback.
-      // userPickFallback='failure-video' skips the redirect and lets the natural fall-through
-      // serve the failure video.
       if (
         userPick
         && sessionKey
         && isUltimateFallbackActive()
-        && userPickFallbackMode() === 'uf-lobby'
+        && userPickMode === 'uf-lobby'
         && redirectCount < MAX_SELF_REDIRECTS
         && !res.headersSent
       ) {
@@ -1039,15 +1028,6 @@ export async function handleStream(
         res.redirect(302, lobbyUrl.href);
         return;
       }
-      if (
-        userPick
-        && isUltimateFallbackActive()
-        && userPickFallbackMode() === 'failure-video'
-        && !res.headersSent
-      ) {
-        console.log(`👑 User-pick failed — userPickFallback=failure-video, serving failure video`);
-        // Loop's natural fall-through hits sendFailureVideo below.
-      }
     }
   }
 
@@ -1058,7 +1038,7 @@ export async function handleStream(
     userPick
     && sessionKey
     && isUltimateFallbackActive()
-    && userPickFallbackMode() === 'uf-lobby'
+    && userPickMode === 'uf-lobby'
     && redirectCount < MAX_SELF_REDIRECTS
     && !res.headersSent
   ) {
@@ -1078,11 +1058,7 @@ export async function handleStream(
   // ensures Stremio never considers the episode "completed", so it won't mark it
   // as watched or auto-advance to the next episode. The user sees the
   // "Stream Unavailable" message and goes back to the stream list manually.
-  if (userPick && userPickFallbackMode() === 'failure-video') {
-    console.error(`\u274C User-pick attempt failed (userPickFallback=failure-video) — serving failure video`);
-  } else {
-    console.error(`\u274C All ${maxCandidates} candidate(s) exhausted, serving failure video`);
-  }
+  console.error(`\u274C All ${maxCandidates} candidate(s) exhausted, serving failure video`);
   if (!res.headersSent) {
     await sendFailureVideo(req, res);
   }
