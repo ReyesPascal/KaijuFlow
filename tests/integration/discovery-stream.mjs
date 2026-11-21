@@ -5,7 +5,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { assertBytes } from './parity/bytes.mjs';
 import { createFakeAltmount } from './parity/fake-altmount.mjs';
-import { startFakeNntp } from './parity/fake-nntp.mjs';
+import { useFakeNews } from './parity/fake-nntp.mjs';
 import {createHash} from 'node:crypto';
 const root=process.env.A4_APP_ROOT, output=process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root+'/../app-import.started'));
@@ -22,8 +22,10 @@ const advertisedSize=128*1024*1024;
 try {
   // The Backend: fake AltMount. The indexer's NZB link is the one the fake serves for this Source.
   const alt=await createFakeAltmount(listen);
+  const {config,configData}=await load('config/index');
+  alt.configure(configData);
   // The fake news server holds the Source's articles: it is checked when it is played (#191).
-  const news=await startFakeNntp();alt.useNews(news);
+  alt.useNews(await useFakeNews(configData,config));
   const nzbLink=alt.addMovie('fixture',title,media);
   // The indexer: a Newznab search answer naming that link.
   const fake=await listen(async(req,res)=>{
@@ -32,9 +34,6 @@ try {
     if(u.pathname==='/search') {res.setHeader('Content-Type','application/xml');res.end(`<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response total="1" offset="0"/><item><title>${title}</title><link>${nzbLink}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate><newznab:attr name="size" value="${advertisedSize}"/><newznab:attr name="category" value="2040"/></item></channel></rss>`);return;}
     res.writeHead(404);res.end();
   });
-  const {config,configData}=await load('config/index');
-  alt.configure(configData);
-  configData.healthChecks={...config.healthChecks,providers:[news.provider()]};
   configData.easynewsHealthCheck=false;
   const {parseNewznabXmlWithMeta}=await load('parsers/newznabClient');
   const parsed=await parseNewznabXmlWithMeta(await (await fetch(fake+'/search')).text());

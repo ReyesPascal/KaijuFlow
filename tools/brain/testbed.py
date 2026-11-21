@@ -233,7 +233,7 @@ def check_empty(test_dir, sides=None, http=default_http):
 
 STANDIN_PORT = 1340
 PROVIDER_LIMIT = 100  # NewsHosting plan, owner 2026-11-09
-KF_DEFAULT_CONNECTION_CAP = 8  # KaijuFlow's health-check cap when its config names none (src/health/nntpConnection.ts)
+KF_DEFAULT_CONNECTION_CAP = 8  # KaijuFlow's health-check cap when its config names none (DEFAULT_HEALTH_CHECK_CONNECTION_CAP, src/health/nntpConnection.ts; test_testbed ties the two)
 STANDIN_HOST = "host.docker.internal"
 # One table of the sides in the settings table, in column order: title (column head), short name, and the JSON config
 # (relative to the test folder) of the sides that have one.

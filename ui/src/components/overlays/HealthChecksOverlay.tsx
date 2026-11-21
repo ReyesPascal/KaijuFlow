@@ -1,7 +1,8 @@
 // What this does:
-//   Health checks overlay for configuring the NNTP health check providers, the connection cap,
-//   TLS and auto-queue. A Source is checked when it is played (Play-time check); the
-//   list-time Smart and Fixed settings were deleted in #191.
+//   Health checks overlay for configuring the NNTP health check providers, the connection cap
+//   and TLS, and whether EasyNews results carry a verified mark on the list. A Source is checked
+//   when it is played (Play-time check); the list-time Smart and Fixed settings were deleted in
+//   #191 and Auto-queue in #226.
 
 import { Heart, X } from 'lucide-react';
 import type { Config, HealthChecksState, UsenetProvider } from '../../types';
@@ -68,13 +69,13 @@ export default function HealthChecksOverlay({
                         onChange={(e) => setEasynewsHealthCheck(e.target.checked)}
                         className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-pink-500 focus:ring-pink-500 focus:ring-offset-slate-800"
                       />
-                      <span className="text-sm font-medium text-slate-300">Include EasyNews in Health Checks</span>
+                      <span className="text-sm font-medium text-slate-300">No ✅ Mark on EasyNews Results</span>
                     </label>
                     <p className="text-xs text-slate-500 mt-1 ml-7">
-                      Enabled: EasyNews NZBs will be verified via health checks.
+                      On: EasyNews results show no mark on the stream list, like every other Source.
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5 ml-7">
-                      Disabled: EasyNews results auto-marked as healthy.
+                      Off: they show ✅, as EasyNews found them. Either way each one is checked when it is played.
                     </p>
                   </div>
                 )}
@@ -98,27 +99,27 @@ export default function HealthChecksOverlay({
 
             {/* Stream Status Legend */}
             <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-              <h4 className="text-sm font-semibold text-slate-300 mb-3">Stream Status Legend</h4>
+              <h4 className="text-sm font-semibold text-slate-300 mb-3">Stream List Marks</h4>
               <div className="space-y-3 text-sm">
                 <div className="flex items-start gap-3">
                   <span className="text-lg leading-none mt-0.5">✅</span>
                   <div>
-                    <div className="font-medium text-green-400">Healthy</div>
-                    <div className="text-slate-400 text-xs">Articles confirmed available on usenet. Expected to play.</div>
+                    <div className="font-medium text-green-400">EasyNews</div>
+                    <div className="text-slate-400 text-xs">Found on EasyNews (unless the option above is on). Still checked when it is played.</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-lg leading-none mt-0.5">🚫</span>
+                  <span className="text-lg leading-none mt-0.5">🤖</span>
                   <div>
-                    <div className="font-medium text-red-400">Blocked</div>
-                    <div className="text-slate-400 text-xs">Missing articles on usenet, unsupported format (ISO/IMG), or no video content. Will not play.</div>
+                    <div className="font-medium text-green-400">Zyclops</div>
+                    <div className="text-slate-400 text-xs">Verified by Zyclops. Still checked when it is played.</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-lg leading-none mt-0.5">❌</span>
+                  <span className="text-lg leading-none mt-0.5 w-5 text-center text-slate-500">·</span>
                   <div>
-                    <div className="font-medium text-red-300">Error</div>
-                    <div className="text-slate-400 text-xs">Health check failed due to a network error, provider failure, or VPN change.</div>
+                    <div className="font-medium text-slate-300">No mark</div>
+                    <div className="text-slate-400 text-xs">Not checked yet: every Source is checked when it is played. One the check blocks (missing articles, an archive AltMount cannot stream, a disc image) is never handed to AltMount, the next Source plays instead, and it leaves the list.</div>
                   </div>
                 </div>
               </div>

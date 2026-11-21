@@ -105,9 +105,8 @@ export function DashboardTab({
   handleCardDrop,
   handleCardDragEnd,
 }: DashboardTabProps) {
-  // Ultimate Fallback needs the Backend's capability: off for AltMount until the play-time check (#190).
-  const ufAvailable = false;
-  const ufActive = ultimateFallback.enabled && ufAvailable;
+  // Ultimate Fallback, the Play-time check's engine, is on for AltMount since #190.
+  const ufActive = ultimateFallback.enabled;
   // Each Source is checked when it is played (#191): that needs an enabled health-check provider.
   const hasHealthProvider = healthChecks.providers.some(p => p.enabled);
 
@@ -667,16 +666,13 @@ export function DashboardTab({
                     onDrop={(e) => handleCardDrop(e, 'ultimateFallback')}
                     onDragEnd={handleCardDragEnd}
                     className={clsx(
-                      "card p-4 group transition-all relative overflow-hidden",
-                      !ufAvailable
-                        ? "opacity-50 cursor-not-allowed"
-                        : "cursor-move hover:!border-amber-400/50 hover:!shadow-amber-500/30 active:!border-amber-400/50 active:!shadow-amber-500/30",
+                      "card p-4 group transition-all relative overflow-hidden cursor-move hover:!border-amber-400/50 hover:!shadow-amber-500/30 active:!border-amber-400/50 active:!shadow-amber-500/30",
                       isDragging && "opacity-50 scale-95",
                       isOver && "ring-2 ring-amber-400 scale-105",
                       ufActive && "!border-amber-500/30"
                     )}
                     onClick={() => {
-                      if (!draggedCard && ufAvailable) setActiveOverlay('ultimateFallback');
+                      if (!draggedCard) setActiveOverlay('ultimateFallback');
                     }}
                   >
                     {ufActive && (
@@ -705,14 +701,12 @@ export function DashboardTab({
                         ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent"
                         : "group-hover:text-amber-400 group-active:text-amber-400"
                     )}>
-                      {ufActive
-                        ? 'Enabled'
-                        : ufAvailable ? 'Disabled' : 'Unavailable'}
+                      {ufActive ? 'Enabled' : 'Disabled'}
                     </div>
                     <div className="relative text-xs text-slate-500 mt-1">
                       {ufActive
                         ? `${ultimateFallback.candidateCount} candidate${ultimateFallback.candidateCount !== 1 ? 's' : ''} · ${ultimateFallback.preferenceMode === 'priority' ? 'Priority' : 'Speed'} mode`
-                        : ufAvailable ? 'Click to configure \u2192' : 'Not available with AltMount yet'}
+                        : 'Click to configure \u2192'}
                     </div>
                   </div>
                 ),

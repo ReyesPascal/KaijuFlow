@@ -29,7 +29,7 @@ import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStar
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
-import { autoMarkRemainingResults } from './healthCheckCoordinator.js';
+import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
 import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../play/streamCache.js';
 import { requestContext } from '../requestContext.js';
@@ -306,8 +306,8 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       return filtered;
     };
 
-    // === SHARED: Trigger auto-resolve or Ultimate-Fallback if enabled ===
-    const triggerAutoResolve = (fallbackCandidates: any[] | undefined, episodesInSeason?: number, episodeAired?: string) => {
+    // === SHARED: the Head start (#206): Best's check and prepare begin when the list is asked for ===
+    const startHeadStart = (fallbackCandidates: any[] | undefined, episodesInSeason?: number, episodeAired?: string) => {
       const contentKey = `${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
       const ufManifestKey = requestContext.getStore()?.manifestKey || '';
       const sessionKey = `${ufManifestKey}:${contentKey}`;
@@ -332,7 +332,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     };
 
     // === SHARED: Process from raw results → streams (filter, sort, build) ===
-    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], healthMap: Map<string, any>, titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
+    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
       // season packs of remade shows take the deprioritized path (applyRemakeFilter)
       // and would otherwise bypass the dead-NZB DB.
@@ -344,14 +344,12 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
       // No health check here (#191): the list goes out at once, unchecked; each
       // Source is checked when it is about to be played (Play-time check, #190).
-
-      // Auto-mark EasyNews and Zyclops results as verified
-      autoMarkRemainingResults(allResults, healthMap);
+      // Only EasyNews and Zyclops results carry a verified mark, made afresh each time.
 
       // Build streams
       const { streams, fallbackGroupId, fallbackCandidates } = buildStreams({
         allResults,
-        healthResults: healthMap,
+        healthResults: verifiedMarks(allResults),
         type: titleMeta.type,
         imdbId,
         season: titleMeta.season,
@@ -367,31 +365,24 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
     // Check cache first (cacheTTL of 0 means disabled)
     if (config.cacheEnabled && config.cacheTTL > 0) {
-      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; healthMap: Record<string, any>; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number } }>(cacheKey);
+      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number } }>(cacheKey);
       if (cached) {
         console.log(`💾 Cache hit for ${type} ${imdbId}`);
 
         const now = Date.now();
-        const healthMap = new Map<string, any>(Object.entries(cached.healthMap || {}));
 
         // Re-apply filters and sort, and build streams with current settings
         const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
-          cached.rawResults, cached.deprioritizedPacks || [], healthMap,
+          cached.rawResults, cached.deprioritizedPacks || [],
           { type, season, episode, episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime }
         );
-
-        // Update cache with new health results
-        cache.set(cacheKey, {
-          ...cached,
-          healthMap: Object.fromEntries(healthMap),
-        }, config.cacheTTL);
 
         // Create fallback group from current filtered results
         if (fallbackGroupId && fallbackCandidates) {
           createFallbackGroup(fallbackGroupId, fallbackCandidates, type, season?.toString(), episode?.toString(), cached._meta.episodesInSeason);
         }
 
-        triggerAutoResolve(fallbackCandidates, cached._meta.episodesInSeason, cached._meta.episodeAired);
+        startHeadStart(fallbackCandidates, cached._meta.episodesInSeason, cached._meta.episodeAired);
         return { streams };
       }
     }
@@ -431,21 +422,19 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     // === STEP 3: DEDUP + CONTENT-DEPENDENT PRE-FILTERING (cacheable) ===
     const { results: rawResults, deprioritizedPacks } = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
 
-    // === STEP 4: FILTER, SORT, HEALTH CHECK, BUILD (user-preference-dependent) ===
+    // === STEP 4: FILTER, SORT, BUILD (user-preference-dependent; no health check, #191) ===
     const now = Date.now();
-    const healthMap = new Map<string, any>();
     const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
-      rawResults, deprioritizedPacks, healthMap,
+      rawResults, deprioritizedPacks,
       { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime }
     );
 
-    // Cache raw results + deprioritized packs + health map (filters/sorts reapply on cache hits).
+    // Cache raw results + deprioritized packs (filters, sorts and marks reapply on cache hits).
     const skipEmptyCache = config.searchConfig?.cacheEmptyResults === false && rawResults.length === 0;
     if (config.cacheEnabled && config.cacheTTL > 0 && !skipEmptyCache) {
       cache.set(cacheKey, {
         rawResults,
         deprioritizedPacks,
-        healthMap: Object.fromEntries(healthMap),
         _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime },
       }, config.cacheTTL);
     } else if (skipEmptyCache && config.cacheEnabled && config.cacheTTL > 0) {
@@ -457,7 +446,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       createFallbackGroup(fallbackGroupId, fallbackCandidates, type, season?.toString(), episode?.toString(), titleInfo.episodesInSeason);
     }
 
-    triggerAutoResolve(fallbackCandidates, titleInfo.episodesInSeason, titleInfo.episodeAired);
+    startHeadStart(fallbackCandidates, titleInfo.episodesInSeason, titleInfo.episodeAired);
 
     return { streams };
   } catch (error) {

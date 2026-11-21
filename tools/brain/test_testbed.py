@@ -7,6 +7,7 @@ and check_empty() (what counts as empty), all against fakes: a temp TEST_DIR, a 
 runner instead of Docker, and canned HTTP replies.
 """
 import os
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -235,6 +236,16 @@ class CheckEmpty(unittest.TestCase):
         write(self.bed.dir + "/config/uf-sessions.json", '[{"sessionKey": "k:movie:tt1::"}]')
         problems = testbed.check_empty(self.bed.dir, http=http_empty)
         self.assertTrue(any("kaijuflow" in p and "uf-sessions" in p for p in problems))
+
+
+class KaijuFlowDefaultCap(unittest.TestCase):
+    def test_the_settings_reader_assumes_kaijuflows_own_default_connection_cap(self):
+        # a copy whose config names no cap runs on KaijuFlow's default: the reader must count the same number
+        src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", "health", "nntpConnection.ts")
+        with open(src, encoding="utf-8") as f:
+            m = re.search(r"export const DEFAULT_HEALTH_CHECK_CONNECTION_CAP = (\d+);", f.read())
+        self.assertIsNotNone(m, "KaijuFlow's default cap is no longer where the brain tools look for it")
+        self.assertEqual(testbed.KF_DEFAULT_CONNECTION_CAP, int(m.group(1)))
 
 
 if __name__ == "__main__":
