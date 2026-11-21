@@ -5,7 +5,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { unscrambleNzb } from '../../src/archive/unscramble.ts';
-import { setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../../src/health/nntpConnection.ts';
+import { bindHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../../src/health/nntpConnection.ts';
 import { scrambledRarSet, startFakeNntp, rar5FirstArticle, rar4FirstArticle } from '../integration/parity/fake-nntp.mjs';
 import { archiveFixture, sevenZipSet } from './health-nzb.ts';
 
@@ -138,13 +138,13 @@ test('a slow server: unchanged within the time limit, reads stop and connections
 test('the health-check connection cap is never exceeded', async () => {
   const set = scrambledRarSet({ base: 'cap', parts: 20, seed: 3 });
   const n = await news({ articles: set.articles, delayMs: 15 });
-  setHealthCheckConnectionCap(3);
+  bindHealthCheckConnectionCap(() => 3); // no config is loaded here: the cap as the setting would give it
   try {
     const r = await unscrambleNzb(set.nzb, [n.provider()], LIMIT_MS, { connections: 8 });
     assert.equal(r.changed, true, `expected a rename, got ${r.reason}`);
     assert.ok(n.state.peak <= 3, `peak ${n.state.peak} connections, cap 3`);
     assert.equal(new Set(n.state.reads).size, 20, 'every part read once');
   } finally {
-    setHealthCheckConnectionCap(DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
+    bindHealthCheckConnectionCap(() => DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   }
 });

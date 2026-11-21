@@ -19,7 +19,7 @@ import { config as globalConfig } from '../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-import { NntpConnectionPool, setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
+import { NntpConnectionPool } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk, logPrepareStart } from './streamCache.js';
 import { prefetchNzb } from '../backends/nzbGrab.js';
@@ -352,7 +352,6 @@ export async function ultimateFallbackFromCandidates(
   // health-check switches say (GLOSSARY: Unchecked Source). With no enabled provider every
   // check answers an error, so nothing is handed over and the play shows the failure video.
   const providers = enabledHealthCheckProviders();
-  if (providers.length > 0) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   const pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
 
   try {

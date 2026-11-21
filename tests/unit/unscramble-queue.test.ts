@@ -6,7 +6,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { unscrambleNzb } from '../../src/archive/unscramble.ts';
-import { setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../../src/health/nntpConnection.ts';
 import { configData } from '../../src/config/index.ts';
 import { cacheNzbContent } from '../../src/health/nzbContentCache.ts';
 import { grabSourceNzb } from '../../src/backends/sourceNzb.ts';
@@ -18,7 +17,6 @@ const servers: Array<{ close(): Promise<void> }> = [];
 const savedHealthChecks = configData.healthChecks;
 after(async () => {
   configData.healthChecks = savedHealthChecks;
-  setHealthCheckConnectionCap(DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   for (const s of servers) await s.close();
 });
 
@@ -40,7 +38,7 @@ test('three sets prepared at once: the first one started is Unscrambled inside i
   const second = scrambledRarSet({ base: 'second', parts: 197, startAt: 1, width: 3, seed: 4 });
   const notRar = scrambledRarSet({ base: 'third', parts: 545, startAt: 1, width: 3, firstArticle: () => sevenZip });
   const n = await news({ articles: new Map([...top.articles, ...second.articles, ...notRar.articles]), delayMs: 40 });
-  setHealthCheckConnectionCap(12);
+  configData.healthChecks = { ...savedHealthChecks, maxTotalConnections: 12 } as typeof savedHealthChecks;
 
   const [a, b, c] = await Promise.all([top, second, notRar].map(set => unscrambleNzb(set.nzb, [n.provider()], LIMIT_MS, { connections: 12 })));
 

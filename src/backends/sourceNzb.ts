@@ -11,7 +11,7 @@
 import { config } from '../config/index.js';
 import { grabNzb } from './nzbGrab.js';
 import { unscrambleNzb } from '../archive/unscramble.js';
-import { setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
+import { DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
 import { logStep, timeStep } from '../utils/stepTiming.js';
 import type { BackendSource } from './types.js';
 
@@ -60,8 +60,6 @@ async function unscramble(nzb: string, budgetMs: number, logPrefix: string, sour
     const hc = config.healthChecks;
     const connections = hc?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
     const providers = hc?.providers ?? [];
-    // Apply the owner's cap even if no health check has run since start (as Ultimate Fallback does).
-    if (providers.some(p => p.enabled)) setHealthCheckConnectionCap(connections);
     const r = await unscrambleNzb(nzb, providers, UNSCRAMBLE_TIME_LIMIT_MS, { connections, budgetMs: budgetMs > 0 ? budgetMs : undefined });
     logStep({ ...step, ms: r.ms, wait_ms: r.waitMs, result: r.changed ? 'unscrambled' : r.reason, parts: r.parts });
     if (r.changed) console.log(`${logPrefix}  \u{1F9E9} Unscrambled RAR set: ${r.parts} parts renamed in volume order (${r.ms} ms)`);

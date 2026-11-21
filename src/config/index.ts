@@ -18,6 +18,10 @@ import './migrations.js';
 
 // 3. Accessors — the main `config` object consumed by the app
 export { config, getTvRemakeFiltering, getTvAllowMultiEpisode } from './accessors.js';
+import { config as loadedConfig } from './accessors.js';
+import { bindHealthCheckConnectionCap } from '../health/nntpConnection.js';
+// Every health-check connection (a Play-time check's, Unscramble's) follows the connection cap setting.
+bindHealthCheckConnectionCap(() => loadedConfig.healthChecks?.maxTotalConnections);
 
 // 4. Indexer CRUD
 export { getIndexers, addIndexer, updateIndexer, deleteIndexer, reorderIndexers, reorderSyncedIndexers } from './indexerCrud.js';

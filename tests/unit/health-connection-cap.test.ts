@@ -1,16 +1,16 @@
 // KaijuFlow finding 6: health checks never hold more Usenet connections at
 // once than the total cap, across all checks and providers combined. The checks
-// run in parallel on one shared pool, as Best checks its Sources (#190).
+// run in parallel on one shared pool, as Best checks its Sources (#190), through
+// the Play-time check's call (checkSource), which a clicked list entry makes too.
+// The cap is the setting (healthChecks.maxTotalConnections): nothing sets it
+// before a check (#191's review, rule 4).
 // Run: npm run test:unit
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import {
-  performHealthCheck,
-  NntpConnectionPool,
-  setHealthCheckConnectionCap,
-  DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
-} from '../../src/health/index.ts';
+import { NntpConnectionPool } from '../../src/health/index.ts';
+import { configData } from '../../src/config/index.ts';
+import { checkSource } from '../../src/play/playTimeCheck.ts';
 import { cacheNzbContent } from '../../src/health/nzbContentCache.ts';
 import type { UsenetProvider } from '../../src/types.ts';
 
@@ -80,22 +80,23 @@ const providers: UsenetProvider[] = servers.map((s, i) => ({
   type: 'pool',
 }));
 
+const savedHealthChecks = configData.healthChecks;
 after(() => {
-  setHealthCheckConnectionCap(DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
+  configData.healthChecks = savedHealthChecks;
   for (const s of sockets) s.destroy();
   for (const s of servers) s.close();
 });
 
-/** Check all 8 Sources at once on one shared pool. */
+/** Check all 8 Sources at once on one shared pool, with the connection cap setting at `cap`. */
 async function runChecks(cap: number) {
   for (let i = 0; i < names.length; i++) cacheNzbContent(urls[i], nzbXml(names[i]));
-  setHealthCheckConnectionCap(cap);
+  configData.healthChecks = { ...savedHealthChecks, providers, maxTotalConnections: cap } as typeof savedHealthChecks;
   open = 0;
   peak = 0;
   const pool = new NntpConnectionPool();
   let results;
   try {
-    results = await Promise.all(urls.map(u => performHealthCheck(u, providers, 'test-agent', { archiveInspection: true, sampleCount: 3 }, pool)));
+    results = await Promise.all(urls.map((u, i) => checkSource({ nzbUrl: u, title: names[i], indexerName: 'Parity' }, pool)));
   } finally {
     pool.destroyAll();
   }
