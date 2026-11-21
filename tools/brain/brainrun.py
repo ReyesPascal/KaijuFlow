@@ -170,6 +170,12 @@ def switch_to_one_page(io, log=print):
     io.reset(ALL_TESTBED, log)
 
 
+def is_best_entry(stream):
+    """Whether a Stream of KaijuFlow's list is the Best entry on top (#190): it plays one of the Sources below it, so it is
+    no Source itself. Told by its play address, /play/stream/ultimate-fallback."""
+    return '/play/stream/ultimate-fallback' in str(stream.get('url', ''))
+
+
 def visit_answer(got, tries, play=None, seek=None):
     """One visit's result from one common.get() of a side's list address (status None: the copy did not answer), then the
     top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same."""
@@ -182,7 +188,7 @@ def visit_answer(got, tries, play=None, seek=None):
         streams, out['note'] = [], f'bad JSON: {e}'[:120]
     if st != 200:
         out['note'] = h.get('error') or f'HTTP {st}'
-    out['sources'] = len(streams)
+    out['sources'] = sum(1 for s in streams if not is_best_entry(s))
     plays = [play(s) for s in streams[:tries]]
     out['tries'] = plays
     top = plays[0] if plays else None
