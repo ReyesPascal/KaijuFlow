@@ -79,6 +79,34 @@ export const playTimeScenarios = [
       assert.equal(w.backend.submitsFor('second-ok'), 1, 'without a new import');
     },
   },
+  {
+    // #189's only fail: the first Sources are all dead. Best keeps checking, 3 at a time from the top down, with
+    // no fixed cap, and plays the 8th; no Source it did not find healthy reaches AltMount.
+    id: 'best-plays-the-8th-when-the-first-7-are-dead',
+    async run(w) {
+      const specs = [...Array(7).keys()].map(i => ({ tag: `deep-dead-${i + 1}`, kind: 'dead' })).concat([{ tag: 'deep-ok-8' }, { tag: 'deep-ok-9' }]);
+      const { id, sources } = offerMovie(w, specs);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[7].media, 'Best plays the 8th Source');
+      const handed = w.backend.submitted.slice(before);
+      assert.equal(handed[0], 'deep-ok-8', 'the 8th is the first Source AltMount gets');
+      assert.ok(handed.every(tag => tag.startsWith('deep-ok-')), `only healthy Sources reach AltMount (got ${handed.join(', ')})`);
+    },
+  },
+  {
+    // No Healthy Source left: the play shows the failure video and nothing reaches AltMount.
+    id: 'best-shows-the-failure-video-when-no-source-is-healthy',
+    async run(w) {
+      const { id } = offerMovie(w, [{ tag: 'none-1', kind: 'dead' }, { tag: 'none-2', kind: 'dead' }, { tag: 'none-3', kind: 'dead' }, { tag: 'none-4', kind: 'dead' }]);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      assertFailureVideo(await play(streams[0].url));
+      assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
+    },
+  },
 ];
 
 /** Run every play-time scenario. Returns per-scenario results. */
