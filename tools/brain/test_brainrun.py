@@ -1009,9 +1009,21 @@ class BrowsePauseRunTest(unittest.TestCase):
         self.assertEqual(meta['browse_pause_s'], 5)
         self.assertEqual(meta['facts']['browse pause'], '5 s')
 
-    def test_the_browse_pause_is_5_s_unless_the_command_says_otherwise(self):
-        self.assertEqual(brainrun.build_parser().parse_args(['run']).browse_pause, 5)
-        self.assertEqual(brainrun.build_parser().parse_args(['run', '--browse-pause', '0']).browse_pause, 0)
+    def test_the_real_world_waits_the_browse_pause_between_the_list_and_the_play(self):
+        # RealIO.visit_http itself, with only the network (common.get, the play, the seeks) and the clock faked
+        events = []
+        body = json.dumps({'streams': [{'url': 'http://x/a'}]}).encode()
+
+        def play(stream):
+            events.append(('play', stream['url']))
+            return {'plays': True, 'first_byte_s': 1.5, 'size': 1000, 'note': None}
+        with mock.patch.object(common, 'get', return_value=(200, {}, body, {'ready': 2.0, 'total': 2.0})), \
+                mock.patch.object(common, 'play_stream', side_effect=play), \
+                mock.patch.object(common, 'seek_reads', return_value={}), \
+                mock.patch.object(brainrun.time, 'sleep', side_effect=lambda s: events.append(('sleep', s))):
+            out = brainrun.RealIO(make_cfg(self.tmp)).visit_http('kaijuflow', 'movie', 'tt1', 1, browse_pause_s=5)
+        self.assertEqual(events, [('sleep', 5), ('play', 'http://x/a')])
+        self.assertEqual((out['list_s'], out['start_s'], out['browse_pause_s']), (2.0, 1.5, 5))
 
 
 class MissMatchingTest(unittest.TestCase):
