@@ -55,6 +55,29 @@ function assertFailureVideo(r) {
   assert.ok(r.body.length > 10_000, 'failure video is not Backend media');
 }
 
+/** Run fn with these Ultimate Fallback settings on top of the suite's, then put the suite's back. */
+async function withSettings(w, patch, fn) {
+  const saved = w.configData.ultimateFallback;
+  w.configData.ultimateFallback = { ...saved, ...patch };
+  try { return await fn(); } finally { w.configData.ultimateFallback = saved; }
+}
+
+/** Per Source tag, when the fake news server was first asked for one of its articles and when it last answered. */
+function checkTimes(news, tags) {
+  return tags.map(tag => {
+    const mine = news.state.asks.filter(a => a.id.startsWith(`${tag}-`));
+    return { tag, from: Math.min(...mine.map(a => a.asked)), to: Math.max(...mine.map(a => a.answered ?? Infinity)) };
+  });
+}
+
+/** The most Sources whose checks were under way at one time. */
+function mostAtOnce(times) {
+  const edges = times.flatMap(t => [[t.from, 1], [t.to, -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let now = 0, most = 0;
+  for (const [, d] of edges) { now += d; most = Math.max(most, now); }
+  return most;
+}
+
 const isBest = s => s.name.includes('KaijuFlow ▶ Best');
 /** The release name a list entry plays (from its tile envelope). */
 const entryTitle = s => JSON.parse(Buffer.from(new URL(s.url).searchParams.get('t'), 'base64url').toString()).title;
@@ -107,6 +130,54 @@ export const playTimeScenarios = [
       const handed = w.backend.submitted.slice(before);
       assert.equal(handed[0], 'deep-ok-8', 'the 8th is the first Source AltMount gets');
       assert.ok(handed.every(tag => tag.startsWith('deep-ok-')), `only healthy Sources reach AltMount (got ${handed.join(', ')})`);
+    },
+  },
+  {
+    // Best hands AltMount the first healthy Source in list order, whatever the preference mode says: a later
+    // Source whose check finishes first waits for the earlier one (owner, 2026-11-20).
+    id: 'best-plays-the-earlier-healthy-source-when-a-later-check-finishes-first',
+    async run(w) {
+      await withSettings(w, { preferenceMode: 'speed' }, async () => {
+        const { id, sources } = offerMovie(w, [{ tag: 'order-slow' }, { tag: 'order-fast' }]);
+        w.news.slow('order-slow-', 800);
+        try {
+          const before = w.backend.submitted.length;
+          const streams = await w.list('movie', id);
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          const [slow, fast] = checkTimes(w.news, ['order-slow', 'order-fast']);
+          assert.ok(fast.to < slow.to, 'the later Source\'s check finished first');
+          assertBytes(r.body, sources[0].media, 'Best plays the earlier healthy Source');
+          assert.equal(w.backend.submitted[before], 'order-slow', 'the earlier Source is the first AltMount gets');
+        } finally {
+          w.news.slow('order-slow-', 0);
+        }
+      });
+    },
+  },
+  {
+    // Best checks 3 Sources at a time, from the top down, until one is healthy or the list runs out, whatever
+    // the attempts cap says (owner, 2026-11-20); 3 is candidateCount's default.
+    id: 'best-checks-3-at-a-time-with-no-cap',
+    async run(w) {
+      await withSettings(w, { maxAttempts: 2 }, async () => {
+        const tags = [...Array(7).keys()].map(i => `cap-dead-${i + 1}`).concat(['cap-ok-8']);
+        const { id, sources } = offerMovie(w, tags.map(tag => ({ tag, kind: tag === 'cap-ok-8' ? 'healthy' : 'dead' })));
+        w.news.slow('cap-', 150);
+        try {
+          const streams = await w.list('movie', id);
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, sources[7].media, 'Best plays the 8th Source: no cap');
+          const times = checkTimes(w.news, tags);
+          assert.equal(mostAtOnce(times), 3, `3 Sources are checked at a time (${JSON.stringify(times)})`);
+          const [a, b, c] = times;
+          assert.ok(Math.max(a.from, b.from, c.from) < Math.min(a.to, b.to, c.to), 'the first 3 are checked together');
+          assert.ok(times.slice(3).every(t => t.from >= Math.min(a.to, b.to, c.to)), 'the 4th starts once one of the first 3 is done');
+        } finally {
+          w.news.slow('cap-', 0);
+        }
+      });
     },
   },
   {
