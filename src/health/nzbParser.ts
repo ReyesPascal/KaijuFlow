@@ -106,8 +106,6 @@ export async function downloadAndParseNzb(nzbUrl: string, userAgent: string, ind
         }
       }
 
-      // In segment-number order, whatever order the NZB lists them in: the archive header is the first segment.
-      segments.sort((a, b) => a.number - b.number);
       files.push({ subject, segments });
     }
   }

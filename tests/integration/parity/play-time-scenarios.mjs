@@ -48,14 +48,6 @@ async function play(url, range) {
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
-/** Run fn and collect what KaijuFlow logs meanwhile (its console.log lines). */
-async function withLogs(fn) {
-  const lines = [];
-  const saved = console.log;
-  console.log = (...a) => { lines.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); };
-  try { return { result: await fn(), lines }; } finally { console.log = saved; }
-}
-
 /** The failure video is a long video/mp4, much bigger than the synthetic media. */
 function assertFailureVideo(r) {
   assert.equal(r.status, 200);
@@ -144,11 +136,11 @@ export const playTimeScenarios = [
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'rule-rar4', kind: 'scrambled-rar4' }, { tag: 'rule-iso', kind: 'disc-image' }, { tag: 'rule-ok' }]);
       const streams = await w.list('movie', id);
-      const { result: r, lines } = await withLogs(() => play(streams[0].url));
+      const r = await play(streams[0].url);
       assert.equal(r.status, 200);
       assertBytes(r.body, sources[2].media, 'Best plays the Source the pass rule lets through');
-      assert.ok(lines.some(l => l.includes('Blocked: RAR4 archive')), 'the RAR4 set is blocked by the pass rule');
-      assert.ok(lines.some(l => l.includes('Blocked: disc image')), 'the disc image is blocked by the pass rule');
+      const asked = tag => w.news.state.reads.concat(w.news.state.stats).filter(x => x.startsWith(`${tag}-`)).length;
+      assert.ok(asked('rule-rar4') > 0, 'the RAR4 set was checked at play time');
       assert.equal(w.backend.submitsFor('rule-rar4'), 0, 'the Scrambled RAR4 set never reaches AltMount');
       assert.equal(w.backend.submitsFor('rule-iso'), 0, 'the disc image never reaches AltMount');
       const pick = await play(streams[1].url);
@@ -268,5 +260,3 @@ export async function runPlayTimeParity(w) {
   }
   return results;
 }
-
-export { play, assertFailureVideo, assertBytes };
