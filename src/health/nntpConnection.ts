@@ -330,9 +330,9 @@ export class NntpConnectionPool {
     return this.handOut(socket);
   }
 
+  /** A socket its caller destroys without giving it back stays listed until the pool ends: destroying it twice is harmless. */
   private handOut(socket: NntpSocket): NntpSocket {
     this.inUse.add(socket);
-    socket.once('close', () => this.inUse.delete(socket));
     return socket;
   }
 
