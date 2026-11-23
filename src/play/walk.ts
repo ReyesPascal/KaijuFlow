@@ -13,8 +13,9 @@
  * - A library hit (a Source the Backend already holds) plays without a grab, unless a Source above it is still
  *   grabbed or prepared; once one plays, the other library hits are kept beside it as backups.
  * - A Walk makes at most `maxGrabs` grabs (30), then ends as if the list had run out, and says so once (#228).
- * - Dead marks follow ADR 0004: a check that blocks a Source, or a prepare that fails for the Source's own reason,
- *   marks it dead; a failed grab, a check that cannot answer, or a Backend failure leaves it alive.
+ * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx) or bad, a check that blocks a
+ *   Source, or a prepare that fails for the Source's own reason, marks it dead; a refused grab, a check that cannot
+ *   answer, or a Backend failure leaves it alive.
  */
 
 /** About twice the deepest Walk measured (16 grabs, The Twilight Zone S02E06, #14 played), #228. */
@@ -22,7 +23,8 @@ export const WALK_MAX_GRABS = 30;
 
 export type WalkEvent =
   | { type: 'grabbed'; index: number }
-  | { type: 'grabFailed'; index: number }
+  /** `badSource`: the indexer says the link is gone, or its NZB is bad (ADR 0004); otherwise the indexer refused. */
+  | { type: 'grabFailed'; index: number; badSource: boolean }
   | { type: 'checked'; index: number; verdict: 'healthy' | 'blocked' | 'error'; episodeOnly?: boolean }
   | { type: 'prepared'; index: number; videoPath: string }
   | { type: 'prepareFailed'; index: number; badSource: boolean }
@@ -45,8 +47,8 @@ export type WalkDecision =
   | { type: 'ceiling'; grabs: number }
   /** A library hit kept beside the played Source. */
   | { type: 'backup'; index: number }
-  /** ADR 0004: a bad Source. `cause` says which mark: a blocked check (for this episode only, or the Source) or a prepare. */
-  | { type: 'markDead'; index: number; cause: 'check' | 'check-episode' | 'prepare' };
+  /** ADR 0004: a bad Source. `cause` says which mark: a gone grab, a blocked check (for this episode only, or the Source) or a prepare. */
+  | { type: 'markDead'; index: number; cause: 'grab' | 'check' | 'check-episode' | 'prepare' };
 
 export interface WalkOptions {
   /** Sources in the list, in list order. */
@@ -118,6 +120,7 @@ export class Walk {
         break;
       case 'grabFailed':
         m.grab = 'failed';
+        if (event.badSource) out.push({ type: 'markDead', index: m.index, cause: 'grab' });
         break;
       case 'checked':
         m.check = event.verdict;

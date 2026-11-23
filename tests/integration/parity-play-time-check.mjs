@@ -18,13 +18,24 @@ const report = { id: 'INT-PARITY-PLAY-TIME-CHECK-001', backend: 'altmount', boun
 const servers = [];
 const listen = async handler => { const s = http.createServer(handler); await new Promise(r => s.listen(0, '127.0.0.1', r)); servers.push(s); return 'http://127.0.0.1:' + s.address().port; };
 
-/** A Newznab indexer that answers a search with the Sources offered for its IMDB id. */
-async function createFakeIndexer() {
+/**
+ * A Newznab indexer that answers a search with the Sources offered for its IMDB id. With `refuseGrabs` (an HTTP
+ * status) it also hands out its own NZB links (`nzbLink`) and answers every grab of them with that status, as an
+ * indexer at its download limit does (429); `grabs` lists the tags asked for.
+ */
+async function createFakeIndexer({ refuseGrabs } = {}) {
   const offers = new Map(); // imdb id without "tt" -> [{ title, link, size }]
   const requests = [];
+  const grabs = [];
   const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const url = await listen((req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
+    if (refuseGrabs && u.pathname.endsWith('.nzb')) {
+      grabs.push(u.pathname.slice(1, -4));
+      res.writeHead(refuseGrabs, { 'Retry-After': '3600' });
+      res.end('download limit reached');
+      return;
+    }
     requests.push(u.searchParams.get('t'));
     const items = offers.get(u.searchParams.get('imdbid')) ?? [];
     const cat = u.searchParams.get('t') === 'tvsearch' ? 5040 : 2040;
@@ -33,7 +44,7 @@ async function createFakeIndexer() {
       items.map(i => `<item><title>${xml(i.title)}</title><link>${xml(i.link)}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate>` +
         `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>');
   });
-  return { url, requests, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
+  return { url, requests, grabs, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
 }
 
 try {
@@ -47,9 +58,13 @@ try {
   // Real archives (tests/fixtures/archives), copied next to the scenarios by in-namespace.sh.
   backend.useNews(news, { archiveFixture: name => fs.readFileSync(`${root}/fixtures/archives/${name}`) });
   const indexer = await createFakeIndexer();
+  // A second indexer that refuses every grab (429): it joins the settings only in the scenarios that use it.
+  const refusing = await createFakeIndexer({ refuseGrabs: 429 });
+  const indexerEntry = (name, url) => ({ name, url, apiKey: 'synthetic-indexer-key', enabled: true, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] });
+  refusing.entry = indexerEntry('Refusing', refusing.url);
   Object.assign(configData, {
     indexManager: 'manual',
-    indexers: [{ name: 'Parity', url: indexer.url, apiKey: 'synthetic-indexer-key', enabled: true, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] }],
+    indexers: [indexerEntry('Parity', indexer.url)],
     // The owner's setup: health checks on, fallback on (tools/brain/expected-settings.json); everything else default.
     healthChecks: { ...configData.healthChecks, enabled: true },
     ultimateFallback: { enabled: true },
@@ -67,7 +82,7 @@ try {
     const out = await requestContext.run({ baseUrl: kaijuflow, pathPrefix: '/stremio', manifestKey: 'synthetic-manifest' }, () => addon.get('stream', type, id));
     return out.streams;
   };
-  const results = await runPlayTimeParity({ kaijuflow, backend, news, indexer, list, configData });
+  const results = await runPlayTimeParity({ kaijuflow, backend, news, indexer, refusing, list, configData });
   Object.assign(report, { status: results.every(r => r.status === 'pass') ? 'pass' : 'fail', results });
 } catch (e) { Object.assign(report, { status: 'fail', error: String(e?.stack || e) }); }
 fs.writeFileSync(output, JSON.stringify(report, null, 2));
