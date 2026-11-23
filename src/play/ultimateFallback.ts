@@ -345,6 +345,7 @@ export async function ultimateFallbackFromCandidates(
       size: list.length,
       inFlight: Math.max(1, settings.candidateCount),
       isDead: index => isDeadNzbByUrl(list[index].nzbUrl),
+      indexerOf: index => list[index].indexerName,
       hits: new Map([...hits].map(([index, data]) => [index, data.videoPath])),
     });
     const runs = new Map<number, SourceRun>();
@@ -453,6 +454,9 @@ export async function ultimateFallbackFromCandidates(
           console.log(`${tag}   📦 #${d.index + 1} Backup ready (library hit, videoPath: ${data.videoPath}) — ${c.title.substring(0, 60)} [${c.indexerName}]`);
           return;
         }
+        case 'skipIndexer':
+          console.log(`${tag} ⏭️ ${d.indexer} refused a grab: skipped for the rest of the Walk, its Sources kept (ADR 0004)`);
+          return;
         case 'ceiling':
           console.log(`${tag} 🛑 Walk stopped: ${d.grabs} grabs, the most one Walk makes — ending as if the list had run out`);
           return;
