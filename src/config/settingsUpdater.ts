@@ -112,7 +112,6 @@ export function updateSettings(settings: {
     preferenceMode?: 'priority' | 'speed';
     archiveInspection?: boolean;
     sampleCount?: 3 | 7;
-    maxAttempts?: number;
     priorityMoviesTimeoutSeconds?: number;
     priorityTvTimeoutSeconds?: number;
     prioritySeasonPackTimeoutSeconds?: number;

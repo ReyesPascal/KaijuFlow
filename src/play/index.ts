@@ -16,7 +16,7 @@ export { getOrCreateStream, getCacheKey, getDeadCacheKey, isStreamCached, isDead
 export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries, saveCacheToDisk } from './cacheUtils.js';
 
 // Ultimate-Fallback (combined retry-on-failure + health checking pipeline)
-export { headStart, ultimateFallbackFromCandidates, ultimateFallbackOptions, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';
+export { headStart, ultimateFallbackFromCandidates, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';
 
 // Shared utilities
 export { buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';

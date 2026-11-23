@@ -15,7 +15,7 @@ import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } f
 import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, logBestPlays } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
-import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
+import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, walkFoundNothing, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -451,7 +451,6 @@ export async function handleStream(
   }
 
   const fallbackEnabled = isUltimateFallbackActive();
-  const maxFallbacksSetting = globalConfig.ultimateFallback?.maxAttempts ?? 0; // 0 = unlimited (try all)
 
   // Check whether this request should produce detailed logs.
   // During fallback processing, a single stream title may generate multiple
@@ -478,12 +477,7 @@ export async function handleStream(
         if (nzbUrl && title) candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp });
         candidates.push(...group.candidates);
       }
-      if (verbose) {
-        const totalToTry = maxFallbacksSetting === 0
-          ? candidates.length
-          : Math.min(candidates.length, 1 + maxFallbacksSetting);
-        console.log(`🔄 Fallback group loaded: ${candidates.length} candidates (trying up to ${totalToTry})`);
-      }
+      if (verbose) console.log(`🔄 Fallback group loaded: ${candidates.length} candidates`);
 
       // If episode info wasn't in the request URL (individual episode stream),
       // use the group's stored episode so season pack fallbacks select the right file.
@@ -500,9 +494,8 @@ export async function handleStream(
     }
   }
 
-  const maxCandidates = !fallbackEnabled ? 1
-    : maxFallbacksSetting === 0 ? candidates.length
-    : Math.min(candidates.length, 1 + maxFallbacksSetting);
+  // A failed list entry walks on through the whole list (#190; its attempts cap was deleted in #228).
+  const maxCandidates = fallbackEnabled ? candidates.length : 1;
   const streamCacheMap = getStreamCache();
   // rc/ci are read first from the in-`t` envelope (so they survive iOS handoff
   // truncation). safeNum guards against NaN leaking from a malformed in-`t`
@@ -576,6 +569,9 @@ export async function handleStream(
   // When Ultimate-Fallback is active and the user didn't explicitly pick a
   // stream tile (user_pick=1), await its session promise instead of starting
   // our own Backend submission. Self-redirect keeps ExoPlayer alive.
+  // Set when Best's Walk ended with no Source to play (GLOSSARY: Walk): the press then shows the failure video, it
+  // does not walk the list a second time (#228).
+  let walkFoundNoSource = false;
   if (!userPick && isUltimateFallbackActive() && sessionKey) {
     // No session for this title (no Head start: off, stopped by a newer list request, or a player that only
     // asks at play): Best starts here, so the await-flow below picks up the new session promise.
@@ -592,7 +588,7 @@ export async function handleStream(
         // Group envelope does not carry aired, so file pattern matches cache pattern here.
         const onTileFilePattern = onTileCachePattern;
         ultimateFallbackFromCandidates(
-          sessionKey, group.candidates, ultimateFallbackOptions(ur),
+          sessionKey, group.candidates, ur,
           onTileCachePattern, onTileFilePattern, group.type, group.episodesInSeason,
         ).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
       }
@@ -678,6 +674,7 @@ export async function handleStream(
           //      backups to fall back to; the single-attempt path below kicks in.
           // The "primary path no longer available" message already logged the
           // first case; only log here for the second.
+          walkFoundNoSource = walkFoundNothing(err);
           if ((err as Error).message !== 'Primary path no longer available') {
             console.log(`👑 Lobby: session ended without resolution — falling through to single attempt`);
           }
@@ -714,6 +711,11 @@ export async function handleStream(
         if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
         res.redirect(302, proxyUrl.href);
       }
+      return;
+    }
+    if (walkFoundNoSource) {
+      console.log(`👑 UF tile: Best's Walk found no Source to play (sk=${sessionKey}) — serving failure video`);
+      await sendFailureVideo(req, res);
       return;
     }
     // Fall-through: after UF-vetted backups exhausted, redirect to the first

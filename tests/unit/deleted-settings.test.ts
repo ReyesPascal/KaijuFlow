@@ -1,4 +1,5 @@
-// Deleted settings (spec #183): the list-time Smart and Fixed checks (#191), Auto-queue (#226) and backups (#192).
+// Deleted settings (spec #183): the list-time Smart and Fixed checks (#191), Auto-queue (#226), backups (#192) and the
+// list entry's attempts cap (#228).
 // An old config that holds them still loads, and loses them. The whole path (config on disk → startup migration →
 // /api/config, and a save from an old page) is INT-BACKEND-SETTING-001.
 import test from 'node:test';
@@ -16,7 +17,7 @@ test('the deleted settings are dropped; providers, the connection cap, TLS and t
       hideBlocked: true, maxConnections: 12, healthCheckIndexers: { Ninja: false },
       providers: [provider], maxTotalConnections: 8, verifyTlsCertificates: true, autoQueueMode: 'top',
     },
-    ultimateFallback: { enabled: true, candidateCount: 3, desiredBackups: 1, backupProcessingLimit: 2 },
+    ultimateFallback: { enabled: true, candidateCount: 3, desiredBackups: 1, backupProcessingLimit: 2, maxAttempts: 4 },
     syncedIndexers: [{ name: 'Ninja', enabledForSearch: true, enabledForHealthCheck: false }],
   };
   assert.equal(dropDeletedSettings(c), true);

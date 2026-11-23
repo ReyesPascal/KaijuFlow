@@ -20,7 +20,6 @@ interface UltimateFallbackOverlayProps {
     preferenceMode: 'priority' | 'speed';
     archiveInspection: boolean;
     sampleCount: 3 | 7;
-    maxAttempts: number;
     priorityMoviesTimeoutSeconds: number;
     priorityTvTimeoutSeconds: number;
     prioritySeasonPackTimeoutSeconds: number;
@@ -70,20 +69,7 @@ export function UltimateFallbackOverlay({
   }, [setUltimateFallback]);
 
   const candidateDec = useHoldRepeat(useCallback(() => setUltimateFallback(prev => ({ ...prev, candidateCount: Math.max(1, prev.candidateCount - 1) })), [setUltimateFallback]));
-  const candidateInc = useHoldRepeat(useCallback(() => setUltimateFallback(prev => {
-    const ceiling = prev.maxAttempts > 0 ? Math.min(10, prev.maxAttempts) : 10;
-    return { ...prev, candidateCount: Math.min(ceiling, prev.candidateCount + 1) };
-  }), [setUltimateFallback]));
-  const attemptsDec = useHoldRepeat(useCallback(() => setUltimateFallback(prev => {
-    const newAttempts = Math.max(0, prev.maxAttempts - 1);
-    const newCandidateCount = newAttempts > 0 && prev.candidateCount > newAttempts ? newAttempts : prev.candidateCount;
-    return { ...prev, maxAttempts: newAttempts, candidateCount: newCandidateCount };
-  }), [setUltimateFallback]));
-  const attemptsInc = useHoldRepeat(useCallback(() => setUltimateFallback(prev => {
-    const newAttempts = Math.min(20, prev.maxAttempts + 1);
-    const newCandidateCount = newAttempts > 0 && prev.candidateCount > newAttempts ? newAttempts : prev.candidateCount;
-    return { ...prev, maxAttempts: newAttempts, candidateCount: newCandidateCount };
-  }), [setUltimateFallback]));
+  const candidateInc = useHoldRepeat(useCallback(() => setUltimateFallback(prev => ({ ...prev, candidateCount: Math.min(10, prev.candidateCount + 1) })), [setUltimateFallback]));
 
   // Wait-time +/- hooks. Each action reads prev.preferenceMode so the active set
   // is always the one being mutated — no stale closure across mode toggles.
@@ -589,26 +575,9 @@ export function UltimateFallbackOverlay({
             </ul>
           </div>
 
-          {/* Primary Attempt Limit (with nested Parallel NZB Candidates) */}
+          {/* Parallel NZB Candidates */}
           <div className={clsx("bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-2 transition-opacity", !ultimateFallback.enabled && "opacity-40 pointer-events-none")}>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-slate-300 whitespace-nowrap">Primary Attempt Limit</span>
-              <div className="flex items-center gap-2">
-                <button
-                  {...attemptsDec}
-                  className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                >−</button>
-                <span className="text-lg font-bold text-amber-400/90 tabular-nums w-10 text-center">{ultimateFallback.maxAttempts === 0 ? 'All' : ultimateFallback.maxAttempts}</span>
-                <button
-                  {...attemptsInc}
-                  className="w-7 h-7 rounded-full bg-slate-700/60 border border-slate-600/40 text-slate-400 hover:text-slate-100 hover:bg-slate-600/80 hover:border-slate-500/60 active:scale-90 transition-all text-sm font-medium flex items-center justify-center select-none"
-                >+</button>
-              </div>
-            </div>
-            <div className="text-xs text-slate-500">How many NZBs Ultimate Fallback will try before giving up. Library hits don't count.</div>
-            <div className="text-xs text-amber-400/50">Values: All, 1–20</div>
-
-            <div className="border-l-2 border-amber-500/20 pl-3 ml-1 mt-3 space-y-2">
+            <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-slate-400 whitespace-nowrap">Parallel NZB Candidates</span>
                 <div className="flex items-center gap-2">
@@ -638,15 +607,11 @@ export function UltimateFallbackOverlay({
             </div>
           </div>
 
-          {/* Grab Estimate — always visible, dynamic by maxAttempts */}
+          {/* Grab Estimate */}
           <div className={clsx("bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-2 transition-opacity", !ultimateFallback.enabled && "opacity-40 pointer-events-none")}>
             <div className="text-sm font-medium text-slate-300">Grab Estimate</div>
             <div className="text-xs text-amber-400/50">
-              {ultimateFallback.maxAttempts > 0 ? (
-                <>At least <span className="text-sm font-semibold tabular-nums">{ultimateFallback.candidateCount}</span> NZB{ultimateFallback.candidateCount !== 1 ? 's' : ''} grabbed during primary search (capped at <span className="text-sm font-semibold tabular-nums">{ultimateFallback.maxAttempts}</span> total)</>
-              ) : (
-                <>At least <span className="text-sm font-semibold tabular-nums">{ultimateFallback.candidateCount}</span> NZB{ultimateFallback.candidateCount !== 1 ? 's' : ''} grabbed during primary search (more if early candidates fail)</>
-              )}
+              <>At least <span className="text-sm font-semibold tabular-nums">{ultimateFallback.candidateCount}</span> NZB{ultimateFallback.candidateCount !== 1 ? 's' : ''} grabbed during primary search (more if early candidates fail, at most <span className="text-sm font-semibold tabular-nums">30</span> per play)</>
               <>. Only the Source being played is prepared, the next only when it fails: no grab after it.</>
             </div>
           </div>

@@ -398,7 +398,7 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   }
   const ignored = DELETED_ENV.filter(name => process.env[name] !== undefined && process.env[name] !== '');
   if (ignored.length > 0) {
-    console.warn(`⚠️  Deprecated env vars set but ignored: ${ignored.join(', ')}. A Source is always checked when it is played, and only the Source being played is prepared.`);
+    console.warn(`⚠️  Deprecated env vars set but ignored: ${ignored.join(', ')}. A Source is always checked when it is played, only the Source being played is prepared, and a failed list entry walks the whole list.`);
   }
 }
 
@@ -441,7 +441,6 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
       // — closest 1:1 to NZB Fallback's v1.3.0 behavior (auto-iterate
       // candidates from the start of the list when a stream tile fails).
       ur.userPickFallback = 'uf-lobby';
-      ur.maxAttempts = typeof c.nzbdavMaxFallbacks === 'number' ? c.nzbdavMaxFallbacks : 0;
     }
     delete c.nzbdavFallbackEnabled;
     delete c.nzbdavMaxFallbacks;
