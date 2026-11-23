@@ -362,34 +362,41 @@ def _norm(text):
     return re.sub(r'[^a-z0-9]+', '', str(text).lower())
 
 
-PREPARE_LINE = re.compile(r'Starting new stream preparation: (.+?)\s*$')
-PRESS_LINES = (PREPARE_LINE, re.compile(r'Best plays: (.+?)\s*$'), re.compile(r'Streaming (.+?): \d+ requests'))
+PLAY_STEPS = ('played', 'play_failed')  # a play's two events, step lines KaijuFlow writes since #242
 
 
-def played_source(text):
-    """The release name of a visit's top pick, from KaijuFlow's own log: the first Source KaijuFlow prepared for the play,
-    the one played unless it fell back (fallbacks() then counts the refusal). Its play begins at the press's '/stream hit'
-    line, or earlier at the last 'Head start: checking' line before it (#206): the Head start prepares Best's Source while
-    the list is open, so its first 'Starting new stream preparation' line counts as a press-started Best's does. With none
-    in the play, the press's own 'Best plays' line (it played what its session held) or 'Streaming' line (a play that
-    reused what the Backend held) after '/stream hit'. None when the log shows none of them."""
-    lines = [msg for _, msg in _lines(text)]
-    hit = next((i for i, msg in enumerate(lines) if '/stream hit' in msg), None)
-    if hit is None:
-        return None
-    begun = next((i for i in range(hit - 1, -1, -1) if 'Head start: checking' in lines[i]), hit)
-    for i, msg in enumerate(lines[begun:], begun):
-        m = PREPARE_LINE.search(msg) if i < hit else next((m for r in PRESS_LINES if (m := r.search(msg))), None)
-        if m:
-            return m.group(1)
-    return None
+def read_play(text, visit):
+    """What KaijuFlow's step lines say of one visit's play (#242), the only reading of KaijuFlow's log for it:
+    {'played_source', 'cause'}, the fields collect_visit stores in raw.json (a run from before #242 is read from its stored
+    raw.json, never again from its log).
+
+    played_source: the release name of the visit's top pick, the first Source KaijuFlow tried for the play: the title of
+    the first `played` line (its video was served) or `play_failed` line (it failed and the play went on, or showed the
+    failure video), whichever comes first. A Head start writes the lines of its prepare before the press (#206), so they
+    count as a press-started Best's do. None when there is no such line.
+    cause: the reason on the first `play_failed` line, in KaijuFlow's words; '' when there is none.
+
+    The lines are the visit's from its start on (a second before, as attribute_steps); a line naming another title's
+    `ref` is that title's."""
+    lo = parse_ts(visit['t_start']) - datetime.timedelta(seconds=1)
+
+    def mine(s):
+        try:
+            return s.get('step') in PLAY_STEPS and s.get('title') and s.get('ref') in (None, visit.get('id')) \
+                and parse_ts(s['t']) >= lo
+        except (KeyError, ValueError, AttributeError):
+            return False
+    lines = [s for s in parse_step_lines(text) if mine(s)]
+    failed = next((s for s in lines if s['step'] == 'play_failed'), None)
+    return {'played_source': lines[0]['title'] if lines else None,
+            'cause': scrub_text(str(failed.get('reason') or '')) if failed else ''}
 
 
 def top_pick(v):
     """The top pick of one visit, the first Source in the side's list: {'name', 'size', 'listed'}, or None when the side
     listed none.
 
-    name: the release name where KaijuFlow's own log gives it (`played_source`), otherwise the text the side showed for the
+    name: the release name where KaijuFlow's step lines give it (`read_play`), otherwise the text the side showed for the
     Source in its list. size: bytes of the file as the Backend served it, only when the top pick played (a failed play serves
     the failure video, and a fallback another file, whose size says nothing about the Source). listed: the size the list
     text states, or None. KaijuFlow, Usenet Ultimate and AltMount direct all write it after a disk sign ("... 💾 95.01
@@ -550,24 +557,8 @@ def _picks_of(meta):
     return (top_picks(meta['visits']) or None) if isinstance(meta.get('visits'), list) else None
 
 
-def failure_cause(text):
-    """Why KaijuFlow's top pick failed, in KaijuFlow's own words for the visit: the reason on its 'Stream failed' line (without
-    the file path) and the Backend's answer at the first byte ('AltMount probe returned 400'). '' when it logged neither."""
-    reason = status = ''
-    for _, msg in _lines(text):
-        if not status:
-            m = re.search(r'(\w+) probe returned (\d+)', msg)
-            if m:
-                status = m.group(0)
-        if not reason:
-            m = re.search(r'Stream failed \[\d+/\d+\] .+?: (.+)$', msg)
-            if m:
-                reason = re.sub(r':\s*/\S.*$', '', m.group(1)).strip()
-    return scrub_text('; '.join(x for x in (reason, status) if x))
-
-
 def visit_cause(v):
-    """The cause shown for a failed visit: KaijuFlow's own words, else its first-byte step line, else ''."""
+    """The cause shown for a failed visit: KaijuFlow's own words (read_play), else its first-byte step line, else ''."""
     if v.get('cause'):
         return v['cause']
     for s in v.get('steps', []):
@@ -583,8 +574,8 @@ def attribute_steps(visit, steps, end=None):
     `end` (the start of that side's next visit; None = no end), however late they are written. Play-time check lines
     (play_check, #190) are kept for every Source checked inside that window, played or not: Best checks several Sources and
     skips the ones whose check fails, and that wait is the visit's. Other prepare-side lines carry the release `title` of the
-    Source: kept only for the Source that was played, found by its name in the visit's `played_source` (from KaijuFlow's log)
-    or in the played stream's text. No Source found means no such lines: a play that reused what the Backend held shows no
+    Source: kept only for the Source that was played, found by its name in the visit's `played_source` (from KaijuFlow's step
+    lines, read_play) or in the played stream's text. No Source found means no such lines: a play that reused what the Backend held shows no
     import and no Unscramble, and another Source's background work (Best's backups) never lands here.
     """
     lo = parse_ts(visit['t_start']) - datetime.timedelta(seconds=1)
