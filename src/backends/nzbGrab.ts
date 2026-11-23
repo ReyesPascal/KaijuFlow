@@ -106,7 +106,7 @@ export async function grabNzb(
     if (nzbContent.includes('<error')) {
       const errorMsg = nzbContent.match(/description="([^"]+)"/)?.[1] ?? 'Unknown indexer error';
       const code = nzbContent.match(/<error[^>]*\bcode="(\d+)"/)?.[1];
-      if (code === '300') throw sourceFailure(`Indexer returned error: ${errorMsg}`);
+      if (code === '300') throw sourceFailure(`Indexer says the NZB is gone (code 300): ${errorMsg}`);
       throw new Error(`Indexer ${indexerForLog} refused the grab: ${errorMsg} (code ${code ?? 'none'}; indexer unavailable, Source kept)`);
     }
     throw sourceFailure(`Invalid NZB content received (${nzbContent.length} bytes)`);

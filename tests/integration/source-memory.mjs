@@ -25,6 +25,9 @@ const saved = {
   movie: { nzbUrl: 'http://127.0.0.1:9696/5/download?file=Saved.Movie&link=search-token-1', title: 'Saved.Movie.2026.1080p.WEB-DL.H264-GRP' },
   dead: { nzbUrl: 'http://127.0.0.1:1/api?t=get&id=saved-dead', title: 'The.Witcher.S01.1080p.WEB.H264-BAD' },
   deadEpisode: { nzbUrl: 'http://127.0.0.1:1/api?t=get&id=saved-dead-e01', title: 'The.Witcher.S01.720p.WEB.H264-PACK' },
+  // Round 2 review of #239, memory-2: marks an earlier build wrote when the indexer answered a grab with a refusal payload.
+  refused: { nzbUrl: 'http://127.0.0.1:1/api?t=get&id=saved-refused', title: 'Saved.Movie.2026.2160p.WEB-DL.H265-LIMIT' },
+  refusedEpisode: { nzbUrl: 'http://127.0.0.1:1/api?t=get&id=saved-refused-e01', title: 'The.Witcher.S01E01.1080p.WEB.H264-LIMIT' },
 };
 const savedVideo = name => ({ nzoId: 'altmount-job', videoPath: `/saved/${name}.mkv`, videoSize: 2048 });
 fs.mkdirSync(root + '/config', { recursive: true });
@@ -35,6 +38,9 @@ fs.writeFileSync(root + '/config/healthy-nzbs.json', JSON.stringify({
 fs.writeFileSync(root + '/config/dead-nzbs.json', JSON.stringify({
   [saved.dead.nzbUrl]: { title: saved.dead.title, indexerName: 'Saved', error: { message: 'Health check: blocked', isBadSource: true, isTimeout: false, isEpisodeSpecific: false }, createdAt: Date.now(), expiresAt: hour },
   [`${saved.deadEpisode.nzbUrl}::${S01E01}`]: { title: saved.deadEpisode.title, indexerName: 'Saved', error: { message: 'Episode not in the pack', isBadSource: true, isTimeout: false, isEpisodeSpecific: true }, createdAt: Date.now(), expiresAt: hour },
+  // expiresAt 0: saved in storage mode (the default), where a mark never expires by time.
+  [saved.refused.nzbUrl]: { title: saved.refused.title, indexerName: 'Saved', error: { message: 'Indexer returned error: Request limit reached', isBadSource: true, isTimeout: false, isEpisodeSpecific: false }, createdAt: Date.now(), expiresAt: 0 },
+  [`${saved.refusedEpisode.nzbUrl}::${S01E01}`]: { title: saved.refusedEpisode.title, indexerName: 'Saved', error: { message: 'Indexer returned error: Download limit reached', isBadSource: true, isTimeout: false, isEpisodeSpecific: true }, createdAt: Date.now(), expiresAt: 0 },
 }));
 
 try {
@@ -60,6 +66,14 @@ try {
     assert.equal(recall(saved.dead, witcher(5)).dead?.message, 'Health check: blocked', 'dead for every episode');
     assert.equal(recall(saved.deadEpisode, witcher()).dead?.message, 'Episode not in the pack');
     assert.equal(recall(saved.deadEpisode, witcher(2)).dead, undefined, 'dead for S01E01 only');
+  });
+
+  // Round 2 review of #239, memory-2: ADR 0004 sorts an error payload with any code but 300
+  // as a refusal, the Source kept. A mark an earlier build wrote for one is dropped when the memory loads, so the
+  // Source is back in lists and Walks.
+  await scenario('a-dead-mark-an-earlier-build-wrote-for-a-refusal-payload-is-dropped-on-load', () => {
+    assert.equal(recall(saved.refused, movie).dead, undefined, 'a request limit says nothing about the Source');
+    assert.equal(recall(saved.refusedEpisode, witcher()).dead, undefined, 'nor does a download limit, for the episode it was played as');
   });
 
   await scenario('a-source-the-check-blocked-is-dead-for-every-episode', () => {
