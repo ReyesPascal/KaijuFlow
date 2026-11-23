@@ -86,6 +86,17 @@ test('an error payload with code 300 (no such item) is a Source failure: the lin
   assert.match(err.message, /No such item/);
 });
 
+// Round 2 review of #239 (memory-2): a code-300 mark has words of its own, so the load can drop the old words, which
+// earlier builds wrote for every error payload, a refusal included, and keep this one.
+test('a dead mark for an error payload with code 300 is kept when the dead cache loads', async () => {
+  const err = await failure('/apierror/300/No%20such%20item');
+  assert.equal(err.message, 'Indexer says the NZB is gone (code 300): No such item');
+  const mark = { title: 't', indexerName: 'x', error: { message: err.message, isBadSource: true }, createdAt: 1, expiresAt: 0 };
+  const { kept, dropped } = pruneIndexerUnavailableMarks({ 'https://indexer.example/getnzb/gone.nzb': mark });
+  assert.deepEqual(dropped, []);
+  assert.deepEqual(Object.keys(kept), ['https://indexer.example/getnzb/gone.nzb']);
+});
+
 for (const [code, description] of [['100', 'Incorrect user credentials'], ['102', 'Account suspended'], ['500', 'Request limit reached'], ['501', 'Download limit reached'], ['900', 'Unknown error']]) {
   test(`an error payload with code ${code} (${description}) is a refusal: a plain error, not a Source failure`, async () => {
     const err = await failure(`/apierror/${code}/${encodeURIComponent(description)}`);
