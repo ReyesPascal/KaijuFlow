@@ -1034,6 +1034,32 @@ export const playTimeScenarios = [
     },
   },
   {
+    // A Walk ends when another title's list is asked for (GLOSSARY: Walk, #244), its Unscramble under way too: a Head
+    // start's Scrambled RAR set is checked and handed over, and its Unscramble is reading (one part's first article,
+    // which the check doesn't read, held 5 s) when another title's list is asked for. The read is cut off before that
+    // title's search, so the search has the connections to itself, and the set never reaches AltMount.
+    id: 'a-newer-list-request-cuts-off-a-head-start-s-unscramble',
+    async run(w) {
+      const top = offerScrambled(w, 'stopuns');
+      w.indexer.offer(top.id, [top.item]);
+      const b = offerMovie(w, [{ tag: 'stopuns-b' }]);
+      w.news.slow(top.dropAt, 5000);
+      try {
+        await withLogs(async lines => {
+          await w.list('movie', top.id);
+          await until(() => w.news.state.asks.some(a => a.id.startsWith(top.dropAt)), 'the Head start\'s Unscramble read');
+          await w.list('movie', b.id);
+          await bestDone(lines, top.id);
+        });
+        assertStoppedBeforeSearch(w, top.dropAt, b.id);
+        await new Promise(r => setTimeout(r, 500)); // a prepare that went on would upload now
+        assert.deepEqual(w.backend.uploadedNzbs(top.tag), [], 'the stopped Head start uploads nothing');
+      } finally {
+        w.news.slow(top.dropAt, 0);
+      }
+    },
+  },
+  {
     // #245: the retry gets a read-error too. Nothing is uploaded for the Scrambled RAR set (AltMount always rejects
     // the original) and the Walk moves on: the next Healthy Source plays. The set is not dead (ADR 0004), so its
     // title's next list still offers it. The retry runs with the Walk's other checks stopped: the next Source's check,

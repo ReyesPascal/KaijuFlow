@@ -43,6 +43,9 @@ export interface PrepareOptions {
   isCancelled?: () => boolean;
   /** The Walk's: stops its other checks for an Unscramble retry (ADR 0005); returns the function that starts them again. */
   stopChecks?: () => () => void;
+  /** The Walk's: aborts when the Walk ends (GLOSSARY: Walk). Cuts the grab and an Unscramble under way off, so their
+   *  connections close at once; prepare then stops with PrepareCancelledError. */
+  stop?: AbortSignal;
 }
 
 /** Options for probe. `title` and `source` only label the first-byte step line (#61). */

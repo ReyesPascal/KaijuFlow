@@ -416,6 +416,7 @@ export async function ultimateFallbackFromCandidates(
             onJob: jobId => { r.nzoId = jobId; },
             isCancelled: () => r.cancelled === true,
             stopChecks,
+            stop: controller.signal,
           },
         );
         if (r.cancelled) return;
