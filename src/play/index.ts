@@ -16,7 +16,7 @@ export { remember, recall } from './sourceMemory.js';
 export { getOrCreateStream, isStreamCached, evictReadyByVideoPath, clearTimeoutEntries } from './streamCache.js';
 
 // Cache utilities
-export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries, saveCacheToDisk } from './cacheUtils.js';
+export { getCacheStats, clearStreamCache, clearReadyCache, forgetDeadSources, deleteCacheEntry, getCacheEntries, saveCacheToDisk } from './cacheUtils.js';
 
 // Ultimate-Fallback (combined retry-on-failure + health checking pipeline)
 export { headStart, listAsked, ultimateFallbackFromCandidates, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';

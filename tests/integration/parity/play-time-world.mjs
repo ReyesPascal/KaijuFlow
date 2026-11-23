@@ -12,21 +12,27 @@ export const PLAY_TIME_BOUNDARIES = ['Fake indexer answers every search with the
 
 /**
  * A Newznab indexer that answers a search with the Sources offered for its IMDB id; `searches` says when each came.
- * With `refuseGrabs` (an HTTP status) it also hands out its own NZB links (`nzbLink`) and answers every grab of them
- * with that status, as an indexer at its download limit does (429); `grabs` lists the tags asked for.
+ * With `refuseGrabs` it also hands out its own NZB links (`nzbLink`) and refuses every grab of them, as an indexer at
+ * its download limit does: `{ status: 429 }`, or `{ status: 200, body }` with a Newznab error payload as the body;
+ * `grabbedTags` lists the tags of the grabs asked for (the fake AltMount's `grabs` holds each grab's times).
  */
 async function createFakeIndexer(listen, { refuseGrabs } = {}) {
   const offers = new Map(); // imdb id without "tt" -> [{ title, link, size }]
   const requests = [];
   const searches = []; // { imdbid, at }
-  const grabs = [];
+  const grabbedTags = [];
   const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const url = await listen((req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
     if (refuseGrabs && u.pathname.endsWith('.nzb')) {
-      grabs.push(u.pathname.slice(1, -4));
-      res.writeHead(refuseGrabs, { 'Retry-After': '3600' });
-      res.end('download limit reached');
+      grabbedTags.push(u.pathname.slice(1, -4));
+      if (refuseGrabs.body) {
+        res.writeHead(refuseGrabs.status, { 'Content-Type': 'application/xml' });
+        res.end(refuseGrabs.body);
+      } else {
+        res.writeHead(refuseGrabs.status, { 'Retry-After': '3600' });
+        res.end('download limit reached');
+      }
       return;
     }
     requests.push(u.searchParams.get('t'));
@@ -38,12 +44,12 @@ async function createFakeIndexer(listen, { refuseGrabs } = {}) {
       items.map(i => `<item><title>${xml(i.title)}</title><link>${xml(i.link)}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate>` +
         `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>');
   });
-  return { url, requests, searches, grabs, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
+  return { url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
 }
 
 /**
  * Start KaijuFlow's real modules (from `root`/dist) with the fakes around them. Returns the world the scenarios take:
- * { kaijuflow, backend, news, indexer, refusing, tvdb, list, configData }.
+ * { kaijuflow, backend, news, indexer, refusing, limited, tvdb, list, configData }.
  */
 export async function createPlayTimeWorld({ root, listen }) {
   const load = p => import(root + '/dist/' + p + '.js');
@@ -57,10 +63,13 @@ export async function createPlayTimeWorld({ root, listen }) {
   // Real archives (tests/fixtures/archives), copied next to the scenarios by in-namespace.sh.
   backend.useNews(news, { archiveFixture: name => fs.readFileSync(`${root}/fixtures/archives/${name}`) });
   const indexer = await createFakeIndexer(listen);
-  // A second indexer that refuses every grab (429): it joins the settings only in the scenarios that use it.
-  const refusing = await createFakeIndexer(listen, { refuseGrabs: 429 });
+  // Two more indexers that refuse every grab: one answers 429, one 200 with a Newznab error payload (code 500, its
+  // request limit). Each joins the settings only in the scenarios that use it.
+  const refusing = await createFakeIndexer(listen, { refuseGrabs: { status: 429 } });
+  const limited = await createFakeIndexer(listen, { refuseGrabs: { status: 200, body: '<?xml version="1.0" encoding="UTF-8"?>\n<error code="500" description="Request limit reached"/>' } });
   const indexerEntry = (name, url) => ({ name, url, apiKey: 'synthetic-indexer-key', enabled: true, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] });
   refusing.entry = indexerEntry('Refusing', refusing.url);
+  limited.entry = indexerEntry('Limited', limited.url);
   Object.assign(configData, {
     indexManager: 'manual',
     indexers: [indexerEntry('Parity', indexer.url)],
@@ -85,5 +94,5 @@ export async function createPlayTimeWorld({ root, listen }) {
     const out = await requestContext.run({ baseUrl: kaijuflow, pathPrefix: '/stremio', manifestKey: 'synthetic-manifest' }, () => addon.get('stream', type, id));
     return out.streams;
   };
-  return { kaijuflow, backend, news, indexer, refusing, tvdb, list, configData };
+  return { kaijuflow, backend, news, indexer, refusing, limited, tvdb, list, configData };
 }

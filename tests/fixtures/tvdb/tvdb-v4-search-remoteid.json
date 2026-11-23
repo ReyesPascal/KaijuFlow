@@ -1,0 +1,63 @@
+{
+  "status": 200,
+  "body": {
+    "status": "success",
+    "data": [
+      {
+        "series": {
+          "id": 71256,
+          "name": "The Daily Show",
+          "slug": "the-daily-show",
+          "image": "https://artworks.thetvdb.com/banners/v4/series/71256/posters/65cc5fcb2b20e.jpg",
+          "nameTranslations": [
+            "dan",
+            "deu",
+            "eng",
+            "spa",
+            "zho",
+            "ara"
+          ],
+          "overviewTranslations": [
+            "deu",
+            "eng",
+            "spa",
+            "ara"
+          ],
+          "aliases": [
+            {
+              "language": "eng",
+              "name": "The Daily Show with Trevor Noah"
+            },
+            {
+              "language": "eng",
+              "name": "The Daily Show with Craig Kilborn"
+            },
+            {
+              "language": "eng",
+              "name": "The Daily Show with Jon Stewart"
+            }
+          ],
+          "firstAired": "1996-07-22",
+          "lastAired": "2026-12-10",
+          "nextAired": "",
+          "score": 38888,
+          "status": {
+            "id": null,
+            "name": null,
+            "recordType": "",
+            "keepUpdated": false
+          },
+          "originalCountry": "usa",
+          "originalLanguage": "eng",
+          "defaultSeasonType": 1,
+          "isOrderRandomized": false,
+          "lastUpdated": "2026-11-23 03:18:53",
+          "averageRuntime": 27,
+          "episodes": null,
+          "overview": "The Daily Show's intrepid news team dives into the biggest headlines of the day, providing fearless coverage, expert analysis, and no-nonsense commentary.",
+          "year": "1996"
+        }
+      }
+    ]
+  }
+}

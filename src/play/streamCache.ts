@@ -6,13 +6,14 @@
 
 import type { StreamData } from './types.js';
 import type { PlayContext } from './playContext.js';
+import { isSourceFailure } from '../backends/types.js';
 import { config as globalConfig } from '../config/index.js';
 import { clearFallbackGroups } from './fallbackManager.js';
 import { clearDeliveryLog } from './utils.js';
 import { remember, recall, keyOf, isRemembered, expireRemembered, forgetEntry, memoryStats, type RememberedSource } from './sourceMemory.js';
 
 export {
-  saveCacheToDisk, evictReadyByVideoPath, recalculateTTLExpirations, clearTimeoutEntries, clearReadyCache, clearFailedCache,
+  saveCacheToDisk, evictReadyByVideoPath, recalculateTTLExpirations, clearTimeoutEntries, clearReadyCache, forgetDeadSources,
   clearMultiEpisodeDeadEntries, clearTimeoutDeadEntries, getCacheEntries,
 } from './sourceMemory.js';
 
@@ -105,7 +106,7 @@ export async function getOrCreateStream(
   // The ready Source is not recalled here: `prepareStream` reuses it only after its first-byte probe passes.
   const { dead } = recall(source, play);
   if (dead) {
-    if (verbose) console.log(`${logPrefix}❌ NZB Database (dead): ${title} - ${dead.message}`);
+    if (verbose) console.log(`${logPrefix}❌ Source memory (dead): ${title} - ${dead.message}`);
     throw dead;
   }
 
@@ -113,10 +114,10 @@ export async function getOrCreateStream(
   const pending = pendingCache.get(cacheKey);
   if (pending) {
     if (pending.expiresAt <= Date.now()) {
-      if (verbose) console.log(`${logPrefix}⏳ NZB Database (expired): ${title}`);
+      if (verbose) console.log(`${logPrefix}⏳ Prepare under way expired, starting again: ${title}`);
       pendingCache.delete(cacheKey);
     } else {
-      if (verbose) console.log(`${logPrefix}⏳ NZB Database (pending): ${title}`);
+      if (verbose) console.log(`${logPrefix}⏳ Prepare under way, joined: ${title}`);
       return pending.promise;
     }
   }
@@ -147,7 +148,7 @@ export async function getOrCreateStream(
     remember({ source, play, ready: data });
   }).catch((error) => {
     pendingCache.delete(cacheKey);
-    if (error.isBadSource) remember({ source, play, dead: error });
+    if (isSourceFailure(error)) remember({ source, play, dead: error });
   });
 
   return promise;

@@ -4,6 +4,8 @@
 // reached the fake AltMount; one scenario asserts on the log lines the brain tools read.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { assertBytes } from './bytes.mjs';
 import { scrambledRarSet } from './fake-nntp.mjs';
 
@@ -414,7 +416,7 @@ export const playTimeScenarios = [
           assertBytes(seek.body, a.sources[0].media.subarray(10, 30), 'the same video');
           await bestDone(lines, b.id);
           // A stopped check answered nothing: no play_check line, so the brain tools don't count it in the next visit's wait.
-          const steps = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+          const steps = stepsOf(lines);
           assert.equal(steps.filter(s => s.step === 'play_check' && s.title === a.sources[1].title).length, 0, 'no play_check line for the stopped check');
         });
         assert.equal(w.backend.submitsFor('left-a2'), 0, 'the lower Source never reaches AltMount');
@@ -475,6 +477,34 @@ export const playTimeScenarios = [
       assert.deepEqual(brainRead(lines, visit), { played_source: sources[1].title, cause: '' });
       assert.deepEqual(w.backend.submitted.slice(before), ['log-ok'], 'only the played Source is prepared: not the dead one, not the other healthy one (#192)');
       return { capture: lines };
+    },
+  },
+  {
+    // One `played` line per press (#242), not per request: the player's range probe and seek of the same entry within
+    // 15 s write no second line, for a press of Best and for a list entry. The brain tools count one play per line.
+    id: 'a-range-probe-or-seek-of-the-same-entry-writes-no-second-played-line',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'once-a' }, { tag: 'once-b' }]);
+      const { lines } = await withLogs(async () => {
+        const streams = await w.list('movie', id);
+        const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[1].title);
+        for (const url of [streams[0].url, entry.url]) {
+          assert.equal((await play(url)).status, 200);
+          assert.equal((await play(url, 'bytes=10-')).status, 206, 'a range probe');
+          assert.equal((await play(url, 'bytes=20-30')).status, 206, 'a seek');
+        }
+      });
+      const played = stepsOf(lines).filter(s => s.step === 'played').map(s => s.title);
+      assert.deepEqual(played, [sources[0].title, sources[1].title], 'one played line for Best\'s press, one for the list entry');
+    },
+  },
+  {
+    // #246: a list request writes its fallback group, with its play context, to disk once (config/fallback-groups.json).
+    id: 'a-list-request-writes-its-fallback-group-once',
+    async run(w) {
+      const { id } = offerMovie(w, [{ tag: 'fbgonce-a' }, { tag: 'fbgonce-b' }]);
+      const writes = await groupFileWrites(() => w.list('movie', id));
+      assert.equal(writes, 1, 'one write of the fallback groups file');
     },
   },
   {
@@ -920,7 +950,7 @@ export const playTimeScenarios = [
         await bestDone(lines, id);
         return play(streams[0].url);
       });
-      const steps = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+      const steps = stepsOf(lines);
       assert.deepEqual(steps.filter(s => s.step === 'play_check' && s.title === title).map(s => s.status), ['verified_stored'], 'the check passes it');
       // no RAR-named or number-named parts: Unscramble ends before reading anything (its reads: unscramble-step.test.ts)
       assert.deepEqual(steps.filter(s => s.step === 'unscramble' && s.title === title).map(s => [s.result, s.parts]), [['not-scrambled', 0]],
@@ -1034,6 +1064,32 @@ export const playTimeScenarios = [
     },
   },
   {
+    // A Walk ends when another title's list is asked for (GLOSSARY: Walk, #244), its Unscramble under way too: a Head
+    // start's Scrambled RAR set is checked and handed over, and its Unscramble is reading (one part's first article,
+    // which the check doesn't read, held 5 s) when another title's list is asked for. The read is cut off before that
+    // title's search, so the search has the connections to itself, and the set never reaches AltMount.
+    id: 'a-newer-list-request-cuts-off-a-head-start-s-unscramble',
+    async run(w) {
+      const top = offerScrambled(w, 'stopuns');
+      w.indexer.offer(top.id, [top.item]);
+      const b = offerMovie(w, [{ tag: 'stopuns-b' }]);
+      w.news.slow(top.dropAt, 5000);
+      try {
+        await withLogs(async lines => {
+          await w.list('movie', top.id);
+          await until(() => w.news.state.asks.some(a => a.id.startsWith(top.dropAt)), 'the Head start\'s Unscramble read');
+          await w.list('movie', b.id);
+          await bestDone(lines, top.id);
+        });
+        assertStoppedBeforeSearch(w, top.dropAt, b.id);
+        await new Promise(r => setTimeout(r, 500)); // a prepare that went on would upload now
+        assert.deepEqual(w.backend.uploadedNzbs(top.tag), [], 'the stopped Head start uploads nothing');
+      } finally {
+        w.news.slow(top.dropAt, 0);
+      }
+    },
+  },
+  {
     // #245: the retry gets a read-error too. Nothing is uploaded for the Scrambled RAR set (AltMount always rejects
     // the original) and the Walk moves on: the next Healthy Source plays. The set is not dead (ADR 0004), so its
     // title's next list still offers it. The retry runs with the Walk's other checks stopped: the next Source's check,
@@ -1063,7 +1119,7 @@ export const playTimeScenarios = [
         assert.equal(w.backend.grabs.filter(g => g.tag === 'retrybad-next').length, 1, 'its check runs again, the Source is not grabbed again');
         // The tools read KaijuFlow only through step lines (#239): the stopped check writes no verdict, only its run
         // after the retry does.
-        const checks = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)))
+        const checks = stepsOf(lines)
           .filter(s => s.step === 'play_check' && s.title === next.title).map(s => s.status);
         assert.deepEqual(checks, ['verified'], 'one play_check line for the next Source: the stopped check says nothing');
         w.news.drop(top.dropAt, 0);
@@ -1081,27 +1137,43 @@ export const playTimeScenarios = [
     // plays a Healthy Source from another indexer; no refused Source is dead. Best walks one Source at a time here,
     // so "once" is exact (at 3 at a time, the grabs already under way reach it too).
     id: 'a-refusing-indexer-is-asked-once-and-skipped',
-    run: w => withSettings(w, { candidateCount: 1 }, () => withIndexer(w, w.refusing.entry, async () => {
-      const id = `tt${nextImdb++}`;
-      const refused = [1, 2, 3, 4].map(i => ({ tag: `refused-${i}`, title: `KaijuFlow.PlayTime.refused-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
-      for (const s of refused) s.link = w.refusing.nzbLink(s.tag);
-      w.refusing.offer(id, refused);
-      const ok = { tag: 'refused-other-ok', title: 'KaijuFlow.PlayTime.refused-other-ok.2026.2160p.WEB-DL.H265-GRP', media: mediaFor('refused-other-ok'), size: 10 * GB };
-      ok.link = w.backend.addMovie(ok.tag, ok.title, ok.media);
-      w.indexer.offer(id, [ok]);
-      const before = w.refusing.grabs.length;
-      const { result: r, lines } = await withLogs(async () => {
-        const streams = await w.list('movie', id);
-        assert.equal(streams.slice(1).map(entryTitle).join(' | '), [...refused, ok].map(s => s.title).join(' | '), 'the refusing indexer\'s Sources are on top');
-        return play(streams[0].url);
+    run: w => assertRefusingIndexerSkipped(w, w.refusing, 'refused'),
+  },
+  {
+    // The Source memory (#247) through the real routes, for a dated episode (review rule 4): The Witcher S01E01, aired
+    // 2019-12-20 (TVDB), so its play context carries the aired date and the file pattern AltMount is sent names it.
+    // A press of Best walks and remembers the ready Source; a click on the same Source's list entry then recalls it.
+    // AltMount gets the Source once: the second play's video came from the memory, not from a new upload that
+    // AltMount answered from its own library.
+    id: 'a-dated-episode-ready-from-best-is-recalled-by-the-next-play',
+    run: w => withTvdb(w, async () => {
+      const show = `tt${nextImdb++}`;
+      w.tvdb.addShow(show, 'The Witcher', [1, 2, 3].map(episode => ({ season: 1, episode, aired: '2019-12-20' }))); // all out that day
+      const s = { tag: 'witcher-e01', title: 'The.Witcher.S01E01.2160p.NF.WEB-DL.H265-GRP', media: mediaFor('witcher-e01'), size: 8 * GB };
+      s.link = w.backend.addSeries(s.tag, s.title, [{ season: 1, episode: 1, media: s.media }]);
+      w.indexer.offer(show, [s]);
+      const { lines } = await withLogs(async () => {
+        const streams = await w.list('series', `${show}:1:1`);
+        assert.equal(entryTitle(streams[1]), s.title);
+        const best = await play(streams[0].url);
+        assert.equal(best.status, 200);
+        assertBytes(best.body, s.media, 'Best plays S01E01');
+        assert.equal(w.backend.submitsFor(s.tag), 1, 'Best\'s Walk handed the Source to AltMount');
+        const entry = await play(streams[1].url);
+        assert.equal(entry.status, 200);
+        assertBytes(entry.body, s.media, 'the list entry plays S01E01');
       });
-      assert.equal(r.status, 200, 'Best plays');
-      assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
-      assert.deepEqual(w.refusing.grabs.slice(before), ['refused-1'], 'the refusing indexer is asked once');
-      assert.equal(lines.filter(l => /Refusing.*skipped for the rest of the Walk/.test(l)).length, 1, 'the skip is logged once');
-      const again = await w.list('movie', id);
-      for (const s of refused) assert.ok(again.some(e => !isBest(e) && entryTitle(e) === s.title), `${s.tag} is not dead: the list still offers it`);
-    })),
+      assert.ok(lines.some(l => /TVDB episode count: .*\[aired 2019-12-20\]/.test(l)), 'the play context has S01E01\'s aired date');
+      assert.ok(lines.some(l => l.includes(`Stream ready (AltMount, reused): ${s.title}`)), 'the list entry\'s prepare recalled the ready Source');
+      assert.equal(w.backend.submitsFor(s.tag), 1, 'AltMount got the Source once: the second play came from the Source memory');
+    }),
+  },
+  {
+    // ADR 0004, "The walk's grabs": an indexer that answers a grab with 200 and a Newznab error payload is sorted by
+    // the payload's code, as an HTTP answer is by its status. Code 500 (its request limit) is a refusal, as a 429 is:
+    // asked once, skipped for the rest of the Walk, none of its Sources dead.
+    id: 'an-indexer-answering-an-error-payload-is-asked-once-and-skipped',
+    run: w => assertRefusingIndexerSkipped(w, w.limited, 'limited'),
   },
   {
     // ADR 0004, "The walk's grabs" (#243): a link the indexer says is gone (404) is a Source failure. The Walk marks
@@ -1237,6 +1309,33 @@ export const playTimeScenarios = [
  */
 export const keepAliveScenarios = [
   {
+    // The first-Source switch (#192) left the first Source preparing, and the next one fails (AltMount rejects it):
+    // the play goes back to the first and waits for it in the player's window, instead of the failure video (Codex's
+    // review of #239). No Head start, so only the list entry prepares.
+    id: 'after-the-25-s-switch-a-failed-next-source-goes-back-to-the-first',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'back-a' }, { tag: 'back-b', kind: 'rejected' }]);
+      w.backend.slowImports('back-a', 32000);
+      try {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 60, async () => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          const asked = Date.now();
+          const r = await play(entry.url, undefined, 50000);
+          const took = Date.now() - asked;
+          assert.equal(r.status, 200);
+          assertBytes(r.body, sources[0].media, 'the first Source plays, not the failure video');
+          // Its import takes 32 s; a self-redirect would have come only at 55 s.
+          assert.ok(took >= 31000 && took < 50000, `it played once the first Source was ready (${took} ms), in the first request`);
+          assert.equal(w.backend.submitsFor('back-b'), 1, 'the next Source was tried');
+          assert.equal(w.backend.submitsFor('back-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
+        }));
+      } finally {
+        w.backend.slowImports('back-a', 0);
+      }
+    },
+  },
+  {
     // Keep-alive (#248): one rule for the time left. A request still waiting near the end of the player's 60 s
     // window (at 55 s, 5 s to spare) answers with a self-redirect, whatever entry it plays: here a list entry whose
     // one Source is still preparing, which held the request until its video came. No Head start: its Walk gives
@@ -1300,6 +1399,52 @@ async function askOnce(url, timeoutMs = 30000) {
   return { status: res.status, location: res.headers.get('location'), at: Date.now() - asked };
 }
 
+/**
+ * A press of Best on a title whose top four Sources come from an indexer that refuses every grab (`refuser`, one of
+ * the play-time world's), then a Healthy Source of the suite's indexer. Best walks one Source at a time, so "once" is
+ * exact: the refuser is asked once, the skip is logged once, Best plays the Healthy Source and no refused Source is dead.
+ */
+function assertRefusingIndexerSkipped(w, refuser, prefix) {
+  return withSettings(w, { candidateCount: 1 }, () => withIndexer(w, refuser.entry, async () => {
+    const id = `tt${nextImdb++}`;
+    const refused = [1, 2, 3, 4].map(i => ({ tag: `${prefix}-${i}`, title: `KaijuFlow.PlayTime.${prefix}-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
+    for (const s of refused) s.link = refuser.nzbLink(s.tag);
+    refuser.offer(id, refused);
+    const ok = { tag: `${prefix}-other-ok`, title: `KaijuFlow.PlayTime.${prefix}-other-ok.2026.2160p.WEB-DL.H265-GRP`, media: mediaFor(`${prefix}-other-ok`), size: 10 * GB };
+    ok.link = w.backend.addMovie(ok.tag, ok.title, ok.media);
+    w.indexer.offer(id, [ok]);
+    const before = refuser.grabbedTags.length;
+    const { result: r, lines } = await withLogs(async () => {
+      const streams = await w.list('movie', id);
+      assert.equal(streams.slice(1).map(entryTitle).join(' | '), [...refused, ok].map(s => s.title).join(' | '), 'the refusing indexer\'s Sources are on top');
+      return play(streams[0].url);
+    });
+    assert.equal(r.status, 200, 'Best plays');
+    assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
+    assert.deepEqual(refuser.grabbedTags.slice(before), [`${prefix}-1`], 'the refusing indexer is asked once');
+    const skip = new RegExp(`${refuser.entry.name}.*skipped for the rest of the Walk`);
+    assert.equal(lines.filter(l => skip.test(l)).length, 1, 'the skip is logged once');
+    const again = await w.list('movie', id);
+    for (const s of refused) assert.ok(again.some(e => !isBest(e) && entryTitle(e) === s.title), `${s.tag} is not dead: the list still offers it`);
+  }));
+}
+
+/**
+ * How many times KaijuFlow writes its fallback groups file (config/fallback-groups.json) while fn runs: fs.writeFileSync
+ * is counted for the time (synced into KaijuFlow's `import * as fs` with syncBuiltinESMExports), then put back.
+ */
+async function groupFileWrites(fn) {
+  const real = fs.writeFileSync;
+  let writes = 0;
+  fs.writeFileSync = (file, ...rest) => {
+    if (String(file).endsWith('/config/fallback-groups.json')) writes++;
+    return real(file, ...rest);
+  };
+  syncBuiltinESMExports();
+  try { await fn(); } finally { fs.writeFileSync = real; syncBuiltinESMExports(); }
+  return writes;
+}
+
 /** Run fn with this indexer added to the suite's, then put the suite's back. */
 async function withIndexer(w, entry, fn) {
   const saved = w.configData.indexers;
@@ -1330,7 +1475,7 @@ function healthyBelow(w, tag, sizeGb) {
 
 /** The `unscramble` step lines' results for a Source, in order. */
 function unscrambleResults(lines, title) {
-  return lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)))
+  return stepsOf(lines)
     .filter(s => s.step === 'unscramble' && s.title === title).map(s => s.result);
 }
 

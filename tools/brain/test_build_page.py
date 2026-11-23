@@ -18,7 +18,7 @@ import unittest
 import brainreport as br
 import build_page as bp
 import pagetargets as pt
-from runfolders import fixture, run_folder
+from run_fixtures import fixture, run_folder
 from test_brainreport import TAGGED_TITLES, tagged_visit
 from test_settings import tempdir
 

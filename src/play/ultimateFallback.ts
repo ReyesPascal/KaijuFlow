@@ -17,9 +17,9 @@ import { NntpConnectionPool } from '../health/nntpConnection.js';
 import { logPrepareStart } from './streamCache.js';
 import { remember, recall } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
-import { prefetchNzb } from '../backends/nzbGrab.js';
+import { walkGrab } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
-import { sourceFailure } from '../backends/types.js';
+import { sourceFailure, isSourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, StreamData } from './types.js';
 import type { UltimateFallbackConfig } from '../types.js';
@@ -416,6 +416,7 @@ export async function ultimateFallbackFromCandidates(
             onJob: jobId => { r.nzoId = jobId; },
             isCancelled: () => r.cancelled === true,
             stopChecks,
+            stop: controller.signal,
           },
         );
         if (r.cancelled) return;
@@ -432,7 +433,7 @@ export async function ultimateFallbackFromCandidates(
         console.log(`${logPrefix}❌ Failed: ${(err as Error).message}`);
         console.log(`${tag} ❌ Prepare failed for ${name(index)}`);
         logPlayFailed(c.title, c.indexerName, err);
-        post({ type: 'prepareFailed', index, badSource: (err as { isBadSource?: boolean })?.isBadSource === true });
+        post({ type: 'prepareFailed', index, badSource: isSourceFailure(err) });
       }
     };
 
@@ -442,12 +443,12 @@ export async function ultimateFallbackFromCandidates(
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
           // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab.
-          prefetchNzb(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
+          walkGrab(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
             .then(() => post({ type: 'grabbed', index: d.index }), (err: Error) => {
               if (controller.signal.aborted) return;
               runOf(d.index).grabError = err;
               console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
-              post({ type: 'grabFailed', index: d.index, badSource: (err as { isBadSource?: boolean }).isBadSource === true });
+              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err) });
             });
           return;
         }
@@ -526,7 +527,7 @@ export async function ultimateFallbackFromCandidates(
     // ── Summary ──────────────────────────────────────────────────
     const members = walk.snapshot();
     const healthy = members.filter(m => m.check === 'healthy').length;
-    const dead = members.filter(m => m.grab === 'failed' || m.check === 'blocked' || m.check === 'error' || m.prepare === 'failed').length;
+    const dead = walk.failedCount;
     const skipped = members.filter(m => m.library === 'duplicate' || m.library === 'mismatch').length;
     const divider = '┄'.repeat(120);
     console.log(`${tag} ${divider}`);

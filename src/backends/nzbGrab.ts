@@ -2,7 +2,7 @@
  * NZB grab shared by every Backend (ADR 0003): the cached copy or an indexer
  * download through the proxy, then validation and grab tracking. The Backend's
  * prepare gets the NZB through grabSourceNzb (sourceNzb.ts); Best's Walk
- * grabs through prefetchNzb, which sorts failures the same way.
+ * grabs through walkGrab, which sorts failures the same way.
  */
 
 import { config as globalConfig } from '../config/index.js';
@@ -15,10 +15,11 @@ import { sourceFailure } from './types.js';
 /**
  * NZB grab shared by every Backend: cached copy or indexer download through
  * the proxy (exit-IP check), content validation and grab tracking. Returns the
- * NZB text. Throws a Source failure (sourceFailure) only for bad content: an
- * invalid NZB body, an indexer error payload, or a link the indexer says is
- * gone. An indexer that is unavailable or refuses us (429, 5xx, 401/403,
- * network error, download timeout) throws a plain error, so the player gets
+ * NZB text. Throws a Source failure (sourceFailure) only for bad content (an
+ * invalid NZB body) or a link the indexer says is gone (404 and other 4xx, an
+ * error payload with code 300). An indexer that is unavailable or refuses us
+ * (429, 5xx, 401/403, an error payload with any other code, network error,
+ * download timeout) throws a plain error, so the player gets
  * the failure video and the Source stays alive (ADR 0004, #51).
  * `stop`: cuts the download off when it aborts (a Walk that ended, GLOSSARY: Walk), with a plain error.
  * Backends don't call it: they go through grabSourceNzb (src/backends/sourceNzb.ts).
@@ -95,11 +96,14 @@ export async function grabNzb(
 
   // Validate NZB content - must contain <nzb element
   if (!nzbContent.includes('<nzb') || !nzbContent.includes('</nzb>')) {
-    // Check if it's an error response from the indexer
+    // An error payload (200 with a Newznab <error>) is sorted by its code, as an HTTP answer is by its status
+    // (ADR 0004): 300 (no such item) means the link is gone; every other code (1xx credentials, suspended or
+    // privileges, 5xx request or download limit, ...) is the indexer refusing us, the Source kept.
     if (nzbContent.includes('<error')) {
-      const errorMatch = nzbContent.match(/description="([^"]+)"/);
-      const errorMsg = errorMatch ? errorMatch[1] : 'Unknown indexer error';
-      throw sourceFailure(`Indexer returned error: ${errorMsg}`);
+      const errorMsg = nzbContent.match(/description="([^"]+)"/)?.[1] ?? 'Unknown indexer error';
+      const code = nzbContent.match(/<error[^>]*\bcode="(\d+)"/)?.[1];
+      if (code === '300') throw sourceFailure(`Indexer returned error: ${errorMsg}`);
+      throw new Error(`Indexer ${indexerForLog} refused the grab: ${errorMsg} (code ${code ?? 'none'}; indexer unavailable, Source kept)`);
     }
     throw sourceFailure(`Invalid NZB content received (${nzbContent.length} bytes)`);
   }
@@ -121,7 +125,7 @@ export async function grabNzb(
  * bad content, a plain error for an indexer that refuses or cannot be reached.
  * `searchExitIp` carries the proxy exit IP that was live when this candidate's search ran; `stop` cuts the grab off.
  */
-export async function prefetchNzb(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string, stop?: AbortSignal): Promise<void> {
+export async function walkGrab(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string, stop?: AbortSignal): Promise<void> {
   if (getCachedNzbContent(nzbUrl)) return;
   cacheNzbContent(nzbUrl, await grabNzb(nzbUrl, title, undefined, logPrefix, indexerName, searchExitIp, stop));
 }

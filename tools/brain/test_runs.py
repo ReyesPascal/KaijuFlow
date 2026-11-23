@@ -13,7 +13,7 @@ import brainrun
 import build_page as bp
 import runcheck
 import runs
-from runfolders import run_folder
+from run_fixtures import run_folder
 from test_brainrun import CleanIO, make_cfg, read
 from test_build_page import text
 from test_settings import tempdir

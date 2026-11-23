@@ -32,22 +32,24 @@ export interface SourceNzb {
  * Throws Source failures from the grab, as before, and a plain error (not a
  * Source failure) when Unscramble's retry of a read-error gets one too: nothing
  * is uploaded then. `stopChecks` stops the Walk's other checks for that retry
- * and returns the function that starts them again.
+ * and returns the function that starts them again. `stop` (the Walk's, when it
+ * ends) cuts the grab or the Unscramble under way off: their connections close
+ * at once and the original NZB comes back unchanged (the caller stops then).
  */
 export async function grabSourceNzb(
   source: BackendSource,
-  opts: { budgetMs?: number; logPrefix?: string; stopChecks?: () => () => void } = {},
+  opts: { budgetMs?: number; logPrefix?: string; stopChecks?: () => () => void; stop?: AbortSignal } = {},
 ): Promise<SourceNzb> {
-  const { budgetMs = 0, logPrefix = '', stopChecks } = opts;
+  const { budgetMs = 0, logPrefix = '', stopChecks, stop } = opts;
   // The grab keeps its own download timeout and, as before this step existed,
   // its time doesn't come out of the Backend's wait.
   const nzb = await timeStep(
     { step: 'nzb_fetch', source: source.indexerName, title: source.title },
-    () => grabNzb(source.nzbUrl, source.title, undefined, logPrefix, source.indexerName, source.searchExitIp),
+    () => grabNzb(source.nzbUrl, source.title, undefined, logPrefix, source.indexerName, source.searchExitIp, stop),
   );
   // Work after the grab (Unscramble) comes out of the budget.
   const afterGrab = Date.now();
-  let r = await unscramble(nzb, budgetMs, logPrefix, source);
+  let r = await unscramble(nzb, budgetMs, logPrefix, source, false, stop);
   if (r?.reason === 'read-error') {
     // ADR 0005 (amended 2026-11-23): a read-error is retried once, with the Walk's other checks stopped, so the
     // retry has the connection cap to itself. A retry that gets a read-error too is not uploaded (AltMount always
@@ -56,7 +58,7 @@ export async function grabSourceNzb(
     const resumeChecks = stopChecks?.();
     try {
       const left = budgetMs > 0 ? budgetMs - (Date.now() - afterGrab) : 0;
-      r = await unscramble(nzb, left > 0 ? left : budgetMs > 0 ? 1 : 0, logPrefix, source, true);
+      r = await unscramble(nzb, left > 0 ? left : budgetMs > 0 ? 1 : 0, logPrefix, source, true, stop);
     } finally {
       resumeChecks?.();
     }
@@ -73,16 +75,17 @@ export async function grabSourceNzb(
  * 15 s from its turn, the wait and the reads both within the budget. Never throws:
  * null when Unscramble itself failed, and the original goes up.
  */
-async function unscramble(nzb: string, budgetMs: number, logPrefix: string, source: BackendSource, retry = false): Promise<UnscrambleResult | null> {
+async function unscramble(nzb: string, budgetMs: number, logPrefix: string, source: BackendSource, retry = false, stop?: AbortSignal): Promise<UnscrambleResult | null> {
   const t0 = Date.now();
   const step = { step: 'unscramble', source: source.indexerName, title: source.title, ...(retry ? { retry: true } : {}) } as const;
   try {
     const hc = config.healthChecks;
     const connections = hc?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
     const providers = hc?.providers ?? [];
-    const r = await unscrambleNzb(nzb, providers, UNSCRAMBLE_TIME_LIMIT_MS, { connections, budgetMs: budgetMs > 0 ? budgetMs : undefined });
+    const r = await unscrambleNzb(nzb, providers, UNSCRAMBLE_TIME_LIMIT_MS, { connections, budgetMs: budgetMs > 0 ? budgetMs : undefined, stop });
     logStep({ ...step, ms: r.ms, wait_ms: r.waitMs, result: r.changed ? 'unscrambled' : r.reason, parts: r.parts });
     if (r.changed) console.log(`${logPrefix}  \u{1F9E9} Unscrambled RAR set: ${r.parts} parts renamed in volume order (${r.ms} ms)`);
+    else if (r.reason === 'stopped') console.log(`${logPrefix}  \u{1F9E9} Unscramble stopped: its Walk ended (${r.ms} ms)`);
     else if (r.reason !== 'not-scrambled' && r.reason !== 'read-error') console.log(`${logPrefix}  \u{1F9E9} Unscramble skipped (${r.reason}, ${r.parts} parts, ${r.ms} ms): uploading the original NZB`);
     return r;
   } catch (err) {
