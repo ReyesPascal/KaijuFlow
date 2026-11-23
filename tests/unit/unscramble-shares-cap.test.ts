@@ -52,7 +52,7 @@ async function checksAndUnscramble(cap: number, tag: string): Promise<number> {
   } finally {
     pool.destroyAll();
   }
-  assert.ok(news.state.reads.some(id => id.startsWith(`${tag}set-`)) && news.state.stats.some(id => id.startsWith(`${tag}check`)), 'both read the news server');
+  assert.ok((news.state.reads as string[]).some(id => id.startsWith(`${tag}set-`)) && (news.state.stats as string[]).some(id => id.startsWith(`${tag}check`)), 'both read the news server');
   return news.state.peak;
 }
 
