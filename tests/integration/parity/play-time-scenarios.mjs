@@ -854,6 +854,11 @@ export const playTimeScenarios = [
         assert.deepEqual(nextAsks.filter(a => a.asked >= from && a.asked <= to).map(a => a.id), [], 'its check asks nothing while the retry reads');
         assert.ok(nextAsks.some(a => a.asked > to), 'its check runs again after the retry');
         assert.equal(w.backend.grabs.filter(g => g.tag === 'retrybad-next').length, 1, 'its check runs again, the Source is not grabbed again');
+        // The tools read KaijuFlow only through step lines (#239): the stopped check writes no verdict, only its run
+        // after the retry does.
+        const checks = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)))
+          .filter(s => s.step === 'play_check' && s.title === next.title).map(s => s.status);
+        assert.deepEqual(checks, ['verified'], 'one play_check line for the next Source: the stopped check says nothing');
         w.news.drop(top.dropAt, 0);
         const again = (await w.list('movie', id)).filter(s => !isBest(s)).map(entryTitle);
         assert.ok(again.includes(top.item.title), 'the set is not dead: its title\'s next list still offers it');
