@@ -1384,6 +1384,80 @@ export const keepAliveScenarios = [
   },
 ];
 
+/**
+ * The go-back after the first-Source switch (#192) across a self-redirect, the first Source still preparing: in a
+ * suite of its own (parity-go-back-preparing.mjs), since it takes about 75 s and each suite process has 120 s.
+ */
+export const goBackPreparingScenarios = [
+  {
+    // The switch leaves the first Source preparing (72 s import); the next one is still preparing when the request's
+    // 55 s are up, so the request self-redirects to it, and it fails in the next request (first byte 400 at about
+    // 58 s). The first is still preparing: the play goes back to it, as it does when the next Source fails within the
+    // first request, and plays it once it is ready, instead of the failure video.
+    id: 'after-the-25-s-switch-a-next-source-failing-after-a-self-redirect-goes-back-to-the-first',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'backrd-a' }, { tag: 'backrd-b', kind: 'first-byte-400' }]);
+      w.backend.slowImports('backrd-a', 72000);
+      w.backend.slowImports('backrd-b', 33000);
+      try {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 90, async () => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          const asked = Date.now();
+          const { result: r, lines } = await withLogs(() => play(entry.url, undefined, 100000));
+          const took = Date.now() - asked;
+          assert.ok(lines.some(l => l.includes('Self-redirect') && l.includes('resuming at candidate 2')),
+            'the first request ran out of time while the next Source was preparing, and resumed at it');
+          assert.equal(w.backend.submitsFor('backrd-b'), 1, 'the next Source was tried');
+          assert.equal(r.status, 200);
+          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms)`);
+          assert.ok(took >= 71000, `it played once the first Source was ready (${took} ms)`);
+          assert.equal(w.backend.submitsFor('backrd-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
+        }));
+      } finally {
+        w.backend.slowImports('backrd-a', 0);
+        w.backend.slowImports('backrd-b', 0);
+      }
+    },
+  },
+];
+
+/**
+ * The go-back after the first-Source switch (#192) across a self-redirect, the first Source ready meanwhile: in a
+ * suite of its own (parity-go-back-ready.mjs), since it takes about 60 s and each suite process has 120 s.
+ */
+export const goBackReadyScenarios = [
+  {
+    // The switch leaves the first Source preparing (ready at 30 s); the next one is still preparing when the first
+    // request's time is up (55 s, a self-redirect resumes at it) and fails at 60 s (AltMount's prepare timeout, 35 s).
+    // Every later Source has failed and the first is ready: the play goes back to it, across the self-redirect too.
+    id: 'after-the-switch-and-a-self-redirect-a-failed-next-source-goes-back-to-the-first',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'backok-a' }, { tag: 'backok-b' }]);
+      w.backend.slowImports('backok-a', 30000);
+      w.backend.slowImports('backok-b', 200000);
+      try {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 35, async () => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          const asked = Date.now();
+          const { result: r, lines } = await withLogs(() => play(entry.url, undefined, 100000));
+          const took = Date.now() - asked;
+          assert.ok(lines.some(l => l.includes('Self-redirect') && l.includes('resuming at candidate 2')),
+            'the first request ran out of time while the next Source was preparing, and resumed at it');
+          assert.equal(r.status, 200);
+          assertBytes(r.body, sources[0].media, `the first Source plays, not the failure video (answered after ${took} ms)`);
+          assert.ok(took >= 59000, `it played once the next Source had failed (${took} ms)`);
+          assert.equal(w.backend.submitsFor('backok-a'), 1, 'the first Source was prepared once: recalled, not handed over again');
+        }));
+      } finally {
+        w.backend.slowImports('backok-a', 0);
+        w.backend.slowImports('backok-b', 0);
+      }
+    },
+  },
+];
+
 /** The tile envelope a play URL carries (its `t`). */
 const envelopeOf = url => JSON.parse(Buffer.from(new URL(url).searchParams.get('t'), 'base64url').toString());
 
