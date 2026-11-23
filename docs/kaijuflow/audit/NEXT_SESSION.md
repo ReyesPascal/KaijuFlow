@@ -11,12 +11,13 @@ KaijuFlow with AltMount as its one Backend, as fast and lean as possible; KaijuF
 ## Next command
 **The owner types**, in a fresh herdr pane once usage is back:
 
-    /kf carry on #239's build from the handoff note
+    start
 
 ## #239 build: where it stopped (2026-11-23, ~17:00)
 - **Built:** all 10 tickets merged into `deepen-239` (draft PR #252, CI green at bd2d695), plus round 1's review fix-up (9 commits, Opus high; merged at bd2d695). #255 filed for later (a clicked entry's walk-on).
 - **Round 2 review** (owner's design, all on #239's comments: six Fable agents, a lead, a scope-watcher with the final word): its fix plan is `~/kaijuflow-notes/reviews/239/round-2/fix-plan.md`; done when `round-2/COMPLETE` exists. Debate log `round-2/debate.log`, rulings `round-2/rulings.md`.
 - **Sealed measurement:** `~/.local/share/kf-review-239-sealed/plan.md`. Round 2 reviewed `review-target-239` (local), which holds three planted bugs (walk.ts:211 `>`, ultimateFallback.ts:446 signal, playTimeCheck.ts:62 guard). Their fixes are NOT applied to `deepen-239` (it never had them). Codex controls' results are in the same folder: verify its four real findings against the fix plan and add any the plan lacks.
+- **Restart here (owner, 2026-11-23: "do it in a way it can just use up all the usage and be restarted"):** `~/kaijuflow-notes/reviews/239/round-2/fix-status.md` holds every fix job and its state; do the first row not `merged` or `dropped`, and update it and push kaijuflow-notes after each change. The owner may just type "start".
 - **Next steps, in order:** (1) if `COMPLETE` is missing, read the debate and let r2watch finish, or close the round; (2) the fix round: Opus high agents (owner, 2026-11-23: no Fable in the restart), as many jobs as the plan has (up to 5 at once), each in its own files, on `deepen-239`, plants dropped; merge one by one with build, unit, both type-checks, check:brain and `npm run test:integration`; (3) mark PR #252 ready once green; (4) `kf-alert "type /retro"`; the owner types `/mattpocock-skills:retro the #239 build: follow ~/kaijuflow-notes/reviews/239/retro-brief.md` (add round 2's and the fix agents' log paths to that brief first); (5) the review report as an Artifact (`reviews/239/report-design.md`, reviews only, plus the whole-app code comparison main vs final deepen-239); (6) #249, then #250, under the owner's standing go for live tests.
 - **Clean-up when done:** worktrees under `.claude/worktrees/` (r2-*, review-target-239, review-fixup-239, the ticket ones), herdr panes in the `agents` and `debate` tabs.
 
