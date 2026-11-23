@@ -26,13 +26,13 @@ import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config } from '../config/index.js';
 import { clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
-import { sessionKeyOf, makePlayContext, episodeOf, type PlayContext } from '../play/playContext.js';
+import { sessionKeyOf, makePlayContext, type PlayContext } from '../play/playContext.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
 import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
-import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../play/streamCache.js';
+import { recall } from '../play/sourceMemory.js';
 import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
 import { isDatabaseLoaded } from '../anime/animeDatabase.js';
@@ -282,9 +282,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       if (!config.filterDeadNzbs) return results;
       const SELF_URL = getSelfUrl(); // must match the EasyNews NZB URLs the play side marks dead
       const manifestKey = requestContext.getStore()?.manifestKey || '';
-      const cachePattern = episodeOf(play).episodePattern;
-      const isDead = (url: string) =>
-        (cachePattern && isDeadNzb(getDeadCacheKey(url, cachePattern))) || isDeadNzbByUrl(url);
+      const isDead = (nzbUrl: string, title: string) => recall({ nzbUrl, title }, play).dead !== undefined;
       const before = results.length;
       const removed: { title: string; indexer: string }[] = [];
       const filtered = results.filter(r => {
@@ -293,9 +291,9 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
           const meta = r.easynewsMeta;
           const nzbParams = new URLSearchParams({ hash: meta.hash, filename: meta.filename, ext: meta.ext });
           if (meta.sig) nzbParams.set('sig', meta.sig);
-          dead = isDead(`${SELF_URL}/${manifestKey}/easynews/nzb?${nzbParams.toString()}`);
+          dead = isDead(`${SELF_URL}/${manifestKey}/easynews/nzb?${nzbParams.toString()}`, r.title);
         } else {
-          dead = isDead(r.link);
+          dead = isDead(r.link, r.title);
         }
         if (dead) removed.push({ title: r.title, indexer: r.indexerName || r.origin });
         return !dead;

@@ -9,8 +9,11 @@ export type { FallbackCandidate } from './types.js';
 // Fallback management
 export { createFallbackGroup, getFallbackGroup, clearFallbackGroups } from './fallbackManager.js';
 
+// Source memory (ready and dead Sources, #247)
+export { remember, recall } from './sourceMemory.js';
+
 // Stream cache
-export { getOrCreateStream, getCacheKey, getDeadCacheKey, isStreamCached, isDeadNzbByUrl, addDeadNzbByUrl, evictReadyByVideoPath, clearTimeoutEntries, setReadyCacheEntry, setDeadNzbEntry } from './streamCache.js';
+export { getOrCreateStream, isStreamCached, evictReadyByVideoPath, clearTimeoutEntries } from './streamCache.js';
 
 // Cache utilities
 export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries, saveCacheToDisk } from './cacheUtils.js';

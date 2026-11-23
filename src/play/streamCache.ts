@@ -1,50 +1,30 @@
 /**
- * Stream Cache
- * Three independent caches:
- *   1. pendingCache  — in-flight preparation promises (transient, resolve on their own)
- *   2. readyCache    — successful streams with video paths (configurable TTL, up to 4 days)
- *   3. deadNzbCache  — known-bad NZBs to skip on retry (configurable TTL, up to 4 days)
- * Concurrent requests for the same stream share a single pending promise.
+ * Stream Cache: the prepares under way, shared so concurrent requests for the same Source and episode wait on one
+ * promise, and the video paths that just failed to serve. What a prepare ends in is kept by the Source memory
+ * (`sourceMemory.ts`, #247): ready, or dead for a bad Source; this module keys its prepares the way the memory does.
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import type { CacheEntry, StreamData } from './types.js';
-import { BACKEND_ID } from '../backends/types.js';
+import type { StreamData } from './types.js';
+import type { PlayContext } from './playContext.js';
 import { config as globalConfig } from '../config/index.js';
 import { clearFallbackGroups } from './fallbackManager.js';
-import { clearDeliveryLog, pruneIndexerUnavailableMarks, MULTI_EPISODE_BLOCKED_ERROR } from './utils.js';
+import { clearDeliveryLog } from './utils.js';
+import { remember, recall, keyOf, isRemembered, expireRemembered, forgetEntry, memoryStats, type RememberedSource } from './sourceMemory.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const READY_CACHE_FILE = path.join(__dirname, '..', '..', 'config', 'healthy-nzbs.json');
-const DEAD_NZB_CACHE_FILE = path.join(__dirname, '..', '..', 'config', 'dead-nzbs.json');
+export {
+  saveCacheToDisk, evictReadyByVideoPath, recalculateTTLExpirations, clearTimeoutEntries, clearReadyCache, clearFailedCache,
+  clearMultiEpisodeDeadEntries, clearTimeoutDeadEntries, getCacheEntries,
+} from './sourceMemory.js';
 
-/** Strip the volatile `link` query param from Prowlarr download URLs for stable cache keys.
- *  Prowlarr URLs match: /{indexerId}/download?apikey=...&link=...&file=...
- *  The link= param is a dynamic token that changes every search. */
-function normalizeProwlarrUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    if (!parsed.pathname.match(/\/\d+\/download\/?$/)) return url;
-    parsed.searchParams.delete('link');
-    return parsed.toString();
-  } catch {
-    return url;
-  }
+/** A Source as a play prepares it. */
+export interface PlaySource extends RememberedSource {
+  /** Proxy exit IP captured at search time, checked again when the NZB is grabbed. */
+  searchExitIp?: string;
 }
 
-/** Matches the trailing episode-pattern suffix on a cache key — handles both
- *  legacy (":S04E08", ":S04[. _-]?E08") and chain-aware
- *  (":(?:S04…|\b<YYYY>[. _-]?<MM>[. _-]?<DD>\b)") forms. The chain-aware form
- *  contains literal colons from `(?:` groups, so we anchor on the suffix
- *  prefix shape (`:(?:` or `:S\d\d` followed by a separator) rather than
- *  `:S\d\d` alone, which can occur nested inside the regex itself. */
-const EPISODE_PATTERN_SUFFIX_RE = /:(?:\(\?:|S\d{2}(?:[. _\-\[(]|E\d))[\s\S]*$/;
-
-/** Pending preparations — in-flight promises that resolve into readyCache or deadNzbCache */
-const pendingCache = new Map<string, CacheEntry>();
+/** Prepares under way: in-flight promises that end in the Source memory, ready or dead. */
+interface Pending { promise: Promise<StreamData>; expiresAt: number; source: string }
+const pendingCache = new Map<string, Pending>();
 
 // ============================================================================
 // Broken Video Path Tracking
@@ -78,178 +58,8 @@ export function clearVideoPathBroken(videoPath: string): void {
   brokenVideoPaths.delete(videoPath);
 }
 
-/** Dynamic TTL helpers — when mode is 'storage', entries never expire by time */
-export function getReadyTTLMs(): number {
-  if (globalConfig.healthyNzbDbMode === 'storage') return Infinity;
-  return (globalConfig.healthyNzbDbTTL ?? 259200) * 1000;
-}
-export function getDeadTTLMs(): number {
-  if (globalConfig.deadNzbDbMode === 'storage') return Infinity;
-  return (globalConfig.deadNzbDbTTL ?? 86400) * 1000;
-}
-
-/** Estimate byte size of the ready cache (plain objects — JSON.stringify is accurate) */
-function estimateReadyCacheSize(): number {
-  let total = 0;
-  for (const [key, value] of readyCache.entries()) {
-    total += key.length + JSON.stringify(value).length;
-  }
-  return total;
-}
-
-/** Estimate byte size of the dead NZB cache (Error properties are non-enumerable) */
-function estimateDeadCacheSize(): number {
-  let total = 0;
-  for (const [key, entry] of deadNzbCache.entries()) {
-    total += key.length + (entry.title?.length ?? 0) + (entry.indexerName?.length ?? 0) + (entry.error.message?.length ?? 0) + 50;
-  }
-  return total;
-}
-
-/** FIFO-evict oldest entries until the cache is under the given MB limit */
-function enforceStorageLimit(cache: Map<string, any>, sizeFn: () => number, maxMB: number): void {
-  const maxBytes = maxMB * 1024 * 1024;
-  while (sizeFn() > maxBytes && cache.size > 0) {
-    const firstKey = cache.keys().next().value;
-    if (firstKey !== undefined) cache.delete(firstKey);
-    else break;
-  }
-}
-
-/**
- * Healthy cache — successful streams, persisted to disk, survives restarts.
- * Used to short-circuit repeat requests for the same stream within the TTL window.
- * The first request runs the full prep pipeline; subsequent requests return the cached result.
- */
-interface ReadyEntry { data: StreamData; indexerName?: string; createdAt: number; expiresAt: number; backend?: string }
-
-/** Ready entries only count when AltMount made them: saved entries another Backend made
- *  (#188), and untagged ones from before Backends existed, are never served (a stale link). */
-const isActiveBackendEntry = (e: ReadyEntry): boolean => e.backend === BACKEND_ID;
-
-/** Remembered ready Stream for a Source, or null. Ignores entries another Backend made. */
-export function findReadyStream(nzbUrl: string, title: string, episodePattern: string | undefined): StreamData | null {
-  const entry = readyCache.get(getCacheKey(nzbUrl, title) + (episodePattern ? `:${episodePattern}` : ''));
-  if (!entry || entry.expiresAt <= Date.now() || !isActiveBackendEntry(entry)) return null;
-  return entry.data;
-}
-const readyCache = new Map<string, ReadyEntry>();
-
-/** Dead NZBs — persisted to disk, survives restarts */
-/** size: post-resolve video bytes when known (UF / 404-eviction paths), else indexer-reported NZB bytes (search-time / health-check paths) */
-interface DeadNzbEntry { title: string; indexerName?: string; size?: number; error: Error; createdAt: number; expiresAt: number }
-const deadNzbCache = new Map<string, DeadNzbEntry>();
-
-// ── Disk persistence ──────────────────────────────────────────────────
-
-interface SerializedDeadEntry {
-  title?: string;
-  indexerName?: string;
-  size?: number;
-  // isNzbdavFailure: the flag's name in dead marks saved before #200; read on load, never written.
-  error: { message: string; isBadSource?: boolean; isNzbdavFailure?: boolean; isTimeout?: boolean; isEpisodeSpecific?: boolean };
-  createdAt?: number;
-  expiresAt: number;
-}
-
-function loadCacheFromDisk(): void {
-  const now = Date.now();
-  try {
-    const raw = JSON.parse(fs.readFileSync(READY_CACHE_FILE, 'utf-8')) as Record<string, ReadyEntry>;
-    for (const [key, entry] of Object.entries(raw)) {
-      const expiresAt = entry.expiresAt || Infinity;
-      if (expiresAt > now) {
-        const sepIdx = key.indexOf('::');
-        const normalizedKey = sepIdx === -1
-          ? normalizeDeadUrl(key)
-          : `${normalizeDeadUrl(key.substring(0, sepIdx))}::${key.substring(sepIdx + 2)}`;
-        readyCache.set(normalizedKey, { ...entry, createdAt: (entry as any).createdAt || now, expiresAt });
-      }
-    }
-    if (readyCache.size) console.log(`💾 Loaded ${readyCache.size} ready streams from disk`);
-  } catch {}
-  try {
-    const stored = JSON.parse(fs.readFileSync(DEAD_NZB_CACHE_FILE, 'utf-8')) as Record<string, SerializedDeadEntry>;
-    const { kept: raw, dropped } = pruneIndexerUnavailableMarks(stored);
-    for (const [key, entry] of Object.entries(raw)) {
-      const expiresAt = entry.expiresAt || Infinity;
-      if (expiresAt > now) {
-        const error = new Error(entry.error.message);
-        (error as any).isBadSource = entry.error.isBadSource ?? entry.error.isNzbdavFailure ?? false;
-        (error as any).isTimeout = entry.error.isTimeout ?? false;
-        // Migration: writers prior to this fix stored episode-keyed entries
-        // with isEpisodeSpecific=false, causing isDeadNzbByUrl to bleed them
-        // as URL-wide bans. OR the three signals (stored flag, key shape,
-        // legacy multi-episode message) so any truthy signal upgrades on load.
-        // `||` is required: ?? would short-circuit on the false boolean.
-        const fromFlag = entry.error.isEpisodeSpecific === true;
-        const fromKey = key.includes('::');
-        const fromMessage = entry.error.message === MULTI_EPISODE_BLOCKED_ERROR;
-        (error as any).isEpisodeSpecific = fromFlag || fromKey || fromMessage;
-        if (entry.title) {
-          // New format — key is url or url::episodePattern, title stored in entry
-          const sepIdx = key.indexOf('::');
-          const normalizedKey = sepIdx === -1
-            ? normalizeDeadUrl(key)
-            : `${normalizeDeadUrl(key.substring(0, sepIdx))}::${key.substring(sepIdx + 2)}`;
-          deadNzbCache.set(normalizedKey, { title: entry.title, indexerName: entry.indexerName, size: entry.size, error, createdAt: (entry as any).createdAt || now, expiresAt });
-        } else {
-          // Old format — key is url::title or url::title:episodePattern, migrate
-          const title = extractTitle(key);
-          const url = key.substring(0, key.indexOf('::'));
-          const afterSep = key.substring(key.indexOf('::') + 2);
-          const epMatch = afterSep.match(/:S\d+(?:[\[(. _-]|E\d)/);
-          const episodePattern = epMatch ? afterSep.substring(epMatch.index! + 1) : undefined;
-          const newKey = getDeadCacheKey(url, episodePattern);
-          deadNzbCache.set(newKey, { title, indexerName: entry.indexerName, size: entry.size, error, createdAt: (entry as any).createdAt || now, expiresAt });
-        }
-      }
-    }
-    if (deadNzbCache.size) console.log(`💾 Loaded ${deadNzbCache.size} dead NZBs from disk`);
-    if (dropped.length) {
-      console.log(`🧹 Dropped ${dropped.length} dead mark(s) caused by an unavailable indexer, not a bad Source (ADR 0004)`);
-      saveCacheToDisk();
-    }
-  } catch {}
-}
-
-export function saveCacheToDisk(): void {
-  const now = Date.now();
-  const readyData: Record<string, ReadyEntry> = {};
-  for (const [key, entry] of readyCache.entries()) {
-    if (entry.expiresAt > now) {
-      readyData[key] = { ...entry, createdAt: entry.createdAt, expiresAt: Number.isFinite(entry.expiresAt) ? entry.expiresAt : 0 };
-    }
-  }
-  try { fs.writeFileSync(READY_CACHE_FILE, JSON.stringify(readyData, null, 2)); } catch {}
-
-  const deadData: Record<string, SerializedDeadEntry> = {};
-  for (const [key, entry] of deadNzbCache.entries()) {
-    if (entry.expiresAt > now) {
-      if ((entry.error as any).isTimeout && globalConfig.playCacheTimeouts === false) continue;
-      deadData[key] = {
-        title: entry.title,
-        indexerName: entry.indexerName,
-        size: entry.size,
-        error: {
-          message: entry.error.message,
-          isBadSource: (entry.error as any).isBadSource ?? false,
-          isTimeout: (entry.error as any).isTimeout ?? false,
-          isEpisodeSpecific: (entry.error as any).isEpisodeSpecific ?? false,
-        },
-        createdAt: entry.createdAt,
-        expiresAt: Number.isFinite(entry.expiresAt) ? entry.expiresAt : 0,
-      };
-    }
-  }
-  try { fs.writeFileSync(DEAD_NZB_CACHE_FILE, JSON.stringify(deadData, null, 2)); } catch {}
-}
-
-loadCacheFromDisk();
-recalculateTTLExpirations();
-
 /** Injected stream preparation function (set by streamHandler to break circular dep) */
-type PrepareFn = (nzbUrl: string, title: string, filePattern?: string, contentType?: string, episodesInSeason?: number, isSeasonPack?: boolean, logPrefix?: string, indexerName?: string, searchExitIp?: string) => Promise<StreamData>;
+type PrepareFn = (source: PlaySource, play: PlayContext | undefined, logPrefix: string) => Promise<StreamData>;
 let prepareFn: PrepareFn | null = null;
 
 /** The console line that says a Source goes to the Backend now, the same for every prepare (a clicked list entry,
@@ -262,148 +72,52 @@ export function setPrepareFn(fn: PrepareFn): void {
   prepareFn = fn;
 }
 
-/** Build the healthy-cache key. URL canonicalized via normalizeDeadUrl for
- *  symmetry with the dead cache and to absorb Newznab delimiter malformations. */
-export function getCacheKey(nzbUrl: string, title: string): string {
-  return `${normalizeDeadUrl(nzbUrl)}::${title}`;
-}
-
-/** Build the dead-cache lookup key for a URL (and optional episode pattern).
- *  URL is canonicalized via normalizeDeadUrl so writes match reads exactly. */
-export function getDeadCacheKey(nzbUrl: string, episodePattern?: string): string {
-  const normalized = normalizeDeadUrl(nzbUrl);
-  return episodePattern ? `${normalized}::${episodePattern}` : normalized;
-}
-
-/** Decide whether a dead-cache write should be URL-wide (first failure or
- *  single-episode) or episode-specific (pack with prior success). */
-function shouldDeadBeUrlWide(nzbUrl: string, isSeasonPack?: boolean): boolean {
-  if (!isSeasonPack) return false;
-  const normalized = normalizeDeadUrl(nzbUrl);
-  for (const key of readyCache.keys()) {
-    const sepIdx = key.indexOf('::');
-    if (sepIdx === -1) continue;
-    if (key.substring(0, sepIdx) === normalized) return false;
-  }
-  return true;
-}
-
-/** Write a resolved stream directly to readyCache (used by Ultimate-Fallback to bypass getOrCreateStream). */
-export function setReadyCacheEntry(cacheKey: string, data: StreamData, indexerName?: string): void {
-  const now = Date.now();
-  readyCache.set(cacheKey, { data, indexerName, createdAt: now, expiresAt: now + getReadyTTLMs(), backend: BACKEND_ID });
-  saveCacheToDisk();
-}
-
-/** Write a failed NZB directly to deadNzbCache (used by Ultimate-Fallback to bypass
- *  getOrCreateStream). Pack URLs whose first attempt fails the whole NZB (no healthy
- *  entry yet, error not flagged episode-specific) get a URL-wide ban so siblings of
- *  the dead pack stop appearing in results; everything else stays episode-specific
- *  so per-episode failures within a proven pack do not block other episodes. */
-export function setDeadNzbEntry(
-  nzbUrl: string,
-  title: string,
-  error: Error,
-  cachePattern?: string,
-  indexerName?: string,
-  size?: number,
-  isSeasonPack?: boolean,
-): void {
-  const errEpSpecific = (error as any).isEpisodeSpecific === true;
-  const wide = !errEpSpecific && shouldDeadBeUrlWide(nzbUrl, isSeasonPack);
-  const key = wide ? getDeadCacheKey(nzbUrl) : getDeadCacheKey(nzbUrl, cachePattern);
-  if (!wide && cachePattern) (error as any).isEpisodeSpecific = true;
-  const now = Date.now();
-  deadNzbCache.set(key, { title, indexerName, size, error, createdAt: now, expiresAt: now + getDeadTTLMs() });
-  saveCacheToDisk();
-}
-
 export function cleanupExpiredCache(): void {
   const now = Date.now();
-  let removed = false;
   for (const [key, entry] of pendingCache.entries()) {
     if (entry.expiresAt < now) pendingCache.delete(key);
   }
-  for (const [key, entry] of readyCache.entries()) {
-    if (entry.expiresAt < now) { readyCache.delete(key); removed = true; }
-  }
-  for (const [key, entry] of deadNzbCache.entries()) {
-    if (entry.expiresAt < now) { deadNzbCache.delete(key); removed = true; }
-  }
+  expireRemembered();
   for (const [path, expiresAt] of brokenVideoPaths) {
     if (now >= expiresAt) brokenVideoPaths.delete(path);
   }
-  if (removed) saveCacheToDisk();
+}
+
+/** Whether a prepare of this Source for this play is under way. */
+export function isPreparing(source: { nzbUrl: string; title: string }, play?: PlayContext): boolean {
+  const pending = pendingCache.get(keyOf(source, play));
+  return pending !== undefined && pending.expiresAt > Date.now();
 }
 
 /**
- * Recalculate expiresAt for all existing entries based on current TTL settings.
- * Called when TTL or mode changes so existing entries reflect the new policy.
- */
-export function recalculateTTLExpirations(): void {
-  const now = Date.now();
-  const readyTTL = getReadyTTLMs();
-  for (const entry of readyCache.values()) {
-    entry.createdAt = now;
-    entry.expiresAt = now + readyTTL;
-  }
-  const deadTTL = getDeadTTLMs();
-  for (const entry of deadNzbCache.values()) {
-    entry.createdAt = now;
-    entry.expiresAt = now + deadTTL;
-  }
-  cleanupExpiredCache();
-  // Enforce storage limits when in storage mode (handles mode switch or reduced MaxSizeMB)
-  if (globalConfig.healthyNzbDbMode === 'storage') {
-    enforceStorageLimit(readyCache, estimateReadyCacheSize, globalConfig.healthyNzbDbMaxSizeMB ?? 50);
-  }
-  if (globalConfig.deadNzbDbMode === 'storage') {
-    enforceStorageLimit(deadNzbCache, estimateDeadCacheSize, globalConfig.deadNzbDbMaxSizeMB ?? 50);
-  }
-  saveCacheToDisk();
-}
-
-/**
- * Get or create a stream preparation task with promise sharing
+ * Prepare a Source for a play, sharing a prepare already under way. A Source remembered dead for the play is not
+ * prepared (its error is thrown); what the prepare ends in is remembered: ready, or dead when it is a bad Source.
  */
 export async function getOrCreateStream(
-  nzbUrl: string,
-  title: string,
-  cachePattern?: string,
-  filePattern?: string,
-  contentType?: string,
-  episodesInSeason?: number,
-  indexerName?: string,
-  size?: number,
-  verbose = true,
-  isSeasonPack?: boolean,
-  logPrefix = '',
-  searchExitIp?: string,
+  source: PlaySource,
+  play: PlayContext | undefined,
+  { verbose = true, logPrefix = '' }: { verbose?: boolean; logPrefix?: string } = {},
 ): Promise<StreamData> {
   cleanupExpiredCache();
+  const { title } = source;
+  const cacheKey = keyOf(source, play);
 
-  const cacheKey = getCacheKey(nzbUrl, title) + (cachePattern ? `:${cachePattern}` : '');
-
-  // The readyCache is not read here: `prepareStream` reuses a ready entry only
-  // after its first-byte probe passes.
-
-  // Check dead NZB cache — known-bad NZBs are skipped instantly
-  const deadKey = getDeadCacheKey(nzbUrl, cachePattern);
-  const dead = deadNzbCache.get(deadKey);
+  // The ready Source is not recalled here: `prepareStream` reuses it only after its first-byte probe passes.
+  const { dead } = recall(source, play);
   if (dead) {
-    if (verbose) console.log(`${logPrefix}\u274C NZB Database (dead): ${title} - ${dead.error.message}`);
-    throw dead.error;
+    if (verbose) console.log(`${logPrefix}❌ NZB Database (dead): ${title} - ${dead.message}`);
+    throw dead;
   }
 
   // Check pending cache — share the in-flight promise
   const pending = pendingCache.get(cacheKey);
   if (pending) {
     if (pending.expiresAt <= Date.now()) {
-      if (verbose) console.log(`${logPrefix}\u23F3 NZB Database (expired): ${title}`);
+      if (verbose) console.log(`${logPrefix}⏳ NZB Database (expired): ${title}`);
       pendingCache.delete(cacheKey);
     } else {
-      if (verbose) console.log(`${logPrefix}\u23F3 NZB Database (pending): ${title}`);
-      return pending.promise!;
+      if (verbose) console.log(`${logPrefix}⏳ NZB Database (pending): ${title}`);
+      return pending.promise;
     }
   }
 
@@ -412,7 +126,7 @@ export async function getOrCreateStream(
   // Create new preparation task
   if (verbose) logPrepareStart(logPrefix, title);
 
-  const promise = prepareFn(nzbUrl, title, filePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp);
+  const promise = prepareFn(source, play, logPrefix);
 
   // Set as pending with a TTL — if the promise hangs, the entry expires and
   // subsequent requests can retry instead of hanging forever.  When UF is
@@ -426,80 +140,17 @@ export async function getOrCreateStream(
       )
     : 0;
   const pendingTTLMs = maxTimeout > 0 ? (maxTimeout + 30) * 1000 : Infinity;
-  pendingCache.set(cacheKey, {
-    status: 'pending',
-    promise,
-    expiresAt: Date.now() + pendingTTLMs,
-  });
+  pendingCache.set(cacheKey, { promise, expiresAt: Date.now() + pendingTTLMs, source: keyOf(source) });
 
   promise.then((data) => {
     pendingCache.delete(cacheKey);
-    const createdAt = Date.now();
-    readyCache.set(cacheKey, {
-      data,
-      indexerName,
-      createdAt,
-      expiresAt: createdAt + getReadyTTLMs(),
-      backend: BACKEND_ID,
-    });
-    if (globalConfig.healthyNzbDbMode === 'storage') {
-      enforceStorageLimit(readyCache, estimateReadyCacheSize, globalConfig.healthyNzbDbMaxSizeMB ?? 50);
-    }
-    saveCacheToDisk();
+    remember({ source, play, ready: data });
   }).catch((error) => {
     pendingCache.delete(cacheKey);
-    if (error.isBadSource) {
-      const deadCreatedAt = Date.now();
-      const persist = !error.isTimeout || globalConfig.playCacheTimeouts !== false;
-      const ttl = persist ? getDeadTTLMs() : (globalConfig.cacheTTL || 7200) * 1000;
-      // First-attempt pack failure of the whole NZB (no healthy entry yet, error
-      // not flagged episode-specific by its source) bans the whole URL so siblings
-      // of the dead pack drop out of results; otherwise keep the entry episode-
-      // specific so a single bad episode inside a proven pack does not block the
-      // rest. Tag the error so isDeadNzbByUrl honors the scope.
-      const errEpSpecific = (error as any).isEpisodeSpecific === true;
-      const wide = !errEpSpecific && shouldDeadBeUrlWide(nzbUrl, isSeasonPack);
-      const finalDeadKey = wide ? getDeadCacheKey(nzbUrl) : deadKey;
-      if (!wide && cachePattern) (error as any).isEpisodeSpecific = true;
-      deadNzbCache.set(finalDeadKey, {
-        title,
-        indexerName,
-        size,
-        error,
-        createdAt: deadCreatedAt,
-        expiresAt: deadCreatedAt + ttl,
-      });
-      if (persist) {
-        if (globalConfig.deadNzbDbMode === 'storage') {
-          enforceStorageLimit(deadNzbCache, estimateDeadCacheSize, globalConfig.deadNzbDbMaxSizeMB ?? 50);
-        }
-        saveCacheToDisk();
-      }
-    }
+    if (error.isBadSource) remember({ source, play, dead: error });
   });
 
   return promise;
-}
-
-/**
- * Get the raw pending cache map (used by streamHandler for pending checks)
- */
-export function getStreamCache(): Map<string, CacheEntry> {
-  return pendingCache;
-}
-
-/**
- * Check if an NZB is known-dead (failed with isBadSource)
- */
-export function isDeadNzb(cacheKey: string): boolean {
-  return deadNzbCache.has(cacheKey);
-}
-
-/** Clear timeout-only entries from the in-memory dead cache */
-export function clearTimeoutEntries(): void {
-  for (const [key, entry] of deadNzbCache) {
-    if ((entry.error as any).isTimeout) deadNzbCache.delete(key);
-  }
 }
 
 /** Clear fallback state and delivery log */
@@ -509,259 +160,30 @@ export function clearStreamCache(): void {
   console.log('\u{1F9F9} Pending entries + fallback groups cleared');
 }
 
-/**
- * Clear all ready (successful) stream entries
- */
-export function clearReadyCache(): number {
-  const count = readyCache.size;
-  readyCache.clear();
-  if (count) {
-    console.log(`\u{1F9F9} Cleared ${count} successful stream cache entries`);
-    saveCacheToDisk();
-  }
-  return count;
-}
-
-/**
- * Clear all dead NZB entries
- */
-export function clearFailedCache(): number {
-  const count = deadNzbCache.size;
-  deadNzbCache.clear();
-  if (count) {
-    console.log(`\u{1F9F9} Cleared ${count} dead NZB cache entries`);
-    saveCacheToDisk();
-  }
-  return count;
-}
-
-/** Clear dead entries blocked because the episode was only available in a combined multi-episode file */
-export function clearMultiEpisodeDeadEntries(): number {
-  let count = 0;
-  for (const [key, entry] of deadNzbCache) {
-    if (entry.error.message === MULTI_EPISODE_BLOCKED_ERROR) {
-      deadNzbCache.delete(key);
-      count++;
-    }
-  }
-  if (count) {
-    console.log(`\u{1F9F9} Cleared ${count} multi-episode dead NZB entries`);
-    saveCacheToDisk();
-  }
-  return count;
-}
-
-/** Clear only timed-out entries from the dead NZB cache */
-export function clearTimeoutDeadEntries(): number {
-  let count = 0;
-  for (const [key, entry] of deadNzbCache) {
-    if ((entry.error as any).isTimeout) {
-      deadNzbCache.delete(key);
-      count++;
-    }
-  }
-  if (count) {
-    console.log(`\u{1F9F9} Cleared ${count} timed-out dead NZB entries`);
-    saveCacheToDisk();
-  }
-  return count;
-}
-
-/**
- * Delete a single cache entry by key (checks ready cache, dead NZB cache, and pending cache)
- */
+/** Delete a single entry by key: a remembered one (ready or dead) or a prepare under way. */
 export function deleteCacheEntry(cacheKey: string): boolean {
-  let deleted = false;
-  if (readyCache.delete(cacheKey)) { deleted = true; }
-  else if (deadNzbCache.delete(cacheKey)) { deleted = true; }
-  else if (pendingCache.delete(cacheKey)) { deleted = true; }
-  if (deleted) saveCacheToDisk();
-  return deleted;
+  return forgetEntry(cacheKey) || pendingCache.delete(cacheKey);
 }
 
 /**
- * Evict a ready cache entry by its videoPath (reverse lookup).
- * When markDead is true (default), creates an episode-specific dead entry for TV
- * (so other episodes from the same season pack remain accessible), or a URL-only
- * dead entry for movies. When markDead is false, only removes from ready cache
- * without blacklisting the NZB (used for transient errors like 5xx where the
- * NZB itself isn't bad, just temporarily unavailable).
- * Returns the evicted cache key, or null if no match found.
- */
-export function evictReadyByVideoPath(videoPath: string, markDead: boolean = true): string | null {
-  for (const [key, entry] of readyCache.entries()) {
-    if (entry.data.videoPath === videoPath) {
-      readyCache.delete(key);
-      if (markDead) {
-        const sepIdx = key.indexOf('::');
-        if (sepIdx !== -1) {
-          const nzbUrl = key.substring(0, sepIdx);
-          const epMatch = key.match(EPISODE_PATTERN_SUFFIX_RE);
-          const episodePattern = epMatch ? epMatch[0].substring(1) : undefined;
-          const deadKey = getDeadCacheKey(nzbUrl, episodePattern);
-          if (!deadNzbCache.has(deadKey)) {
-            const now = Date.now();
-            const error = new Error('Video file no longer available (404)');
-            (error as any).isBadSource = true;
-            // deadKey is episode-specific when episodePattern is set; tag the error
-            // so isDeadNzbByUrl's prefix-iter loop skips it as URL-wide.
-            if (episodePattern) (error as any).isEpisodeSpecific = true;
-            deadNzbCache.set(deadKey, {
-              title: extractTitle(key),
-              indexerName: entry.indexerName,
-              size: entry.data.videoSize,
-              error,
-              createdAt: now,
-              expiresAt: now + getDeadTTLMs(),
-            });
-            if (globalConfig.deadNzbDbMode === 'storage') {
-              enforceStorageLimit(deadNzbCache, estimateDeadCacheSize, globalConfig.deadNzbDbMaxSizeMB ?? 50);
-            }
-          }
-        }
-      }
-      saveCacheToDisk();
-      return key;
-    }
-  }
-  return null;
-}
-
-/**
- * Extract title from a ready cache key (format: `${nzbUrl}::${title}` optionally with `:${episodePattern}`).
- * Dead cache entries store title in the entry value instead.
- */
-function extractTitle(cacheKey: string): string {
-  const separatorIdx = cacheKey.indexOf('::');
-  if (separatorIdx === -1) return cacheKey;
-  const afterSep = cacheKey.substring(separatorIdx + 2);
-  return afterSep.replace(EPISODE_PATTERN_SUFFIX_RE, '');
-}
-
-/**
- * Get detailed cache entries grouped by status
- */
-export function getCacheEntries(): {
-  ready: { key: string; title: string; indexerName?: string; videoPath: string; videoSize: number; createdAt: number; expiresAt: number }[];
-  failed: { key: string; title: string; indexerName?: string; size?: number; error: string; episodePattern?: string; createdAt: number; expiresAt: number }[];
-} {
-  const now = Date.now();
-  const ready: { key: string; title: string; indexerName?: string; videoPath: string; videoSize: number; createdAt: number; expiresAt: number }[] = [];
-  const failed: { key: string; title: string; indexerName?: string; size?: number; error: string; episodePattern?: string; createdAt: number; expiresAt: number }[] = [];
-
-  for (const [key, entry] of readyCache.entries()) {
-    if (entry.expiresAt < now || !isActiveBackendEntry(entry)) continue;
-    ready.push({ key, title: extractTitle(key), indexerName: entry.indexerName, videoPath: entry.data.videoPath, videoSize: entry.data.videoSize, createdAt: entry.createdAt, expiresAt: entry.expiresAt });
-  }
-
-  for (const [key, entry] of deadNzbCache.entries()) {
-    if (entry.expiresAt < now) continue;
-    if ((entry.error as any).isTimeout && globalConfig.playCacheTimeouts === false) continue;
-    const sepIdx = key.indexOf('::');
-    let episodePattern: string | undefined;
-    if (sepIdx !== -1 && (entry.error as any).isEpisodeSpecific) {
-      const raw = key.substring(sepIdx + 2);
-      const m = raw.match(/S(\d+).*?E(\d+)/);
-      episodePattern = m ? `S${m[1]}E${m[2]}` : raw;
-    }
-    failed.push({ key, title: entry.title, indexerName: entry.indexerName, size: entry.size, error: entry.error.message, episodePattern, createdAt: entry.createdAt, expiresAt: entry.expiresAt });
-  }
-
-  return { ready, failed };
-}
-
-/**
- * Check if a stream is already cached (pending, ready, or failed).
- * Uses only the base key (nzbUrl + title) as a coarse check — any episode
- * of the same NZB being cached will match. This is intentional for grab
- * tracking dedup: we don't want to count the same NZB grab multiple times
- * even if different episodes are requested.
+ * Whether a Source is prepared, under way or dead, for any episode of it: the grab counting's check, so one NZB grab
+ * is counted once even when different episodes of it are played.
  */
 export function isStreamCached(nzbUrl: string, title: string): boolean {
-  const baseKey = getCacheKey(nzbUrl, title);
+  if (isRemembered(nzbUrl, title)) return true;
+  const source = keyOf({ nzbUrl, title });
   const now = Date.now();
-  // Check ready cache
-  for (const [key, entry] of readyCache.entries()) {
-    if ((key === baseKey || key.startsWith(baseKey + ':')) && entry.expiresAt > now && isActiveBackendEntry(entry)) return true;
+  for (const entry of pendingCache.values()) {
+    if (entry.source === source && entry.expiresAt > now) return true;
   }
-  // Check pending cache
-  for (const [key, entry] of pendingCache.entries()) {
-    if ((key === baseKey || key.startsWith(baseKey + ':')) && entry.expiresAt > now) return true;
-  }
-  // Check dead NZB cache (URL-only — if the URL itself is dead, the grab already happened)
-  const deadEntry = deadNzbCache.get(normalizeDeadUrl(nzbUrl));
-  if (deadEntry && deadEntry.expiresAt > now) return true;
   return false;
 }
 
-/**
- * Get cache statistics
- */
 export function getCacheStats(): {
   total: number; ready: number; pending: number; failed: number;
   readySizeMB: number; deadSizeMB: number;
 } {
-  const now = Date.now();
-  let ready = 0;
-  for (const entry of readyCache.values()) {
-    if (entry.expiresAt > now && isActiveBackendEntry(entry)) ready++;
-  }
+  const { ready, failed, readySizeMB, deadSizeMB } = memoryStats();
   const pending = pendingCache.size;
-  let failed = 0;
-  for (const entry of deadNzbCache.values()) {
-    if (entry.expiresAt > now) {
-      if ((entry.error as any).isTimeout && globalConfig.playCacheTimeouts === false) continue;
-      failed++;
-    }
-  }
-  const readySizeMB = Math.round(estimateReadyCacheSize() / 1024 / 1024 * 100) / 100;
-  const deadSizeMB = Math.round(estimateDeadCacheSize() / 1024 / 1024 * 100) / 100;
   return { total: ready + pending + failed, ready, pending, failed, readySizeMB, deadSizeMB };
-}
-
-// ── URL-only lookups (used by health check coordinator) ──────────────
-
-/** Normalize URL for cache key construction (healthy and dead caches alike).
- *  Wraps normalizeProwlarrUrl, then collapses the .nzb& malformation some
- *  Newznab indexers emit so writes match reads exactly. */
-function normalizeDeadUrl(url: string): string {
-  const normalized = normalizeProwlarrUrl(url);
-  return normalized.replace(/\.nzb&/, '.nzb?');
-}
-
-/** Check if any non-expired URL-wide dead entry exists for this URL.
- *  Matches bare URL keys (from health checks) and URL::episodePattern keys whose error
- *  is NOT episode-specific. Episode-specific failures (e.g. multi-episode block) are
- *  scoped to one episode and must be looked up via getDeadCacheKey + isDeadNzb instead. */
-export function isDeadNzbByUrl(nzbUrl: string): boolean {
-  const normalized = normalizeDeadUrl(nzbUrl);
-  const now = Date.now();
-  // Bare-URL exact match (health-check bans written by addDeadNzbByUrl)
-  const exact = deadNzbCache.get(normalized);
-  if (exact && exact.expiresAt > now) return true;
-  // URL-wide bans stored under URL::episodePattern keys — skip episode-specific entries
-  for (const [key, entry] of deadNzbCache) {
-    if (entry.expiresAt <= now) continue;
-    if ((entry.error as any).isEpisodeSpecific) continue;
-    const sepIdx = key.indexOf('::');
-    if (sepIdx === -1) continue;
-    // Also handle alternate delimiter (& vs ? after .nzb) via normalizeDeadUrl
-    if (normalizeDeadUrl(key.substring(0, sepIdx)) === normalized) return true;
-  }
-  return false;
-}
-
-/** Write a URL-only dead entry for a health-check-blocked NZB. URL is canonicalized
- *  via normalizeDeadUrl so isDeadNzbByUrl exact-match finds it. Caller must call
- *  saveCacheToDisk. */
-export function addDeadNzbByUrl(nzbUrl: string, title: string, indexerName?: string, size?: number): void {
-  const normalized = normalizeDeadUrl(nzbUrl);
-  if (deadNzbCache.has(normalized)) return;
-  const createdAt = Date.now();
-  const error = new Error('Health check: blocked');
-  (error as any).isBadSource = true;
-  deadNzbCache.set(normalized, { title, indexerName, size, error, createdAt, expiresAt: createdAt + getDeadTTLMs() });
-  if (globalConfig.deadNzbDbMode === 'storage') {
-    enforceStorageLimit(deadNzbCache, estimateDeadCacheSize, globalConfig.deadNzbDbMaxSizeMB ?? 50);
-  }
 }

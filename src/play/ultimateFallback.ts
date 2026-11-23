@@ -14,7 +14,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { NntpConnectionPool } from '../health/nntpConnection.js';
-import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk, logPrepareStart } from './streamCache.js';
+import { logPrepareStart } from './streamCache.js';
+import { remember, recall } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
 import { prefetchNzb } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
@@ -57,8 +58,8 @@ const cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // Resolved sessions outlive the addon process via disk persistence so that
 // a player reconnecting to /stream/ultimate-fallback?t=<envelope-with-sk>
 // after an addon restart still finds its session and gets a 302 to
-// /v?path=…. Mirrors the pattern in streamCache.ts (loadCacheFromDisk /
-// saveCacheToDisk).
+// /v?path=…. Mirrors the Source memory's (sourceMemory.ts: loaded at start,
+// saved on every change).
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000 + 30_000;
 const UF_SESSIONS_FILE = path.join(__dirname, '..', '..', 'config', 'uf-sessions.json');
 const UF_SESSIONS_SCHEMA_VERSION = 1;
@@ -284,7 +285,7 @@ export async function ultimateFallbackFromCandidates(
 ): Promise<void> {
   const { sessionKey, type: contentType, episodesInSeason } = play;
   if (activeSessions.has(sessionKey)) return;
-  const { episodePattern: cachePattern, filePattern } = episodeOf(play);
+  const { filePattern } = episodeOf(play);
 
   const controller = new AbortController();
   activeSessions.set(sessionKey, controller);
@@ -333,7 +334,7 @@ export async function ultimateFallbackFromCandidates(
     console.log(`${tag} Starting — ${list.length} candidate(s), pool size ${settings.candidateCount}, list order, wait times: ${settings.preferenceMode} (movies=${formatTimeoutSeconds(activeSet.movies)}, tv=${formatTimeoutSeconds(activeSet.tv)}, pack=${formatTimeoutSeconds(activeSet.seasonPack)})`);
 
     // Library hits: the Sources the Backend already holds (no NZB download needed).
-    const libraryTasks = list.flatMap((candidate, index) => isDeadNzbByUrl(candidate.nzbUrl) ? [] : [() =>
+    const libraryTasks = list.flatMap((candidate, index) => recall(candidate, play).dead ? [] : [() =>
       backend.findPrepared(
         { nzbUrl: candidate.nzbUrl, title: candidate.title, contentType, episodePattern: filePattern, episodesInSeason },
         { logPrefix: `${tag} [lib #${index + 1}] `, quiet: true },
@@ -345,15 +346,13 @@ export async function ultimateFallbackFromCandidates(
     const walk = new Walk({
       size: list.length,
       inFlight: Math.max(1, settings.candidateCount),
-      isDead: index => isDeadNzbByUrl(list[index].nzbUrl),
+      isDead: index => recall(list[index], play).dead !== undefined,
       indexerOf: index => list[index].indexerName,
       hits: new Map([...hits].map(([index, data]) => [index, data.videoPath])),
     });
     const runs = new Map<number, SourceRun>();
     const runOf = (index: number): SourceRun => { let r = runs.get(index); if (!r) runs.set(index, r = {}); return r; };
     const name = (index: number) => `#${index + 1} ${list[index].title}`;
-    const readyKey = (c: FallbackCandidate) => getCacheKey(c.nzbUrl, c.title) + (cachePattern ? `:${cachePattern}` : '');
-    let deadWrites = 0;
 
     let finish!: () => void;
     const finished = new Promise<void>(resolve => { finish = resolve; });
@@ -422,7 +421,7 @@ export async function ultimateFallbackFromCandidates(
         if (r.cancelled) return;
         await backend.probe(video, { logPrefix, title: c.title, source: c.indexerName });
         if (r.cancelled) return;
-        setReadyCacheEntry(readyKey(c), video, c.indexerName);
+        remember({ source: c, play, ready: video });
         r.video = video;
         console.log(`${logPrefix}✅ Stream ready: ${c.title}`);
         post({ type: 'prepared', index, videoPath: video.videoPath });
@@ -474,7 +473,7 @@ export async function ultimateFallbackFromCandidates(
           if (d.via === 'library') {
             const data = hits.get(d.index)!;
             console.log(`${tag} 📚 Library hit — ${c.title} [${c.indexerName}]`);
-            setReadyCacheEntry(readyKey(c), data, c.indexerName);
+            remember({ source: c, play, ready: data });
             sessionResolve(data, c.title);
             console.log(`${tag} ✅ Resolved via library in ${seconds()}s`);
           } else {
@@ -488,7 +487,7 @@ export async function ultimateFallbackFromCandidates(
           const data = hits.get(d.index)!;
           deferred.backupUrls!.add(c.nzbUrl);
           deferred.backupStreams!.push({ nzbUrl: c.nzbUrl, videoPath: data.videoPath, title: c.title, indexerName: c.indexerName, candidateIndex: d.index + 1 });
-          setReadyCacheEntry(readyKey(c), data, c.indexerName);
+          remember({ source: c, play, ready: data });
           console.log(`${tag}   📦 #${d.index + 1} Backup ready (library hit, videoPath: ${data.videoPath}) — ${c.title.substring(0, 60)} [${c.indexerName}]`);
           return;
         }
@@ -507,13 +506,12 @@ export async function ultimateFallbackFromCandidates(
         case 'markDead': {
           // ADR 0004: a bad Source is remembered dead, so no later play grabs it again.
           const c = list[d.index];
-          // A gone link is gone for every episode: the mark is the Source's.
-          if (d.cause === 'grab') setDeadNzbEntry(c.nzbUrl, c.title, runOf(d.index).grabError!, undefined, c.indexerName, c.size, c.isSeasonPack);
-          else if (d.cause === 'check') addDeadNzbByUrl(c.nzbUrl, c.title, c.indexerName, c.size);
+          // A gone link, or a Source the check blocked, is bad for every episode: the mark is the Source's.
+          if (d.cause === 'grab') remember({ source: c, play, dead: runOf(d.index).grabError!, everyEpisode: true });
+          else if (d.cause === 'check') remember({ source: c, play, dead: sourceFailure('Health check: blocked'), everyEpisode: true });
           // A pack blocked on its wanted episode is remembered for that episode only, as a prepare failure is (#203).
-          else if (d.cause === 'check-episode') setDeadNzbEntry(c.nzbUrl, c.title, sourceFailure('Health check: blocked', false, true), cachePattern, c.indexerName, c.size, c.isSeasonPack);
-          else setDeadNzbEntry(c.nzbUrl, c.title, runOf(d.index).prepareError!, cachePattern, c.indexerName, runOf(d.index).video?.videoSize || c.size, c.isSeasonPack);
-          deadWrites++;
+          else if (d.cause === 'check-episode') remember({ source: c, play, dead: sourceFailure('Health check: blocked', false, true) });
+          else remember({ source: { ...c, size: runOf(d.index).video?.videoSize || c.size }, play, dead: runOf(d.index).prepareError! });
           return;
         }
       }
@@ -553,7 +551,6 @@ export async function ultimateFallbackFromCandidates(
       const ct = r?.containerType ? `[${r.containerType}${r.video?.videoSize ? ` · ${formatBytes(r.video.videoSize)}` : ''}] ` : '';
       console.log(`${tag}   #${m.index + 1} ${ct}${c.title.substring(0, 60)} [${c.indexerName}] → ${status}`);
     }
-    if (deadWrites > 0) saveCacheToDisk();
 
   } catch (err) {
     if (!controller.signal.aborted) console.error(`${tag} Error:`, err);
