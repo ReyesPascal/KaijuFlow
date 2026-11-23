@@ -1424,7 +1424,7 @@ export const goBackPreparingScenarios = [
             'the first request ran out of time while the next Source was preparing, and resumed at it');
           assert.equal(w.backend.submitsFor('backrd-b'), 1, 'the next Source was tried');
           assert.equal(r.status, 200);
-          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms)`);
+          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms); ${lines.filter(l => /Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
           assert.ok(took >= 71000, `it played once the first Source was ready (${took} ms)`);
           assert.equal(w.backend.submitsFor('backrd-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
         }));
@@ -1460,7 +1460,7 @@ export const goBackReadyScenarios = [
           assert.ok(lines.some(l => l.includes('Self-redirect') && l.includes('resuming at candidate 2')),
             'the first request ran out of time while the next Source was preparing, and resumed at it');
           assert.equal(r.status, 200);
-          assertBytes(r.body, sources[0].media, `the first Source plays, not the failure video (answered after ${took} ms)`);
+          assertBytes(r.body, sources[0].media, `the first Source plays, not the failure video (answered after ${took} ms); ${lines.filter(l => /Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
           assert.ok(took >= 59000, `it played once the next Source had failed (${took} ms)`);
           assert.equal(w.backend.submitsFor('backok-a'), 1, 'the first Source was prepared once: recalled, not handed over again');
         }));
