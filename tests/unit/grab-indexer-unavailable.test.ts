@@ -114,10 +114,12 @@ test('stored dead marks from an unavailable indexer are recognised, bad-Source o
     'NZB download failed for DrunkenSlug: fetch failed',
     'Failed to download NZB from NinjaCentral: 403 Forbidden',
     'NZB download timed out after 30s for altHUB',
+    // Earlier builds wrote these words for every error payload, a refusal included (round 2 review of #239).
+    'Indexer returned error: Incorrect user credentials',
   ]) assert.equal(isIndexerUnavailableMessage(m), true, m);
   for (const m of [
     'Invalid NZB content received (1234 bytes)',
-    'Indexer returned error: Incorrect user credentials',
+    'Indexer says the NZB is gone (code 300): No such item',
     'Health check: blocked',
     'NZBDav download failed: Article with message-id x@y not found.',
     'AltMount could not process the Source: {"error":{"code":"INTERNAL_SERVER_ERROR"}}',
