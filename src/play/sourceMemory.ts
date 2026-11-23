@@ -207,7 +207,7 @@ function loadFromDisk(): void {
         deadMarks.set(deadKey(url, episodePattern), { title, indexerName: entry.indexerName, size: entry.size, error, createdAt: entry.createdAt || now, expiresAt });
       }
     }
-    if (deadMarks.size) console.log(`💾 Loaded ${deadMarks.size} dead NZBs from disk`);
+    if (deadMarks.size) console.log(`💾 Loaded ${deadMarks.size} dead marks from disk`);
     if (dropped.length) {
       console.log(`🧹 Dropped ${dropped.length} dead mark(s) caused by an unavailable indexer, not a bad Source (ADR 0004)`);
       saveCacheToDisk();
@@ -396,15 +396,15 @@ export function clearReadyCache(): number {
   const count = readyCache.size;
   readyCache.clear();
   if (count) {
-    console.log(`\u{1F9F9} Cleared ${count} successful stream cache entries`);
+    console.log(`\u{1F9F9} Cleared ${count} ready Sources`);
     saveCacheToDisk();
   }
   return count;
 }
 export const forgetDeadSources = (): number => clearDeadWhere(() => true, 'dead marks');
 /** Marks of an episode only available in a combined multi-episode file. */
-export const clearMultiEpisodeDeadEntries = (): number => clearDeadWhere(e => e.error.message === MULTI_EPISODE_BLOCKED_ERROR, 'multi-episode dead NZB entries');
-export const clearTimeoutDeadEntries = (): number => clearDeadWhere(isTimeoutMark, 'timed-out dead NZB entries');
+export const clearMultiEpisodeDeadEntries = (): number => clearDeadWhere(e => e.error.message === MULTI_EPISODE_BLOCKED_ERROR, 'multi-episode dead marks');
+export const clearTimeoutDeadEntries = (): number => clearDeadWhere(isTimeoutMark, 'timed-out dead marks');
 
 /** Forget one entry by the key the settings page shows. */
 export function forgetEntry(key: string): boolean {
