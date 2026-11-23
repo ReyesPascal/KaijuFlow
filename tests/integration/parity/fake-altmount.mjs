@@ -33,6 +33,8 @@ export async function createFakeAltmount(listen) {
   let base = '';
   let down = false;
   let indexerDown = 0; // HTTP status the NZB link answers while the indexer is "down" (0 = serves the NZB)
+  const grabs = []; // { tag, asked, answered } per NZB link fetched: the indexer's side of a grab
+  const slowGrabs = new Map(); // tag prefix -> ms every NZB link of it waits before answering
   let nextQueueId = 1; // real AltMount queue ids are integers
   const uploads = new Map(); // tag -> uploaded NZB texts
   const volumeOf = new Map(); // first-article id -> real RAR5 volume, for Scrambled RAR sets
@@ -80,6 +82,12 @@ export async function createFakeAltmount(listen) {
 
     if (path.endsWith('.nzb')) {
       const tag = path.slice(1, -4);
+      const grab = { tag, asked: Date.now(), answered: null };
+      grabs.push(grab);
+      res.on('finish', () => { grab.answered = Date.now(); });
+      const wait = [...slowGrabs].find(([prefix]) => tag.startsWith(prefix))?.[1];
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      // A link the indexer does not know (addGone) answers 404, as an indexer does for a removed NZB.
       if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
       if (indexerDown) { res.writeHead(indexerDown, { 'Retry-After': '60' }); res.end('indexer unavailable'); return; }
       res.writeHead(200, { 'Content-Type': 'application/x-nzb' });
@@ -296,6 +304,12 @@ export async function createFakeAltmount(listen) {
       return nzb;
     },
     setFirstByteFault(tag, mode) { sources.get(tag).fault = mode; },
+    /** The NZB link of a Source the indexer says is gone: every grab of it answers 404. */
+    addGone(tag) { return `${base}/${tag}.nzb`; },
+    /** Every NZB link fetched, in order: { tag, asked, answered } (ms; answered null while it waits). */
+    grabs,
+    /** Make every NZB link whose tag starts with prefix wait ms before answering (0 = answer at once). */
+    slowGrabs(prefix, ms) { if (ms > 0) slowGrabs.set(prefix, ms); else slowGrabs.delete(prefix); },
     /**
      * Give every Source registered from now on an NZB KaijuFlow's health check can
      * read, its articles on this fake news server (startFakeNntp). addMovie and

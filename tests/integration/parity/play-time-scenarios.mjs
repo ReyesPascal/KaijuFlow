@@ -11,7 +11,8 @@ let nextImdb = 1000001;
 
 /**
  * Offer movie Sources for a new title, in list order (same quality, sizes going down, so KaijuFlow's sort keeps
- * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'rejected' | 'never-ready' | 'scrambled-rar4' | 'disc-image' }.
+ * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'gone' | 'rejected' | 'never-ready' | 'scrambled-rar4' | 'disc-image' }
+ * ('gone': the indexer answers 404 to every grab of it).
  * Returns { id, sources: [{ tag, title, media }] }.
  */
 function offerMovie({ backend, indexer }, specs) {
@@ -22,6 +23,7 @@ function offerMovie({ backend, indexer }, specs) {
     const kind = spec.kind ?? 'healthy';
     const link = kind === 'healthy' ? backend.addMovie(spec.tag, title, media)
       : kind === 'dead' ? backend.addMovie(spec.tag, title, media, { dead: true })
+      : kind === 'gone' ? backend.addGone(spec.tag)
       : kind === 'rejected' ? backend.addRejected(spec.tag, title)
       : kind === 'never-ready' ? backend.addNeverReady(spec.tag, title)
       : backend.addRefused(spec.tag, title, kind);
@@ -738,7 +740,83 @@ export const playTimeScenarios = [
       assert.ok(Date.now() - pressed < 10000, `the press ends at once (took ${Date.now() - pressed} ms)`);
     },
   },
+  {
+    // #228 (GLOSSARY: Walk): 40 Sources the indexer says are gone, every grab answering 404. A failed grab is replaced
+    // once, so no more grabs are under way than Best checks at a time (3); the Walk stops after 30 grabs, says so
+    // once, and the press ends as when the list runs out: the failure video, no Source grabbed twice. With the Head
+    // start off, so the press walks on its own.
+    id: 'a-walk-of-gone-sources-stops-at-30-grabs',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
+      const tags = [...Array(40).keys()].map(i => `walkgone-${i + 1}`);
+      const { id } = offerMovie(w, tags.map(tag => ({ tag, kind: 'gone' })));
+      w.backend.slowGrabs('walkgone-', 40);
+      try {
+        const { result: r, lines } = await withLogs(async () => {
+          const streams = await w.list('movie', id);
+          return play(streams[0].url);
+        });
+        assertFailureVideo(r);
+        assertWalkStoppedAt30(w, lines, 'walkgone-', tags);
+      } finally {
+        w.backend.slowGrabs('walkgone-', 0);
+      }
+    }),
+  },
+  {
+    // The 30 grabs are one Walk's (GLOSSARY: Walk): a press that joins its title's Head start continues that Walk and
+    // its count, so the Head start and the press together grab 30 of the 40 gone Sources, not 30 each.
+    id: 'a-press-that-joins-a-head-start-continues-its-walk',
+    async run(w) {
+      const tags = [...Array(40).keys()].map(i => `joingone-${i + 1}`);
+      const { id } = offerMovie(w, tags.map(tag => ({ tag, kind: 'gone' })));
+      w.backend.slowGrabs('joingone-', 60);
+      try {
+        const { result: r, lines } = await withLogs(async () => {
+          const streams = await w.list('movie', id);
+          await until(() => w.backend.grabs.some(g => g.tag.startsWith('joingone-')), 'the Head start\'s first grab');
+          return play(streams[0].url);
+        });
+        assertFailureVideo(r);
+        assertWalkStoppedAt30(w, lines, 'joingone-', tags);
+      } finally {
+        w.backend.slowGrabs('joingone-', 0);
+      }
+    },
+  },
+  {
+    // The Walk's limits cost no play: a Healthy Source below a few gone Sources plays, as it did before #228, each
+    // gone Source grabbed once and only the played Source handed to AltMount.
+    id: 'best-plays-a-healthy-source-below-failed-grabs',
+    async run(w) {
+      const specs = [1, 2, 3, 4, 5].map(i => ({ tag: `below-gone-${i}`, kind: 'gone' })).concat([{ tag: 'below-ok-6' }, { tag: 'below-ok-7' }]);
+      const { id, sources } = offerMovie(w, specs);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[5].media, 'Best plays the first Healthy Source, below the gone ones');
+      assert.deepEqual(w.backend.submitted.slice(before), ['below-ok-6'], 'only the played Source reaches AltMount');
+      const gone = w.backend.grabs.filter(g => g.tag.startsWith('below-gone-')).map(g => g.tag);
+      assert.deepEqual([...gone].sort(), specs.slice(0, 5).map(s => s.tag).sort(), 'each gone Source grabbed once');
+    },
+  },
 ];
+
+/**
+ * One Walk over gone Sources (#228): 30 grabs reached the indexer, the top 30 of the list, none twice, never more than
+ * 3 under way at once (a failed grab replaced once), and one log line saying the Walk stopped at 30.
+ */
+function assertWalkStoppedAt30(w, lines, prefix, tags) {
+  const grabs = w.backend.grabs.filter(g => g.tag.startsWith(prefix));
+  const grabbed = grabs.map(g => g.tag);
+  assert.equal(new Set(grabbed).size, grabbed.length, `no Source grabbed twice (${grabbed.length} grabs of ${new Set(grabbed).size} Sources)`);
+  const most = mostAtOnce(grabs.map(g => ({ from: g.asked, to: g.answered ?? Infinity })));
+  assert.ok(most <= 3, `at most 3 grabs under way at once, a failed grab replaced once (${most} at once)`);
+  assert.equal(grabbed.length, 30, 'the Walk stops after 30 grabs');
+  assert.deepEqual([...grabbed].sort(), tags.slice(0, 30).sort(), 'the top 30 of the list');
+  const said = lines.filter(l => /Walk stopped: 30 grabs/.test(l));
+  assert.equal(said.length, 1, `one log line says the Walk stopped (${said.length})`);
+}
 
 /** Run every play-time scenario. Returns per-scenario results. */
 export async function runPlayTimeParity(w) {

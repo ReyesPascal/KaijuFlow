@@ -25,7 +25,7 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStart, ultimateFallbackOptions, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStart, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
@@ -325,7 +325,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
         // Every list request counts, one with nothing to check too: it stops the Head start before it.
         headStart(
-          sessionKey, fallbackCandidates ?? [], ultimateFallbackOptions(config.ultimateFallback),
+          sessionKey, fallbackCandidates ?? [], config.ultimateFallback,
           cachePattern, filePattern, type, episodesInSeason,
         );
       }
