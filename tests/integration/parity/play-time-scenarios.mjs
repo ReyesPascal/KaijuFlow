@@ -499,6 +499,28 @@ export const playTimeScenarios = [
     },
   },
   {
+    // A player that left while its list entry was preparing gets nothing, so nothing was played: no `played` line
+    // (the brain tools read a visit's played Source from it, story 29). No Head start, so only the list entry prepares.
+    id: 'a-player-that-left-writes-no-played-line',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
+      const { id, sources } = offerMovie(w, [{ tag: 'left-a' }]);
+      w.backend.slowImports('left-a', 3000);
+      try {
+        const { lines } = await withLogs(async lines => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          await assert.rejects(play(entry.url, undefined, 1000), 'the player gives up after 1 s');
+          await until(() => lines.some(l => l.includes('Stream ready') && l.includes(sources[0].title)), 'the prepare ending');
+          await new Promise(r => setTimeout(r, 500));
+        });
+        const played = stepsOf(lines).filter(s => s.step === 'played' && s.title === sources[0].title);
+        assert.equal(played.length, 0, 'no played line for a player that left');
+      } finally {
+        w.backend.slowImports('left-a', 0);
+      }
+    }),
+  },
+  {
     // #246: a list request writes its fallback group, with its play context, to disk once (config/fallback-groups.json).
     id: 'a-list-request-writes-its-fallback-group-once',
     async run(w) {
