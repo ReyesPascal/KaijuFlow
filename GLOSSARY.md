@@ -39,7 +39,7 @@ KaijuFlow's address a Stream's play link points at (`/play/stream/...`, and `/pl
 _Avoid_: nzbdav route, stream proxy (unqualified)
 
 **Delivery method**:
-How a Play route gets the video to the player: `proxy` (through KaijuFlow's buffer, the default), `pipe` (through a small buffer) or `direct` (the player is sent to the Backend). The setting is `playDeliveryMethod`; there is no other streaming choice, KaijuFlow always plays through the Backend.
+How a Play route gets the video to the player: `proxy` (through KaijuFlow's buffer, the default), `pipe` (through a small buffer) or `direct` (the player is sent to the Backend). The setting is `playDeliveryMethod`, read afresh on every request, a repeat request of the same play included; there is no other streaming choice, KaijuFlow always plays through the Backend.
 _Avoid_: streaming method, streaming mode
 
 **Parity**:
@@ -53,7 +53,7 @@ A Source whose RAR parts are named only by numbers that do not match their real 
 _Avoid_: obfuscated release (obfuscated names can still be in order), broken RAR, shuffled parts
 
 **Unscramble**:
-Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend.
+Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend. When its reads fail for connection trouble it is tried once more, and a set it still can't unscramble that way is not sent to the Backend (ADR 0005).
 _Avoid_: reorder, repair, fix names
 
 **Auto-queue** (deleted, #226):
@@ -61,7 +61,7 @@ KaijuFlow preparing the Healthy Sources of a list on the Backend in the backgrou
 _Avoid_: pre-warm, preload, prefetch
 
 **Head start**:
-The Play-time check of the Best entry's Sources and the prepare of the first Healthy one, begun in the background as soon as any player asks for a title's stream list, so a press of Best finds the check done and the video ready. In Stremio the list is asked for when a film's page opens or an episode is picked. Only the newest list request has a Head start: a new one stops what is unfinished for the one before, unless a press of Best is waiting on it (a press makes it a play). On by default (#206): Ultimate Fallback's "On Search" (`whenToResolve` on-results); "On Click" turns it off, and Best then starts on the press.
+The Play-time check of the Best entry's Sources and the prepare of the first Healthy one, begun in the background as soon as any player asks for a title's stream list, so a press of Best finds the check done and the video ready. In Stremio the list is asked for when a film's page opens or an episode is picked. Only the newest list request has a Head start: a new one stops what is unfinished for the one before, unless a press of Best is waiting on it (a press makes it a play). Once that play's video arrives, the next list request stops the rest of its walk too. On by default (#206): Ultimate Fallback's "On Search" (`whenToResolve` on-results); "On Click" turns it off, and Best then starts on the press.
 _Avoid_: prefetch, pre-warm, auto-queue
 
 **Play-time check**:
@@ -69,8 +69,12 @@ The health check run when a Source is clicked rather than before the stream list
 _Avoid_: lazy check, on-demand check, deferred check, list-time check (deleted)
 
 **Best entry**:
-The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source.
+The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source. The search down the list is its **Walk**.
 _Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a list)
+
+**Walk**:
+One play's progress down a list: grabbing and checking Sources a few at a time from the top until one is healthy, the list runs out, or the walk stops. A failed grab is replaced once. Why it failed decides what follows (ADR 0004): an indexer that refuses a grab (a limit, an outage, refused credentials) is skipped for the rest of the walk, while a Source the indexer says is gone is a bad Source and the walk moves on. A walk stops after 30 grabs and ends as if the list had run out, so a list of gone Sources can't be walked to its end. A walk ends when any player asks for another title's list: its unfinished grabs and checks stop, unless a press is still waiting on it for its video, and a video already playing goes on. A Head start begins a walk; a press of Best joins it, and walks on its own only when there is none (On Click, or the Head start was stopped), so the 30 grabs are one walk's whether it began before or at the press.
+_Avoid_: pool loop, fallback walk, search (search finds the list; the walk checks it)
 
 **Disc image**:
 A Source whose content is a disc image file (`.iso`, `.img`) that the Backends cannot play; the health check blocks it.

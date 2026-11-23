@@ -1,4 +1,4 @@
-# Handoff: where KaijuFlow stands (2026-11-23, phase 2 done: #219 kept, `tuning-183` merged; the owner's grilling next)
+# Handoff: where KaijuFlow stands (2026-11-23, the deepening spec #239 grilled and ticketed; its build next)
 
 This is the one state note. Replace it; do not append. Older versions are in git history.
 Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
@@ -11,20 +11,24 @@ KaijuFlow with AltMount as its one Backend, as fast and lean as possible; KaijuF
 ## Next command
 What the next session starts with (`docs/agents/resume.md`). The ending session starts it itself with `~/.local/bin/kf-next` when a plan gives the go ("Fresh session"); the owner types only what a plan does not cover.
 
-**The owner types** (the grilling needs them, so no `kf-next`), in a fresh herdr pane:
+**The owner types** (the skill runs only when typed, so no `kf-next`), in a fresh herdr pane:
 
-    /mattpocock-skills:grill-with-docs the six deepening candidates in ~/kaijuflow-notes/reports/architecture-review-2026-11-23.html, plus #228 and #219's findings
+    /mattpocock-skills:implement-spec #239
 
-That is the deepening spec (owner, 2026-11-23: "all of them how do i create a spec for all this stuff along with what we already have in issues", "yes do the best things"): `/grill-with-docs` → `/to-spec` (a new map labelled `spec`; #228 moves under it) → `/to-tickets` → `/mattpocock-skills:implement-spec`, in one session up to `/to-tickets`. `tuning-183` is merged (PR #225, a812bfe), so it can build. Bring #219's findings into the grilling (below, "Phase 2"): slower warm lists, AltMount import failures that come and go, a Head start's checks running on into the next title. #194 and #195 stay the owner's, on #183.
+The build of the deepening spec. #239's "Building it" was not grilled: the owner's standing decisions hold (nothing builds beside a run; plan PRs merge on green; agents show in herdr, owner 2026-11-23: "agents should always show in herdr in agents place from now on"; `kf-alert`; fresh session at stopping points). What #183's build settled per build (builders' model and effort, how many panes at once, the tab) is asked of the owner when `implement-spec` starts; #183's "Building it" is the precedent. `/code-review`, then `/codex-review`, over the integration branch before its PR is ready. #249's replay and #250's grouped run each need the owner's go, on an idle machine, after the build. #194 and #195 stay the owner's, on #183.
+
+## Deepening spec #239 (grilled 2026-11-23, owner: "yes to all")
+- **Tickets** (`python3 -I tools/brain/frontier.py 239`): play path #228 (Walk module, replace once, 30 grabs) → #243 (grabs by ADR 0004 kind), #244 (Walk ends on the next list request) → #246 (play context) → #247 (Source memory) → #248 (delivery, keep-alive); #245 (Unscramble cap and read-error retry) after #228. Tools: #240 (stand-in 503 for a miss), #241 (runs module, one Previous run) → #242 (step lines). Then #249 (warm-list diagnosis, replay) and #250 (closing grouped run against #219's run; not kept → split Walk changes | the rest, then halve).
+- **Facts found in the grilling:** #228's walk runs away *before* the play, while a fallback prepares (a failed grab pulls twice); the walk's grab forgets a 404; #219's new fallbacks were Unscramble read-errors (then an upload AltMount rejects), not AltMount; the warm-list path does no new work (the same step got slower: whole process, not proven); old runs are read from `raw.json`, so step lines don't break them. Detail in #239 and the tickets.
+- **Written:** GLOSSARY (**Walk** new; Best entry, Head start, Unscramble, Delivery method), ADR 0004 "The walk's grabs", ADR 0005 amended 2026-11-23.
 
 **Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (voice "azelma", repeats until the notification is closed) at every stop-and-ask. Questions: AskUserQuestion plus `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered.
 
 ## How KaijuFlow is doing (2026-11-23)
 - **Plays reliably.** Every run today played every title (80 of 80 the first try); The Twilight Zone S02E06, the 2026-11-20 fail, is fixed by #190.
 - **Faster cold, slower warm (#219, kept).** Cold title to video 4.90 s (easy) and 6.07 s (hard), was 8.98 and 9.10 s: the Head start (#206) checks during the Browse pause, so press-to-video halved. Warm 1.59 s and 0.47 s, was 0.81 and 0.24 s: the list request itself got 0.7–2 s slower on some movies, cause not proven. 80 of 80 played; 4 fallbacks (was 2).
-- **Known bug, confirmed in the code:** #228, the fallback's replacement walk has no limit on failed grabs (a failed grab is replaced twice), so an indexer refusing downloads would burn the day's 450 grabs. Goes into the deepening spec.
-- **Suspected bugs, from the architecture review, not proven by a test yet:** for daily shows a ready Source is written under one cache key and read under another, so it is never reused (candidate 2); a press of Best and its Head start can build different episode patterns (candidate 3). The deepening spec's tickets start each with a test that fails on the bug.
-- **Code health:** the play path's core loop (`ultimateFallback.ts`'s pool loop, about 720 lines in one closure) has no tests of its own; the measuring tools have four rules for "the previous run" (candidate 4). Report: `~/kaijuflow-notes/reports/architecture-review-2026-11-23.html`.
+- **Known bugs, confirmed in the code, ticketed under #239:** the Walk's double pull (#228); a ready Source never found again for any dated episode (#247); a press without a Head start builds a different episode pattern (#246). Each ticket starts with a test that fails on it.
+- **Code health:** the play path's two ~720-line functions and the tools' four "previous run" rules are #239's subject. Report: `~/kaijuflow-notes/reports/architecture-review-2026-11-23.html`.
 
 ## Phase 2 (2026-11-23, done)
 - **#219 grouped run: kept** (`~/kaijuflow-notes/brain-runs/2026-11-23T190950Z-grouped-219`, report https://claude.ai/artifact/JrjmPAYSWhP4FCSvjShKCL, result comment on #219). `tuning-183` at 9fb31a2 (main merged in first), image rebuilt, `whenToResolve` set to `on-results` with `testbed.py apply` (the Head start's expected setting). No halving runs. PR #225 merged (a812bfe); #191, #192, #193, #203, #206, #211, #226, #219 closed. Findings, none proven to a cause: warm lists slower (Super Mario warm 2 list 0.99 → 2.96 s); two new fallbacks, both AltMount failing an import ("First segment has no data", missing RAR volume) of a release that played in the other cold round; a check of Night Moves ran on into Upstream Color's list and play (a Head start's work is not stopped when the next title is asked for); #228's walk grabbed 353 unplayed releases (318 in Joker cold 2). The next run's previous run is this one.
@@ -41,7 +45,7 @@ That is the deepening spec (owner, 2026-11-23: "all of them how do i create a sp
 - **A timed run needs an idle machine**; the preflight enforces it. Hold `flock ~/.local/share/kf-run/suite.lock` around a run so suites wait.
 
 ## The tracker
-Spec #183 is the map; `python3 -I tools/brain/frontier.py` prints what can start. Left on #183: #194 (owner's, AltMount settings) → #195 (Speed Check page). #228 moves to the deepening spec.
+Two maps: #239 (the deepening spec, `frontier.py 239`) and #183 (`frontier.py`; left on it: #194, owner's, AltMount settings → #195, Speed Check page).
 
 Recording for every run: `--store ~/kaijuflow-test/store --list kf-189 --titles-file tools/brain/fixed-list.json`. Each run's change report goes in its run folder as `change-report.html` and is published as its own page in the #189 report's style (generator `~/kaijuflow-notes/reports/run-report/make_report.py`, `--before` required).
 
@@ -55,7 +59,7 @@ Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings 
 ## Owner's decisions
 - 2026-11-20 (spec #183, all "yes"): the health-check pass list (ADR 0009); no fails first, then fastest cold title to video; fallback on (from #190); one fixed recording replayed every run; comparison code deleted; NzbDAV removed; other test copies stopped and kept; tuning may cut any part of the path.
 - 2026-11-20 (evening): tests on Wi-Fi; one grouped run, no noise band, every run idle; merge plan PRs on green without asking.
-- 2026-11-23: top up `kf-189` and re-run the baseline; build the retro fixes ("do everything"); `prwatch.py` ("make sure it knows when things are ready to merge"); hand off to a fresh session at stopping points with no typing ("i dont want to have to type or hit enter"); the six deepening candidates plus #228 become one new spec after #219.
+- 2026-11-23: top up `kf-189` and re-run the baseline; build the retro fixes ("do everything"); `prwatch.py` ("make sure it knows when things are ready to merge"); hand off to a fresh session at stopping points with no typing ("i dont want to have to type or hit enter"); the six deepening candidates plus #228 become one new spec after #219. Grilling of the deepening spec (#239): "yes to all" on every question (Walk rules, Unscramble retry, one Previous run, closing grouped run); seams and tickets "yes"; agents always shown in herdr.
 - Standard filter rules (#109), secrets outside both repos (#114, `tools/brain/backup.sh`): see git history of this note.
 
 ## Gotchas
