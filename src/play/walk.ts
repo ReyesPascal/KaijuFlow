@@ -13,8 +13,11 @@
  * - A library hit (a Source the Backend already holds) plays without a grab, unless a Source above it is still
  *   grabbed or prepared; once one plays, the other library hits are kept beside it as backups.
  * - A Walk makes at most `maxGrabs` grabs (30), then ends as if the list had run out, and says so once (#228).
- * - Dead marks follow ADR 0004: a check that blocks a Source, or a prepare that fails for the Source's own reason,
- *   marks it dead; a failed grab, a check that cannot answer, or a Backend failure leaves it alive.
+ * - An indexer that refuses a grab (429, 5xx, 401/403, a network error, a timeout) is skipped for the rest of the
+ *   Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004).
+ * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx) or bad, a check that blocks a
+ *   Source, or a prepare that fails for the Source's own reason, marks it dead; a refused grab, a check that cannot
+ *   answer, or a Backend failure leaves it alive.
  */
 
 /** About twice the deepest Walk measured (16 grabs, The Twilight Zone S02E06, #14 played), #228. */
@@ -22,7 +25,8 @@ export const WALK_MAX_GRABS = 30;
 
 export type WalkEvent =
   | { type: 'grabbed'; index: number }
-  | { type: 'grabFailed'; index: number }
+  /** `badSource`: the indexer says the link is gone, or its NZB is bad (ADR 0004); otherwise the indexer refused. */
+  | { type: 'grabFailed'; index: number; badSource: boolean }
   | { type: 'checked'; index: number; verdict: 'healthy' | 'blocked' | 'error'; episodeOnly?: boolean }
   | { type: 'prepared'; index: number; videoPath: string }
   | { type: 'prepareFailed'; index: number; badSource: boolean }
@@ -41,12 +45,14 @@ export type WalkDecision =
   | { type: 'settle'; index: number; via: 'prepare' | 'library' }
   /** No Source to play: the list ran out, the Walk hit its grabs, or it was stopped. */
   | { type: 'settleNone'; end: WalkEnd }
+  /** An indexer refused a grab: its Sources are passed by for the rest of the Walk (logged once). */
+  | { type: 'skipIndexer'; indexer: string }
   /** The Walk hit its grabs (logged once). */
   | { type: 'ceiling'; grabs: number }
   /** A library hit kept beside the played Source. */
   | { type: 'backup'; index: number }
-  /** ADR 0004: a bad Source. `cause` says which mark: a blocked check (for this episode only, or the Source) or a prepare. */
-  | { type: 'markDead'; index: number; cause: 'check' | 'check-episode' | 'prepare' };
+  /** ADR 0004: a bad Source. `cause` says which mark: a gone grab, a blocked check (for this episode only, or the Source) or a prepare. */
+  | { type: 'markDead'; index: number; cause: 'grab' | 'check' | 'check-episode' | 'prepare' };
 
 export interface WalkOptions {
   /** Sources in the list, in list order. */
@@ -57,6 +63,8 @@ export interface WalkOptions {
   maxGrabs?: number;
   /** A Source remembered dead: the Walk passes it by. Asked when the Walk reaches it. */
   isDead: (index: number) => boolean;
+  /** The indexer a Source comes from. */
+  indexerOf: (index: number) => string;
   /** Library hits: list index -> the video path the Backend holds. */
   hits: ReadonlyMap<number, string>;
 }
@@ -82,6 +90,7 @@ export class Walk {
   private next = 0;
   private grabs = 0;
   private ceilingHit = false;
+  private readonly skipped = new Set<string>();
   private played: number | null = null;
   private ended: WalkEnd | null = null;
   private readonly maxGrabs: number;
@@ -118,6 +127,8 @@ export class Walk {
         break;
       case 'grabFailed':
         m.grab = 'failed';
+        if (event.badSource) out.push({ type: 'markDead', index: m.index, cause: 'grab' });
+        else this.skipIndexer(this.opts.indexerOf(m.index), out);
         break;
       case 'checked':
         m.check = event.verdict;
@@ -176,14 +187,25 @@ export class Walk {
   private canEnter(): boolean {
     if (this.ceilingHit) return false;
     let i = this.next;
-    while (i < this.opts.size && this.opts.isDead(i)) i++;
+    while (i < this.opts.size && this.passedBy(i)) i++;
     return i < this.opts.size;
+  }
+
+  /** A Source the Walk does not reach: remembered dead, or not a library hit and from an indexer that refused. */
+  private passedBy(index: number): boolean {
+    return this.opts.isDead(index) || (!this.opts.hits.has(index) && this.skipped.has(this.opts.indexerOf(index)));
+  }
+
+  private skipIndexer(indexer: string, out: WalkDecision[]): void {
+    if (this.skipped.has(indexer)) return;
+    this.skipped.add(indexer);
+    out.push({ type: 'skipIndexer', indexer });
   }
 
   /** Bring the next Source of the list into the Walk. False when none can come: the list ran out or the grabs did. */
   private enter(out: WalkDecision[]): boolean {
     if (this.ceilingHit) return false;
-    while (this.next < this.opts.size && this.opts.isDead(this.next)) this.next++;
+    while (this.next < this.opts.size && this.passedBy(this.next)) this.next++;
     if (this.next >= this.opts.size) return false;
     const index = this.next;
     if (!this.opts.hits.has(index) && this.grabs >= this.maxGrabs) {

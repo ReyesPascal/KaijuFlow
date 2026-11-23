@@ -1,8 +1,8 @@
 /**
  * NZB grab shared by every Backend (ADR 0003): the cached copy or an indexer
  * download through the proxy, then validation and grab tracking. The Backend's
- * prepare gets the NZB through grabSourceNzb (sourceNzb.ts); Ultimate
- * Fallback prefetches through prefetchNzb.
+ * prepare gets the NZB through grabSourceNzb (sourceNzb.ts); Best's Walk
+ * grabs through prefetchNzb, which sorts failures the same way.
  */
 
 import { config as globalConfig } from '../config/index.js';
@@ -102,70 +102,12 @@ export async function grabNzb(
 }
 
 /**
- * Pre-fetch an NZB from the indexer and cache it for later submission.
- * Best-effort, never throws. Returns true if the NZB is cached and ready.
- * `searchExitIp` carries the proxy exit IP that was live when this candidate's
- * search ran, used to gate the prefetch against an intervening IP rotation.
+ * The Walk's grab (ADR 0004, "The walk's grabs"): grabNzb, keeping the NZB for the check and the prepare. It sorts
+ * its answers as grabNzb does: a Source failure (sourceFailure, isBadSource) for a link the indexer says is gone or
+ * bad content, a plain error for an indexer that refuses or cannot be reached.
+ * `searchExitIp` carries the proxy exit IP that was live when this candidate's search ran.
  */
-export async function prefetchNzb(nzbUrl: string, logPrefix = '', quiet = false, title?: string, indexerName?: string, searchExitIp?: string): Promise<boolean> {
-  // Already cached (from health check or earlier prefetch)
-  if (getCachedNzbContent(nzbUrl)) return true;
-
-  try {
-    const downloadUserAgent = globalConfig.userAgents?.nzbDownload || getLatestVersions().chrome;
-    if (!quiet) console.log(`${logPrefix}  📥 Prefetching NZB: ${nzbUrl.substring(0, 80)}...`);
-    await verifyProxyCircuit(nzbUrl, 'nzb-prefetch', indexerName, searchExitIp);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
-
-    let nzbResponse: { ok: boolean; status: number; statusText: string; text: () => Promise<string> };
-    try {
-      nzbResponse = await proxyFetch(nzbUrl, {
-        headers: { 'User-Agent': downloadUserAgent },
-        signal: controller.signal,
-      }, indexerName);
-    } catch (err) {
-      clearTimeout(timeout);
-      if (!quiet) console.warn(`${logPrefix}  ⚠️ Prefetch failed: ${(err as Error).message}`);
-      return false;
-    }
-    clearTimeout(timeout);
-
-    if (!nzbResponse.ok) {
-      if (!quiet) console.warn(`${logPrefix}  ⚠️ Prefetch failed: ${nzbResponse.status} ${nzbResponse.statusText}`);
-      return false;
-    }
-
-    const nzbContent = await nzbResponse.text();
-
-    // Validate NZB XML
-    if (!nzbContent.includes('<nzb') || !nzbContent.includes('</nzb>')) {
-      if (nzbContent.includes('<error')) {
-        const errorMatch = nzbContent.match(/description="([^"]+)"/);
-        if (!quiet) console.warn(`${logPrefix}  ⚠️ Prefetch: indexer error — ${errorMatch ? errorMatch[1] : 'unknown'}`);
-      } else {
-        if (!quiet) console.warn(`${logPrefix}  ⚠️ Prefetch: invalid NZB content (${nzbContent.length} bytes)`);
-      }
-      return false;
-    }
-
-    cacheNzbContent(nzbUrl, nzbContent);
-    if (!quiet) console.log(`${logPrefix}  ✅ Prefetched NZB (${nzbContent.length} bytes)`);
-
-    // The indexer fetch just succeeded. Track here so UF-driven prefetches count
-    // even when the subsequent grabNzb call hits cache. EasyNews skips for
-    // the same reason as grabNzb: its real fetch happens in the /nzb route.
-    if (title) {
-      const tracked = indexerName?.trim() || '(unknown)';
-      if (tracked.toLowerCase() !== 'easynews') {
-        trackGrab(tracked, title);
-      }
-    }
-
-    return true;
-  } catch (err) {
-    if (!quiet) console.warn(`${logPrefix}  ⚠️ Prefetch error: ${(err as Error).message}`);
-    return false;
-  }
+export async function prefetchNzb(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string): Promise<void> {
+  if (getCachedNzbContent(nzbUrl)) return;
+  cacheNzbContent(nzbUrl, await grabNzb(nzbUrl, title, undefined, logPrefix, indexerName, searchExitIp));
 }

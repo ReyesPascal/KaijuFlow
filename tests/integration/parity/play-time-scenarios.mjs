@@ -851,7 +851,67 @@ export const playTimeScenarios = [
       assert.deepEqual([...gone].sort(), specs.slice(0, 5).map(s => s.tag).sort(), 'each gone Source grabbed once');
     },
   },
+  {
+    // ADR 0004, "The walk's grabs" (#243): an indexer that refuses a grab (429, its download limit) says nothing about
+    // its Sources. The Walk asks it once, passes its other Sources by for the rest of the Walk, says so once, and
+    // plays a Healthy Source from another indexer; no refused Source is dead. Best walks one Source at a time here,
+    // so "once" is exact (at 3 at a time, the grabs already under way reach it too).
+    id: 'a-refusing-indexer-is-asked-once-and-skipped',
+    run: w => withSettings(w, { candidateCount: 1 }, () => withIndexer(w, w.refusing.entry, async () => {
+      const id = `tt${nextImdb++}`;
+      const refused = [1, 2, 3, 4].map(i => ({ tag: `refused-${i}`, title: `KaijuFlow.PlayTime.refused-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
+      for (const s of refused) s.link = w.refusing.nzbLink(s.tag);
+      w.refusing.offer(id, refused);
+      const ok = { tag: 'refused-other-ok', title: 'KaijuFlow.PlayTime.refused-other-ok.2026.2160p.WEB-DL.H265-GRP', media: mediaFor('refused-other-ok'), size: 10 * GB };
+      ok.link = w.backend.addMovie(ok.tag, ok.title, ok.media);
+      w.indexer.offer(id, [ok]);
+      const before = w.refusing.grabs.length;
+      const { result: r, lines } = await withLogs(async () => {
+        const streams = await w.list('movie', id);
+        assert.equal(streams.slice(1).map(entryTitle).join(' | '), [...refused, ok].map(s => s.title).join(' | '), 'the refusing indexer\'s Sources are on top');
+        return play(streams[0].url);
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
+      assert.deepEqual(w.refusing.grabs.slice(before), ['refused-1'], 'the refusing indexer is asked once');
+      assert.equal(lines.filter(l => /Refusing.*skipped for the rest of the Walk/.test(l)).length, 1, 'the skip is logged once');
+      const again = await w.list('movie', id);
+      for (const s of refused) assert.ok(again.some(e => !isBest(e) && entryTitle(e) === s.title), `${s.tag} is not dead: the list still offers it`);
+    })),
+  },
+  {
+    // ADR 0004, "The walk's grabs" (#243): a link the indexer says is gone (404) is a Source failure. The Walk marks
+    // each gone Source dead and walks on, so the next play's Walk does not grab them again. AltMount is down for the
+    // first play, so that Walk ends without a play (its Healthy Source stays alive) and the next press walks again.
+    id: 'gone-sources-are-dead-and-not-grabbed-again',
+    async run(w) {
+      const goneTags = ['g404-a', 'g404-b', 'g404-c'];
+      const { id, sources } = offerMovie(w, [...goneTags.map(tag => ({ tag, kind: 'gone' })), { tag: 'g404ok' }]);
+      const goneGrabs = () => w.backend.grabs.filter(g => goneTags.includes(g.tag)).map(g => g.tag).sort();
+      w.backend.setDown(true); // before the list: its Head start meets AltMount down too
+      try {
+        const streams = await w.list('movie', id);
+        assertFailureVideo(await play(streams[0].url));
+      } finally {
+        w.backend.setDown(false);
+      }
+      assert.deepEqual(goneGrabs(), goneTags, 'each gone Source grabbed once');
+      const again = await w.list('movie', id);
+      for (const s of sources.slice(0, 3)) assert.ok(!again.some(e => !isBest(e) && entryTitle(e) === s.title), `${s.tag} is dead: the list no longer offers it`);
+      const r = await play(again[0].url);
+      assert.equal(r.status, 200, 'Best plays once AltMount is back');
+      assertBytes(r.body, sources[3].media, 'the Healthy Source');
+      assert.deepEqual(goneGrabs(), goneTags, 'the next play\'s Walk grabs none of them again');
+    },
+  },
 ];
+
+/** Run fn with this indexer added to the suite's, then put the suite's back. */
+async function withIndexer(w, entry, fn) {
+  const saved = w.configData.indexers;
+  w.configData.indexers = [...saved, entry];
+  try { return await fn(); } finally { w.configData.indexers = saved; }
+}
 
 /**
  * One Walk over gone Sources (#228): 30 grabs reached the indexer, the top 30 of the list, none twice, never more than
