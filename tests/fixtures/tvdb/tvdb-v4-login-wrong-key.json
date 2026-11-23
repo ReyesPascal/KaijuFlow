@@ -1,0 +1,8 @@
+{
+  "status": 401,
+  "body": {
+    "status": "failure",
+    "message": "InvalidAPIKey: apikey invalid",
+    "data": null
+  }
+}
