@@ -123,7 +123,8 @@ export async function useFakeNews(configData, config) {
  * answers 430). `delayMs` slows every BODY reply; `slow(prefix, ms)` slows every
  * reply for ids starting with prefix. Records `reads` (message ids whose bodies
  * were asked for), `stats` (ids asked for with STAT), `asks` ({ id, asked,
- * answered } times in ms, per BODY or STAT) and the `peak` number of open
+ * answered, closed } times in ms, per BODY or STAT; `closed`: when the asking
+ * connection closed before the answer went out) and the `peak` number of open
  * connections.
  */
 export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) {
@@ -134,7 +135,12 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
     state.open++; state.peak = Math.max(state.peak, state.open);
     sockets.add(sock);
     let counted = true;
-    const gone = () => { if (counted) { counted = false; state.open--; } sockets.delete(sock); };
+    const mine = []; // this connection's asks
+    const gone = () => {
+      if (counted) { counted = false; state.open--; }
+      sockets.delete(sock);
+      for (const a of mine) if (a.answered === null && a.closed === undefined) a.closed = Date.now();
+    };
     sock.on('end', gone); sock.on('close', gone); sock.on('error', () => {});
     sock.write('200 fake news ready\r\n');
     let buf = '';
@@ -152,6 +158,7 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
           if (isBody) state.reads.push(id); else state.stats.push(id);
           const ask = { id, asked: Date.now(), answered: null };
           state.asks.push(ask);
+          mine.push(ask);
           const reply = () => {
             ask.answered = Date.now();
             if (sock.destroyed) return;
