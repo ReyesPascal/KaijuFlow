@@ -12,7 +12,7 @@
  *   Source still grabbed or checked above it is waited for (#190). Only the Source being played is prepared (#192).
  * - A library hit (a Source the Backend already holds) plays without a grab, unless a Source above it is still
  *   grabbed or prepared; once one plays, the other library hits are kept beside it as backups.
- * - A Walk makes at most `maxGrabs` grabs (30), then ends as if the list had run out, and says so once (#228).
+ * - A Walk makes at most WALK_MAX_GRABS grabs (30), then ends as if the list had run out, and says so once (#228).
  * - An indexer that refuses a grab (429, 5xx, 401/403, an error payload not 300, a network error, a timeout) is skipped for the rest of the
  *   Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004).
  * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx, error payload 300) or bad, a check that blocks a
@@ -59,8 +59,6 @@ export interface WalkOptions {
   size: number;
   /** Sources walked at once (candidateCount). */
   inFlight: number;
-  /** Grabs a Walk makes at most (WALK_MAX_GRABS). */
-  maxGrabs?: number;
   /** A Source remembered dead: the Walk passes it by. Asked when the Walk reaches it. */
   isDead: (index: number) => boolean;
   /** The indexer a Source comes from. */
@@ -93,11 +91,8 @@ export class Walk {
   private readonly skipped = new Set<string>();
   private played: number | null = null;
   private ended: WalkEnd | null = null;
-  private readonly maxGrabs: number;
 
-  constructor(private readonly opts: WalkOptions) {
-    this.maxGrabs = opts.maxGrabs ?? WALK_MAX_GRABS;
-  }
+  constructor(private readonly opts: WalkOptions) {}
 
   /** The first decisions: fill the Walk from the top of the list. */
   start(): WalkDecision[] {
@@ -161,6 +156,11 @@ export class Walk {
 
   get grabCount(): number { return this.grabs; }
 
+  /** Sources the Walk gave up on: no longer walked, and not because a stop cancelled their prepare (for the summary). */
+  get failedCount(): number {
+    return this.members.filter(m => this.finished(m) && m.prepare !== 'cancelled').length;
+  }
+
   /** A member no longer walked: its grab failed, its check did not pass, or its prepare failed. */
   private finished(m: WalkMember): boolean {
     return m.grab === 'failed' || m.check === 'blocked' || m.check === 'error' || m.prepare === 'failed' || m.prepare === 'cancelled';
@@ -208,7 +208,7 @@ export class Walk {
     while (this.next < this.opts.size && this.passedBy(this.next)) this.next++;
     if (this.next >= this.opts.size) return false;
     const index = this.next;
-    if (!this.opts.hits.has(index) && this.grabs >= this.maxGrabs) {
+    if (!this.opts.hits.has(index) && this.grabs >= WALK_MAX_GRABS) {
       if (!this.ceilingHit) { this.ceilingHit = true; out.push({ type: 'ceiling', grabs: this.grabs }); }
       return false;
     }

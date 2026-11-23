@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 import runcheck
-from runfolders import edit, fixture, run_folder
+from run_fixtures import edit, fixture, run_folder
 
 
 @contextlib.contextmanager

@@ -6,6 +6,7 @@
 
 import type { StreamData } from './types.js';
 import type { PlayContext } from './playContext.js';
+import { isSourceFailure } from '../backends/types.js';
 import { config as globalConfig } from '../config/index.js';
 import { clearFallbackGroups } from './fallbackManager.js';
 import { clearDeliveryLog } from './utils.js';
@@ -147,7 +148,7 @@ export async function getOrCreateStream(
     remember({ source, play, ready: data });
   }).catch((error) => {
     pendingCache.delete(cacheKey);
-    if (error.isBadSource) remember({ source, play, dead: error });
+    if (isSourceFailure(error)) remember({ source, play, dead: error });
   });
 
   return promise;

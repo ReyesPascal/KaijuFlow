@@ -17,7 +17,7 @@ from unittest import mock
 
 import brainrun
 import testbed
-from runfolders import run_folder
+from run_fixtures import run_folder
 from test_settings import HOST_IP, SECRET, make_copies, rules, tempdir
 
 COMMIT = 'a' * 40

@@ -19,7 +19,7 @@ import { remember, recall } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
 import { walkGrab } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
-import { sourceFailure } from '../backends/types.js';
+import { sourceFailure, isSourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, StreamData } from './types.js';
 import type { UltimateFallbackConfig } from '../types.js';
@@ -433,7 +433,7 @@ export async function ultimateFallbackFromCandidates(
         console.log(`${logPrefix}❌ Failed: ${(err as Error).message}`);
         console.log(`${tag} ❌ Prepare failed for ${name(index)}`);
         logPlayFailed(c.title, c.indexerName, err);
-        post({ type: 'prepareFailed', index, badSource: (err as { isBadSource?: boolean })?.isBadSource === true });
+        post({ type: 'prepareFailed', index, badSource: isSourceFailure(err) });
       }
     };
 
@@ -448,7 +448,7 @@ export async function ultimateFallbackFromCandidates(
               if (controller.signal.aborted) return;
               runOf(d.index).grabError = err;
               console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
-              post({ type: 'grabFailed', index: d.index, badSource: (err as { isBadSource?: boolean }).isBadSource === true });
+              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err) });
             });
           return;
         }
@@ -527,7 +527,7 @@ export async function ultimateFallbackFromCandidates(
     // ── Summary ──────────────────────────────────────────────────
     const members = walk.snapshot();
     const healthy = members.filter(m => m.check === 'healthy').length;
-    const dead = members.filter(m => m.grab === 'failed' || m.check === 'blocked' || m.check === 'error' || m.prepare === 'failed').length;
+    const dead = walk.failedCount;
     const skipped = members.filter(m => m.library === 'duplicate' || m.library === 'mismatch').length;
     const divider = '┄'.repeat(120);
     console.log(`${tag} ${divider}`);

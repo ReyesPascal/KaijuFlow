@@ -12,9 +12,9 @@ from unittest import mock
 import brainreport as br
 import common
 import runcheck
-import runfolders
+import run_fixtures
 import runs
-from runfolders import run_folder
+from run_fixtures import run_folder
 from test_settings import tempdir
 
 KF_LOG = """2026-11-10T18:00:01.100000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":200,"ok":true,"t":"2026-11-10T18:00:01.000Z","ref":"tt1","page":1}
@@ -1223,7 +1223,7 @@ class TaggedRunTest(unittest.TestCase):
         self.assertNotIn('pressing play', first)
 
     def test_the_replayed_2026_11_13_run_read_untagged_gives_altmount_direct_40_of_40_and_no_lists(self):
-        run = runs.load(runfolders.fixture('run-2026-11-13-imports'))
+        run = runs.load(run_fixtures.fixture('run-2026-11-13-imports'))
         self.assertEqual(br.side_plays(run['visits'], 'altmount-addon'), (40, 40))  # four of them after a fallback (#185)
         self.assertEqual(br.run_lists(run['visits']), [])
         text = br.render_report(run, ['x'])

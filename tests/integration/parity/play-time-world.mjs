@@ -14,18 +14,18 @@ export const PLAY_TIME_BOUNDARIES = ['Fake indexer answers every search with the
  * A Newznab indexer that answers a search with the Sources offered for its IMDB id; `searches` says when each came.
  * With `refuseGrabs` it also hands out its own NZB links (`nzbLink`) and refuses every grab of them, as an indexer at
  * its download limit does: `{ status: 429 }`, or `{ status: 200, body }` with a Newznab error payload as the body;
- * `grabs` lists the tags asked for.
+ * `grabbedTags` lists the tags of the grabs asked for (the fake AltMount's `grabs` holds each grab's times).
  */
 async function createFakeIndexer(listen, { refuseGrabs } = {}) {
   const offers = new Map(); // imdb id without "tt" -> [{ title, link, size }]
   const requests = [];
   const searches = []; // { imdbid, at }
-  const grabs = [];
+  const grabbedTags = [];
   const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const url = await listen((req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
     if (refuseGrabs && u.pathname.endsWith('.nzb')) {
-      grabs.push(u.pathname.slice(1, -4));
+      grabbedTags.push(u.pathname.slice(1, -4));
       if (refuseGrabs.body) {
         res.writeHead(refuseGrabs.status, { 'Content-Type': 'application/xml' });
         res.end(refuseGrabs.body);
@@ -44,7 +44,7 @@ async function createFakeIndexer(listen, { refuseGrabs } = {}) {
       items.map(i => `<item><title>${xml(i.title)}</title><link>${xml(i.link)}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate>` +
         `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>');
   });
-  return { url, requests, searches, grabs, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
+  return { url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
 }
 
 /**

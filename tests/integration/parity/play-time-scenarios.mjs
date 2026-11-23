@@ -416,7 +416,7 @@ export const playTimeScenarios = [
           assertBytes(seek.body, a.sources[0].media.subarray(10, 30), 'the same video');
           await bestDone(lines, b.id);
           // A stopped check answered nothing: no play_check line, so the brain tools don't count it in the next visit's wait.
-          const steps = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+          const steps = stepsOf(lines);
           assert.equal(steps.filter(s => s.step === 'play_check' && s.title === a.sources[1].title).length, 0, 'no play_check line for the stopped check');
         });
         assert.equal(w.backend.submitsFor('left-a2'), 0, 'the lower Source never reaches AltMount');
@@ -950,7 +950,7 @@ export const playTimeScenarios = [
         await bestDone(lines, id);
         return play(streams[0].url);
       });
-      const steps = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+      const steps = stepsOf(lines);
       assert.deepEqual(steps.filter(s => s.step === 'play_check' && s.title === title).map(s => s.status), ['verified_stored'], 'the check passes it');
       // no RAR-named or number-named parts: Unscramble ends before reading anything (its reads: unscramble-step.test.ts)
       assert.deepEqual(steps.filter(s => s.step === 'unscramble' && s.title === title).map(s => [s.result, s.parts]), [['not-scrambled', 0]],
@@ -1119,7 +1119,7 @@ export const playTimeScenarios = [
         assert.equal(w.backend.grabs.filter(g => g.tag === 'retrybad-next').length, 1, 'its check runs again, the Source is not grabbed again');
         // The tools read KaijuFlow only through step lines (#239): the stopped check writes no verdict, only its run
         // after the retry does.
-        const checks = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)))
+        const checks = stepsOf(lines)
           .filter(s => s.step === 'play_check' && s.title === next.title).map(s => s.status);
         assert.deepEqual(checks, ['verified'], 'one play_check line for the next Source: the stopped check says nothing');
         w.news.drop(top.dropAt, 0);
@@ -1413,7 +1413,7 @@ function assertRefusingIndexerSkipped(w, refuser, prefix) {
     const ok = { tag: `${prefix}-other-ok`, title: `KaijuFlow.PlayTime.${prefix}-other-ok.2026.2160p.WEB-DL.H265-GRP`, media: mediaFor(`${prefix}-other-ok`), size: 10 * GB };
     ok.link = w.backend.addMovie(ok.tag, ok.title, ok.media);
     w.indexer.offer(id, [ok]);
-    const before = refuser.grabs.length;
+    const before = refuser.grabbedTags.length;
     const { result: r, lines } = await withLogs(async () => {
       const streams = await w.list('movie', id);
       assert.equal(streams.slice(1).map(entryTitle).join(' | '), [...refused, ok].map(s => s.title).join(' | '), 'the refusing indexer\'s Sources are on top');
@@ -1421,7 +1421,7 @@ function assertRefusingIndexerSkipped(w, refuser, prefix) {
     });
     assert.equal(r.status, 200, 'Best plays');
     assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
-    assert.deepEqual(refuser.grabs.slice(before), [`${prefix}-1`], 'the refusing indexer is asked once');
+    assert.deepEqual(refuser.grabbedTags.slice(before), [`${prefix}-1`], 'the refusing indexer is asked once');
     const skip = new RegExp(`${refuser.entry.name}.*skipped for the rest of the Walk`);
     assert.equal(lines.filter(l => skip.test(l)).length, 1, 'the skip is logged once');
     const again = await w.list('movie', id);
@@ -1475,7 +1475,7 @@ function healthyBelow(w, tag, sizeGb) {
 
 /** The `unscramble` step lines' results for a Source, in order. */
 function unscrambleResults(lines, title) {
-  return lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)))
+  return stepsOf(lines)
     .filter(s => s.step === 'unscramble' && s.title === title).map(s => s.result);
 }
 

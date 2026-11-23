@@ -784,7 +784,7 @@ export async function handleStream(
         evictReadyByVideoPath((error as WebDav404Error).videoPath);
       }
 
-      const err = error as Error & { isBadSource?: boolean };
+      const err = error as Error;
       console.error(`\u274C Stream failed [${i + 1}/${maxCandidates}] ${candidate.title}: ${err.message}`);
       logPlayFailed(candidate.title, candidate.indexerName, err);
 
