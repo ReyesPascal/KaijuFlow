@@ -408,8 +408,10 @@ export async function ultimateFallbackFromCandidates(
         case 'grab': {
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
-          prefetchNzb(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp)
+          // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab.
+          prefetchNzb(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
             .then(() => post({ type: 'grabbed', index: d.index }), (err: Error) => {
+              if (controller.signal.aborted) return;
               runOf(d.index).grabError = err;
               console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
               post({ type: 'grabFailed', index: d.index, badSource: (err as { isBadSource?: boolean }).isBadSource === true });

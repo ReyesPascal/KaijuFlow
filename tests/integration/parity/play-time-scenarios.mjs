@@ -353,6 +353,38 @@ export const playTimeScenarios = [
     },
   },
   {
+    // The same for a grab (#244, #239 story 8): a played Walk's grab of a lower Source still waiting for the indexer
+    // is cut off as the next title's list request arrives, before its search starts. The stop is not a failed grab:
+    // no "Grab failed" line, and the Source is not dead (A's list still offers it).
+    id: 'a-newer-list-request-cuts-off-a-played-walks-leftover-grab',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'leftgrab-a1' }, { tag: 'leftgrab-a2' }]);
+      const b = offerMovie(w, [{ tag: 'leftgrab-b1' }]);
+      w.backend.slowGrabs('leftgrab-a2', 4000);
+      try {
+        await withLogs(async lines => {
+          const streams = await w.list('movie', a.id);
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, a.sources[0].media, 'Best plays the top Source');
+          const grab = () => w.backend.grabs.find(g => g.tag === 'leftgrab-a2');
+          assert.ok(grab() && grab().answered === null, 'the lower Source\'s grab is still waiting for the indexer');
+          await w.list('movie', b.id);
+          const search = w.indexer.searches.find(s => `tt${s.imdbid}` === b.id);
+          assert.ok(search, `${b.id} was searched`);
+          assert.ok(grab().closed !== undefined, 'the grab was cut off, not answered');
+          assert.ok(grab().closed <= search.at, `the grab was cut off ${grab().closed - search.at} ms after the next title's search began, not before it`);
+          await bestDone(lines, b.id);
+          assert.ok(!lines.some(l => l.includes('Grab failed') && l.includes(a.sources[1].title)), 'a stopped grab is not a failed grab');
+        });
+        const titles = (await w.list('movie', a.id)).filter(s => !isBest(s)).map(entryTitle);
+        assert.ok(titles.includes(a.sources[1].title), 'the cut-off Source is not dead');
+      } finally {
+        w.backend.slowGrabs('leftgrab-a2', 0);
+      }
+    },
+  },
+  {
     // The brain tools read a visit from KaijuFlow's log (tools/brain/docs/formats.md), from its list request on: one
     // play_check line per Source Best checked, the dead one too, and the top pick's name on the first prepare line
     // after the Head start's 'Head start: checking' line (#206), or after the press's '/stream hit' line without one;
