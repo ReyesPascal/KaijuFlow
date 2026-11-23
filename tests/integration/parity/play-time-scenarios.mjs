@@ -3,6 +3,7 @@
 // and asserts only on what the player receives, what the fake news server was asked and what
 // reached the fake AltMount; one scenario asserts on the log lines the brain tools read.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { assertBytes } from './bytes.mjs';
 import { scrambledRarSet } from './fake-nntp.mjs';
 
@@ -12,8 +13,8 @@ let nextImdb = 1000001;
 
 /**
  * Offer movie Sources for a new title, in list order (same quality, sizes going down, so KaijuFlow's sort keeps
- * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'gone' | 'rejected' | 'never-ready' | 'scrambled-rar4' | 'disc-image' }
- * ('gone': the indexer answers 404 to every grab of it).
+ * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'gone' | 'rejected' | 'never-ready' | 'first-byte-400' | 'scrambled-rar4' | 'disc-image' }
+ * ('gone': the indexer answers 404 to every grab of it; 'first-byte-400': AltMount answers 400 to its first byte).
  * Returns { id, sources: [{ tag, title, media }] }.
  */
 function offerMovie({ backend, indexer }, specs) {
@@ -27,6 +28,7 @@ function offerMovie({ backend, indexer }, specs) {
       : kind === 'gone' ? backend.addGone(spec.tag)
       : kind === 'rejected' ? backend.addRejected(spec.tag, title)
       : kind === 'never-ready' ? backend.addNeverReady(spec.tag, title)
+      : kind === 'first-byte-400' ? backend.addFirstByteFault(spec.tag, title, media, 'bad-request')
       : backend.addRefused(spec.tag, title, kind);
     return { tag: spec.tag, title, media, link, size: (20 - i) * GB };
   });
@@ -156,16 +158,41 @@ function mostAtOnce(times) {
  * press of Best. Returns KaijuFlow's lines, each after its time as `docker logs --timestamps` writes it, and the play.
  */
 async function capturedVisit(w, id) {
+  const visit = { id, t_start: new Date().toISOString() };
+  const { lines, r } = await timedLines(async lines => {
+    const streams = await w.list('movie', id);
+    await bestDone(lines, id);
+    return play(streams[0].url);
+  });
+  return { lines, visit, r };
+}
+
+/** Run fn(lines) and collect KaijuFlow's lines meanwhile, each after its time as `docker logs --timestamps` writes it. */
+async function timedLines(fn) {
   const lines = [];
   const saved = console.log;
   console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
-  try {
-    const streams = await w.list('movie', id);
-    await bestDone(lines, id);
-    const r = await play(streams[0].url);
-    return { lines, r };
-  } finally { console.log = saved; }
+  try { return { r: await fn(lines), lines }; } finally { console.log = saved; }
 }
+
+/** The step lines among KaijuFlow's lines, parsed. */
+const stepsOf = lines => lines.filter(l => l.includes('[KF-STEP] ')).map(l => JSON.parse(l.split('[KF-STEP] ')[1]));
+
+/**
+ * What the brain tools read of one visit's play from KaijuFlow's lines: the real reader, brainreport.read_play, as
+ * brainrun.collect_visit calls it (tools/brain, copied next to the scenarios by in-namespace.sh). visit: { id, t_start }.
+ */
+function brainRead(lines, visit) {
+  const code = 'import json, sys; sys.path.insert(0, sys.argv[1]); import brainreport; a = json.load(sys.stdin); '
+    + 'print(json.dumps(brainreport.read_play(a["text"], a["visit"])))';
+  const r = spawnSync('python3', ['-I', '-c', code, `${process.env.A4_APP_ROOT}/brain`],
+    { input: JSON.stringify({ text: lines.join('\n') + '\n', visit }), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+/** Why a Source whose first byte AltMount answers 400 failed, in KaijuFlow's words without the file path. */
+const FIRST_BYTE_400 = 'First byte failed (status 400); the Source is kept';
 
 const isBest = s => s.name.includes('KaijuFlow ▶ Best');
 /** The release name a list entry plays (from its tile envelope). */
@@ -386,51 +413,92 @@ export const playTimeScenarios = [
     },
   },
   {
-    // The brain tools read a visit from KaijuFlow's log (tools/brain/docs/formats.md), from its list request on: one
-    // play_check line per Source Best checked, the dead one too, and the top pick's name on the first prepare line
-    // after the Head start's 'Head start: checking' line (#206), or after the press's '/stream hit' line without one;
-    // the press writes 'Best plays' with the Source it played; the other healthy Source it checked is never prepared
-    // (#192). The scenario's lines go out in its result (`capture`); scrubbed, they are
-    // tools/brain/fixtures/2026-11-21-best/kaijuflow-best-dead-first.txt, which the brain tests read.
+    // The brain tools read a visit from KaijuFlow's step lines only (tools/brain/docs/formats.md), from its list request
+    // on: one play_check line per Source Best checked, the dead one too, and one `played` line when the press serves the
+    // Source's video; the other healthy Source it checked is never prepared (#192). The real reader
+    // (brainreport.read_play) reads them. The scenario's lines go out in its result (`capture`); scrubbed, they are
+    // tools/brain/fixtures/2026-11-23-step-lines/kaijuflow-best-dead-first.txt, which the brain tests read.
     id: 'best-press-log-lines-the-brain-tools-read',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'log-dead', kind: 'dead' }, { tag: 'log-ok' }, { tag: 'log-backup' }]);
-      const { lines, r } = await capturedVisit(w, id);
+      const before = w.backend.submitted.length;
+      const { lines, visit, r } = await capturedVisit(w, id);
       assertBytes(r.body, sources[1].media, 'Best plays the first healthy Source');
-      const steps = lines.filter(l => l.includes('[KF-STEP] ')).map(l => JSON.parse(l.split('[KF-STEP] ')[1]));
+      const steps = stepsOf(lines);
       const check = tag => steps.filter(s => s.step === 'play_check' && s.title === sources.find(x => x.tag === tag).title);
       assert.deepEqual(check('log-dead').map(s => [s.ok, s.status]), [[false, 'blocked']], 'the dead Source\'s check is one line');
       assert.deepEqual(check('log-ok').map(s => [s.ok, s.status]), [[true, 'verified']], 'the played Source\'s check is one line');
-      const hit = lines.findIndex(l => l.includes('/stream hit'));
-      assert.ok(hit >= 0, 'the press writes its /stream hit line');
-      const played = lines.slice(hit).map(l => l.match(/(?:Starting new stream preparation|Best plays): (.+?)\s*$/)?.[1]).filter(Boolean);
-      assert.equal(played[0], sources[1].title, 'the first prepare or Best plays line after the press names the played Source');
-      const prepared = lines.map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
-      assert.deepEqual(prepared, [sources[1].title], 'only the played Source is prepared: not the dead one, not the other healthy one (#192)');
+      assert.deepEqual(steps.filter(s => s.step === 'played').map(s => [s.title, s.source]), [[sources[1].title, 'Parity']], 'the press writes one played line');
+      assert.deepEqual(brainRead(lines, visit), { played_source: sources[1].title, cause: '' });
+      assert.deepEqual(w.backend.submitted.slice(before), ['log-ok'], 'only the played Source is prepared: not the dead one, not the other healthy one (#192)');
       return { capture: lines };
     },
   },
   {
     // A refusal during a Head start (#206): AltMount refuses the first healthy Source before the press, so the
-    // Head start prepares the next one, and the press plays it with no new import. The brain tools count it a fallback
-    // like a press-started one: the first prepare line after 'Head start: checking' names the refused top pick.
-    // Scrubbed, the scenario's lines are tools/brain/fixtures/2026-11-21-best/kaijuflow-head-start-refused-first.txt.
+    // Head start prepares the next one, and the press plays it with no new import. The Head start writes a play_failed
+    // line for the refused Source, so the brain tools name it the top pick and count a fallback, as for a press-started
+    // Best. Scrubbed, the lines are tools/brain/fixtures/2026-11-23-step-lines/kaijuflow-head-start-refused-first.txt.
     id: 'head-start-refusal-log-lines-the-brain-tools-read',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'hsr-refused', kind: 'rejected' }, { tag: 'hsr-ok' }, { tag: 'hsr-other' }]);
       const before = w.backend.submitted.length;
-      const { lines, r } = await capturedVisit(w, id);
+      const { lines, visit, r } = await capturedVisit(w, id);
       assertBytes(r.body, sources[1].media, 'Best plays the next Source after the refusal');
       assert.equal(w.backend.submitsFor('hsr-refused'), 1, 'the refused Source was imported once, before the press');
       assert.deepEqual(w.backend.submitted.slice(before).filter(t => t !== 'hsr-refused'), ['hsr-ok'], 'the refusal makes one more import, the next Source');
       const hit = lines.findIndex(l => l.includes('/stream hit'));
-      const start = lines.findLastIndex((l, i) => i < hit && l.includes('Head start: checking'));
-      assert.ok(start >= 0 && hit > start, 'the Head start began before the press');
-      const prepared = lines.slice(start).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
-      assert.deepEqual(prepared, [sources[0].title, sources[1].title], 'the Head start prepared the top pick, then the next one');
-      assert.ok(lines.slice(hit).some(l => l.endsWith(`Best plays: ${sources[1].title}`)), 'the press names the Source it played');
+      const failed = lines.findIndex(l => l.includes('"step":"play_failed"'));
+      assert.ok(failed >= 0 && failed < hit, 'the Head start wrote the refusal before the press');
+      const read = brainRead(lines, visit);
+      assert.equal(read.played_source, sources[0].title, 'the top pick is the refused Source');
+      assert.ok(read.cause, 'the refusal in KaijuFlow\'s words');
+      assert.deepEqual(stepsOf(lines).filter(s => s.step === 'played').map(s => s.title), [sources[1].title], 'the press names the Source it played');
       return { capture: lines };
     },
+  },
+  {
+    // A failed press of Best: its one Source is checked healthy, but AltMount answers 400 at the first byte, so the
+    // press shows the failure video. The brain tools read the top pick and why it failed from the play_failed line,
+    // in KaijuFlow's words without the file path. Scrubbed, the lines are
+    // tools/brain/fixtures/2026-11-23-step-lines/kaijuflow-best-first-byte-failed.txt.
+    id: 'failed-best-press-log-lines-the-brain-tools-read',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'fbf-400', kind: 'first-byte-400' }]);
+      const { lines, visit, r } = await capturedVisit(w, id);
+      assertFailureVideo(r);
+      assert.equal(stepsOf(lines).filter(s => s.step === 'played').length, 0, 'no played line for a failure video');
+      assert.deepEqual(brainRead(lines, visit), { played_source: sources[0].title, cause: FIRST_BYTE_400 });
+      assert.ok(!lines.filter(l => l.includes('[KF-STEP] ')).some(l => /\/\S+\.mkv|https?:/.test(l)), 'step lines carry no path or address');
+      return { capture: lines };
+    },
+  },
+  {
+    // A clicked list entry (the Head start off): the entry fails at the first byte and the next Source plays, so the
+    // brain tools name the clicked entry the top pick, with its cause. A click of the same entry in a later list reuses
+    // the delivery (the Stremio dedup cache) and still names what it plays. A clicked entry that is the only Source
+    // shows the failure video, read the same way.
+    id: 'list-entry-log-lines-the-brain-tools-read',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
+      const click = async id => {
+        const t_start = new Date().toISOString();
+        const { lines, r } = await timedLines(async () => play((await w.list('movie', id))[1].url));
+        return { r, read: brainRead(lines, { id, t_start }) };
+      };
+      const { id, sources } = offerMovie(w, [{ tag: 'lel-400', kind: 'first-byte-400' }, { tag: 'lel-ok' }]);
+      const first = await click(id);
+      assertBytes(first.r.body, sources[1].media, 'the next Source plays');
+      assert.deepEqual(first.read, { played_source: sources[0].title, cause: FIRST_BYTE_400 });
+      const again = await click(id);
+      assertBytes(again.r.body, sources[1].media, 'the same delivery');
+      assert.equal(w.backend.submitsFor('lel-ok'), 1, 'reused, not prepared again');
+      assert.deepEqual(again.read, { played_source: sources[1].title, cause: '' });
+
+      const only = offerMovie(w, [{ tag: 'lel-only', kind: 'first-byte-400' }]);
+      const failed = await click(only.id);
+      assertFailureVideo(failed.r);
+      assert.deepEqual(failed.read, { played_source: only.sources[0].title, cause: FIRST_BYTE_400 });
+    }),
   },
   {
     // Best checks the top Sources and hands AltMount the first healthy one in list order; the dead top pick

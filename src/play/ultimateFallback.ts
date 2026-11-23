@@ -15,6 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { NntpConnectionPool } from '../health/nntpConnection.js';
 import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk, logPrepareStart } from './streamCache.js';
+import { logPlayFailed } from '../utils/stepTiming.js';
 import { prefetchNzb } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { sourceFailure } from '../backends/types.js';
@@ -305,7 +306,7 @@ export async function ultimateFallbackFromCandidates(
   const deferred: DeferredStream = { promise: sessionPromise, resolve: sessionResolveRaw, reject: sessionReject, backupUrls: new Set(), backupStreams: [] };
   // Wrap resolve to stamp the persistable fields and write to disk so the
   // session survives an addon restart.
-  // The played Source's release name rides along, so a press can name what it plays (brain tools' played_source).
+  // The played Source's release name rides along, so a press can name what it plays (its `played` step line).
   const sessionResolve = (video: StreamData, sourceTitle: string) => {
     const data = { ...video, sourceTitle };
     deferred.resolvedData = data;
@@ -439,6 +440,7 @@ export async function ultimateFallbackFromCandidates(
         r.prepareError = err as Error;
         console.log(`${logPrefix}❌ Failed: ${(err as Error).message}`);
         console.log(`${tag} ❌ Prepare failed for ${name(index)}`);
+        logPlayFailed(c.title, c.indexerName, err);
         post({ type: 'prepareFailed', index, badSource: (err as { isBadSource?: boolean })?.isBadSource === true });
       }
     };

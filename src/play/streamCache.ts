@@ -252,16 +252,10 @@ recalculateTTLExpirations();
 type PrepareFn = (nzbUrl: string, title: string, filePattern?: string, contentType?: string, episodesInSeason?: number, isSeasonPack?: boolean, logPrefix?: string, indexerName?: string, searchExitIp?: string) => Promise<StreamData>;
 let prepareFn: PrepareFn | null = null;
 
-/** The line that says a Source goes to the Backend now. brainreport.played_source names the played Source from it, so
- * every prepare (a clicked list entry, Best) writes these words. */
+/** The console line that says a Source goes to the Backend now, the same for every prepare (a clicked list entry,
+ *  Best). For people reading the log: the brain tools read the `played` and `play_failed` step lines (#242). */
 export function logPrepareStart(logPrefix: string, title: string): void {
   console.log(`${logPrefix}\u{1F195} Starting new stream preparation: ${title}`);
-}
-
-/** The line a press of Best writes when it plays what its session prepared, e.g. in a Head start (#206).
- *  The brain tools read the played Source from it (brainreport.played_source). */
-export function logBestPlays(title: string): void {
-  console.log(`\u{1F451} Best plays: ${title}`);
 }
 
 export function setPrepareFn(fn: PrepareFn): void {

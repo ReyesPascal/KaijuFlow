@@ -959,7 +959,8 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     for c, text in ((kf_c, kf_text), (be_c, be_text)):
         logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
     # provisional; finalize_steps() re-attributes once the whole run is read (late lines, next visit of the side)
-    played = br.played_source(kf_text)
+    play = br.read_play(kf_text, {'id': vid, 't_start': br.iso(t0)})
+    played = play['played_source']
     steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', []), 'played_source': played},
                                br.parse_step_lines(kf_text))
     imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
@@ -971,7 +972,7 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
             'seeks': http.get('seeks', {}), 'note': http.get('note'), 'tries': http.get('tries', []),
             'browse_pause_s': http.get('browse_pause_s', 0),
             'steps': steps, 'imports': imports, 'limit': limit, 'played_source': played,
-            'cause': '' if ok else br.failure_cause(kf_text), **({'list': title[3]} if len(title) > 3 else {})}
+            'cause': '' if ok else play['cause'], **({'list': title[3]} if len(title) > 3 else {})}
 
 
 def finalize_steps(io, visits):
