@@ -279,7 +279,8 @@ class RealIO:
 
     def missed_since(self, when):
         """(run folder, missed requests) of the newest run on this recording that started after `when` (the recording's
-        last record, as RECORDING.json says), or None when there is none or the runs root is not known. #229."""
+        last record, as RECORDING.json says), or None when there is none or the runs root is not known. #229. A grab of a release
+        the visit never played does not count (#235), when the run folder's raw.json shows the visits."""
         root = self.cfg.get('runs_root')
         if not root or not when:
             return None
@@ -289,6 +290,9 @@ class RealIO:
                 continue
             if (meta.get('started') or '') <= when:
                 return None
+            raw = _read_json(os.path.join(root, d, 'raw.json'))
+            if raw and isinstance(raw.get('visits'), list):  # the misses that count, as check counts them (#235)
+                return d, sum(len(br.counted_misses(v)) for v in raw['visits'])
             return d, meta.get('standin_misses') or 0
         return None
 

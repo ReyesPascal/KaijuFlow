@@ -227,8 +227,11 @@ def check_run(run_dir):
             vs = [v for v in visits if v['side'] == s and v['phase'] == phase]
             by[phase] = (sum(1 for v in vs if br.plays(v)), len(vs))
         lines.append(br.top_picks_played([(s, by)]))
-    # missed requests: requests the indexer stand-in did not hold, per round and side
-    missed = [v for v in visits if v.get('misses')]
+    # missed requests: requests the indexer stand-in did not hold, per round and side. A grab of a release the visit never
+    # played is listed but does not make the run unusable (owner's decision on #218, #235); every other miss does.
+    unplayed = [(v, [m for m in v.get('misses') or [] if br.unplayed_release(m, v)]) for v in visits]
+    unplayed = [(v, ms) for v, ms in unplayed if ms]
+    missed = [dict(v, misses=br.counted_misses(v)) for v in visits if br.counted_misses(v)]
     if missed:
         per = {}
         for v in missed:
@@ -248,11 +251,17 @@ def check_run(run_dir):
         lines.append(f'Different requests missed: {len(often)}; most often: ' +
                      '; '.join(f"{r} ({'once' if n == 1 else f'{n} times'})" for r, n in often[:3]) + '.')  # #229: which NZB, by its release
         reasons.append(f"{sum(len(v['misses']) for v in missed)} requests missed the recording in {len(missed)} visits")
-    elif meta.get('standin_misses'):
-        lines.append(f"Missed requests: the stand-in logged {meta['standin_misses']}, but no visit shows which.")
-        reasons.append(f"{meta['standin_misses']} requests missed the recording")
-    else:
-        lines.append('Missed requests: none.')
+    if unplayed:
+        names = sorted({m.split(' ', 3)[3] for _, ms in unplayed for m in ms})
+        lines.append(f"Missed, never played (listed, not counted against the run; #235): {sum(len(ms) for _, ms in unplayed)} grabs of "
+                     f"{len(names)} releases in {len(unplayed)} visits: " +
+                     '; '.join(f"{_side(v['side'])} {v['phase']} {v['round']} {v['title']} ({len(ms)})" for v, ms in unplayed) + '.')
+    if not missed and not unplayed:
+        if meta.get('standin_misses'):
+            lines.append(f"Missed requests: the stand-in logged {meta['standin_misses']}, but no visit shows which.")
+            reasons.append(f"{meta['standin_misses']} requests missed the recording")
+        else:
+            lines.append('Missed requests: none.')
     # sides with no import time (cold visits only; warm visits import nothing)
     no_import = [s for s in sides if s in seen and all(
         br.visit_metrics(v)['import_s'] is None for v in visits if v['side'] == s and v['phase'] == 'cold' and v.get('ok'))]
@@ -281,7 +290,8 @@ def check_run(run_dir):
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:
-        lines.insert(0, 'Usable as a baseline: no missed request, every planned side is there, the run is complete.')
+        lines.insert(0, 'Usable as a baseline: ' + ('no missed request that counts (grabs of releases never played are listed below)'
+                                                         if unplayed else 'no missed request') + ', every planned side is there, the run is complete.')
     return not reasons, lines
 
 
