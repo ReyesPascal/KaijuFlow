@@ -45,7 +45,8 @@ export function isHealthy(result: HealthCheckResult): boolean {
  * (ADR 0009, archive inspection always on). No setting turns it off; with no
  * enabled health-check provider nothing can be checked, so the answer is an
  * error and the Source is not played.
- * `pool`: share NNTP connections across the checks of one Best press.
+ * `pool`: share NNTP connections across the checks of one Best press. A check whose pool was stopped (its Walk
+ * ended, GLOSSARY: Walk) answered nothing: it writes no play_check line.
  */
 export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPool): Promise<HealthCheckResult> {
   const t0 = Date.now();
@@ -57,7 +58,7 @@ export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPo
       { archiveInspection: true, sampleCount: globalConfig.ultimateFallback?.sampleCount ?? 3, episodePattern: source.episodePattern },
       pool, source.indexerName, source.searchExitIp,
     );
-  logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ms: Date.now() - t0 });
+  if (!pool?.stopped) logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ms: Date.now() - t0 });
   return result;
 }
 

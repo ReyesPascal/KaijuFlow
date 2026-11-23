@@ -33,7 +33,7 @@ export async function createFakeAltmount(listen) {
   let base = '';
   let down = false;
   let indexerDown = 0; // HTTP status the NZB link answers while the indexer is "down" (0 = serves the NZB)
-  const grabs = []; // { tag, asked, answered } per NZB link fetched: the indexer's side of a grab
+  const grabs = []; // { tag, asked, answered, closed } per NZB link fetched: the indexer's side of a grab
   const slowGrabs = new Map(); // tag prefix -> ms every NZB link of it waits before answering
   let nextQueueId = 1; // real AltMount queue ids are integers
   const uploads = new Map(); // tag -> uploaded NZB texts
@@ -85,6 +85,7 @@ export async function createFakeAltmount(listen) {
       const grab = { tag, asked: Date.now(), answered: null };
       grabs.push(grab);
       res.on('finish', () => { grab.answered = Date.now(); });
+      res.on('close', () => { if (grab.answered === null) grab.closed = Date.now(); });
       const wait = [...slowGrabs].find(([prefix]) => tag.startsWith(prefix))?.[1];
       if (wait) await new Promise(r => setTimeout(r, wait));
       // A link the indexer does not know (addGone) answers 404, as an indexer does for a removed NZB.
@@ -306,7 +307,8 @@ export async function createFakeAltmount(listen) {
     setFirstByteFault(tag, mode) { sources.get(tag).fault = mode; },
     /** The NZB link of a Source the indexer says is gone: every grab of it answers 404. */
     addGone(tag) { return `${base}/${tag}.nzb`; },
-    /** Every NZB link fetched, in order: { tag, asked, answered } (ms; answered null while it waits). */
+    /** Every NZB link fetched, in order: { tag, asked, answered, closed } (ms; answered null while it waits; closed
+     *  when the grab hung up before its answer). */
     grabs,
     /** Make every NZB link whose tag starts with prefix wait ms before answering (0 = answer at once). */
     slowGrabs(prefix, ms) { if (ms > 0) slowGrabs.set(prefix, ms); else slowGrabs.delete(prefix); },

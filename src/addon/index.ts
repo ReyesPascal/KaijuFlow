@@ -25,7 +25,7 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStart, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
@@ -273,6 +273,10 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     const requestManifestKey = requestContext.getStore()?.manifestKey || '';
     const cacheKey = buildSearchCacheKey(requestManifestKey, type, id, config);
 
+    // Best's session for this title. Another title's unfinished Walk ends here, before this list's search (#244).
+    const sessionKey = `${requestManifestKey}:${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
+    listAsked(sessionKey);
+
     // === SHARED: Filter dead NZBs from raw results ===
     const filterDeadFromRaw = (results: any[]) => {
       if (!config.filterDeadNzbs) return results;
@@ -308,9 +312,6 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
     // === SHARED: the Head start (#206): Best's check and prepare begin when the list is asked for ===
     const startHeadStart = (fallbackCandidates: any[] | undefined, episodesInSeason?: number, episodeAired?: string) => {
-      const contentKey = `${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
-      const ufManifestKey = requestContext.getStore()?.manifestKey || '';
-      const sessionKey = `${ufManifestKey}:${contentKey}`;
       let cachePattern: string | undefined;
       let filePattern: string | undefined;
       if (type === 'series' && season !== undefined && episode !== undefined) {
@@ -323,7 +324,6 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // On-tile-selection turns it off: UF waits for a press of Best (the lobby in streamHandler.ts).
       if (isUltimateFallbackActive() && config.ultimateFallback) {
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
-        // Every list request counts, one with nothing to check too: it stops the Head start before it.
         headStart(
           sessionKey, fallbackCandidates ?? [], config.ultimateFallback,
           cachePattern, filePattern, type, episodesInSeason,

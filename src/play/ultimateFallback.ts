@@ -198,15 +198,32 @@ export function cancelAllUltimateFallbacks(): void {
 
 // ── Head start (#206) ───────────────────────────────────────────────
 
-/** Sessions a press of Best is waiting on: a newer list request never stops them. Emptied as each session ends. */
+/** Sessions a press of Best is waiting on, or played: claimed. Emptied as each session ends. */
 const claimedSessions = new Set<string>();
-/** The title of the newest list request's Head start, until a press of Best claims it. */
-let headStartKey: string | null = null;
+
+/**
+ * A Walk ends when any player asks for another title's list (GLOSSARY: Walk, #244). Called as the list request
+ * arrives, before its search, so the new title's search and Head start have the connections to themselves: an
+ * unclaimed Head start is stopped, and so is a play's Walk once its video has arrived (its leftover grabs and
+ * checks). A press still waiting for its video keeps its Walk; a video already playing goes on (its session stays).
+ */
+export function listAsked(sessionKey: string): void {
+  for (const [key, controller] of activeSessions) {
+    if (key === sessionKey) continue;
+    const played = sessionPromises.get(key)?.resolvedData !== undefined;
+    if (!claimedSessions.has(key)) {
+      console.log(`👑 Ultimate-Fallback [${key}] Head start stopped: a newer list request [${sessionKey}] has it`);
+    } else if (played) {
+      console.log(`👑 Ultimate-Fallback [${key}] Walk stopped: its video arrived and a newer list request [${sessionKey}] came`);
+    } else continue;
+    controller.abort();
+  }
+}
 
 /**
  * Head start (GLOSSARY): a title's stream list was asked for, so Best's check and prepare begin now in the
- * background. Only the newest list request has one: the one before is stopped unless a press of Best is waiting
- * on it. A title whose Best already runs or is done keeps that session (a press joins it).
+ * background (listAsked has stopped the one before). A title whose Best already runs or is done keeps that
+ * session (a press joins it).
  */
 export function headStart(
   sessionKey: string,
@@ -217,27 +234,18 @@ export function headStart(
   contentType?: string,
   episodesInSeason?: number,
 ): void {
-  const before = headStartKey;
-  headStartKey = sessionKey;
-  if (before && before !== sessionKey && !claimedSessions.has(before)) {
-    const controller = activeSessions.get(before);
-    if (controller) {
-      console.log(`👑 Ultimate-Fallback [${before}] Head start stopped: a newer list request [${sessionKey}] has it`);
-      controller.abort();
-    }
-  }
   if (candidates.length === 0 || sessionPromises.has(sessionKey)) return;
   console.log(`👑 Ultimate-Fallback [${sessionKey}] Head start: checking Best's Sources before a press`);
   ultimateFallbackFromCandidates(sessionKey, candidates, settings, cachePattern, filePattern, contentType, episodesInSeason)
     .catch(err => console.error('❌ Ultimate-Fallback error (Head start):', err));
 }
 
-/** A press of Best waits on this title's session: from now on it is a play, which no newer list request stops. */
+/** A press of Best waits on this title's session: from now on it is a play, which no newer list request stops
+ *  until its video has arrived (listAsked). */
 export function claimSession(sessionKey: string): void {
   if (!activeSessions.has(sessionKey) || claimedSessions.has(sessionKey)) return;
   console.log(`👑 Ultimate-Fallback [${sessionKey}] Best pressed: a play now, no newer list request stops it`);
   claimedSessions.add(sessionKey);
-  if (headStartKey === sessionKey) headStartKey = null;
 }
 
 
@@ -270,6 +278,7 @@ interface SourceRun {
   nzoId?: string;
   cancelled?: boolean;
   containerType?: string;
+  grabError?: Error;
   video?: StreamData;
   prepareError?: Error;
 }
@@ -345,6 +354,7 @@ export async function ultimateFallbackFromCandidates(
       size: list.length,
       inFlight: Math.max(1, settings.candidateCount),
       isDead: index => isDeadNzbByUrl(list[index].nzbUrl),
+      indexerOf: index => list[index].indexerName,
       hits: new Map([...hits].map(([index, data]) => [index, data.videoPath])),
     });
     const runs = new Map<number, SourceRun>();
@@ -400,11 +410,13 @@ export async function ultimateFallbackFromCandidates(
         case 'grab': {
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
-          prefetchNzb(c.nzbUrl, `${tag} [grab #${d.index + 1}] `, true, c.title, c.indexerName, c.searchExitIp)
-            .catch(() => false)
-            .then(ok => {
-              if (!ok) console.log(`${tag} ❌ Grab failed for ${name(d.index)}`);
-              post({ type: ok ? 'grabbed' : 'grabFailed', index: d.index });
+          // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab.
+          prefetchNzb(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
+            .then(() => post({ type: 'grabbed', index: d.index }), (err: Error) => {
+              if (controller.signal.aborted) return;
+              runOf(d.index).grabError = err;
+              console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
+              post({ type: 'grabFailed', index: d.index, badSource: (err as { isBadSource?: boolean }).isBadSource === true });
             });
           return;
         }
@@ -413,7 +425,7 @@ export async function ultimateFallbackFromCandidates(
           checkSource({ ...list[d.index], episodePattern: filePattern }, pool)
             .then(result => {
               runOf(d.index).containerType = result.containerType;
-              if (!isHealthy(result)) console.log(`${tag} ❌ #${d.index + 1} not healthy (${result.message}) — ${list[d.index].title}`);
+              if (!isHealthy(result) && !pool?.stopped) console.log(`${tag} ❌ #${d.index + 1} not healthy (${result.message}) — ${list[d.index].title}`);
               post({ type: 'checked', index: d.index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true });
             }, () => post({ type: 'checked', index: d.index, verdict: 'error' }));
           return;
@@ -454,6 +466,9 @@ export async function ultimateFallbackFromCandidates(
           console.log(`${tag}   📦 #${d.index + 1} Backup ready (library hit, videoPath: ${data.videoPath}) — ${c.title.substring(0, 60)} [${c.indexerName}]`);
           return;
         }
+        case 'skipIndexer':
+          console.log(`${tag} ⏭️ ${d.indexer} refused a grab: skipped for the rest of the Walk, its Sources kept (ADR 0004)`);
+          return;
         case 'ceiling':
           console.log(`${tag} 🛑 Walk stopped: ${d.grabs} grabs, the most one Walk makes — ending as if the list had run out`);
           return;
@@ -466,7 +481,9 @@ export async function ultimateFallbackFromCandidates(
         case 'markDead': {
           // ADR 0004: a bad Source is remembered dead, so no later play grabs it again.
           const c = list[d.index];
-          if (d.cause === 'check') addDeadNzbByUrl(c.nzbUrl, c.title, c.indexerName, c.size);
+          // A gone link is gone for every episode: the mark is the Source's.
+          if (d.cause === 'grab') setDeadNzbEntry(c.nzbUrl, c.title, runOf(d.index).grabError!, undefined, c.indexerName, c.size, c.isSeasonPack);
+          else if (d.cause === 'check') addDeadNzbByUrl(c.nzbUrl, c.title, c.indexerName, c.size);
           // A pack blocked on its wanted episode is remembered for that episode only, as a prepare failure is (#203).
           else if (d.cause === 'check-episode') setDeadNzbEntry(c.nzbUrl, c.title, sourceFailure('Health check: blocked', false, true), cachePattern, c.indexerName, c.size, c.isSeasonPack);
           else setDeadNzbEntry(c.nzbUrl, c.title, runOf(d.index).prepareError!, cachePattern, c.indexerName, runOf(d.index).video?.videoSize || c.size, c.isSeasonPack);
@@ -476,8 +493,8 @@ export async function ultimateFallbackFromCandidates(
       }
     };
 
-    // A stop (a newer list request's Head start, a settings change) ends the Walk at once.
-    controller.signal.addEventListener('abort', () => post({ type: 'stop' }), { once: true });
+    // A stop (a newer list request, a settings change) ends the Walk at once: its checks' connections close now.
+    controller.signal.addEventListener('abort', () => { pool?.stop(); post({ type: 'stop' }); }, { once: true });
     for (const d of walk.start()) run(d);
     if (walk.done) finish();
     await finished;

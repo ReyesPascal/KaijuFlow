@@ -165,7 +165,6 @@ function cleanupRecentDeliveries(): void {
   }
 }
 
-/** Per-attempt budget in ms. Returns 0 (no limit) — UF uses its own per-mode timeouts. */
 /** Entries (address and `t` payload) whose `played` line went out in the last 15 s: one line per press, not per Range
  *  probe or seek. Each list's entries have their own payload, so every press from a new list writes its line. */
 const playedLogged = new Set<string>();
@@ -180,6 +179,7 @@ function logPlayedOnce(req: Request, source: { title: string; indexerName?: stri
   logPlayed(source.title, source.indexerName);
 }
 
+/** Per-attempt budget in ms. Returns 0 (no limit) — UF uses its own per-mode timeouts. */
 function getAttemptBudgetMs(_contentType?: string, _isSeasonPack?: boolean): number {
   return 0;
 }

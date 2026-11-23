@@ -298,12 +298,19 @@ function openAuthenticatedSocket(provider: NntpProvider): Promise<NntpSocket> {
 export class NntpConnectionPool {
   private pools = new Map<string, NntpSocket[]>();
   private unregisterIdle = new Map<NntpSocket, () => void>();
+  /** Sockets handed out and not yet given back. */
+  private inUse = new Set<NntpSocket>();
+  private isStopped = false;
 
   private key(provider: { host: string; port: number; username: string }): string {
     return `${provider.host}:${provider.port}:${provider.username}`;
   }
 
+  /** stop() was called: the work this pool served was stopped, not answered. */
+  get stopped(): boolean { return this.isStopped; }
+
   async acquire(provider: NntpProvider): Promise<NntpSocket> {
+    if (this.stopped) throw new Error('Connection pool stopped');
     const k = this.key(provider);
     const stack = this.pools.get(k);
     while (stack && stack.length > 0) {
@@ -312,17 +319,39 @@ export class NntpConnectionPool {
       this.unregisterIdle.delete(socket);
       // Verify the socket is still alive
       if (!socket.destroyed && socket.writable) {
-        return socket;
+        return this.handOut(socket);
       }
       // Socket is dead, try the next one or create new
       try { socket.destroy(); } catch {}
     }
-    return connectToUsenet(provider);
+    const socket = await connectToUsenet(provider);
+    // Stopped while connecting: nobody is waiting for this one.
+    if (this.stopped) { socket.destroy(); throw new Error('Connection pool stopped'); }
+    return this.handOut(socket);
+  }
+
+  /** A socket its caller destroys without giving it back stays listed until the pool ends: destroying it twice is harmless. */
+  private handOut(socket: NntpSocket): NntpSocket {
+    this.inUse.add(socket);
+    return socket;
+  }
+
+  /**
+   * Stop the work this pool serves (a Walk that ended, GLOSSARY: Walk): close every connection now, the ones mid-read
+   * too, and open no more. A read under way fails; its caller's answer is not wanted.
+   */
+  stop(): void {
+    if (this.stopped) return;
+    this.isStopped = true;
+    for (const socket of this.inUse) socket.destroy();
+    this.inUse.clear();
+    this.destroyAll();
   }
 
   release(provider: { host: string; port: number; username: string }, socket: NntpSocket): void {
+    this.inUse.delete(socket);
     // Someone is waiting for a slot under the cap: close instead of parking.
-    if (socket.destroyed || !socket.writable) {
+    if (socket.destroyed || !socket.writable || this.isStopped) {
       try { socket.destroy(); } catch {}
       return;
     }
