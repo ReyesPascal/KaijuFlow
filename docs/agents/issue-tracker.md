@@ -7,7 +7,8 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 `tools/brain/guard.py` (a project hook) refuses the failing calls and names the working one:
 
 - No `--parent` on `gh issue create`: create the issue, then `gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues -F sub_issue_id=<db id>`.
-- `gh issue view <n> --comments` fails (Projects classic GraphQL error): `gh issue view <n> --json number,title,body,labels,comments`.
+- `gh issue view <n>` fails without `--json` and with `--comments` (Projects classic GraphQL error): `gh issue view <n> --json number,title,body,labels,comments`.
+- `gh pr checks` has no `--json`: a PR's CI is read by `tools/brain/prwatch.py <n>` (below).
 - `gh pr edit` fails: `gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<file>`.
 - Sub-issue order and blocker links go through `gh api` (see **Blocking** and `tools/brain/frontier.py`).
 
@@ -25,6 +26,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Owner's words**: an "Owner's decision" comment, a spec's decisions and an ADR quote the owner's own words, then say what follows from them. Before tickets are published (`/to-tickets`), list every rule change in plain words (what each side or setup will do differently), apart from the tickets, for the owner to confirm.
 - **One home per rule**: a measuring rule lives in `tools/brain/docs/rules.md` and its ADR; `GLOSSARY.md` defines the word and points there, so a changed rule is a one-place edit.
 - **Check before claiming**: before a behaviour change (who it affects, by how much) goes into a ticket or to the owner, check it in the code that uses the value, not just the line that sets it.
+- **Watch every PR you push**: right after pushing a PR, start `python3 -I tools/brain/prwatch.py <n>` with the shell's background mode. It prints one line at once and one line when the checks finish: `GREEN` (ready to merge), `RED` with the failed checks, or a gh error. On `GREEN` for a PR the plan says to merge, merge it at once (`gh pr merge <n> --merge`) and tell the owner in one line; on `RED`, fix it or say so. The owner never has to ask whether a PR is ready (owner, 2026-11-23: "make sure it knows when things are ready to merge i had to ask").
 - **Close when done**: close a ticket in the session its work is done, with the done comment. When a ticket's PR closes a parent's last open sub-issue, close the parent in the same session with a summary comment.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
