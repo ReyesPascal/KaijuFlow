@@ -154,11 +154,13 @@ class StandinTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(os.path.join(self.store, 'list-a')))
         self.assertTrue(os.path.isdir(os.path.join(self.store, 'list-b')))
 
-    def test_replay_miss_is_404_and_logged(self):
+    def test_replay_miss_is_a_503_refusal_and_logged(self):
+        # A refusal, not a 404: a gap in a Recording must never make KaijuFlow mark a Source dead (ADR 0004).
         s, base = self.standin('replay')
-        st, _ = fetch(f'{base}/fake/api?t=search&q=never&apikey=d')
-        self.assertEqual(st, 404)
-        self.assertTrue(any(line.startswith('MISS ') for line in s.state.log_lines))
+        st, body = fetch(f'{base}/fake/api?t=search&q=never&apikey=d')
+        self.assertEqual((st, body), (503, b'not recorded'))
+        self.assertEqual([line.split(' from=')[0] for line in s.state.log_lines if line.startswith('MISS ')],
+                         ['MISS fake api q=never&t=search'])
 
     def test_a_missed_nzb_is_named_by_its_own_key_and_release_title(self):
         for o, links in (('', lambda b: [x.decode().replace('&amp;', '&') for x in re.findall(rb'<link>([^<]*)</link>', b)]),
@@ -169,7 +171,7 @@ class StandinTest(unittest.TestCase):
             rec.server_close()
             s, _ = self.standin('replay', listname='list' + o[-4:], port=rec.server_port)
             for url in links(body)[2:4]:
-                self.assertEqual(fetch(url)[0], 404)
+                self.assertEqual(fetch(url)[0], 503)
             missed = [line for line in s.state.log_lines if line.startswith('MISS ')]
             self.assertEqual(len(missed), 2, missed)
             names = [re.sub(r' from=.*', '', line) for line in missed]
@@ -195,7 +197,7 @@ class StandinTest(unittest.TestCase):
         self.assertEqual(status['limit_reached']['indexer'], 'fake')
         FakeIndexer.limit = False
         _, pbase = self.standin('replay')
-        self.assertEqual(fetch(f'{pbase}/fake/api?t=search&q=limited&apikey=d')[0], 404)  # never stored
+        self.assertEqual(fetch(f'{pbase}/fake/api?t=search&q=limited&apikey=d')[0], 503)  # never stored
 
     def json_links(self, body):
         text = body.decode().replace('\\/', '/')
