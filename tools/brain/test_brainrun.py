@@ -83,6 +83,7 @@ class FakeIO(Copies):
         self.working = 0
         self.standin_log = []
         self.lines_per_visit = {}  # visit number -> lines the stand-in writes during that visit
+        self.play_steps = []  # the played / play_failed step lines KaijuFlow writes in every visit (#242), as dicts
         self.max_working = 0
 
     def takes(self, seconds):
@@ -199,6 +200,7 @@ class FakeIO(Copies):
             ts = self.clock.strftime('%Y-%m-%dT%H:%M:%S.000Z')
             text = (f'{t} [KF-STEP] {{"step":"nzb_fetch","source":"S","ms":100,"ok":true,"t":"{ts}","title":"R"}}\n'
                     f'{t} apikey=' + SECRET + ' fetching\n')
+            text += ''.join(f'{t} [KF-STEP] {json.dumps(dict(ms=0, t=ts, **s))}\n' for s in self.play_steps)
         if self.limit_at_visit and self.visits == self.limit_at_visit and container != 'kaijuflow-test':
             text += f'{t} DrunkenSlug: API limit reached. Retry in 30 minutes\n'
         return text
@@ -1111,6 +1113,33 @@ class MissMatchingTest(unittest.TestCase):
         run = brainrun.run_all(make_cfg(tmp), io)
         self.assertEqual(br.classify_failure(run['visits'][1]), 'failure_video')
         self.assertEqual(run['visits'][1]['misses'], ['drunkenslug api t=search&offset=100'])
+
+
+class PlayStepLinesTest(unittest.TestCase):
+    """collect_visit fills raw.json's played_source and cause from KaijuFlow's played and play_failed step lines (#242)."""
+    FAILED = {'step': 'play_failed', 'source': 'S', 'ok': False, 'title': 'Rel.Top.2160p',
+              'reason': 'First byte failed (status 400); the Source is kept'}
+
+    def raw_visit(self, io):
+        run = brainrun.run_all(make_cfg(tempdir(self)), io)
+        return json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits'][0]
+
+    def test_a_failed_play_names_its_top_pick_and_why(self):
+        io = FakeIO(fail_http_for='kaijuflow')
+        io.play_steps = [self.FAILED]
+        v = self.raw_visit(io)
+        self.assertEqual((v['ok'], v['played_source'], v['cause']),
+                         (False, 'Rel.Top.2160p', 'First byte failed (status 400); the Source is kept'))
+
+    def test_a_fallback_names_the_failed_top_pick_and_keeps_no_cause(self):
+        io = FakeIO()
+        io.play_steps = [self.FAILED, {'step': 'played', 'source': 'S', 'ok': True, 'title': 'Rel.Next.1080p'}]
+        v = self.raw_visit(io)
+        self.assertEqual((v['ok'], v['played_source'], v['cause']), (True, 'Rel.Top.2160p', ''))
+
+    def test_without_play_lines_nothing_is_guessed(self):
+        v = self.raw_visit(FakeIO(fail_http_for='kaijuflow'))
+        self.assertEqual((v['played_source'], v['cause']), (None, ''))
 
 
 class SmokeTest(unittest.TestCase):

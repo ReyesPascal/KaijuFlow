@@ -12,7 +12,8 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
-import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, logBestPlays } from './streamCache.js';
+import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
+import { logPlayed, logPlayFailed } from '../utils/stepTiming.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, isUltimateFallbackActive } from './utils.js';
 import { episodeOf, episodeForTile, playContextOfTile, type PlayContext } from './playContext.js';
@@ -155,7 +156,7 @@ function isClientDisconnect(error: unknown): boolean {
 // short-circuit seeks in inline-proxy mode so they skip library check.
 // Completely outside the cache pipeline — doesn't interfere with library checks.
 
-interface CachedDelivery { streamData: StreamData; streamingMethod: 'pipe' | 'proxy' | 'direct'; timestamp: number }
+interface CachedDelivery { streamData: StreamData; streamingMethod: 'pipe' | 'proxy' | 'direct'; timestamp: number; played: FallbackCandidate }
 const recentDeliveries = new Map<string, CachedDelivery>();
 
 function cleanupRecentDeliveries(): void {
@@ -163,6 +164,20 @@ function cleanupRecentDeliveries(): void {
   for (const [key, entry] of recentDeliveries) {
     if (now - entry.timestamp > DEDUP_CACHE_TTL_MS) recentDeliveries.delete(key);
   }
+}
+
+/** Entries (address and `t` payload) whose `played` line went out in the last 15 s: one line per press, not per Range
+ *  probe or seek. Each list's entries have their own payload, so every press from a new list writes its line. */
+const playedLogged = new Set<string>();
+const PLAYED_LOG_TTL_MS = 15_000;
+
+/** The press's `played` step line (#242): this Source's video is served now. */
+function logPlayedOnce(req: Request, source: { title: string; indexerName?: string }): void {
+  const entry = `${req.params.filename ?? '-'}::${typeof req.query.t === 'string' ? req.query.t : ''}::${source.title}`;
+  if (playedLogged.has(entry)) return;
+  playedLogged.add(entry);
+  setTimeout(() => playedLogged.delete(entry), PLAYED_LOG_TTL_MS).unref?.();
+  logPlayed(source.title, source.indexerName);
 }
 
 /** Per-attempt budget in ms. Returns 0 (no limit) — UF uses its own per-mode timeouts. */
@@ -504,6 +519,7 @@ export async function handleStream(
         // no library check, no submission. If the file is gone we fall through
         // to a fresh candidate loop via the live videoPathExists gate above.
         if (verbose) console.log(`📦 Stream dedup hit (delivered ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
+        logPlayedOnce(req, cached.played);
         const fallbackOn = isUltimateFallbackActive();
         const sizeSuffix = cached.streamData.videoSize ? ` (${formatBytes(cached.streamData.videoSize)})` : '';
         // Dedup the per-mode delivery log on this videoPath so repeat probes
@@ -602,8 +618,10 @@ export async function handleStream(
           }
           if (shouldLogLobby) console.log(`👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}`);
           else if (shouldLogCached) console.log(`👑 Lobby: cached resolve served (sk=${sessionKey})`);
-          // A Head start prepared it before the press, so no prepare line follows this press's '/stream hit'.
-          if ((shouldLogLobby || shouldLogCached) && streamData.sourceTitle) logBestPlays(streamData.sourceTitle);
+          if (streamData.sourceTitle) {
+            const fromGroup = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.candidates.find(c => c.title === streamData.sourceTitle) : undefined;
+            logPlayedOnce(req, { title: streamData.sourceTitle, indexerName: fromGroup?.indexerName });
+          }
           const lobbySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
           if (mode !== 'direct') {
             const inline = proxyFn && !lobbyFallbackOn;
@@ -887,14 +905,15 @@ export async function handleStream(
       // past the click and resolved a later candidate.
       const dedupCandidate = candidates[0] ?? candidate;
       const key = dedupKey(backend, dedupCandidate, cachePattern);
-      recentDeliveries.set(key, { streamData, streamingMethod: mode, timestamp: Date.now() });
+      recentDeliveries.set(key, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
       // Also key on the resolved candidate's URL so direct second-clicks of the
       // resolved tile (different click URL) also dedup.
       if (candidate !== dedupCandidate) {
         const resolvedKey = dedupKey(backend, candidate, cachePattern);
-        recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now() });
+        recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
       }
 
+      logPlayedOnce(req, candidate);
       const deliverySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
       if (mode !== 'direct') {
         const inline = !fallbackOn && proxyFn;
@@ -961,6 +980,7 @@ export async function handleStream(
 
       const err = error as Error & { isBadSource?: boolean };
       console.error(`\u274C Stream failed [${i + 1}/${maxCandidates}] ${candidate.title}: ${err.message}`);
+      logPlayFailed(candidate.title, candidate.indexerName, err);
 
       // User-pick failure: fall straight into the UF lobby instead of walking the candidate chain.
       // The user explicitly chose this NZB; when it fails, UF's pre-vetted pool is the fallback.

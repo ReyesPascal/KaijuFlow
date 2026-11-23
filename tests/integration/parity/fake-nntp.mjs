@@ -124,12 +124,14 @@ export async function useFakeNews(configData, config) {
  * reply for ids starting with prefix. Records `reads` (message ids whose bodies
  * were asked for), `stats` (ids asked for with STAT), `asks` ({ id, asked,
  * answered, closed } times in ms, per BODY or STAT; `closed`: when the asking
- * connection closed before the answer went out) and the `peak` number of open
- * connections.
+ * connection closed before the answer went out), `drops` ({ id, at } of BODY
+ * asks answered by closing the connection, see `drop`) and the `peak` number
+ * of open connections.
  */
 export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) {
-  const state = { reads: [], stats: [], asks: [], open: 0, peak: 0 };
+  const state = { reads: [], stats: [], asks: [], drops: [], open: 0, peak: 0 };
   const slowed = new Map(); // id prefix -> ms
+  const dropped = new Map(); // id prefix -> BODY asks left to drop
   const sockets = new Set();
   const server = net.createServer(sock => {
     state.open++; state.peak = Math.max(state.peak, state.open);
@@ -155,6 +157,15 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
         else if (line.startsWith('BODY') || line.startsWith('STAT')) {
           const id = line.slice(line.indexOf('<') + 1, line.lastIndexOf('>'));
           const isBody = line.startsWith('BODY');
+          // A dropped connection, as a news server under load closes one mid-read.
+          const drop = isBody ? [...dropped.keys()].find(prefix => id.startsWith(prefix)) : undefined;
+          if (drop !== undefined) {
+            const left = dropped.get(drop) - 1;
+            if (left > 0) dropped.set(drop, left); else dropped.delete(drop);
+            state.drops.push({ id, at: Date.now() });
+            sock.destroy();
+            return;
+          }
           if (isBody) state.reads.push(id); else state.stats.push(id);
           const ask = { id, asked: Date.now(), answered: null };
           state.asks.push(ask);
@@ -183,6 +194,8 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
     articles,
     /** Answer every BODY and STAT for ids starting with `prefix` after `ms` (0 = no extra wait). */
     slow(prefix, ms) { if (ms > 0) slowed.set(prefix, ms); else slowed.delete(prefix); },
+    /** Close the connection, unanswered, on the next `times` BODY asks for ids starting with `prefix` (0 = stop dropping). */
+    drop(prefix, times = Infinity) { if (times > 0) dropped.set(prefix, times); else dropped.delete(prefix); },
     /**
      * A KaijuFlow health-check provider pointing at this server.
      * @param {string} [name]

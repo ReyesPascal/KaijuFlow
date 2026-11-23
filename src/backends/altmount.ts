@@ -241,12 +241,12 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
     },
 
     async prepare(source, opts = {}) {
-      const { logPrefix = '', timeoutMs = 0, onJob, isCancelled } = opts;
+      const { logPrefix = '', timeoutMs = 0, onJob, isCancelled, stopChecks } = opts;
       if (!settings.apiKey) throw configError('API key');
       const apiKey = settings.apiKey;
       // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
       // tracking) through the shared step, and uploads it.
-      const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
+      const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix, stopChecks });
       if (isCancelled?.()) throw new PrepareCancelledError();
       // The setting is the ceiling; a shorter attempt budget from the caller wins.
       const settingSec = Math.max(1, settings.prepareTimeoutSec ?? 300);
