@@ -1,4 +1,4 @@
-# Handoff: where KaijuFlow stands (2026-11-20, end of phase 1)
+# Handoff: where KaijuFlow stands (2026-11-23, phase 2: baseline done, #219 next once PR #236 is on main)
 
 This is the one state note. Replace it; do not append. Older versions are in git history.
 Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
@@ -9,32 +9,45 @@ Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
 KaijuFlow with AltMount as its one Backend, as fast and lean as possible; KaijuFlow does the health check, archives AltMount can stream allowed; no more speed tests against Usenet Ultimate or AltMount direct (owner, 2026-11-20; spec #183, the map). Owner's words: "I just want altmount to be the fast backend and want KF to do the healthcheck, even if its RARS, find a way to make them work together as fast as possible forget speed testing against the rest"; "i want it to be as fast and lean as possible". ADR 0009 replaces ADR 0008.
 
 ## Next command
-What the owner types next (the `/kf` report ends with it, `docs/agents/resume.md`). Keep it current; empty when nothing waits on the owner.
+What the next session starts with (`docs/agents/resume.md`). The ending session starts it itself with `~/.local/bin/kf-next` when a plan gives the go ("Fresh session"); the owner types only what a plan does not cover.
 
     /kf phase 2 of #183
 
-Phase 2 of spec #183's "Building it": the runs, one at a time, on Wi-Fi, on an idle machine (close the builder panes and anything else busy first; the preflight now refuses a 1-minute load of 1.0 or more). Under the standing go: #218 the official baseline from `main`, then #219 the grouped run from `tuning-183`, then halving runs if #219 is not kept. The preflight says whether a run needs the image rebuilt or `testbed.py apply`.
+**First, if PR #236 is still open:** re-run its checks (`gh run rerun <id> --failed`), merge it on GREEN (`tools/brain/prwatch.py 236`). Then **#219, the grouped run**, from `tuning-183` (worktree `.claude/worktrees/tuning-183`; merge `main` into it first, tools and docs changed on main), judged against the baseline below, under #183's standing go. Kept: mark PR #225 ready, merge it on GREEN (`tools/brain/prwatch.py 225`), result on #219. Not kept: the halving runs #219 names, each against the baseline, until the change shows. Then stop and `kf-alert` the owner with the command below. Before the run, `python3 -I tools/brain/unreported.py` and the preflight; after it, `check`, `backup.sh`, the change report, then hand off or stop.
 
-**Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (Pocket TTS voice "azelma", repeats until the notification is closed) at every stop-and-ask and when #219 is done. Questions in the session: AskUserQuestion (herdr plays its "request" voice) plus a short red sidebar line, `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered. herdr's own "done" sound and its pop-ups are off (owner, 2026-11-20).
+**After #219, the owner types** (the grilling needs them, so no `kf-next`), in a fresh herdr pane:
 
-## Phase 1, done (2026-11-20)
-Built with `/mattpocock-skills:implement-spec #183` inside herdr (implementers and fix-ups as Claude Code panes, Opus high; reviews `/code-review` Fable high + `/codex-review`).
-- **On main:** #217 preflight (PR #224: refuses a busy machine, a stale `HOST_IP`/`altmountUrl`, a sinkholed Newshosting DNS; the address and DNS checks also before a `record`, owner's decision on #217; `meta.json` keeps the start load) and #190 Play-time check (PR #210). Both closed.
-- **On `tuning-183`, draft PR #225** (reviewed, fixed, CI green; stays a draft until #219 is kept, then ready and merged on green): #193 Unscramble skip, #211 segment order, #203 sample the wanted episode, #192 prepare only the played Source, #226 Delete Auto-queue (split from #206 on 2026-11-20, owner's "yes"), #206 Head start, #191 delete the list-time checks. Each ticket has a "Merged into `tuning-183`" comment; their own PRs are closed.
-- **Owner's decisions during phase 1:** #206 split into #206 + #226 (comment on #183; #219 now plays seven tickets' changes, and in a halving run #226 goes with #206); the 25 s first-Source switch stays as the one exception to "prepare only the played Source" (comment on #192); address and DNS checks before a record too (comment on #217).
-- **Not done:** `/retro` on this session (owner's to start; candidates: review findings kept only in a session log, herdr's done sound mistaken for a call, the watcher missing wrapped `DONE` lines).
+    /mattpocock-skills:grill-with-docs the six deepening candidates in ~/kaijuflow-notes/reports/architecture-review-2026-11-23.html, plus #228; build after #219
+
+That is the deepening spec (owner, 2026-11-23: "all of them how do i create a spec for all this stuff along with what we already have in issues", "yes do the best things"): `/grill-with-docs` → `/to-spec` (a new map labelled `spec`; #228 moves under it) → `/to-tickets` → `/mattpocock-skills:implement-spec`, in one session up to `/to-tickets`. It builds only after `tuning-183` is merged: the candidates rewrite the files it changes. #194 and #195 stay the owner's, on #183.
+
+**Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (voice "azelma", repeats until the notification is closed) at every stop-and-ask and when #219 is done. Questions: AskUserQuestion plus `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered.
+
+## How KaijuFlow is doing (2026-11-23)
+- **Plays reliably.** Both baseline runs today played every title (80 of 80 the first try); The Twilight Zone S02E06, the 2026-11-20 fail, is fixed by #190.
+- **Speed is the open question.** Cold title to video about 9–10 s, warm under 1 s; most of the cold time is KaijuFlow's own work before the list (health checks). #219's seven changes cut that work; its result answers "is it fast".
+- **Known bug, confirmed in the code:** #228, the fallback's replacement walk has no limit on failed grabs (a failed grab is replaced twice), so an indexer refusing downloads would burn the day's 450 grabs. Goes into the deepening spec.
+- **Suspected bugs, from the architecture review, not proven by a test yet:** for daily shows a ready Source is written under one cache key and read under another, so it is never reused (candidate 2); a press of Best and its Head start can build different episode patterns (candidate 3). The deepening spec's tickets start each with a test that fails on the bug.
+- **Code health:** the play path's core loop (`ultimateFallback.ts`'s pool loop, about 720 lines in one closure) has no tests of its own; the measuring tools have four rules for "the previous run" (candidate 4). Report: `~/kaijuflow-notes/reports/architecture-review-2026-11-23.html`.
+
+## Phase 2 so far (2026-11-23)
+- **#218 baseline, first try, not usable** (`~/kaijuflow-notes/brain-runs/2026-11-23T173423Z-baseline-218`): 80 of 80 played, but 1840 NZB grabs from the fallback (on since #190) missed `kf-189`, which was recorded with the fallback off. A stopped attempt of 2026-11-21 (`2026-11-21T050927Z-baseline-218-wifi`, 13 plays) had already missed 863. Owner's decision on #218: "Top up, then re-run".
+- **Top-up record** (`2026-11-23T175655Z-kf-189-topup-218-record`): 11 new NZBs (11 of the day's 450 downloads), proof replay with no miss.
+- **#218 baseline, re-run: the official baseline** (`~/kaijuflow-notes/brain-runs/2026-11-23T183239Z-baseline-218`, report https://claude.ai/artifact/VETGxZQya2LVNsi5F54ppi): 80 of 80 played, no fails; cold title to video easy 8.98 s, hard 9.10 s; warm 0.81 s and 0.24 s; The Witcher S01E01 played after 1 fallback in both cold rounds (AltMount refused its top pick). Its walk grabbed 81 releases the recording doesn't hold, none played. Owner's decision on #218, "Ignore unplayed misses" (#235, PR #236): such grabs are listed and don't count, so `check` says usable (`CHECK.txt` rewritten; the old one is `CHECK.before-235.txt`).
+- **GitHub Actions billing (2026-11-23):** jobs stopped starting ("recent account payments have failed or your spending limit needs to be increased"); the owner is fixing it. PR #236 must be on main before #219: without it the preflight refuses over the baseline's 162 grabs.
+- **Built along the way, all on main:** #229 (preflight refuses a recording the last run missed; misses named by release; guard; `unreported.py`; the top-up rule in rules.md), #231 (`prwatch.py`: says once when a PR is ready to merge; guard refuses `gh pr checks --json`), #233 (Fresh session: `kf-next` hands off at stopping points). #228 filed.
+- **Phase 1** (2026-11-20, `implement-spec #183` in herdr): #217 preflight and #190 Play-time check on main; #193, #211, #203, #192, #226, #206, #191 on `tuning-183`, draft PR #225 (reviewed, fixed, CI green; ready only once #219 is kept). Owner's decisions then: #206 split into #206 + #226 (in a halving run #226 goes with #206); the 25 s first-Source switch stays (comment on #192).
 
 ## The machine
-- Machine `brain` (user `brain`) since 2026-11-12; everything only on the old machine is gone (run records up to 2026-11-10, old test settings, the architecture review).
-- Five test containers exist (`kaijuflow-test`, `uu-test`, `nzbdav-test`, `altmount-addon-test`, `altmount-kf-test`); the brain tools know only `kaijuflow-test` and `altmount-kf-test`; the other three are to be stopped and kept (a live step, owner's go). No live stack here.
-- **Tests run on Wi-Fi** (192.168.4.48), owner's decision of 2026-11-20 (evening); `HOST_IP` in `~/kaijuflow-test/.env` and KaijuFlow's `altmountUrl` are pinned to it, and the preflight now checks both. The ethernet runs (#189 baseline, #205 re-run) are never compared with.
-- **A timed run needs an idle machine**; the preflight enforces it (#217).
-- The isolated test suites run node as `nobody` via `/opt/node-20` (`docs/agents/testing.md`).
+- Machine `brain` (user `brain`) since 2026-11-12; everything only on the old machine is gone.
+- Test containers: the brain tools know only `kaijuflow-test` and `altmount-kf-test`; `uu-test`, `nzbdav-test`, `altmount-addon-test` are to be stopped and kept (a live step, owner's go). No live stack here.
+- **Tests run on Wi-Fi** (192.168.4.48), owner's decision of 2026-11-20; the preflight checks `HOST_IP` and `altmountUrl`. The ethernet runs (#189, #205 re-run) are never compared with.
+- **A timed run needs an idle machine**; the preflight enforces it. Hold `flock ~/.local/share/kf-run/suite.lock` around a run so suites wait.
 
 ## The tracker
-Spec #183 is the map; `python3 -I tools/brain/frontier.py` prints what can start (after phase 1: #218). Phase 2 order: #218 → #219 (blocked by #218 and the seven) → #194 (owner's, AltMount settings) → #195 (Speed Check page).
+Spec #183 is the map; `python3 -I tools/brain/frontier.py` prints what can start. Order: #219 → #194 (owner's, AltMount settings) → #195 (Speed Check page); #228 waits for #219 and moves to the deepening spec.
 
-**Baseline (#189), 2026-11-20, ethernet, never compared with:** `~/kaijuflow-notes/brain-runs/2026-11-20T223814Z-baseline-189`; recording `--store ~/kaijuflow-test/store --list kf-189`, titles `tools/brain/fixed-list.json`; pass all three to every run. 78 of 80 plays; the only fail The Twilight Zone S02E06 (unchecked dead season pack; fixed by #190). Report https://claude.ai/artifact/3e8rDSigAqokBbQDdhxHg3; #205's re-run report https://claude.ai/artifact/KAD1JtyC63P82rXXocnkuJ. Each run's change report goes in its run folder as `change-report.html` and is published as its own page, built on the #189 report's style.
+Recording for every run: `--store ~/kaijuflow-test/store --list kf-189 --titles-file tools/brain/fixed-list.json`. Each run's change report goes in its run folder as `change-report.html` and is published as its own page in the #189 report's style (generator `~/kaijuflow-notes/reports/run-report/make_report.py`, `--before` required).
 
 Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings UI, its flow, first-time setup and the name "Ultimate Fallback". Research: `~/kaijuflow-notes/reports/KF UI design.md`, screenshots https://claude.ai/artifact/9uLC6XHL1c8nVW3jVLpr5U.
 
@@ -45,25 +58,25 @@ Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings 
 
 ## Owner's decisions
 - 2026-11-20 (spec #183, all "yes"): the health-check pass list (ADR 0009); no fails first, then fastest cold title to video; fallback on (from #190); one fixed recording replayed every run; comparison code deleted; NzbDAV removed; other test copies stopped and kept; tuning may cut any part of the path.
-- 2026-11-20 (evening): tests on Wi-Fi; no official baseline until #190 was in; one grouped run, no noise band, every run idle; merge plan PRs on green without asking (`gh pr merge` allowed in settings).
-- Standard filter rules (#109), secrets outside both repos (#114, `tools/brain/backup.sh`): as before, see git history of this note.
+- 2026-11-20 (evening): tests on Wi-Fi; one grouped run, no noise band, every run idle; merge plan PRs on green without asking.
+- 2026-11-23: top up `kf-189` and re-run the baseline; build the retro fixes ("do everything"); `prwatch.py` ("make sure it knows when things are ready to merge"); hand off to a fresh session at stopping points with no typing ("i dont want to have to type or hit enter"); the six deepening candidates plus #228 become one new spec after #219.
+- Standard filter rules (#109), secrets outside both repos (#114, `tools/brain/backup.sh`): see git history of this note.
 
 ## Gotchas
-- #184's archive-parser fixes: Test 1's "stored"/"compressed" labels came from the old parsers; don't trust them. Real-archive fixtures: `tests/fixtures/archives/make.sh` (RAR 7.23 and 6.24 under `~/.local/share/rarlab`).
+- `gh` is 2.46: `gh issue view` needs `--json`, `gh pr checks` has no `--json` (use `prwatch.py`); the guard refuses both and names the call that works.
+- A change that makes KaijuFlow ask indexers for more needs a top-up `record` before its run (rules.md, "What a run is"); the preflight refuses a recording the last run missed.
 - AltMount's refusal reasons appear only in its log, not in the HTTP answer (500 "NZB processing failed").
 - The first title after a reset (The Batman) swings between about 9 and 14 s of cold list on an idle machine; not explained (comment on #205).
 - `unscramble-queue.test.ts` can fail once under load and pass on a rerun.
 - A project hook (`tools/brain/guard.py`) refuses reads of the test folder's key files and the test copies' configs; `testbed.py read-settings` prints settings with secrets as `***`.
-- 2026-11-15: the Newshosting login was printed into a session log by mistake; the owner was advised to change the password.
 
 ## Where things live
 - Run records: `~/kaijuflow-notes/brain-runs/` and its `INDEX.md`; backed up with the recordings to the private repo `ReyesPascal/kaijuflow-notes` (`tools/brain/backup.sh`).
 - Test folder (compose, configs, key files; secrets): `~/kaijuflow-test`.
 - Runbook: [tools/brain/RUNBOOK.md](../../../tools/brain/RUNBOOK.md). Tools index: [tools/brain/README.md](../../../tools/brain/README.md).
-- `tuning-183`'s worktree: `.claude/worktrees/tuning-183` (kept for phase 2).
+- Reports: `~/kaijuflow-notes/reports/` (architecture review 2026-11-23, run-report generator).
 
 ## How to update
 At a stopping point the session hands off to a fresh one by itself ([resume.md](../../agents/resume.md), "Fresh session"): keep "Next command" right before it does.
-Leave whether to rebuild the image or run `testbed.py apply` to the preflight, which decides both; the note does not restate them. Every run goes in the note, a stopped one too (`tools/brain/unreported.py` lists the ones it misses).
-Keep "Next command" right: whenever the next step needs the owner to type something, write it there.
+Leave whether to rebuild the image or run `testbed.py apply` to the preflight, which decides both. Every run goes in the note, a stopped one too (`tools/brain/unreported.py` lists the ones it misses).
 Update this note after every run or merge. Keep issue lists out of it: the tracker holds them. A gotcha that needs work goes on its ticket; this note keeps only a pointer.
