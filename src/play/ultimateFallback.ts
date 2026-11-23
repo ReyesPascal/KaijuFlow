@@ -17,7 +17,7 @@ import { NntpConnectionPool } from '../health/nntpConnection.js';
 import { logPrepareStart } from './streamCache.js';
 import { remember, recall } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
-import { prefetchNzb } from '../backends/nzbGrab.js';
+import { walkGrab } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { sourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
@@ -443,7 +443,7 @@ export async function ultimateFallbackFromCandidates(
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
           // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab.
-          prefetchNzb(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
+          walkGrab(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
             .then(() => post({ type: 'grabbed', index: d.index }), (err: Error) => {
               if (controller.signal.aborted) return;
               runOf(d.index).grabError = err;

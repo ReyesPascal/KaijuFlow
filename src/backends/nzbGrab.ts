@@ -2,7 +2,7 @@
  * NZB grab shared by every Backend (ADR 0003): the cached copy or an indexer
  * download through the proxy, then validation and grab tracking. The Backend's
  * prepare gets the NZB through grabSourceNzb (sourceNzb.ts); Best's Walk
- * grabs through prefetchNzb, which sorts failures the same way.
+ * grabs through walkGrab, which sorts failures the same way.
  */
 
 import { config as globalConfig } from '../config/index.js';
@@ -125,7 +125,7 @@ export async function grabNzb(
  * bad content, a plain error for an indexer that refuses or cannot be reached.
  * `searchExitIp` carries the proxy exit IP that was live when this candidate's search ran; `stop` cuts the grab off.
  */
-export async function prefetchNzb(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string, stop?: AbortSignal): Promise<void> {
+export async function walkGrab(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string, stop?: AbortSignal): Promise<void> {
   if (getCachedNzbContent(nzbUrl)) return;
   cacheNzbContent(nzbUrl, await grabNzb(nzbUrl, title, undefined, logPrefix, indexerName, searchExitIp, stop));
 }

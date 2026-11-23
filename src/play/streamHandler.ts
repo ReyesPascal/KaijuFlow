@@ -715,7 +715,7 @@ export async function handleStream(
 
     // Skip candidates already known to be dead.
     if (recall(candidate, play).dead) {
-      if (logDeadSkips) console.log(`\u23ED\uFE0F NZB Database (skipping dead) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
+      if (logDeadSkips) console.log(`\u23ED\uFE0F Source memory (dead, skipped) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
       continue;
     }
 

@@ -25,7 +25,7 @@ The case behind it, Oppenheimer: the release name ends in `.mkv`, so AltMount st
 
 ## The walk's grabs (deepening spec, 2026-11-23)
 
-The Walk's grab (`prefetchNzb`) used to treat every failed download alike: the Source was skipped for that play, never marked dead, and grabbed again on every later play, while the full grab (`grabNzb`) already followed this ADR. Found by the architecture review and #228 (a failed grab was also replaced twice, so a walk doubled through 324 Sources in 4.7 s). Owner's decision ("yes to all", grilling of 2026-11-23):
+The Walk's grab (`walkGrab`, then named `prefetchNzb`) used to treat every failed download alike: the Source was skipped for that play, never marked dead, and grabbed again on every later play, while the full grab (`grabNzb`) already followed this ADR. Found by the architecture review and #228 (a failed grab was also replaced twice, so a walk doubled through 324 Sources in 4.7 s). Owner's decision ("yes to all", grilling of 2026-11-23):
 
 - The walk's grab sorts its answers as `grabNzb` does: a link the indexer says is gone (404, other 4xx) or bad content marks the Source dead; a refusal (429, 5xx, 401/403, a network error, a timeout) says nothing about the Source.
 - A 200 with a Newznab error payload is sorted the same way, by its code: 300 (no such item) is a gone link, a Source failure and a dead mark; 1xx (credentials, suspended, privileges), 5xx (request or download limit) and every other code are a refusal, so the indexer is skipped for the rest of the walk and the Source is untouched (review of #239, 2026-11-23).

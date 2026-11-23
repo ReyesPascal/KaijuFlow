@@ -101,7 +101,7 @@ function titleOfKey(key: string): string {
 interface ReadyEntry { data: StreamData; indexerName?: string; createdAt: number; expiresAt: number; backend?: string }
 interface DeadNzbEntry { title: string; indexerName?: string; size?: number; error: Error; createdAt: number; expiresAt: number }
 const readyCache = new Map<string, ReadyEntry>();
-const deadNzbCache = new Map<string, DeadNzbEntry>();
+const deadMarks = new Map<string, DeadNzbEntry>();
 
 /** Ready entries only count when AltMount made them: saved entries another Backend made (#188), and untagged ones
  *  from before Backends existed, are never served (a stale link). */
@@ -131,7 +131,7 @@ function readySize(): number {
 /** Error properties are non-enumerable, so a dead entry is sized by its fields. */
 function deadSize(): number {
   let total = 0;
-  for (const [key, entry] of deadNzbCache.entries()) {
+  for (const [key, entry] of deadMarks.entries()) {
     total += key.length + (entry.title?.length ?? 0) + (entry.indexerName?.length ?? 0) + (entry.error.message?.length ?? 0) + 50;
   }
   return total;
@@ -150,7 +150,7 @@ const limitReady = () => {
   if (globalConfig.healthyNzbDbMode === 'storage') enforceStorageLimit(readyCache, readySize, globalConfig.healthyNzbDbMaxSizeMB ?? 50);
 };
 const limitDead = () => {
-  if (globalConfig.deadNzbDbMode === 'storage') enforceStorageLimit(deadNzbCache, deadSize, globalConfig.deadNzbDbMaxSizeMB ?? 50);
+  if (globalConfig.deadNzbDbMode === 'storage') enforceStorageLimit(deadMarks, deadSize, globalConfig.deadNzbDbMaxSizeMB ?? 50);
 };
 
 // ── Disk ──────────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ function loadFromDisk(): void {
       (error as any).isEpisodeSpecific = entry.error.isEpisodeSpecific === true || key.includes('::') || entry.error.message === MULTI_EPISODE_BLOCKED_ERROR;
       if (entry.title) {
         // Key is url or url::episodePattern, the title in the entry.
-        deadNzbCache.set(normalizeSavedKey(key), { title: entry.title, indexerName: entry.indexerName, size: entry.size, error, createdAt: entry.createdAt || now, expiresAt });
+        deadMarks.set(normalizeSavedKey(key), { title: entry.title, indexerName: entry.indexerName, size: entry.size, error, createdAt: entry.createdAt || now, expiresAt });
       } else {
         // Oldest layout: key is url::title or url::title:episodePattern.
         const title = titleOfKey(key);
@@ -204,10 +204,10 @@ function loadFromDisk(): void {
         const afterSep = key.substring(key.indexOf('::') + 2);
         const epMatch = afterSep.match(/:S\d+(?:[\[(. _-]|E\d)/);
         const episodePattern = epMatch ? afterSep.substring(epMatch.index! + 1) : undefined;
-        deadNzbCache.set(deadKey(url, episodePattern), { title, indexerName: entry.indexerName, size: entry.size, error, createdAt: entry.createdAt || now, expiresAt });
+        deadMarks.set(deadKey(url, episodePattern), { title, indexerName: entry.indexerName, size: entry.size, error, createdAt: entry.createdAt || now, expiresAt });
       }
     }
-    if (deadNzbCache.size) console.log(`💾 Loaded ${deadNzbCache.size} dead NZBs from disk`);
+    if (deadMarks.size) console.log(`💾 Loaded ${deadMarks.size} dead NZBs from disk`);
     if (dropped.length) {
       console.log(`🧹 Dropped ${dropped.length} dead mark(s) caused by an unavailable indexer, not a bad Source (ADR 0004)`);
       saveCacheToDisk();
@@ -224,7 +224,7 @@ export function saveCacheToDisk(): void {
   try { fs.writeFileSync(READY_CACHE_FILE, JSON.stringify(readyData, null, 2)); } catch {}
 
   const deadData: Record<string, SerializedDeadEntry> = {};
-  for (const [key, entry] of deadNzbCache.entries()) {
+  for (const [key, entry] of deadMarks.entries()) {
     if (entry.expiresAt <= now || hiddenTimeout(entry)) continue;
     deadData[key] = {
       title: entry.title,
@@ -261,7 +261,7 @@ function setDead(key: string, source: RememberedSource, error: Error): void {
   // A timed-out play is remembered for this run only (the search cache's TTL) when the owner turned that off.
   const persist = !(error as { isTimeout?: boolean }).isTimeout || globalConfig.playCacheTimeouts !== false;
   const ttl = persist ? getDeadTTLMs() : (globalConfig.cacheTTL || 7200) * 1000;
-  deadNzbCache.set(key, { title: source.title, indexerName: source.indexerName, size: source.size, error, createdAt, expiresAt: createdAt + ttl });
+  deadMarks.set(key, { title: source.title, indexerName: source.indexerName, size: source.size, error, createdAt, expiresAt: createdAt + ttl });
   if (!persist) return;
   limitDead();
   saveCacheToDisk();
@@ -290,9 +290,9 @@ export function remember(outcome: Outcome): void {
  *  the episode's (a pack that failed whole). */
 function deadForEveryEpisode(nzbUrl: string, now: number): DeadNzbEntry | undefined {
   const normalized = normalizeUrl(nzbUrl);
-  const exact = deadNzbCache.get(normalized);
+  const exact = deadMarks.get(normalized);
   if (exact && exact.expiresAt > now) return exact;
-  for (const [key, entry] of deadNzbCache) {
+  for (const [key, entry] of deadMarks) {
     if (entry.expiresAt <= now || isEpisodeMark(entry)) continue;
     const sepIdx = key.indexOf('::');
     if (sepIdx !== -1 && normalizeUrl(key.substring(0, sepIdx)) === normalized) return entry;
@@ -305,7 +305,7 @@ export function recall(source: { nzbUrl: string; title: string }, play?: PlayCon
   const now = Date.now();
   const episodePattern = episodePatternOf(play);
   const ready = readyCache.get(readyKey(source.nzbUrl, source.title, episodePattern));
-  const episodeMark = episodePattern ? deadNzbCache.get(deadKey(source.nzbUrl, episodePattern)) : undefined;
+  const episodeMark = episodePattern ? deadMarks.get(deadKey(source.nzbUrl, episodePattern)) : undefined;
   const dead = (episodeMark && episodeMark.expiresAt > now ? episodeMark : undefined) ?? deadForEveryEpisode(source.nzbUrl, now);
   return {
     ...(ready && ready.expiresAt > now && isActiveBackendEntry(ready) ? { ready: ready.data } : {}),
@@ -321,7 +321,7 @@ export function isRemembered(nzbUrl: string, title: string): boolean {
   for (const [key, entry] of readyCache.entries()) {
     if ((key === base || key.startsWith(base + ':')) && entry.expiresAt > now && isActiveBackendEntry(entry)) return true;
   }
-  const dead = deadNzbCache.get(normalizeUrl(nzbUrl));
+  const dead = deadMarks.get(normalizeUrl(nzbUrl));
   return dead !== undefined && dead.expiresAt > now;
 }
 
@@ -340,7 +340,7 @@ export function evictReadyByVideoPath(videoPath: string, markDead: boolean = tru
       const epMatch = key.match(EPISODE_PATTERN_SUFFIX_RE);
       const episodePattern = epMatch ? epMatch[0].substring(1) : undefined;
       const mark = deadKey(nzbUrl, episodePattern);
-      if (!deadNzbCache.has(mark)) {
+      if (!deadMarks.has(mark)) {
         const error = new Error('Video file no longer available (404)');
         (error as any).isBadSource = true;
         if (episodePattern) (error as any).isEpisodeSpecific = true;
@@ -360,7 +360,7 @@ export function expireRemembered(): void {
   const now = Date.now();
   let removed = false;
   for (const [key, entry] of readyCache.entries()) if (entry.expiresAt < now) { readyCache.delete(key); removed = true; }
-  for (const [key, entry] of deadNzbCache.entries()) if (entry.expiresAt < now) { deadNzbCache.delete(key); removed = true; }
+  for (const [key, entry] of deadMarks.entries()) if (entry.expiresAt < now) { deadMarks.delete(key); removed = true; }
   if (removed) saveCacheToDisk();
 }
 
@@ -370,7 +370,7 @@ export function recalculateTTLExpirations(): void {
   const readyTTL = getReadyTTLMs();
   for (const entry of readyCache.values()) { entry.createdAt = now; entry.expiresAt = now + readyTTL; }
   const deadTTL = getDeadTTLMs();
-  for (const entry of deadNzbCache.values()) { entry.createdAt = now; entry.expiresAt = now + deadTTL; }
+  for (const entry of deadMarks.values()) { entry.createdAt = now; entry.expiresAt = now + deadTTL; }
   expireRemembered();
   limitReady();
   limitDead();
@@ -379,12 +379,12 @@ export function recalculateTTLExpirations(): void {
 
 /** Clear timed-out marks from memory only (a new search may find them playable). */
 export function clearTimeoutEntries(): void {
-  for (const [key, entry] of deadNzbCache) if (isTimeoutMark(entry)) deadNzbCache.delete(key);
+  for (const [key, entry] of deadMarks) if (isTimeoutMark(entry)) deadMarks.delete(key);
 }
 
 function clearDeadWhere(pick: (e: DeadNzbEntry) => boolean, what: string): number {
   let count = 0;
-  for (const [key, entry] of deadNzbCache) if (pick(entry)) { deadNzbCache.delete(key); count++; }
+  for (const [key, entry] of deadMarks) if (pick(entry)) { deadMarks.delete(key); count++; }
   if (count) {
     console.log(`\u{1F9F9} Cleared ${count} ${what}`);
     saveCacheToDisk();
@@ -401,14 +401,14 @@ export function clearReadyCache(): number {
   }
   return count;
 }
-export const clearFailedCache = (): number => clearDeadWhere(() => true, 'dead NZB cache entries');
+export const forgetDeadSources = (): number => clearDeadWhere(() => true, 'dead marks');
 /** Marks of an episode only available in a combined multi-episode file. */
 export const clearMultiEpisodeDeadEntries = (): number => clearDeadWhere(e => e.error.message === MULTI_EPISODE_BLOCKED_ERROR, 'multi-episode dead NZB entries');
 export const clearTimeoutDeadEntries = (): number => clearDeadWhere(isTimeoutMark, 'timed-out dead NZB entries');
 
 /** Forget one entry by the key the settings page shows. */
 export function forgetEntry(key: string): boolean {
-  const deleted = readyCache.delete(key) || deadNzbCache.delete(key);
+  const deleted = readyCache.delete(key) || deadMarks.delete(key);
   if (deleted) saveCacheToDisk();
   return deleted;
 }
@@ -425,7 +425,7 @@ export function getCacheEntries(): {
     ready.push({ key, title: titleOfKey(key), indexerName: entry.indexerName, videoPath: entry.data.videoPath, videoSize: entry.data.videoSize, createdAt: entry.createdAt, expiresAt: entry.expiresAt });
   }
   const failed = [];
-  for (const [key, entry] of deadNzbCache.entries()) {
+  for (const [key, entry] of deadMarks.entries()) {
     if (entry.expiresAt < now || hiddenTimeout(entry)) continue;
     const sepIdx = key.indexOf('::');
     let episodePattern: string | undefined;
@@ -445,7 +445,7 @@ export function memoryStats(): { ready: number; failed: number; readySizeMB: num
   let ready = 0;
   for (const entry of readyCache.values()) if (entry.expiresAt > now && isActiveBackendEntry(entry)) ready++;
   let failed = 0;
-  for (const entry of deadNzbCache.values()) if (entry.expiresAt > now && !hiddenTimeout(entry)) failed++;
+  for (const entry of deadMarks.values()) if (entry.expiresAt > now && !hiddenTimeout(entry)) failed++;
   const mb = (bytes: number) => Math.round(bytes / 1024 / 1024 * 100) / 100;
   return { ready, failed, readySizeMB: mb(readySize()), deadSizeMB: mb(deadSize()) };
 }

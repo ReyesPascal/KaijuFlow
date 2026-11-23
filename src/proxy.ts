@@ -77,7 +77,7 @@ function isProxyEnabled(): boolean {
 /**
  * Check whether proxy is enabled for a specific indexer.
  * Two cases force-bypass the HTTP proxy at every layer (search, grab,
- * prefetch, health-check):
+ * the Walk's grab, health-check):
  *  - Zyclops-routed indexers: Zyclops IS the proxy for that indexer, so an
  *    HTTP proxy on top would create a double-tunnel and a search/grab IP
  *    mismatch the verifier can't reason about.
