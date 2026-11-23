@@ -17,7 +17,7 @@ after it.
 Known limits (a guardrail against slips, not a sandbox): paths built at run time (`$(...)` output, globs over the
 folder's name, symlinks inside the repo), `pushd`/subshell `cd`s, another program's own working folder (`git -C`,
 `docker exec -w /config`).
-Also refused, with the call that works: `gh issue view <n> --comments`, `gh pr edit`, `gh issue create --parent` (gh 2.46).
+Also refused, with the call that works: `gh issue view <n>` without `--json` or with `--comments`, `gh pr edit`, `gh issue create --parent` (gh 2.46).
 
     python3 -I -m unittest discover -s tools/brain -p 'test_guard.py'
 """
@@ -124,6 +124,9 @@ def _gh(words):
     if rest[:2] == ['issue', 'view'] and any(t in ('--comments', '-c') for t in rest):
         number = next((t for t in rest[2:] if re.fullmatch(r'\d+', t)), '<n>')
         return f'`gh issue view --comments` fails here (Projects classic GraphQL error); use `{GH_VIEW.format(n=number)}`.'
+    if rest[:2] == ['issue', 'view'] and not any(t in ('--json', '--web', '-w') or t.startswith('--json=') for t in rest):
+        number = next((t for t in rest[2:] if re.fullmatch(r'\d+', t)), '<n>')
+        return f'`gh issue view` without `--json` fails here (Projects classic GraphQL error); use `{GH_VIEW.format(n=number)}`.'
     if rest[:2] == ['pr', 'edit']:
         return f'`gh pr edit` fails here (Projects classic GraphQL error); use `{GH_PR}`.'
     if rest[:2] == ['issue', 'create'] and any(t == '--parent' or t.startswith('--parent=') for t in rest):

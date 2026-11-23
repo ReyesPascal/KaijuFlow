@@ -446,6 +446,35 @@ class PreflightTest(unittest.TestCase):
         self.assert_stops('run', self.world(), 'incomplete', 'missed 2 requests', 'KaijuFlow asked',
                           'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
 
+    def ran(self, name, started, misses, recording='l'):
+        """A run folder in the runs root: its meta.json as a run writes it."""
+        self.cfg['runs_root'] = os.path.join(os.path.dirname(self.td), 'runs')
+        d = os.path.join(self.cfg['runs_root'], name)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'meta.json'), 'w') as f:
+            json.dump({'name': name, 'status': 'ok', 'started': started, 'recording': recording, 'standin_misses': misses}, f)
+
+    def test_a_recording_the_last_run_missed_stops_a_run_with_the_record_command(self):
+        record(self.cfg)  # recorded 2026-11-10T09:00:00Z
+        self.ran('2026-11-11T100000Z-baseline', '2026-11-11T10:00:00Z', 1840)
+        self.cfg['topup_command'] = 'python3 -I tools/brain/brainrun.py record --name n --store S --list l'
+        self.assert_stops('run', self.world(), 'The last run on', '2026-11-11T100000Z-baseline', 'missed 1840 requests',
+                          'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
+
+    def test_a_record_after_the_run_that_missed_passes_a_run(self):
+        self.ran('2026-11-09T100000Z-baseline', '2026-11-09T10:00:00Z', 1840)
+        record(self.cfg)  # the top-up, 2026-11-10T09:00:00Z
+        code, text = run_command('run', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
+    def test_only_the_newest_run_on_the_same_recording_counts(self):
+        record(self.cfg)
+        self.ran('2026-11-11T100000Z-a', '2026-11-11T10:00:00Z', 12)
+        self.ran('2026-11-12T100000Z-b', '2026-11-12T10:00:00Z', 0)
+        self.ran('2026-11-13T100000Z-other', '2026-11-13T10:00:00Z', 99, recording='another-list')
+        code, text = run_command('run', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
     def test_a_recording_without_a_state_does_not_pass_a_run(self):
         record(self.cfg, state=None)
         self.assert_stops('run', self.world(), 'record command')

@@ -277,6 +277,21 @@ class RealIO:
     def recording_state(self):
         return _read_json(os.path.join(self.cfg['store'], self.cfg['listname'], RECORDING_FILE))
 
+    def missed_since(self, when):
+        """(run folder, missed requests) of the newest run on this recording that started after `when` (the recording's
+        last record, as RECORDING.json says), or None when there is none or the runs root is not known. #229."""
+        root = self.cfg.get('runs_root')
+        if not root or not when:
+            return None
+        for d in reversed(br.run_folders(root)):
+            meta = _read_json(os.path.join(root, d, 'meta.json'))
+            if not meta or meta.get('recording') != self.cfg['listname'] or 'standin_misses' not in meta:
+                continue
+            if (meta.get('started') or '') <= when:
+                return None
+            return d, meta.get('standin_misses') or 0
+        return None
+
     def load_average(self):
         return os.getloadavg()[0]
 
@@ -882,7 +897,7 @@ def preflight(mode, cfg, io, seen=None):
         problems.append(f'The router ({ROUTER}) answers {NEWS_HOST} with {_list(sunk)}, its sinkhole, so every Usenet read would fail: '
                         f"fix the router's DNS until dig +short {NEWS_HOST} @{ROUTER} gives no 10.x address.")
 
-    # 10. (run only) the recording exists and holds an answer for every enabled indexer
+    # 10. (run only) the recording exists, holds an answer for every enabled indexer, and the last run on it missed nothing
     if mode == 'run':
         have = io.recording()
         need = sorted({slug for s in readable for slug in rep['enabled'][s]})
@@ -902,6 +917,10 @@ def preflight(mode, cfg, io, seen=None):
             gaps = [slug for slug in need if not have.get(slug)]
             if gaps:
                 problems.append(f"The recording for '{cfg.get('listname')}' holds no answer for {_list(gaps)}: top it up with the record command.")
+            missed = io.missed_since(state.get('when'))
+            if missed and missed[1]:
+                problems.append(f"The last run on '{cfg.get('listname')}' ({missed[0]}) missed {missed[1]} requests the recording does not hold, "
+                                f"so a run now would miss them too: top it up with the record command: {top_up}")
     return problems
 
 
