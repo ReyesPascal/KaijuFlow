@@ -119,8 +119,8 @@ async function assertDeadForThisEpisodeOnly(w, id, pack) {
   assert.ok((await titles(id.replace(/:2$/, ':3'))).includes(pack.title), 'another episode\'s list still offers the pack');
 }
 
-async function play(url, range) {
-  const res = await fetch(url, { headers: range ? { Range: range } : {}, signal: AbortSignal.timeout(30000) });
+async function play(url, range, timeoutMs = 30000) {
+  const res = await fetch(url, { headers: range ? { Range: range } : {}, signal: AbortSignal.timeout(timeoutMs) });
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
@@ -1128,7 +1128,177 @@ export const playTimeScenarios = [
       assert.deepEqual(goneGrabs(), goneTags, 'the next play\'s Walk grabs none of them again');
     },
   },
+  {
+    // The Delivery method as it is now serves every request of a play (#248): the player's next request of a list
+    // entry (a seek or probe, which the Stremio dedup answers without a new prepare) goes out with the method set
+    // since its first request, not the one that first request was served with.
+    id: 'a-play-s-next-request-uses-the-delivery-method-as-it-is-now',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'dlvnow' }]);
+      const saved = w.configData.playDeliveryMethod;
+      try {
+        w.configData.playDeliveryMethod = 'proxy';
+        const { result: streams } = await withLogs(async lines => {
+          const out = await w.list('movie', id);
+          await bestDone(lines, id);
+          return out;
+        });
+        const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+        const first = await askOnce(entry.url);
+        assert.equal(first.status, 302, 'with the fallback on, proxy answers with a redirect');
+        assert.match(first.location, /\/play\/v\?/, 'proxy goes through KaijuFlow\'s video route');
+        const imports = w.backend.submitsFor('dlvnow');
+        w.configData.playDeliveryMethod = 'direct';
+        const second = await askOnce(entry.url);
+        assert.equal(second.status, 302);
+        assert.match(second.location, /\/api\/files\/stream\?/, 'the next request goes direct, the method set now');
+        assert.equal(w.backend.submitsFor('dlvnow'), imports, 'the next request makes no new import');
+        const r = await play(second.location);
+        assert.equal(r.status, 200);
+        assertBytes(r.body, sources[0].media, 'the direct link plays the Source');
+      } finally {
+        w.configData.playDeliveryMethod = saved;
+      }
+    },
+  },
+  {
+    // Keep-alive (#248): a request that comes after a self-redirect answers within the ExoPlayer budget (8 s; more
+    // and ExoPlayer on Android gives up). A list entry still preparing answers with another self-redirect, and the
+    // player that follows it gets the video once it is ready.
+    id: 'a-list-entry-after-a-self-redirect-answers-within-the-exoplayer-budget',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'exo-entry' }]);
+      w.backend.slowImports('exo-entry', 12000);
+      try {
+        const streams = await w.list('movie', id);
+        const url = afterRedirects(streams.find(s => !isBest(s)).url, 1);
+        const r = await askOnce(url);
+        assertSelfRedirect(r, url, 2, 'a list entry still preparing');
+        assertWithinExoPlayerBudget(r);
+        const played = await play(r.location);
+        assert.equal(played.status, 200);
+        assertBytes(played.body, sources[0].media, 'the player following the redirects gets the video');
+      } finally {
+        w.backend.slowImports('exo-entry', 0);
+      }
+    },
+  },
+  {
+    // Keep-alive (#248), one rule whatever the entry: a press of Best after a self-redirect answers within the
+    // ExoPlayer budget too, while its Walk's Source is still preparing.
+    id: 'a-press-of-best-after-a-self-redirect-answers-within-the-exoplayer-budget',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'exo-best' }]);
+      w.backend.slowImports('exo-best', 12000);
+      try {
+        const streams = await w.list('movie', id);
+        const url = afterRedirects(streams[0].url, 1);
+        const r = await askOnce(url);
+        assertSelfRedirect(r, url, 2, 'a press of Best still waiting');
+        assertWithinExoPlayerBudget(r);
+        const played = await play(r.location);
+        assert.equal(played.status, 200);
+        assertBytes(played.body, sources[0].media, 'the player following the redirects gets Best\'s video');
+      } finally {
+        w.backend.slowImports('exo-best', 0);
+      }
+    },
+  },
+  {
+    // The first-Source switch (#192, kept by the owner): a list entry still loading after 25 s gets the next Source
+    // prepared beside it, and the one ready first plays. The first is not dead: it keeps preparing.
+    id: 'a-list-entry-still-loading-after-25-s-plays-the-next-source',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'switch-a' }, { tag: 'switch-b' }]);
+      w.backend.slowImports('switch-a', 40000);
+      try {
+        await withPrepareTimeout(w, 60, async () => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          const asked = Date.now();
+          const r = await play(entry.url, undefined, 45000);
+          const took = Date.now() - asked;
+          assert.equal(r.status, 200);
+          assertBytes(r.body, sources[1].media, 'the next Source plays');
+          assert.ok(took >= 24500 && took < 32000, `the next Source played after ${took} ms, from 25 s on`);
+          const again = await w.list('movie', id);
+          assert.ok(again.some(e => !isBest(e) && entryTitle(e) === sources[0].title), 'the first Source is not dead');
+        });
+      } finally {
+        w.backend.slowImports('switch-a', 0);
+      }
+    },
+  },
 ];
+
+/**
+ * Keep-alive scenarios that wait out a player's 60 s window (#248), in their own suite (parity-keep-alive.mjs):
+ * each suite process has 120 s.
+ */
+export const keepAliveScenarios = [
+  {
+    // Keep-alive (#248): one rule for the time left. A request still waiting near the end of the player's 60 s
+    // window (at 55 s, 5 s to spare) answers with a self-redirect, whatever entry it plays: here a list entry whose
+    // one Source is still preparing, which held the request until its video came. No Head start: its Walk gives
+    // AltMount 30 s for a movie and marks a Source that takes longer dead, which is the Walk's rule, not the player's.
+    id: 'a-list-entry-still-preparing-at-55-s-redirects-to-itself',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'window' }]);
+      w.backend.slowImports('window', 59000);
+      try {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 90, async () => {
+          const streams = await w.list('movie', id);
+          const url = streams.find(s => !isBest(s)).url;
+          const r = await askOnce(url, 70000);
+          assertSelfRedirect(r, url, 1, 'a list entry still preparing at 55 s');
+          assert.ok(r.at >= 54000 && r.at < 57500, `it answered after ${r.at} ms, 5 s before the player's 60 s`);
+          const played = await play(r.location);
+          assert.equal(played.status, 200);
+          assertBytes(played.body, sources[0].media, 'the player following the redirect gets the video');
+        }));
+      } finally {
+        w.backend.slowImports('window', 0);
+      }
+    },
+  },
+];
+
+/** The tile envelope a play URL carries (its `t`). */
+const envelopeOf = url => JSON.parse(Buffer.from(new URL(url).searchParams.get('t'), 'base64url').toString());
+
+/** The play URL as the player sends it after `rc` self-redirects. */
+function afterRedirects(url, rc) {
+  const u = new URL(url);
+  u.searchParams.set('t', Buffer.from(JSON.stringify({ ...envelopeOf(url), rc })).toString('base64url'));
+  return u.href;
+}
+
+/** A self-redirect: back to the same play route, its redirect count now `rc`. */
+function assertSelfRedirect(r, url, rc, what) {
+  assert.equal(r.status, 302, `${what}: a redirect`);
+  assert.equal(new URL(r.location).pathname, new URL(url).pathname, `${what}: back to the same play route (${r.location})`);
+  assert.equal(envelopeOf(r.location).rc, rc, `${what}: redirect ${rc}`);
+}
+
+/** A request after a self-redirect answers within the ExoPlayer budget (8 s), not before it. */
+function assertWithinExoPlayerBudget(r) {
+  assert.ok(r.at >= 7000 && r.at < 10500, `it answered after ${r.at} ms, within the 8 s ExoPlayer budget`);
+}
+
+/** Run fn with AltMount's prepare timeout (seconds) set, then put the suite's back. */
+async function withPrepareTimeout(w, sec, fn) {
+  const saved = w.configData.altmountPrepareTimeout;
+  w.configData.altmountPrepareTimeout = sec;
+  try { return await fn(); } finally { w.configData.altmountPrepareTimeout = saved; }
+}
+
+/** One request of a play, its redirect not followed: { status, location, at } (at: ms it took). */
+async function askOnce(url, timeoutMs = 30000) {
+  const asked = Date.now();
+  const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+  await res.arrayBuffer().catch(() => {});
+  return { status: res.status, location: res.headers.get('location'), at: Date.now() - asked };
+}
 
 /** Run fn with this indexer added to the suite's, then put the suite's back. */
 async function withIndexer(w, entry, fn) {
@@ -1180,10 +1350,10 @@ function assertWalkStoppedAt30(w, lines, prefix, tags) {
   assert.equal(said.length, 1, `one log line says the Walk stopped (${said.length})`);
 }
 
-/** Run every play-time scenario. Returns per-scenario results. */
-export async function runPlayTimeParity(w) {
+/** Run these play-time scenarios (all of playTimeScenarios unless told). Returns per-scenario results. */
+export async function runPlayTimeParity(w, scenarios = playTimeScenarios) {
   const results = [];
-  for (const s of playTimeScenarios) {
+  for (const s of scenarios) {
     const before = w.backend.requests.length;
     try {
       const out = await s.run(w);

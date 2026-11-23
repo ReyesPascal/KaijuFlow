@@ -20,9 +20,10 @@ import { getDeliveryLog, WebDav404Error, isUltimateFallbackActive } from './util
 import { episodeOf, episodeForTile, playContextOfTile, type PlayContext } from './playContext.js';
 import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, walkFoundNothing, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
-import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
+import { encodeTileEnvelope, parseTilePayload } from './redirectHelpers.js';
+import { serveVideo, type InlineProxy } from './delivery.js';
+import { keepAlive } from './keepAlive.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
-import { formatBytes } from '../parsers/metadataParsers.js';
 import { resolveBaseUrl } from '../utils/urlHelpers.js';
 import type { StreamData, FallbackCandidate } from './types.js';
 
@@ -42,10 +43,6 @@ setPrepareFn(prepareStream);
 
 const STREAM_LOG_INTERVAL_MS = 30_000;   // 30 seconds
 const STREAM_LOG_STATE_TTL_MS = 3_600_000; // 1 hour — evict stale entries to prevent unbounded growth
-const STREMIO_TIMEOUT_MS = 60_000;       // Stremio's built-in HTTP timeout
-const STREMIO_SAFETY_MARGIN_MS = 5_000;  // Safety buffer when deciding whether to self-redirect
-const MAX_SELF_REDIRECTS = Number(process.env.PLAY_MAX_SELF_REDIRECTS) || 500; // Safety cap on self-redirects — supports large fallback chains without infinite loops
-const EXO_PLAYER_BUDGET_MS = 8_000;      // Max blocking time per post-redirect request (keeps ExoPlayer alive on Android)
 // KaijuFlow (AUDIT.md finding 5): on a fresh play request, stop waiting for the
 // first source after this long and try the next one. The first source is NOT
 // cancelled or marked dead: it keeps preparing in the stream cache, so it is
@@ -62,10 +59,10 @@ const FIRST_SOURCE_SWITCH_MS = (() => {
   return Number.isFinite(n) && n >= 0 ? n : 25_000;
 })();
 const DEDUP_CACHE_TTL_MS = 600_000;      // 10 min — covers a typical play session's seeks/probes without library-check overhead; eviction mid-session self-heals via the broken-path marker + live videoPathExists gate
-const LOBBY_CACHED_LOG_THROTTLE_MS = 15_000; // Suppress repeat "cached resolve served" lines within this window (matches /stream hit throttle)
-// Self-redirect query params (internal, appended to stream URL during 302 redirects):
-//   _rc — redirect count: how many self-redirects have occurred (prevents infinite loops)
-//   _ci — candidate index: which fallback candidate to resume at (avoids restarting from 0)
+const LOBBY_LOG_THROTTLE_MS = 15_000; // Suppress repeat "Lobby: serving" lines for one video within this window (matches /stream hit throttle)
+// Self-redirects (keepAlive.ts) carry inside the `t` envelope:
+//   rc — redirect count: how many self-redirects have occurred (prevents infinite loops)
+//   ci — candidate index: which fallback candidate to resume at (avoids restarting from 0)
 
 interface StreamLogState {
   requests: number;
@@ -77,6 +74,7 @@ interface StreamLogState {
 
 const streamLogState = new Map<string, StreamLogState>();
 const deadSkipLoggedGroups = new Map<string, number>(); // key → timestamp for TTL cleanup
+const lobbyServeLogged = new Map<string, number>(); // videoPath → when the lobby last said it serves it
 
 // Delivery log lives in utils.ts to avoid circular dep between streamCache and streamHandler.
 const lastDeliveryLog = getDeliveryLog();
@@ -126,6 +124,9 @@ function shouldLogStreamRequest(title: string, event: 'request' | 'disconnect'):
     for (const [key, ts] of deadSkipLoggedGroups) {
       if (now - ts > STREAM_LOG_STATE_TTL_MS) deadSkipLoggedGroups.delete(key);
     }
+    for (const [key, ts] of lobbyServeLogged) {
+      if (now - ts > STREAM_LOG_STATE_TTL_MS) lobbyServeLogged.delete(key);
+    }
     return false;
   }
 
@@ -154,7 +155,8 @@ function isClientDisconnect(error: unknown): boolean {
 // short-circuit seeks in inline-proxy mode so they skip library check.
 // Completely outside the cache pipeline — doesn't interfere with library checks.
 
-interface CachedDelivery { streamData: StreamData; streamingMethod: 'pipe' | 'proxy' | 'direct'; timestamp: number; played: FallbackCandidate }
+// It holds the video, not the Delivery method: every request is served with the method as it is now (#248).
+interface CachedDelivery { streamData: StreamData; timestamp: number; played: FallbackCandidate }
 const recentDeliveries = new Map<string, CachedDelivery>();
 
 function cleanupRecentDeliveries(): void {
@@ -178,9 +180,13 @@ function logPlayedOnce(req: Request, source: { title: string; indexerName?: stri
   logPlayed(source.title, source.indexerName);
 }
 
-/** Per-attempt budget in ms. Returns 0 (no limit) — UF uses its own per-mode timeouts. */
-function getAttemptBudgetMs(_contentType?: string, _isSeasonPack?: boolean): number {
-  return 0;
+/** The lobby's line for a press of Best it serves, once per video in LOBBY_LOG_THROTTLE_MS (range probes and seeks repeat it). */
+function logLobbyServe(sessionKey: string, videoPath: string): void {
+  const now = Date.now();
+  const last = lobbyServeLogged.get(videoPath);
+  if (last !== undefined && now - last < LOBBY_LOG_THROTTLE_MS) return;
+  lobbyServeLogged.set(videoPath, now);
+  console.log(last === undefined ? `👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}` : `👑 Lobby: cached resolve served (sk=${sessionKey})`);
 }
 
 // ============================================================================
@@ -234,15 +240,13 @@ export async function prepareStream(playSource: PlaySource, play?: PlayContext, 
     }
   }
 
-  // Steps 1-3: hand the Source to the Backend and wait for its video.
-  // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
+  // Steps 1-3: hand the Source to the Backend and wait for its video, with no time limit of KaijuFlow's
+  // (AltMount's prepare timeout is the limit; keep-alive answers the player meanwhile).
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
   // It is the only health check since #191, so it runs whatever the fallback setting.
   await requireHealthySource(source, logPrefix);
 
-  const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
-  const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;
-  const video = await backend.prepare(source, { logPrefix, timeoutMs: remainingMs });
+  const video = await backend.prepare(source, { logPrefix });
 
   // Step 4: Verify the video is actually servable (first byte).
   try {
@@ -337,11 +341,6 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
   return `${backend.id}|${keyOf(candidate, play)}`;
 }
 
-/** Delivery method for the first response of a Stream: the streaming-method setting. */
-function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
-  return globalConfig.playDeliveryMethod ?? 'proxy';
-}
-
 /**
  * Express handler for /play/stream endpoint
  * Supports automatic fallback: if the chosen NZB fails, tries the next candidates
@@ -350,7 +349,7 @@ function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
 export async function handleStream(
   req: Request,
   res: ExpressResponse,
-  proxyFn?: (req: Request, res: ExpressResponse, videoPath: string, usePipe: boolean) => Promise<void>
+  proxyFn?: InlineProxy,
 ): Promise<void> {
   const backend = getActiveBackend();
   // Express returns string[] for repeated query keys (`?t=a&t=b`). Take the
@@ -479,6 +478,8 @@ export async function handleStream(
   const safeNum = (n: number | undefined): number | undefined =>
     typeof n === 'number' && !Number.isNaN(n) && n >= 0 ? n : undefined;
   const redirectCount = safeNum(tPackRc) ?? 0;
+  // The time this request may keep the player waiting, and its self-redirect (#248).
+  const keep = keepAlive(req, redirectCount, streamStartTime);
   const candidateStart = maxCandidates > 0
     ? Math.min(Math.max(0, safeNum(tPackCi) ?? 0), maxCandidates - 1)
     : 0;
@@ -509,34 +510,7 @@ export async function handleStream(
         // to a fresh candidate loop via the live videoPathExists gate above.
         if (verbose) console.log(`📦 Stream dedup hit (delivered ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
         logPlayedOnce(req, cached.played);
-        const fallbackOn = isUltimateFallbackActive();
-        const sizeSuffix = cached.streamData.videoSize ? ` (${formatBytes(cached.streamData.videoSize)})` : '';
-        // Dedup the per-mode delivery log on this videoPath so repeat probes
-        // don't spam the same line. lastDeliveryLog is shared with primary delivery.
-        const lastCached = lastDeliveryLog.get(cached.streamData.videoPath);
-        const shouldLogCachedDelivery = !lastCached || lastCached.mode !== cached.streamingMethod;
-        lastDeliveryLog.set(cached.streamData.videoPath, { mode: cached.streamingMethod, at: Date.now() });
-        if (cached.streamingMethod === 'direct') {
-          const directUrl = new URL(backend.directUrl(cached.streamData.videoPath));
-          const safePath = directUrl.pathname;
-          if (shouldLogCachedDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${sizeSuffix}`);
-          res.redirect(302, directUrl.href);
-        } else if (!fallbackOn && proxyFn) {
-          // Inline proxy — no redirect, matches primary delivery path. Runs
-          // another proxyVideoStream for this request; req.on('close') ensures
-          // cleanup if the client aborts.
-          const label = cached.streamingMethod === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-          if (shouldLogCachedDelivery) console.log(`  ${label} streaming: ${cached.streamData.videoPath}${sizeSuffix}`);
-          await proxyFn(req, res, cached.streamData.videoPath, cached.streamingMethod !== 'proxy');
-        } else {
-          const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-          proxyUrl.searchParams.set('path', cached.streamData.videoPath);
-          proxyUrl.searchParams.set('_fb', req.originalUrl);
-          if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-          const label = cached.streamingMethod === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-          if (shouldLogCachedDelivery) console.log(`  ${label} 302 streaming: ${cached.streamData.videoPath}${sizeSuffix}`);
-          res.redirect(302, proxyUrl.href);
-        }
+        await serveVideo(req, res, cached.streamData, proxyFn);
         return;
       }
     }
@@ -566,89 +540,42 @@ export async function handleStream(
     // This press waits on the session: a newer list request no longer stops it (#206).
     claimSession(sessionKey);
     if (sessionPromise) {
-      const elapsed = Date.now() - streamStartTime;
-      const remainingMs = STREMIO_TIMEOUT_MS - elapsed - STREMIO_SAFETY_MARGIN_MS;
-      if (remainingMs > 0 && redirectCount < MAX_SELF_REDIRECTS) {
-        try {
-          let stremioTimer: ReturnType<typeof setTimeout>;
-          const streamData = await Promise.race([
-            sessionPromise,
-            new Promise<never>((_, reject) => {
-              stremioTimer = setTimeout(
-                () => reject(Object.assign(new Error('lobby timeout'), { isLobbyTimeout: true })),
-                remainingMs,
-              );
-            }),
-          ]).finally(() => clearTimeout(stremioTimer!));
-
-          // Verify the cached primary still exists on the Backend before serving. The broken-path marker short-circuits
-          // when /v has just observed a 4xx/5xx (PROPFIND lies for evicted content
-          // whose directory entry persists). Falls through to UF backups / fresh
-          // resolution if either signal says the file is gone.
-          if (isVideoPathBroken(streamData.videoPath) || !await backend.stillPrepared(streamData.videoPath)) {
-            throw new Error('Primary path no longer available');
-          }
-
-          // Ultimate-Fallback resolved — deliver the stream
-          const lobbyFallbackOn = isUltimateFallbackActive();
-          const mode = deliveryMethod();
-          const lastLobby = lastDeliveryLog.get(streamData.videoPath);
-          const shouldLogLobby = !lastLobby || lastLobby.mode !== mode;
-          const nowTs = Date.now();
-          // Throttle the cached-resolve log so range probes and seek bursts
-          // don't emit one line per request; only relog after the window elapses.
-          const shouldLogCached = !shouldLogLobby
-            && (!lastLobby || (nowTs - lastLobby.at) >= LOBBY_CACHED_LOG_THROTTLE_MS);
-          if (shouldLogLobby || shouldLogCached) {
-            lastDeliveryLog.set(streamData.videoPath, { mode, at: nowTs });
-          } else {
-            // Keep mode current but don't push the throttle window forward
-            lastDeliveryLog.set(streamData.videoPath, { mode, at: lastLobby!.at });
-          }
-          if (shouldLogLobby) console.log(`👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}`);
-          else if (shouldLogCached) console.log(`👑 Lobby: cached resolve served (sk=${sessionKey})`);
-          if (streamData.sourceTitle) {
-            const fromGroup = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.candidates.find(c => c.title === streamData.sourceTitle) : undefined;
-            logPlayedOnce(req, { title: streamData.sourceTitle, indexerName: fromGroup?.indexerName });
-          }
-          const lobbySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
-          if (mode !== 'direct') {
-            const inline = proxyFn && !lobbyFallbackOn;
-            const label = mode === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-            if (shouldLogLobby) console.log(`  ${label}${inline ? '' : ' 302'} streaming: ${streamData.videoPath}${lobbySizeSuffix}`);
-            if (inline) {
-              await proxyFn!(req, res, streamData.videoPath, mode !== 'proxy');
-            } else {
-              const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-              proxyUrl.searchParams.set('path', streamData.videoPath);
-              proxyUrl.searchParams.set('_fb', req.originalUrl);
-              if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-              res.redirect(302, proxyUrl.href);
-            }
-          } else {
-            res.redirect(302, backend.directUrl(streamData.videoPath));
-          }
+      try {
+        const waited = await keep.wait(sessionPromise);
+        if (!waited.done) {
+          // Still walking when this request's time is up: a self-redirect keeps the player waiting.
+          keep.redirect(res);
           return;
-        } catch (err) {
-          if ((err as any).isLobbyTimeout) {
-            // Stremio timeout approaching — self-redirect to keep ExoPlayer alive.
-            // Site 1 of 6: rc carried inside the `t` envelope so it survives iOS handoff.
-            const redirectUrl = incrementRedirectCounter(req);
-            console.log(`👑 Lobby: self-redirect (${Math.round((Date.now() - streamStartTime) / 1000)}s elapsed, redirect ${redirectCount + 1})`);
-            res.redirect(302, redirectUrl.href);
-            return;
-          }
-          // Two reasons we land here:
-          //   1. Primary path went dead mid-session — the UF tile block below
-          //      iterates the session's vetted backups and serves the next one.
-          //   2. Session promise rejected (all candidates exhausted) — no
-          //      backups to fall back to; the single-attempt path below kicks in.
-          // The "primary path no longer available" message already logged the
-          // first case; only log here for the second.
-          walkFoundNoSource = walkFoundNothing(err);
-          if ((err as Error).message !== 'Primary path no longer available') {
-            console.log(`👑 Lobby: session ended without resolution — falling through to single attempt`);
-          }
+        }
+        const streamData = waited.value;
+
+        // Verify the cached primary still exists on the Backend before serving. The broken-path marker short-circuits
+        // when /v has just observed a 4xx/5xx (PROPFIND lies for evicted content
+        // whose directory entry persists). Falls through to UF backups / fresh
+        // resolution if either signal says the file is gone.
+        if (isVideoPathBroken(streamData.videoPath) || !await backend.stillPrepared(streamData.videoPath)) {
+          throw new Error('Primary path no longer available');
+        }
+
+        // Ultimate-Fallback resolved — deliver the stream
+        logLobbyServe(sessionKey, streamData.videoPath);
+        if (streamData.sourceTitle) {
+          const fromGroup = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.candidates.find(c => c.title === streamData.sourceTitle) : undefined;
+          logPlayedOnce(req, { title: streamData.sourceTitle, indexerName: fromGroup?.indexerName });
+        }
+        await serveVideo(req, res, streamData, proxyFn);
+        return;
+      } catch (err) {
+        // Two reasons we land here:
+        //   1. Primary path went dead mid-session — the UF tile block below
+        //      iterates the session's vetted backups and serves the next one.
+        //   2. Session promise rejected (all candidates exhausted) — no
+        //      backups to fall back to; the single-attempt path below kicks in.
+        // The "primary path no longer available" message already logged the
+        // first case; only log here for the second.
+        walkFoundNoSource = walkFoundNothing(err);
+        if ((err as Error).message !== 'Primary path no longer available') {
+          console.log(`👑 Lobby: session ended without resolution — falling through to single attempt`);
         }
       }
     }
@@ -669,19 +596,7 @@ export async function handleStream(
     if (usable) {
       const idxTag = usable.candidateIndex !== undefined ? `#${usable.candidateIndex} ` : '';
       console.log(`👑 Ultimate-Fallback [${sessionKey}] Primary path no longer available — falling back to backup: ${idxTag}${usable.title} [${usable.indexerName}]`);
-      const lobbyFallbackOn = isUltimateFallbackActive();
-      const mode = deliveryMethod();
-      if (mode === 'direct') {
-        res.redirect(302, backend.directUrl(usable.videoPath));
-      } else if (proxyFn && !lobbyFallbackOn) {
-        await proxyFn(req, res, usable.videoPath, mode !== 'proxy');
-      } else {
-        const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-        proxyUrl.searchParams.set('path', usable.videoPath);
-        proxyUrl.searchParams.set('_fb', req.originalUrl);
-        if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-        res.redirect(302, proxyUrl.href);
-      }
+      await serveVideo(req, res, usable, proxyFn);
       return;
     }
     if (walkFoundNoSource) {
@@ -774,7 +689,6 @@ export async function handleStream(
     }
 
     const candidate = candidates[i];
-    const attemptBudgetMs = getAttemptBudgetMs(contentType, candidate.isSeasonPack);
 
     // Skip candidates already known to be dead.
     if (recall(candidate, play).dead) {
@@ -785,24 +699,14 @@ export async function handleStream(
     // Mark dead-skip logs as shown for this group so subsequent requests don't repeat
     if (logDeadSkips) deadSkipLoggedGroups.set(deadSkipKey, Date.now());
 
-    // Self-redirect to reset Stremio's 60s timer before it expires.
-    // Pre-start the candidate so it's warming in cache during redirect round-trip.
-    if (i > 0 && !req.socket.destroyed && redirectCount < MAX_SELF_REDIRECTS) {
-      const elapsed = Date.now() - streamStartTime;
-      if (elapsed + attemptBudgetMs + STREMIO_SAFETY_MARGIN_MS > STREMIO_TIMEOUT_MS) {
-        if (!isPreparing(candidate, play)) {
-          getOrCreateStream(candidate, play, { verbose }).catch(() => {});
-        }
-        // Site 2 of 6: rc and ci carried inside `t` so iOS handoff doesn't
-        // truncate them. Without ci, the next request would restart at
-        // candidate 0 instead of resuming at i.
-        const redirectUrl = incrementRedirectCounter(req, i);
-        if (verbose) {
-          console.log(`⏰ Self-redirect to reset Stremio timer (${Math.round(elapsed / 1000)}s elapsed, redirect ${redirectCount + 1}/${MAX_SELF_REDIRECTS}, resuming at candidate ${i + 1}/${maxCandidates})`);
-        }
-        res.redirect(302, redirectUrl.href);
-        return;
+    // This request's time is up before the next Source starts: start it, so it is warming while the
+    // player follows the self-redirect, which resumes at this Source (ci).
+    if (keep.timeUp() && !req.socket.destroyed) {
+      if (!isPreparing(candidate, play)) {
+        getOrCreateStream(candidate, play, { verbose }).catch(() => {});
       }
+      keep.redirect(res, i);
+      return;
     }
 
     try {
@@ -810,57 +714,24 @@ export async function handleStream(
         console.log(`🔄 Trying backup [${i + 1}/${maxCandidates}]: ${candidate.title} [${candidate.indexerName}]`);
       }
 
-      // On post-redirect requests, cap blocking time to the ExoPlayer budget so
-      // Stremio doesn't disconnect on Android while the candidate is processing.
-      let streamData: StreamData;
-      if (redirectCount > 0) {
-        const requestElapsed = Date.now() - streamStartTime;
-        const waitMs = Math.max(1000, EXO_PLAYER_BUDGET_MS - requestElapsed);
-        let exoTimerId: ReturnType<typeof setTimeout>;
-        streamData = await Promise.race([
-          getOrCreateStream(candidate, play, { verbose })
-            .finally(() => clearTimeout(exoTimerId)),
-          new Promise<never>((_, reject) => {
-            exoTimerId = setTimeout(() => reject(Object.assign(new Error('ExoPlayer safety timeout'), { isExoTimeout: true })), waitMs);
-          })
-        ]);
-      } else if (
-        FIRST_SOURCE_SWITCH_MS > 0
-        && i === candidateOrder[0]
-        && candidateOrder.length > 1
-      ) {
-        // KaijuFlow (finding 5): first source on a fresh request with a backup
-        // available. candidateOrder already honors userPickFallback (it holds a
-        // single entry when the user's mode doesn't walk to other sources). Wait up to FIRST_SOURCE_SWITCH_MS, then move on without
-        // cancelling it (getOrCreateStream keeps it warming in pendingCache).
-        const switchWaitMs = Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime));
-        let switchTimerId: ReturnType<typeof setTimeout>;
-        streamData = await Promise.race([
-          getOrCreateStream(candidate, play, { verbose })
-            .finally(() => clearTimeout(switchTimerId)),
-          new Promise<never>((_, reject) => {
-            switchTimerId = setTimeout(() => reject(Object.assign(new Error('First-source switch'), { isSourceSwitch: true })), switchWaitMs);
-          })
-        ]);
-      } else {
-        // On the initial request, race against the remaining Stremio window when
-        // the attempt budget would exceed it. If the stream isn't ready in time,
-        // self-redirect so the post-redirect ExoPlayer race takes over.
-        const elapsed = Date.now() - streamStartTime;
-        const stremioRemainingMs = STREMIO_TIMEOUT_MS - elapsed - STREMIO_SAFETY_MARGIN_MS;
-        if (attemptBudgetMs > stremioRemainingMs && stremioRemainingMs > 0 && !req.socket.destroyed) {
-          let stremioTimerId: ReturnType<typeof setTimeout>;
-          streamData = await Promise.race([
-            getOrCreateStream(candidate, play, { verbose })
-              .finally(() => clearTimeout(stremioTimerId)),
-            new Promise<never>((_, reject) => {
-              stremioTimerId = setTimeout(() => reject(Object.assign(new Error('Stremio timeout redirect'), { isExoTimeout: true })), stremioRemainingMs);
-            })
-          ]);
-        } else {
-          streamData = await getOrCreateStream(candidate, play, { verbose });
+      // The first-Source switch (#192): on a play's first request, the first Source with a next one behind it
+      // (candidateOrder holds one entry when the user's mode doesn't walk on) is waited for up to
+      // FIRST_SOURCE_SWITCH_MS, then the next is tried; the first keeps preparing in the stream cache.
+      const switchAtMs = redirectCount === 0 && FIRST_SOURCE_SWITCH_MS > 0 && i === candidateOrder[0] && candidateOrder.length > 1
+        ? Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime))
+        : undefined;
+      const waited = await keep.wait(getOrCreateStream(candidate, play, { verbose }), switchAtMs);
+      if (!waited.done) {
+        if (waited.timeUp) {
+          // Still preparing when this request's time is up: a self-redirect resumes at this Source.
+          if (!req.socket.destroyed) keep.redirect(res, i);
+          return;
         }
+        // Not a failure: leave it warming, don't mark it dead, try the next.
+        console.log(`⏩ Still preparing after ${Math.round(FIRST_SOURCE_SWITCH_MS / 1000)}s, trying next source (kept warming) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
+        continue;
       }
+      const streamData = waited.value;
 
       if (i > 0) {
         console.log(`👑 Backup stream loaded [${i + 1}/${maxCandidates}]: ${candidate.title} [${candidate.indexerName}]`);
@@ -872,16 +743,6 @@ export async function handleStream(
         return;
       }
 
-      // Decide delivery method: pipe/proxy (buffered) or direct redirect.
-      // When fallback is off, the initial-delivery mode still forces proxy for
-      // logging/dedup consistency; /v's proxyVideoStream independently reads
-      // config on each range request, so seeks honor the user's current method.
-      const fallbackOn = isUltimateFallbackActive();
-      const mode = deliveryMethod();
-      const last = lastDeliveryLog.get(streamData.videoPath);
-      const shouldLogDelivery = !last || last.mode !== mode;
-      lastDeliveryLog.set(streamData.videoPath, { mode, at: Date.now() });
-
       // Cache delivery for Stremio request dedup (10 min TTL) — populated BEFORE
       // delivery so concurrent probes from Stremio land on the dedup path instead
       // of triggering another prep.
@@ -889,50 +750,18 @@ export async function handleStream(
       // requests for the same click hit dedup, even when fallback-chain walked
       // past the click and resolved a later candidate.
       const dedupCandidate = candidates[0] ?? candidate;
-      const key = dedupKey(backend, dedupCandidate, play);
-      recentDeliveries.set(key, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
+      recentDeliveries.set(dedupKey(backend, dedupCandidate, play), { streamData, timestamp: Date.now(), played: candidate });
       // Also key on the resolved candidate's URL so direct second-clicks of the
       // resolved tile (different click URL) also dedup.
       if (candidate !== dedupCandidate) {
-        const resolvedKey = dedupKey(backend, candidate, play);
-        recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
+        recentDeliveries.set(dedupKey(backend, candidate, play), { streamData, timestamp: Date.now(), played: candidate });
       }
 
       logPlayedOnce(req, candidate);
-      const deliverySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
-      if (mode !== 'direct') {
-        const inline = !fallbackOn && proxyFn;
-        const label = mode === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-        if (shouldLogDelivery) console.log(`  ${label}${inline ? '' : ' 302'} streaming: ${streamData.videoPath}${deliverySizeSuffix}`);
-        if (inline) {
-          // Inline proxy — no 302, broadest player compatibility. Subsequent seeks
-          // come back to handleStream but hit recentDeliveries (10 min TTL) and
-          // skip library check + submission.
-          await proxyFn!(req, res, streamData.videoPath, mode !== 'proxy');
-        } else {
-          // Redirect to /v endpoint which adds auth + buffering + transparent reconnect
-          const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-          proxyUrl.searchParams.set('path', streamData.videoPath);
-          proxyUrl.searchParams.set('_fb', req.originalUrl);
-          if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-          res.redirect(302, proxyUrl.href);
-        }
-      } else {
-        // Direct: redirect to WebDAV URL with embedded credentials (desktop players)
-        const directUrl = new URL(backend.directUrl(streamData.videoPath));
-        const safePath = directUrl.pathname;
-        if (shouldLogDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${deliverySizeSuffix}`);
-        res.redirect(302, directUrl.href);
-      }
+      await serveVideo(req, res, streamData, proxyFn);
       return;
 
     } catch (error) {
-      // KaijuFlow (finding 5): first source still preparing after the switch
-      // window. Not a failure: leave it warming, don't mark it dead, try next.
-      if ((error as any).isSourceSwitch) {
-        console.log(`\u23E9 Still preparing after ${Math.round(FIRST_SOURCE_SWITCH_MS / 1000)}s, trying next source (kept warming) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
-        continue;
-      }
       // Proxy circuit aborted (VPN IP changed / baseline unavailable / etc.) -
       // every remaining candidate in the local array carries the same stale
       // searchExitIp hash and would abort identically. Break the walk; the
@@ -941,18 +770,6 @@ export async function handleStream(
         console.error(`🔒 🚫 Proxy circuit aborted mid-stream, stopping candidate walk. ${error.message}`);
         break;
       }
-      // Stremio / ExoPlayer timeout — candidate is still processing in cache,
-      // self-redirect to keep the player alive while we wait
-      if ((error as any).isExoTimeout && redirectCount < MAX_SELF_REDIRECTS && !req.socket.destroyed) {
-        // Site 3 of 6: rc and ci carried inside `t` for iOS-safe redirect.
-        const redirectUrl = incrementRedirectCounter(req, i);
-        if (verbose) {
-          console.log(`\u23F1\uFE0F Timeout redirect (candidate still processing, rc=${redirectCount + 1}/${MAX_SELF_REDIRECTS}, resuming at ${i + 1}/${maxCandidates})`);
-        }
-        res.redirect(302, redirectUrl.href);
-        return;
-      }
-
       if (isClientDisconnect(error)) {
         shouldLogStreamRequest(candidate.title, 'disconnect');
         return;
@@ -974,7 +791,7 @@ export async function handleStream(
         && sessionKey
         && isUltimateFallbackActive()
         && userPickMode === 'uf-lobby'
-        && redirectCount < MAX_SELF_REDIRECTS
+        && keep.canRedirect()
         && !res.headersSent
       ) {
         // Site 4 of 6: build a fresh UF envelope so sk + fbg + rc all survive
@@ -1000,7 +817,7 @@ export async function handleStream(
     && sessionKey
     && isUltimateFallbackActive()
     && userPickMode === 'uf-lobby'
-    && redirectCount < MAX_SELF_REDIRECTS
+    && keep.canRedirect()
     && !res.headersSent
   ) {
     // Site 5 of 6: same fresh-envelope pattern as site 4.

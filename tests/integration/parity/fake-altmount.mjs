@@ -35,6 +35,8 @@ export async function createFakeAltmount(listen) {
   let indexerDown = 0; // HTTP status the NZB link answers while the indexer is "down" (0 = serves the NZB)
   const grabs = []; // { tag, asked, answered, closed } per NZB link fetched: the indexer's side of a grab
   const slowGrabs = new Map(); // tag prefix -> ms every NZB link of it waits before answering
+  const slowImports = new Map(); // tag prefix -> ms an import of it takes
+  const readyAt = new Map(); // tag -> when its slow import is done (one queue item, whoever uploads it)
   let nextQueueId = 1; // real AltMount queue ids are integers
   const uploads = new Map(); // tag -> uploaded NZB texts
   const volumeOf = new Map(); // first-article id -> real RAR5 volume, for Scrambled RAR sets
@@ -153,6 +155,19 @@ export async function createFakeAltmount(listen) {
       if (src.rejected || src.refused) return json(500, { error: 'NZB processing failed' });
       // Not ready in time: AltMount answers 408 with the queue ID; the queued work is NOT cancelled.
       if (src.neverReady) { await new Promise(r => setTimeout(r, 300)); return json(408, { error: 'Timeout waiting for stream', details: src.queueId }); }
+      // A slow import (slowImports): AltMount answers once the import is done, or 408 at the upload's own timeout
+      // (the queued work goes on). Every upload of the Source waits for the same import.
+      const importMs = [...slowImports].find(([prefix]) => tag.startsWith(prefix))?.[1];
+      if (importMs && !src.completed) {
+        if (!readyAt.has(tag)) readyAt.set(tag, Date.now() + importMs);
+        const waitMs = readyAt.get(tag) - Date.now();
+        const limitMs = Number(field('timeout')) * 1000;
+        if (limitMs > 0 && waitMs > limitMs) {
+          await new Promise(r => setTimeout(r, limitMs));
+          return json(408, { error: 'Timeout waiting for stream', details: src.queueId });
+        }
+        if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
+      }
       const cached = src.completed;
       src.completed = true;
       // Pinned v0.4.0 StremioStreamsResponse: the queue fields sit next to `streams`.
@@ -313,6 +328,8 @@ export async function createFakeAltmount(listen) {
     grabs,
     /** Make every NZB link whose tag starts with prefix wait ms before answering (0 = answer at once). */
     slowGrabs(prefix, ms) { if (ms > 0) slowGrabs.set(prefix, ms); else slowGrabs.delete(prefix); },
+    /** Make the import of every Source whose tag starts with prefix take ms from its first upload (0 = at once). */
+    slowImports(prefix, ms) { if (ms > 0) slowImports.set(prefix, ms); else slowImports.delete(prefix); },
     /**
      * Give every Source registered from now on an NZB KaijuFlow's health check can
      * read, its articles on this fake news server (startFakeNntp). addMovie and
