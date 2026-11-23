@@ -20,6 +20,7 @@ import { sourceFailure } from './types.js';
  * gone. An indexer that is unavailable or refuses us (429, 5xx, 401/403,
  * network error, download timeout) throws a plain error, so the player gets
  * the failure video and the Source stays alive (ADR 0004, #51).
+ * `stop`: cuts the download off when it aborts (a Walk that ended, GLOSSARY: Walk), with a plain error.
  * Backends don't call it: they go through grabSourceNzb (src/backends/sourceNzb.ts).
  */
 export async function grabNzb(
@@ -29,6 +30,7 @@ export async function grabNzb(
   logPrefix = '',
   indexerName?: string,
   searchExitIp?: string,
+  stop?: AbortSignal,
 ): Promise<string> {
   const budgetStart = Date.now();
   const remainingBudget = () => budgetMs ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 30000;
@@ -44,9 +46,13 @@ export async function grabNzb(
     console.log(`${logPrefix}  \u{1F4E5} Downloading NZB from indexer: ${nzbUrl.substring(0, 80)}...`);
     await verifyProxyCircuit(nzbUrl, 'nzb-grab', indexerName, searchExitIp);
 
+    const stopped = () => new Error(`NZB download stopped for ${indexerForLog}`);
+    if (stop?.aborted) throw stopped();
     const controller = new AbortController();
     const downloadTimeoutMs = remainingBudget();
     const timeout = setTimeout(() => controller.abort(), downloadTimeoutMs);
+    const onStop = () => controller.abort();
+    stop?.addEventListener('abort', onStop, { once: true });
 
     let nzbResponse: { ok: boolean; status: number; statusText: string; text: () => Promise<string> };
     try {
@@ -56,6 +62,8 @@ export async function grabNzb(
       }, indexerName);
     } catch (err) {
       clearTimeout(timeout);
+      stop?.removeEventListener('abort', onStop);
+      if (stop?.aborted) throw stopped();
       // The indexer, not the Source, failed: no dead mark (ADR 0004).
       if ((err as Error).name === 'AbortError') {
         throw new Error(`NZB download timed out after ${Math.round(downloadTimeoutMs / 1000)}s for ${indexerForLog}`);
@@ -64,17 +72,23 @@ export async function grabNzb(
     }
     clearTimeout(timeout);
 
-    if (!nzbResponse.ok) {
-      const status = `${nzbResponse.status} ${nzbResponse.statusText}`.trim();
-      const message = `Failed to download NZB from ${indexerForLog}: ${status}`;
-      // Rate limit, server error or refused credentials: the indexer is unavailable to us,
-      // the Source is not bad (ADR 0004, #51). Any other 4xx (404, 410) means the link is gone.
-      if (nzbResponse.status === 429 || nzbResponse.status >= 500) throw new Error(`${message} (indexer unavailable, Source kept)`);
-      if (nzbResponse.status === 401 || nzbResponse.status === 403) throw new Error(`${message} (indexer refused us, check its API key; Source kept)`);
-      throw sourceFailure(message);
+    try {
+      if (!nzbResponse.ok) {
+        const status = `${nzbResponse.status} ${nzbResponse.statusText}`.trim();
+        const message = `Failed to download NZB from ${indexerForLog}: ${status}`;
+        // Rate limit, server error or refused credentials: the indexer is unavailable to us,
+        // the Source is not bad (ADR 0004, #51). Any other 4xx (404, 410) means the link is gone.
+        if (nzbResponse.status === 429 || nzbResponse.status >= 500) throw new Error(`${message} (indexer unavailable, Source kept)`);
+        if (nzbResponse.status === 401 || nzbResponse.status === 403) throw new Error(`${message} (indexer refused us, check its API key; Source kept)`);
+        throw sourceFailure(message);
+      }
+      nzbContent = await nzbResponse.text();
+    } catch (err) {
+      if (stop?.aborted) throw stopped();
+      throw err;
+    } finally {
+      stop?.removeEventListener('abort', onStop);
     }
-
-    nzbContent = await nzbResponse.text();
     console.log(`${logPrefix}  \u2705 NZB downloaded (${nzbContent.length} bytes)`);
     freshlyDownloaded = true;
   }
@@ -105,9 +119,9 @@ export async function grabNzb(
  * The Walk's grab (ADR 0004, "The walk's grabs"): grabNzb, keeping the NZB for the check and the prepare. It sorts
  * its answers as grabNzb does: a Source failure (sourceFailure, isBadSource) for a link the indexer says is gone or
  * bad content, a plain error for an indexer that refuses or cannot be reached.
- * `searchExitIp` carries the proxy exit IP that was live when this candidate's search ran.
+ * `searchExitIp` carries the proxy exit IP that was live when this candidate's search ran; `stop` cuts the grab off.
  */
-export async function prefetchNzb(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string): Promise<void> {
+export async function prefetchNzb(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string, stop?: AbortSignal): Promise<void> {
   if (getCachedNzbContent(nzbUrl)) return;
-  cacheNzbContent(nzbUrl, await grabNzb(nzbUrl, title, undefined, logPrefix, indexerName, searchExitIp));
+  cacheNzbContent(nzbUrl, await grabNzb(nzbUrl, title, undefined, logPrefix, indexerName, searchExitIp, stop));
 }

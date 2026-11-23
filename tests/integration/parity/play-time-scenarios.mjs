@@ -103,6 +103,21 @@ async function bestDone(lines, id = '') {
   await until(() => lines.some(l => done.test(l)), `Best's run${id ? ` for ${id}` : ''}`);
 }
 
+/**
+ * A Walk ends when another title's list is asked for (GLOSSARY: Walk, #244): every check of the Sources tagged
+ * `prefix` that was under way had its connection closed, unanswered, before that title's search reached the indexer.
+ */
+function assertStoppedBeforeSearch(w, prefix, nextId) {
+  const search = w.indexer.searches.find(s => `tt${s.imdbid}` === nextId);
+  assert.ok(search, `${nextId} was searched`);
+  const asks = w.news.state.asks.filter(a => a.id.startsWith(prefix));
+  assert.ok(asks.length > 0, `${prefix} was being checked`);
+  for (const a of asks) {
+    assert.ok(a.closed !== undefined, `${a.id}: its check was stopped, not answered`);
+    assert.ok(a.closed <= search.at, `${a.id}: stopped ${a.closed - search.at} ms after ${nextId}'s search began, not before it`);
+  }
+}
+
 /** How many of a Source's articles the fake news server was asked about (it was checked). */
 const checked = (w, tag) => w.news.state.stats.filter(x => x.startsWith(`${tag}-s`)).length;
 
@@ -200,7 +215,8 @@ export const playTimeScenarios = [
   },
   {
     // Head start, one title at a time (#206): a list request for another title stops the unfinished check of the
-    // one before, so none of its Sources reaches AltMount; a press of its Best later still plays, checked then.
+    // one before as it arrives, before its own search (#244), so none of its Sources reaches AltMount; a press of
+    // its Best later still plays, checked then.
     id: 'a-newer-list-request-stops-the-head-start-before-it',
     async run(w) {
       const a = offerMovie(w, [{ tag: 'stop-a1' }, { tag: 'stop-a2' }]);
@@ -217,6 +233,7 @@ export const playTimeScenarios = [
           await bestDone(lines, a.id);
           const answered = w.news.state.asks.filter(x => x.id.startsWith('stop-a') && x.answered !== null);
           assert.equal(answered.length, 0, 'the first title\'s run ended mid-check, stopped');
+          assertStoppedBeforeSearch(w, 'stop-a', b.id);
           await bestDone(lines, b.id);
         });
         await new Promise(r => setTimeout(r, 1700)); // the first title's checks would have answered by now
@@ -275,8 +292,8 @@ export const playTimeScenarios = [
     },
   },
   {
-    // A press of Best makes its title's run a play: a list request for another title that comes while Best is
-    // still checking does not stop it (Stremio asks for the next episode's list during a play).
+    // A press of Best makes its title's run a play: a list request for another title that comes while the press
+    // still waits for its video does not stop its Walk (Stremio asks for the next episode's list during a play, #244).
     id: 'a-newer-list-request-does-not-stop-a-pressed-best',
     async run(w) {
       const a = offerMovie(w, [{ tag: 'claim-a' }]);
@@ -294,10 +311,77 @@ export const playTimeScenarios = [
         });
         assert.equal(r.status, 200, 'the pressed Best plays');
         assertBytes(r.body, a.sources[0].media, 'its Source, though another title\'s list came meanwhile');
+        const stopped = w.news.state.asks.filter(x => x.id.startsWith('claim-a') && x.closed !== undefined);
+        assert.equal(stopped.length, 0, 'the waiting press\'s checks ran on, none stopped');
         assert.equal(w.backend.submitsFor('claim-a'), 1);
         assert.equal(w.backend.submitsFor('claim-b'), 1, 'the newer title has its Head start too');
       } finally {
         w.news.slow('claim-a', 0);
+      }
+    },
+  },
+  {
+    // A Walk ends when another title's list is asked for (#244): once a press's video has arrived, its Walk's
+    // leftover checks (here of a lower Source) are stopped as the next title's list request arrives, before its
+    // search starts, so they don't compete with it for connections (#219: Night Moves into Upstream Color). The video
+    // already playing goes on being served.
+    id: 'a-newer-list-request-stops-a-played-walks-leftover-checks',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'left-a1' }, { tag: 'left-a2' }]);
+      const b = offerMovie(w, [{ tag: 'left-b1' }]);
+      w.news.slow('left-a2', 4000);
+      try {
+        await withLogs(async lines => {
+          const streams = await w.list('movie', a.id);
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, a.sources[0].media, 'Best plays the top Source');
+          assert.ok(w.news.state.asks.some(x => x.id.startsWith('left-a2') && x.answered === null), 'the lower Source\'s check is still under way');
+          await w.list('movie', b.id);
+          assertStoppedBeforeSearch(w, 'left-a2', b.id);
+          const seek = await play(streams[0].url, 'bytes=10-29');
+          assert.equal(seek.status, 206, 'the video goes on being served after the next title\'s list request');
+          assertBytes(seek.body, a.sources[0].media.subarray(10, 30), 'the same video');
+          await bestDone(lines, b.id);
+          // A stopped check answered nothing: no play_check line, so the brain tools don't count it in the next visit's wait.
+          const steps = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+          assert.equal(steps.filter(s => s.step === 'play_check' && s.title === a.sources[1].title).length, 0, 'no play_check line for the stopped check');
+        });
+        assert.equal(w.backend.submitsFor('left-a2'), 0, 'the lower Source never reaches AltMount');
+      } finally {
+        w.news.slow('left-a2', 0);
+      }
+    },
+  },
+  {
+    // The same for a grab (#244, #239 story 8): a played Walk's grab of a lower Source still waiting for the indexer
+    // is cut off as the next title's list request arrives, before its search starts. The stop is not a failed grab:
+    // no "Grab failed" line, and the Source is not dead (A's list still offers it).
+    id: 'a-newer-list-request-cuts-off-a-played-walks-leftover-grab',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'leftgrab-a1' }, { tag: 'leftgrab-a2' }]);
+      const b = offerMovie(w, [{ tag: 'leftgrab-b1' }]);
+      w.backend.slowGrabs('leftgrab-a2', 4000);
+      try {
+        await withLogs(async lines => {
+          const streams = await w.list('movie', a.id);
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, a.sources[0].media, 'Best plays the top Source');
+          const grab = () => w.backend.grabs.find(g => g.tag === 'leftgrab-a2');
+          assert.ok(grab() && grab().answered === null, 'the lower Source\'s grab is still waiting for the indexer');
+          await w.list('movie', b.id);
+          const search = w.indexer.searches.find(s => `tt${s.imdbid}` === b.id);
+          assert.ok(search, `${b.id} was searched`);
+          assert.ok(grab().closed !== undefined, 'the grab was cut off, not answered');
+          assert.ok(grab().closed <= search.at, `the grab was cut off ${grab().closed - search.at} ms after the next title's search began, not before it`);
+          await bestDone(lines, b.id);
+          assert.ok(!lines.some(l => l.includes('Grab failed') && l.includes(a.sources[1].title)), 'a stopped grab is not a failed grab');
+        });
+        const titles = (await w.list('movie', a.id)).filter(s => !isBest(s)).map(entryTitle);
+        assert.ok(titles.includes(a.sources[1].title), 'the cut-off Source is not dead');
+      } finally {
+        w.backend.slowGrabs('leftgrab-a2', 0);
       }
     },
   },
