@@ -1084,6 +1084,35 @@ export const playTimeScenarios = [
     run: w => assertRefusingIndexerSkipped(w, w.refusing, 'refused'),
   },
   {
+    // The Source memory (#247) through the real routes, for a dated episode (review rule 4): The Witcher S01E01, aired
+    // 2019-12-20 (TVDB), so its play context carries the aired date and the file pattern AltMount is sent names it.
+    // A press of Best walks and remembers the ready Source; a click on the same Source's list entry then recalls it.
+    // AltMount gets the Source once: the second play's video came from the memory, not from a new upload that
+    // AltMount answered from its own library.
+    id: 'a-dated-episode-ready-from-best-is-recalled-by-the-next-play',
+    run: w => withTvdb(w, async () => {
+      const show = `tt${nextImdb++}`;
+      w.tvdb.addShow(show, 'The Witcher', [1, 2, 3].map(episode => ({ season: 1, episode, aired: '2019-12-20' }))); // all out that day
+      const s = { tag: 'witcher-e01', title: 'The.Witcher.S01E01.2160p.NF.WEB-DL.H265-GRP', media: mediaFor('witcher-e01'), size: 8 * GB };
+      s.link = w.backend.addSeries(s.tag, s.title, [{ season: 1, episode: 1, media: s.media }]);
+      w.indexer.offer(show, [s]);
+      const { lines } = await withLogs(async () => {
+        const streams = await w.list('series', `${show}:1:1`);
+        assert.equal(entryTitle(streams[1]), s.title);
+        const best = await play(streams[0].url);
+        assert.equal(best.status, 200);
+        assertBytes(best.body, s.media, 'Best plays S01E01');
+        assert.equal(w.backend.submitsFor(s.tag), 1, 'Best\'s Walk handed the Source to AltMount');
+        const entry = await play(streams[1].url);
+        assert.equal(entry.status, 200);
+        assertBytes(entry.body, s.media, 'the list entry plays S01E01');
+      });
+      assert.ok(lines.some(l => /TVDB episode count: .*\[aired 2019-12-20\]/.test(l)), 'the play context has S01E01\'s aired date');
+      assert.ok(lines.some(l => l.includes(`Stream ready (AltMount, reused): ${s.title}`)), 'the list entry\'s prepare recalled the ready Source');
+      assert.equal(w.backend.submitsFor(s.tag), 1, 'AltMount got the Source once: the second play came from the Source memory');
+    }),
+  },
+  {
     // ADR 0004, "The walk's grabs": an indexer that answers a grab with 200 and a Newznab error payload is sorted by
     // the payload's code, as an HTTP answer is by its status. Code 500 (its request limit) is a refusal, as a 429 is:
     // asked once, skipped for the rest of the Walk, none of its Sources dead.
