@@ -444,28 +444,27 @@ export const playTimeScenarios = [
     },
   },
   {
-    // Best checks 3 Sources at a time, from the top down, until one is healthy or the list runs out, whatever
-    // the attempts cap says (owner, 2026-11-20); 3 is candidateCount's default.
+    // Best checks 3 Sources at a time, from the top down, until one is healthy or the list runs out (owner,
+    // 2026-11-20; the attempts cap setting was deleted in #228, only the Walk's 30 grabs bound it); 3 is
+    // candidateCount's default.
     id: 'best-checks-3-at-a-time-with-no-cap',
     async run(w) {
-      await withSettings(w, { maxAttempts: 2 }, async () => {
-        const tags = [...Array(7).keys()].map(i => `cap-dead-${i + 1}`).concat(['cap-ok-8']);
-        const { id, sources } = offerMovie(w, tags.map(tag => ({ tag, kind: tag === 'cap-ok-8' ? 'healthy' : 'dead' })));
-        w.news.slow('cap-', 150);
-        try {
-          const streams = await w.list('movie', id);
-          const r = await play(streams[0].url);
-          assert.equal(r.status, 200, 'Best plays');
-          assertBytes(r.body, sources[7].media, 'Best plays the 8th Source: no cap');
-          const times = checkTimes(w.news, tags);
-          assert.equal(mostAtOnce(times), 3, `3 Sources are checked at a time (${JSON.stringify(times)})`);
-          const [a, b, c] = times;
-          assert.ok(Math.max(a.from, b.from, c.from) < Math.min(a.to, b.to, c.to), 'the first 3 are checked together');
-          assert.ok(times.slice(3).every(t => t.from >= Math.min(a.to, b.to, c.to)), 'the 4th starts once one of the first 3 is done');
-        } finally {
-          w.news.slow('cap-', 0);
-        }
-      });
+      const tags = [...Array(7).keys()].map(i => `cap-dead-${i + 1}`).concat(['cap-ok-8']);
+      const { id, sources } = offerMovie(w, tags.map(tag => ({ tag, kind: tag === 'cap-ok-8' ? 'healthy' : 'dead' })));
+      w.news.slow('cap-', 150);
+      try {
+        const streams = await w.list('movie', id);
+        const r = await play(streams[0].url);
+        assert.equal(r.status, 200, 'Best plays');
+        assertBytes(r.body, sources[7].media, 'Best plays the 8th Source: no cap');
+        const times = checkTimes(w.news, tags);
+        assert.equal(mostAtOnce(times), 3, `3 Sources are checked at a time (${JSON.stringify(times)})`);
+        const [a, b, c] = times;
+        assert.ok(Math.max(a.from, b.from, c.from) < Math.min(a.to, b.to, c.to), 'the first 3 are checked together');
+        assert.ok(times.slice(3).every(t => t.from >= Math.min(a.to, b.to, c.to)), 'the 4th starts once one of the first 3 is done');
+      } finally {
+        w.news.slow('cap-', 0);
+      }
     },
   },
   {

@@ -99,7 +99,6 @@ export interface ConfigData {
     preferenceMode?: 'priority' | 'speed';
     archiveInspection?: boolean;
     sampleCount?: 3 | 7;
-    maxAttempts?: number;
     priorityMoviesTimeoutSeconds?: number;
     priorityTvTimeoutSeconds?: number;
     prioritySeasonPackTimeoutSeconds?: number;
@@ -188,7 +187,6 @@ const ENV_OVERRIDES: readonly string[] = [
   'ULTIMATE_FALLBACK_ENABLED', 'ULTIMATE_FALLBACK_CANDIDATE_COUNT', 'ULTIMATE_FALLBACK_PREFERENCE_MODE',
   'ULTIMATE_FALLBACK_SAMPLE_COUNT',
   'ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', 'ULTIMATE_FALLBACK_USER_PICK_FALLBACK',
-  'ULTIMATE_FALLBACK_MAX_ATTEMPTS',
   'ULTIMATE_FALLBACK_PRIORITY_MOVIES_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_TV_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_SEASON_PACK_TIMEOUT',
   'ULTIMATE_FALLBACK_SPEED_MOVIES_TIMEOUT', 'ULTIMATE_FALLBACK_SPEED_TV_TIMEOUT', 'ULTIMATE_FALLBACK_SPEED_SEASON_PACK_TIMEOUT',
 ] as const;

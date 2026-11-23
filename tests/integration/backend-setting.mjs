@@ -40,8 +40,8 @@ try {
   const OLD_LIST_TIME = { enabled: true, mode: 'full', archiveInspection: true, sampleCount: 7, nzbsToInspect: 6, inspectionMethod: 'smart',
     smartBatchSize: 3, smartAdditionalRuns: 1, smartMinHealthy: 1, hideBlocked: true, maxConnections: 12, healthCheckIndexers: { Ninja: false } };
   const healthChecks = { ...OLD_LIST_TIME, providers: [provider], maxTotalConnections: 9, verifyTlsCertificates: false, autoQueueMode: 'top' };
-  // Its fallback settings: the old default, Best on a press (before #206), and backups (before #192).
-  const ultimateFallback = { enabled: true, candidateCount: 3, whenToResolve: 'on-tile-selection', desiredBackups: 1, backupProcessingLimit: 2 };
+  // Its fallback settings: the old default, Best on a press (before #206), backups (before #192) and the list entry's attempts cap (before #228).
+  const ultimateFallback = { enabled: true, candidateCount: 3, whenToResolve: 'on-tile-selection', desiredBackups: 1, backupProcessingLimit: 2, maxAttempts: 4 };
   const old = { indexers: [], cacheEnabled: true, cacheTTL: 9000, indexManager: 'newznab',
     altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY, healthChecks, ultimateFallback,
     syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, enabledForHealthCheck: false, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] }] };
@@ -113,26 +113,26 @@ try {
     assert.equal(json.healthChecks.maxTotalConnections, 9);
   });
 
-  await check('an old config on Best-on-a-press gets the Head start, and loses the backup settings (#206, #192)', async () => {
+  await check('an old config on Best-on-a-press gets the Head start, and loses the backup settings and the attempts cap (#206, #192, #228)', async () => {
     const d = diskConfig().ultimateFallback;
     assert.equal(d.whenToResolve, 'on-results', 'on disk');
-    for (const k of ['desiredBackups', 'backupProcessingLimit']) assert.equal(k in d, false, `${k} on disk`);
+    for (const k of ['desiredBackups', 'backupProcessingLimit', 'maxAttempts']) assert.equal(k in d, false, `${k} on disk`);
     assert.equal(d.candidateCount, 3); assert.equal(d.enabled, true);
     const { json } = await call('GET', '/api/config');
     assert.equal(json.ultimateFallback.whenToResolve, 'on-results', 'in the config the UI reads');
-    for (const k of ['desiredBackups', 'backupProcessingLimit']) assert.equal(k in json.ultimateFallback, false, `${k} in the config the UI reads`);
+    for (const k of ['desiredBackups', 'backupProcessingLimit', 'maxAttempts']) assert.equal(k in json.ultimateFallback, false, `${k} in the config the UI reads`);
   });
 
-  await check('a deleted setting sent by an old page is not saved (#191, #226, #192)', async () => {
+  await check('a deleted setting sent by an old page is not saved (#191, #226, #192, #228)', async () => {
     const put = await call('PUT', '/api/settings', {
       healthChecks: { providers: [provider], maxTotalConnections: 9, inspectionMethod: 'fixed', nzbsToInspect: 4, hideBlocked: false, autoQueueMode: 'all' },
-      ultimateFallback: { enabled: true, candidateCount: 3, desiredBackups: 2, backupProcessingLimit: 1 },
+      ultimateFallback: { enabled: true, candidateCount: 3, desiredBackups: 2, backupProcessingLimit: 1, maxAttempts: 5 },
     });
     assert.equal(put.status, 200);
     const d = diskConfig();
     for (const k of ['inspectionMethod', 'nzbsToInspect', 'hideBlocked', 'autoQueueMode']) assert.equal(d.healthChecks[k], undefined, k);
     assert.equal(d.healthChecks.maxTotalConnections, 9);
-    for (const k of ['desiredBackups', 'backupProcessingLimit']) assert.equal(d.ultimateFallback[k], undefined, k);
+    for (const k of ['desiredBackups', 'backupProcessingLimit', 'maxAttempts']) assert.equal(d.ultimateFallback[k], undefined, k);
     assert.equal(d.ultimateFallback.candidateCount, 3);
   });
 

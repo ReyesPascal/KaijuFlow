@@ -11,12 +11,14 @@ const DELETED: Record<string, string[]> = {
   healthChecks: ['enabled', 'mode', 'archiveInspection', 'sampleCount', 'nzbsToInspect', 'inspectionMethod',
     'smartBatchSize', 'smartAdditionalRuns', 'smartMinHealthy', 'hideBlocked', 'maxConnections', 'healthCheckIndexers',
     'autoQueueMode'],
-  // Backups (#192): only the Source being played is prepared, the next only when it fails.
-  ultimateFallback: ['desiredBackups', 'backupProcessingLimit'],
+  // Backups (#192): only the Source being played is prepared, the next only when it fails. The list entry's attempts
+  // cap (#228): a failed list entry walks on through the whole list, as the cap's default did.
+  ultimateFallback: ['desiredBackups', 'backupProcessingLimit', 'maxAttempts'],
 };
 
 /** Env vars of the deleted settings: set, they are ignored (startup says so). */
-export const DELETED_ENV = ['HEALTH_CHECK_ENABLED', 'ULTIMATE_FALLBACK_DESIRED_BACKUPS', 'ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT'];
+export const DELETED_ENV = ['HEALTH_CHECK_ENABLED', 'ULTIMATE_FALLBACK_DESIRED_BACKUPS', 'ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT',
+  'ULTIMATE_FALLBACK_MAX_ATTEMPTS'];
 
 /** Drop every deleted setting from a config (or from the sections a save sends). True when anything changed. */
 export function dropDeletedSettings(c: Record<string, unknown>): boolean {

@@ -451,7 +451,6 @@ export async function handleStream(
   }
 
   const fallbackEnabled = isUltimateFallbackActive();
-  const maxFallbacksSetting = globalConfig.ultimateFallback?.maxAttempts ?? 0; // 0 = unlimited (try all)
 
   // Check whether this request should produce detailed logs.
   // During fallback processing, a single stream title may generate multiple
@@ -478,12 +477,7 @@ export async function handleStream(
         if (nzbUrl && title) candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp });
         candidates.push(...group.candidates);
       }
-      if (verbose) {
-        const totalToTry = maxFallbacksSetting === 0
-          ? candidates.length
-          : Math.min(candidates.length, 1 + maxFallbacksSetting);
-        console.log(`🔄 Fallback group loaded: ${candidates.length} candidates (trying up to ${totalToTry})`);
-      }
+      if (verbose) console.log(`🔄 Fallback group loaded: ${candidates.length} candidates`);
 
       // If episode info wasn't in the request URL (individual episode stream),
       // use the group's stored episode so season pack fallbacks select the right file.
@@ -500,9 +494,8 @@ export async function handleStream(
     }
   }
 
-  const maxCandidates = !fallbackEnabled ? 1
-    : maxFallbacksSetting === 0 ? candidates.length
-    : Math.min(candidates.length, 1 + maxFallbacksSetting);
+  // A failed list entry walks on through the whole list (#190; its attempts cap was deleted in #228).
+  const maxCandidates = fallbackEnabled ? candidates.length : 1;
   const streamCacheMap = getStreamCache();
   // rc/ci are read first from the in-`t` envelope (so they survive iOS handoff
   // truncation). safeNum guards against NaN leaking from a malformed in-`t`
