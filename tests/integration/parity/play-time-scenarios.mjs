@@ -329,7 +329,7 @@ export const playTimeScenarios = [
       const a = offerMovie(w, [{ tag: 'stopimp-a1', kind: 'never-ready' }, { tag: 'stopimp-a2' }]);
       const b = offerMovie(w, [{ tag: 'stopimp-b1' }]);
       const before = w.backend.submitted.length;
-      const { result: streamsA } = await withLogs(async lines => {
+      const { result: streamsA, lines } = await withLogs(async lines => {
         const out = await w.list('movie', a.id);
         await until(() => w.backend.submitsFor('stopimp-a1') === 1, 'the first title\'s import');
         await w.list('movie', b.id);
@@ -337,6 +337,7 @@ export const playTimeScenarios = [
         await bestDone(lines, b.id);
         return out;
       });
+      assert.ok(lines.some(l => /\b0 dead\b/.test(l)), 'the stopped Walk reports 0 dead Sources');
       await new Promise(r => setTimeout(r, 600)); // the first title's import has failed by now (AltMount answers 408 after 300 ms)
       assert.equal(w.backend.submitsFor('stopimp-a2'), 0, 'the first title\'s next Source never reaches AltMount');
       assert.deepEqual(w.backend.submitted.slice(before), ['stopimp-a1', 'stopimp-b1'], 'the import under way, then only the newest title\'s');
@@ -928,15 +929,21 @@ export const playTimeScenarios = [
       const { id, sources } = offerMovie(w, [{ tag: 'noprov-a' }, { tag: 'noprov-b' }]);
       const before = w.backend.submitted.length;
       const saved = w.configData.healthChecks;
+      let lines;
       // Before the list: its Head start has no provider either.
       w.configData.healthChecks = { ...saved, providers: saved.providers.map(p => ({ ...p, enabled: false })) };
       try {
-        const streams = await w.list('movie', id);
-        assertFailureVideo(await play(streams[0].url));
-        assertFailureVideo(await play(streams[1].url));
+        const { result: streams, lines: captured } = await withLogs(async () => {
+          const streams = await w.list('movie', id);
+          assertFailureVideo(await play(streams[0].url));
+          assertFailureVideo(await play(streams[1].url));
+          return streams;
+        });
+        lines = captured;
       } finally {
         w.configData.healthChecks = saved;
       }
+      assert.ok(lines.some(l => /\b2 dead\b/.test(l)), 'the Walk reports 2 dead Sources when no provider can check them');
       assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
       const again = await w.list('movie', id);
       const r = await play(again[0].url);
@@ -1051,12 +1058,13 @@ export const playTimeScenarios = [
       const { id, sources } = offerMovie(w, specs);
       const before = w.backend.submitted.length;
       const streams = await w.list('movie', id);
-      const r = await play(streams[0].url);
+      const { result: r, lines } = await withLogs(() => play(streams[0].url));
       assert.equal(r.status, 200, 'Best plays');
       assertBytes(r.body, sources[5].media, 'Best plays the first Healthy Source, below the gone ones');
       assert.deepEqual(w.backend.submitted.slice(before), ['below-ok-6'], 'only the played Source reaches AltMount');
       const gone = w.backend.grabs.filter(g => g.tag.startsWith('below-gone-')).map(g => g.tag);
       assert.deepEqual([...gone].sort(), specs.slice(0, 5).map(s => s.tag).sort(), 'each gone Source grabbed once');
+      assert.ok(lines.some(l => /\b5 dead\b/.test(l)), 'the Walk reports the five failed grabs');
     },
   },
   {
@@ -1193,9 +1201,15 @@ export const playTimeScenarios = [
   {
     // ADR 0004, "The walk's grabs": an indexer that answers a grab with 200 and a Newznab error payload is sorted by
     // the payload's code, as an HTTP answer is by its status. Code 500 (its request limit) is a refusal, as a 429 is:
-    // asked once, skipped for the rest of the Walk, none of its Sources dead.
+    // asked once at a time, skipped for the rest of the Walk, none of its Sources dead.
     id: 'an-indexer-answering-an-error-payload-is-asked-once-and-skipped',
     run: w => assertRefusingIndexerSkipped(w, w.limited, 'limited'),
+  },
+  {
+    // A refusal does not cancel the other grabs already in flight: with 3 Sources at a time, the indexer is asked
+    // 3 times, then skipped for the rest of this Walk.
+    id: 'a-refusing-indexer-at-3-at-a-time-is-asked-3-times-and-skipped',
+    run: w => assertRefusingIndexerSkipped(w, w.refusing, 'refused-three', 3),
   },
   {
     // ADR 0004, "The walk's grabs" (#243): a link the indexer says is gone (404) is a Source failure. The Walk marks
@@ -1497,11 +1511,12 @@ async function askOnce(url, timeoutMs = 30000) {
 
 /**
  * A press of Best on a title whose top four Sources come from an indexer that refuses every grab (`refuser`, one of
- * the play-time world's), then a Healthy Source of the suite's indexer. Best walks one Source at a time, so "once" is
- * exact: the refuser is asked once, the skip is logged once, Best plays the Healthy Source and no refused Source is dead.
+ * the play-time world's), then a Healthy Source of the suite's indexer. Best walks one Source at a time by default.
+ * With a larger candidateCount, already in-flight grabs still reach the refuser, so the bound is one request per slot.
+ * The skip is logged once, Best plays Healthy, and no refused Source is dead.
  */
-function assertRefusingIndexerSkipped(w, refuser, prefix) {
-  return withSettings(w, { candidateCount: 1 }, () => withIndexer(w, refuser.entry, async () => {
+function assertRefusingIndexerSkipped(w, refuser, prefix, candidateCount = 1) {
+  return withSettings(w, { candidateCount }, () => withIndexer(w, refuser.entry, async () => {
     const id = `tt${nextImdb++}`;
     const refused = [1, 2, 3, 4].map(i => ({ tag: `${prefix}-${i}`, title: `KaijuFlow.PlayTime.${prefix}-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
     for (const s of refused) s.link = refuser.nzbLink(s.tag);
@@ -1517,7 +1532,8 @@ function assertRefusingIndexerSkipped(w, refuser, prefix) {
     });
     assert.equal(r.status, 200, 'Best plays');
     assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
-    assert.deepEqual(refuser.grabbedTags.slice(before), [`${prefix}-1`], 'the refusing indexer is asked once');
+    assert.deepEqual(refuser.grabbedTags.slice(before), refused.slice(0, candidateCount).map(s => s.tag),
+      `the refusing indexer is asked at most ${candidateCount} time${candidateCount === 1 ? '' : 's'}, once per in-flight slot`);
     const skip = new RegExp(`${refuser.entry.name}.*skipped for the rest of the Walk`);
     assert.equal(lines.filter(l => skip.test(l)).length, 1, 'the skip is logged once');
     const again = await w.list('movie', id);
