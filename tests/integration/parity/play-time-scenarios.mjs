@@ -1309,6 +1309,33 @@ export const playTimeScenarios = [
  */
 export const keepAliveScenarios = [
   {
+    // The first-Source switch (#192) left the first Source preparing, and the next one fails (AltMount rejects it):
+    // the play goes back to the first and waits for it in the player's window, instead of the failure video (Codex's
+    // review of #239). No Head start, so only the list entry prepares.
+    id: 'after-the-25-s-switch-a-failed-next-source-goes-back-to-the-first',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'back-a' }, { tag: 'back-b', kind: 'rejected' }]);
+      w.backend.slowImports('back-a', 32000);
+      try {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 60, async () => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          const asked = Date.now();
+          const r = await play(entry.url, undefined, 50000);
+          const took = Date.now() - asked;
+          assert.equal(r.status, 200);
+          assertBytes(r.body, sources[0].media, 'the first Source plays, not the failure video');
+          // Its import takes 32 s; a self-redirect would have come only at 55 s.
+          assert.ok(took >= 31000 && took < 50000, `it played once the first Source was ready (${took} ms), in the first request`);
+          assert.equal(w.backend.submitsFor('back-b'), 1, 'the next Source was tried');
+          assert.equal(w.backend.submitsFor('back-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
+        }));
+      } finally {
+        w.backend.slowImports('back-a', 0);
+      }
+    },
+  },
+  {
     // Keep-alive (#248): one rule for the time left. A request still waiting near the end of the player's 60 s
     // window (at 55 s, 5 s to spare) answers with a self-redirect, whatever entry it plays: here a list entry whose
     // one Source is still preparing, which held the request until its video came. No Head start: its Walk gives

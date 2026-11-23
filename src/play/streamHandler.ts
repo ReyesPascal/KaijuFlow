@@ -681,6 +681,29 @@ export async function handleStream(
     for (let i = candidateStart; i < maxCandidates; i++) candidateOrder.push(i);
   }
 
+  /** Serve a Source's video, and remember the delivery for Stremio's next requests of the play (dedup). */
+  const deliver = async (candidate: FallbackCandidate, streamData: StreamData): Promise<void> => {
+    // Cache delivery for Stremio request dedup (10 min TTL) — populated BEFORE
+    // delivery so concurrent probes from Stremio land on the dedup path instead
+    // of triggering another prep.
+    // Key on candidates[0] (the URL the client requested) so subsequent client
+    // requests for the same click hit dedup, even when fallback-chain walked
+    // past the click and resolved a later candidate.
+    const dedupCandidate = candidates[0] ?? candidate;
+    recentDeliveries.set(dedupKey(backend, dedupCandidate, play), { streamData, timestamp: Date.now(), played: candidate });
+    // Also key on the resolved candidate's URL so direct second-clicks of the
+    // resolved tile (different click URL) also dedup.
+    if (candidate !== dedupCandidate) {
+      recentDeliveries.set(dedupKey(backend, candidate, play), { streamData, timestamp: Date.now(), played: candidate });
+    }
+    logPlayedOnce(req, candidate);
+    await serveVideo(req, res, streamData, proxyFn);
+  };
+
+  // The first Source the first-Source switch left preparing (#192), to go back to if every later one fails.
+  let warming: number | undefined;
+  let circuitAborted = false;
+
   for (const i of candidateOrder) {
     // Stop processing if the client disconnected (user backed out)
     if (req.socket.destroyed) {
@@ -729,6 +752,7 @@ export async function handleStream(
         }
         // Not a failure: leave it warming, don't mark it dead, try the next.
         console.log(`⏩ Still preparing after ${Math.round(FIRST_SOURCE_SWITCH_MS / 1000)}s, trying next source (kept warming) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
+        warming = i;
         continue;
       }
       const streamData = waited.value;
@@ -737,28 +761,7 @@ export async function handleStream(
         console.log(`👑 Backup stream loaded [${i + 1}/${maxCandidates}]: ${candidate.title} [${candidate.indexerName}]`);
       }
 
-      // Check again after await — client may have disconnected while waiting
-      if (req.socket.destroyed) {
-        console.log(`🔌 Client disconnected — aborting redirect for: ${candidate.title}`);
-        return;
-      }
-
-      // Cache delivery for Stremio request dedup (10 min TTL) — populated BEFORE
-      // delivery so concurrent probes from Stremio land on the dedup path instead
-      // of triggering another prep.
-      // Key on candidates[0] (the URL the client requested) so subsequent client
-      // requests for the same click hit dedup, even when fallback-chain walked
-      // past the click and resolved a later candidate.
-      const dedupCandidate = candidates[0] ?? candidate;
-      recentDeliveries.set(dedupKey(backend, dedupCandidate, play), { streamData, timestamp: Date.now(), played: candidate });
-      // Also key on the resolved candidate's URL so direct second-clicks of the
-      // resolved tile (different click URL) also dedup.
-      if (candidate !== dedupCandidate) {
-        recentDeliveries.set(dedupKey(backend, candidate, play), { streamData, timestamp: Date.now(), played: candidate });
-      }
-
-      logPlayedOnce(req, candidate);
-      await serveVideo(req, res, streamData, proxyFn);
+      await deliver(candidate, streamData);
       return;
 
     } catch (error) {
@@ -768,6 +771,7 @@ export async function handleStream(
       // natural fall-through serves the failure video.
       if (error instanceof ProxyCircuitAbortError) {
         console.error(`🔒 🚫 Proxy circuit aborted mid-stream, stopping candidate walk. ${error.message}`);
+        circuitAborted = true;
         break;
       }
       if (isClientDisconnect(error)) {
@@ -805,6 +809,30 @@ export async function handleStream(
         console.log(`👑 User-pick failed — redirecting to UF lobby (rc=${redirectCount + 1})`);
         res.redirect(302, lobbyUrl.href);
         return;
+      }
+    }
+  }
+
+  // Every Source after the first-Source switch failed, while the first is still preparing (or became ready
+  // meanwhile): go back to it instead of the failure video. Wait for it in this request's time, else a
+  // self-redirect resumes at it.
+  if (warming !== undefined && !circuitAborted && !res.headersSent && !req.socket.destroyed) {
+    const first = candidates[warming];
+    if (isPreparing(first, play) || recall(first, play).ready) {
+      console.log(`↩️ Every later Source failed: back to the first Source, still preparing [${warming + 1}/${maxCandidates}]: ${first.title}`);
+      try {
+        const waited = await keep.wait(getOrCreateStream(first, play, { verbose }));
+        if (!waited.done) {
+          if (!req.socket.destroyed) keep.redirect(res, warming);
+          return;
+        }
+        if (req.socket.destroyed) return;
+        await deliver(first, waited.value);
+        return;
+      } catch (error) {
+        if (isClientDisconnect(error)) return;
+        console.error(`❌ Stream failed [${warming + 1}/${maxCandidates}] ${first.title}: ${(error as Error).message}`);
+        logPlayFailed(first.title, first.indexerName, error);
       }
     }
   }
