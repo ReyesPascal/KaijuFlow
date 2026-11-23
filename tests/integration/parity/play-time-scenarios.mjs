@@ -478,6 +478,25 @@ export const playTimeScenarios = [
     },
   },
   {
+    // One `played` line per press (#242), not per request: the player's range probe and seek of the same entry within
+    // 15 s write no second line, for a press of Best and for a list entry. The brain tools count one play per line.
+    id: 'a-range-probe-or-seek-of-the-same-entry-writes-no-second-played-line',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'once-a' }, { tag: 'once-b' }]);
+      const { lines } = await withLogs(async () => {
+        const streams = await w.list('movie', id);
+        const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[1].title);
+        for (const url of [streams[0].url, entry.url]) {
+          assert.equal((await play(url)).status, 200);
+          assert.equal((await play(url, 'bytes=10-')).status, 206, 'a range probe');
+          assert.equal((await play(url, 'bytes=20-30')).status, 206, 'a seek');
+        }
+      });
+      const played = stepsOf(lines).filter(s => s.step === 'played').map(s => s.title);
+      assert.deepEqual(played, [sources[0].title, sources[1].title], 'one played line for Best\'s press, one for the list entry');
+    },
+  },
+  {
     // A refusal during a Head start (#206): AltMount refuses the first healthy Source before the press, so the
     // Head start prepares the next one, and the press plays it with no new import. The Head start writes a play_failed
     // line for the refused Source, so the brain tools name it the top pick and count a fallback, as for a press-started
