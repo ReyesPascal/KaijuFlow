@@ -15,16 +15,6 @@ export interface StreamData {
   sourceTitle?: string;
 }
 
-export type CacheStatus = 'pending' | 'ready' | 'failed';
-
-export interface CacheEntry {
-  status: CacheStatus;
-  promise?: Promise<StreamData>;
-  data?: StreamData;
-  error?: Error;
-  expiresAt: number;
-}
-
 export interface FallbackCandidate {
   nzbUrl: string;
   title: string;

@@ -12,7 +12,8 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
-import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
+import { getOrCreateStream, isPreparing, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, type PlaySource } from './streamCache.js';
+import { recall, keyOf } from './sourceMemory.js';
 import { logPlayed, logPlayFailed } from '../utils/stepTiming.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, isUltimateFallbackActive } from './utils.js';
@@ -29,10 +30,7 @@ const pipelineAsync = promisify(pipeline);
 
 // Register prepareStream into the cache to break the circular import
 // (streamCache needs to call prepareStream, but importing it directly would create a cycle)
-setPrepareFn(
-  (nzbUrl, title, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp) =>
-    prepareStream(nzbUrl, title, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp)
-);
+setPrepareFn(prepareStream);
 
 // ============================================================================
 // Streaming Log Throttle
@@ -196,19 +194,13 @@ function getAttemptBudgetMs(_contentType?: string, _isSeasonPack?: boolean): num
  * 2. Hand the Source to the Backend and wait for its video
  * 3. Probe the first byte
  */
-export async function prepareStream(
-  nzbUrl: string,
-  title: string,
-  episodePattern?: string,
-  contentType?: string,
-  episodesInSeason?: number,
-  isSeasonPack?: boolean,
-  logPrefix = '',
-  indexerName?: string,
-  searchExitIp?: string,
-): Promise<StreamData> {
+export async function prepareStream(playSource: PlaySource, play?: PlayContext, logPrefix = ''): Promise<StreamData> {
+  const { nzbUrl, title, isSeasonPack, indexerName, searchExitIp } = playSource;
+  const contentType = play?.type || undefined;
+  // The Backend is sent the file pattern, which for a daily show also finds the file named by its aired date.
+  const episodePattern = episodeOf(play).filePattern;
   const backend = getActiveBackend();
-  const source: BackendSource = { nzbUrl, title, contentType, episodePattern, episodesInSeason, isSeasonPack, indexerName, searchExitIp };
+  const source: BackendSource = { nzbUrl, title, contentType, episodePattern, episodesInSeason: play?.episodesInSeason, isSeasonPack, indexerName, searchExitIp };
   const budgetStart = Date.now();
 
   console.log(`\n${logPrefix}\u{1F3AC} Preparing stream (${backend.label}): ${title}${episodePattern ? ` (selecting ${episodePattern})` : ''} [${contentType || 'unknown'}] \u23F1\uFE0F no limit`);
@@ -228,9 +220,9 @@ export async function prepareStream(
     }
   }
 
-  // Reuse what the Backend already made for the Source (ready cache) when it is still there.
+  // Reuse what the Backend already made for the Source (the Source memory) when it is still there.
   // The probe is the freshness check here (stillPrepared would send the same request).
-  const ready = findReadyStream(nzbUrl, title, episodePattern);
+  const { ready } = recall(playSource, play);
   if (ready && !isVideoPathBroken(ready.videoPath)) {
     try {
       await backend.probe(ready, { logPrefix, title, source: indexerName });
@@ -340,9 +332,9 @@ async function sendFailureVideo(req: Request, res: ExpressResponse): Promise<voi
 // Express Handler
 // ============================================================================
 
-/** Key for Stremio request dedup: Backend + Source + episode pattern. */
-function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }, pattern?: string): string {
-  return `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (pattern ? `:${pattern}` : '');
+/** Key for Stremio request dedup: the Backend, and the Source as the play asks for it (the Source memory's key). */
+function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }, play?: PlayContext): string {
+  return `${backend.id}|${keyOf(candidate, play)}`;
 }
 
 /** Delivery method for the first response of a Stream: the streaming-method setting. */
@@ -436,8 +428,6 @@ export async function handleStream(
 
   // The episode this play is for (e.g. "S02E05"), and for a daily show the file named by its aired date: the
   // file picker in a season pack matches either.
-  const { episodePattern: cachePattern, filePattern } = episodeOf(play);
-  const episodesInSeason = play?.episodesInSeason;
   const isSeasonPackRequest = (tPackSp ?? req.query.sp) === '1';
 
   // Build the list of candidates to try (primary first, then fallbacks).
@@ -483,7 +473,6 @@ export async function handleStream(
 
   // A failed list entry walks on through the whole list (#190; its attempts cap was deleted in #228).
   const maxCandidates = fallbackEnabled ? candidates.length : 1;
-  const streamCacheMap = getStreamCache();
   // rc/ci are read first from the in-`t` envelope (so they survive iOS handoff
   // truncation). safeNum guards against NaN leaking from a malformed in-`t`
   // value (parseTilePayload drops non-numbers, but defense-in-depth here).
@@ -496,7 +485,7 @@ export async function handleStream(
   if (redirectCount > 0 || candidateStart > 0) {
     console.log(`📦 Decoded rc=${redirectCount} ci=${candidateStart} from t-envelope`);
   }
-  // Evict expired entries once before the loop so isDeadNzb() trusts existence
+  // Evict expired entries once before the loop
   cleanupExpiredCache();
   cleanupRecentDeliveries();
 
@@ -509,7 +498,7 @@ export async function handleStream(
   const isFreshRequest = candidateStart === 0;
   if (isFreshRequest && candidates.length > 0 && !isUfTileRequest) {
     {
-      const key = dedupKey(backend, candidates[0], cachePattern);
+      const key = dedupKey(backend, candidates[0], play);
       const cached = recentDeliveries.get(key);
       if (cached
         && Date.now() - cached.timestamp < DEDUP_CACHE_TTL_MS
@@ -788,8 +777,7 @@ export async function handleStream(
     const attemptBudgetMs = getAttemptBudgetMs(contentType, candidate.isSeasonPack);
 
     // Skip candidates already known to be dead.
-    const deadKey = getDeadCacheKey(candidate.nzbUrl, cachePattern);
-    if (isDeadNzb(deadKey) || isDeadNzbByUrl(candidate.nzbUrl)) {
+    if (recall(candidate, play).dead) {
       if (logDeadSkips) console.log(`\u23ED\uFE0F NZB Database (skipping dead) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
       continue;
     }
@@ -802,9 +790,8 @@ export async function handleStream(
     if (i > 0 && !req.socket.destroyed && redirectCount < MAX_SELF_REDIRECTS) {
       const elapsed = Date.now() - streamStartTime;
       if (elapsed + attemptBudgetMs + STREMIO_SAFETY_MARGIN_MS > STREMIO_TIMEOUT_MS) {
-        const pendingKey = getCacheKey(candidate.nzbUrl, candidate.title) + (cachePattern ? `:${cachePattern}` : '');
-        if (!streamCacheMap.has(pendingKey) && !isDeadNzb(deadKey)) {
-          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp).catch(() => {});
+        if (!isPreparing(candidate, play)) {
+          getOrCreateStream(candidate, play, { verbose }).catch(() => {});
         }
         // Site 2 of 6: rc and ci carried inside `t` so iOS handoff doesn't
         // truncate them. Without ci, the next request would restart at
@@ -831,7 +818,7 @@ export async function handleStream(
         const waitMs = Math.max(1000, EXO_PLAYER_BUDGET_MS - requestElapsed);
         let exoTimerId: ReturnType<typeof setTimeout>;
         streamData = await Promise.race([
-          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+          getOrCreateStream(candidate, play, { verbose })
             .finally(() => clearTimeout(exoTimerId)),
           new Promise<never>((_, reject) => {
             exoTimerId = setTimeout(() => reject(Object.assign(new Error('ExoPlayer safety timeout'), { isExoTimeout: true })), waitMs);
@@ -849,7 +836,7 @@ export async function handleStream(
         const switchWaitMs = Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime));
         let switchTimerId: ReturnType<typeof setTimeout>;
         streamData = await Promise.race([
-          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+          getOrCreateStream(candidate, play, { verbose })
             .finally(() => clearTimeout(switchTimerId)),
           new Promise<never>((_, reject) => {
             switchTimerId = setTimeout(() => reject(Object.assign(new Error('First-source switch'), { isSourceSwitch: true })), switchWaitMs);
@@ -864,16 +851,14 @@ export async function handleStream(
         if (attemptBudgetMs > stremioRemainingMs && stremioRemainingMs > 0 && !req.socket.destroyed) {
           let stremioTimerId: ReturnType<typeof setTimeout>;
           streamData = await Promise.race([
-            getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+            getOrCreateStream(candidate, play, { verbose })
               .finally(() => clearTimeout(stremioTimerId)),
             new Promise<never>((_, reject) => {
               stremioTimerId = setTimeout(() => reject(Object.assign(new Error('Stremio timeout redirect'), { isExoTimeout: true })), stremioRemainingMs);
             })
           ]);
         } else {
-          streamData = await getOrCreateStream(
-            candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp
-          );
+          streamData = await getOrCreateStream(candidate, play, { verbose });
         }
       }
 
@@ -904,12 +889,12 @@ export async function handleStream(
       // requests for the same click hit dedup, even when fallback-chain walked
       // past the click and resolved a later candidate.
       const dedupCandidate = candidates[0] ?? candidate;
-      const key = dedupKey(backend, dedupCandidate, cachePattern);
+      const key = dedupKey(backend, dedupCandidate, play);
       recentDeliveries.set(key, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
       // Also key on the resolved candidate's URL so direct second-clicks of the
       // resolved tile (different click URL) also dedup.
       if (candidate !== dedupCandidate) {
-        const resolvedKey = dedupKey(backend, candidate, cachePattern);
+        const resolvedKey = dedupKey(backend, candidate, play);
         recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
       }
 
