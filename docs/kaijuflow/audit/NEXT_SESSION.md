@@ -13,7 +13,7 @@ What the owner types next (the `/kf` report ends with it, `docs/agents/resume.md
 
     /kf phase 2 of #183
 
-Phase 2 of spec #183's "Building it": the runs, one at a time, on Wi-Fi, on an idle machine (close the builder panes and anything else busy first; the preflight now refuses a 1-minute load of 1.0 or more). Under the standing go: #218 the official baseline from `main`, then #219 the grouped run from `tuning-183`, then halving runs if #219 is not kept. Both runs need the image rebuilt (`preflight --for run … --rebuild-image`, code in `src/` changed) and `testbed.py apply` (expected settings changed: the Play-time check's settings, `whenToResolve: on-results`).
+Phase 2 of spec #183's "Building it": the runs, one at a time, on Wi-Fi, on an idle machine (close the builder panes and anything else busy first; the preflight now refuses a 1-minute load of 1.0 or more). Under the standing go: #218 the official baseline from `main`, then #219 the grouped run from `tuning-183`, then halving runs if #219 is not kept. The preflight says whether a run needs the image rebuilt or `testbed.py apply`.
 
 **Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (Pocket TTS voice "azelma", repeats until the notification is closed) at every stop-and-ask and when #219 is done. Questions in the session: AskUserQuestion (herdr plays its "request" voice) plus a short red sidebar line, `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered. herdr's own "done" sound and its pop-ups are off (owner, 2026-11-20).
 
@@ -63,5 +63,6 @@ Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings 
 - `tuning-183`'s worktree: `.claude/worktrees/tuning-183` (kept for phase 2).
 
 ## How to update
+Leave whether to rebuild the image or run `testbed.py apply` to the preflight, which decides both; the note does not restate them. Every run goes in the note, a stopped one too (`tools/brain/unreported.py` lists the ones it misses).
 Keep "Next command" right: whenever the next step needs the owner to type something, write it there.
 Update this note after every run or merge. Keep issue lists out of it: the tracker holds them. A gotcha that needs work goes on its ticket; this note keeps only a pointer.

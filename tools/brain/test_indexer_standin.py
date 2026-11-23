@@ -160,6 +160,25 @@ class StandinTest(unittest.TestCase):
         self.assertEqual(st, 404)
         self.assertTrue(any(line.startswith('MISS ') for line in s.state.log_lines))
 
+    def test_a_missed_nzb_is_named_by_its_own_key_and_release_title(self):
+        for o, links in (('', lambda b: [x.decode().replace('&amp;', '&') for x in re.findall(rb'<link>([^<]*)</link>', b)]),
+                         ('&o=json', self.json_links)):
+            rec, rbase = self.standin('record', listname='list' + o[-4:])
+            body = fetch(f'{rbase}/fake/api?t=search&q=x{o}&offset=0&apikey=d')[1]  # the search only: no NZB is stored
+            rec.shutdown()
+            rec.server_close()
+            s, _ = self.standin('replay', listname='list' + o[-4:], port=rec.server_port)
+            for url in links(body)[2:4]:
+                self.assertEqual(fetch(url)[0], 404)
+            missed = [line for line in s.state.log_lines if line.startswith('MISS ')]
+            self.assertEqual(len(missed), 2, missed)
+            names = [re.sub(r' from=.*', '', line) for line in missed]
+            self.assertNotEqual(names[0].split()[3], names[1].split()[3])  # two NZBs, two names
+            self.assertIn('Rel 2', names[0])
+            self.assertIn('Rel 3', names[1])
+            if not o:
+                self.assertIn('Rel 2 & co', names[0])  # the XML entity is read
+
     def test_limit_reached_is_flagged_not_stored_and_passed_on(self):
         s, base = self.standin('record')
         fetch(f'{base}/fake/api?t=search&q=ok&apikey=d')

@@ -9,6 +9,7 @@ judges KaijuFlow's run per list against the previous run on the same recording, 
 "Judged against the previous run"); the verdict does not change the exit code.
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
+import collections
 import json
 import os
 import sys
@@ -243,6 +244,9 @@ def check_run(run_dir):
             if by:
                 lines.append(f'Missed in {phase} rounds (side, title, round): ' +
                              '; '.join(f"{s} {t} ({'+'.join(sorted(r))})" for (s, t), r in sorted(by.items())) + '.')
+        often = collections.Counter(m for v in missed for m in v['misses']).most_common()
+        lines.append(f'Different requests missed: {len(often)}; most often: ' +
+                     '; '.join(f"{r} ({'once' if n == 1 else f'{n} times'})" for r, n in often[:3]) + '.')  # #229: which NZB, by its release
         reasons.append(f"{sum(len(v['misses']) for v in missed)} requests missed the recording in {len(missed)} visits")
     elif meta.get('standin_misses'):
         lines.append(f"Missed requests: the stand-in logged {meta['standin_misses']}, but no visit shows which.")

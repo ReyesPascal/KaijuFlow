@@ -72,6 +72,15 @@ class CheckTests(unittest.TestCase):
         self.assertIn('KaijuFlow warm 1: 1', out)
         self.assertIn('Missed in warm rounds (side, title, round): KaijuFlow Beta (1).', out)
 
+    def test_check_counts_the_different_requests_missed_and_names_the_commonest(self):
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+            nzb = ['ninjacentral nzb 1a2b3c4d5e6f Joker.2019.720p'] * 3 + ['ninjacentral nzb 9f8e7d6c5b4a Joker.2019.2160p']
+            edit(run, 'raw.json', lambda raw: visit_of(raw, 'kaijuflow', 'warm', 'Beta').update(misses=nzb))
+            code, out = run_check(run)
+        self.assertIn('Different requests missed: 2; most often: ninjacentral nzb 1a2b3c4d5e6f Joker.2019.720p (3 times); '
+                      'ninjacentral nzb 9f8e7d6c5b4a Joker.2019.2160p (once).', out)
+
     def test_a_short_run_exits_nonzero_with_its_reason_and_still_prints_the_other_lines(self):
         for what in ('KaijuFlow, 1 round, 2 titles', 'KaijuFlow, 2 rounds, 1 title'):
             with tempdir() as tmp:
