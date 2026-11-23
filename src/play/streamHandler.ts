@@ -815,10 +815,11 @@ export async function handleStream(
     }
   }
 
-  // Every Source after the first-Source switch failed, while the first is still preparing (or became ready
-  // meanwhile): go back to it instead of the failure video. Wait for it in this request's time, else a
-  // self-redirect resumes at it.
-  if ((candidateStart > 0 || warming !== undefined) && !circuitAborted && !res.headersSent && !req.socket.destroyed) {
+  // In walk-on mode, every Source after the first-Source switch failed while the clicked Source is still preparing
+  // (or became ready meanwhile): go back to it instead of the failure video. Wait for it in this request's time,
+  // else a self-redirect resumes at it. The UF-lobby order below keeps its redirect behavior.
+  if (userPick && userPickMode === 'fallback-chain' && (candidateStart > 0 || warming !== undefined)
+    && !circuitAborted && !res.headersSent && !req.socket.destroyed) {
     const first = candidates[0];
     const recalled = recall(first, play);
     if (!recalled.dead && (isPreparing(first, play) || (recalled.ready && !isVideoPathBroken(recalled.ready.videoPath)))) {
