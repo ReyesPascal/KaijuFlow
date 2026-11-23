@@ -63,6 +63,7 @@ Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings 
 - `tuning-183`'s worktree: `.claude/worktrees/tuning-183` (kept for phase 2).
 
 ## How to update
+At a stopping point the session hands off to a fresh one by itself ([resume.md](../../agents/resume.md), "Fresh session"): keep "Next command" right before it does.
 Leave whether to rebuild the image or run `testbed.py apply` to the preflight, which decides both; the note does not restate them. Every run goes in the note, a stopped one too (`tools/brain/unreported.py` lists the ones it misses).
 Keep "Next command" right: whenever the next step needs the owner to type something, write it there.
 Update this note after every run or merge. Keep issue lists out of it: the tracker holds them. A gotcha that needs work goes on its ticket; this note keeps only a pointer.

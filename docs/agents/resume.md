@@ -19,3 +19,16 @@ A few lines, status first:
 - **What to type next**, last, in a code block the owner can copy: the handoff note's "Next command" section, as written. It is there when the next step is a command only the owner can start (a skill hidden from agents, such as `/mattpocock-skills:implement-spec`, or a `! ` command). When the section is empty or missing, say what to type for the first frontier ticket, or leave the line out if nothing waits on the owner.
 
 Then start on the task the user gave; without one, stop after the report.
+
+## Fresh session
+
+At a **stopping point** this session hands the work to a fresh one, so the owner never types `/clear`, `/kf` or Enter (owner, 2026-11-23: "i want it to give me logical places it clears and starts a new session automatically"; "i dont want to have to type or hit enter"). The written records (handoff note, ticket comments, run folders) carry everything the next step needs, and a fresh session reloads in about 30–40k tokens, where a long one re-sends its whole history every turn.
+
+**Stopping points:**
+- a timed run is checked, backed up, reported, and its result is on its ticket (#218, #219, each halving run);
+- a PR merges and its ticket closes, outside a parallel build;
+- a `/retro`'s fixes are merged.
+
+**Never at:** the middle of a run or a record; a question to the owner or a `kf-alert` still open; a parallel build (`implement-spec`), whose watcher and merges live in that session; between grilling, `/to-spec` and `/to-tickets`.
+
+**The step:** update the handoff note's "Next command" and push it (merged to `main`), then run `~/.local/bin/kf-next "<task>"`, where `<task>` is the words after `/kf` in "Next command" (for example `phase 2 of #183`). The task starts on its own only when a plan already gives the go for it (#183's phase 2 standing go). When the next step needs the owner instead, do not hand off: stop and `kf-alert` them. `kf-next` refuses uncommitted changes or a note that differs from `origin/main`; it opens the new session in a pane beside this one, checks its turn started, and closes this pane 20 s later. On a refusal or a failed start, this pane stays: say why in one line and stop.
