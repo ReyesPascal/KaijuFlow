@@ -111,5 +111,19 @@ class PreviousRunRule(unittest.TestCase):
         self.assertEqual(runs.nulls_between(run, None), [])
 
 
+REAL_ROOT = os.path.expanduser('~/kaijuflow-notes/brain-runs')
+REAL = ('2026-11-23T183239Z-baseline-218', '2026-11-23T190950Z-grouped-219')  # the #218 baseline and #219's grouped run
+
+
+@unittest.skipUnless(all(os.path.exists(os.path.join(REAL_ROOT, d, runcheck.CHECK_FILE)) for d in REAL),
+                     'the real run folders are not on this machine')
+class RealRuns(unittest.TestCase):
+    def test_checking_the_218_baseline_and_219_again_gives_their_check_txt(self):
+        for d in REAL:
+            with self.subTest(d):
+                stored = read(os.path.join(REAL_ROOT, d, runcheck.CHECK_FILE)).splitlines()
+                self.assertEqual(runcheck.check_run(os.path.join(REAL_ROOT, d))[1], stored)
+
+
 if __name__ == '__main__':
     unittest.main()

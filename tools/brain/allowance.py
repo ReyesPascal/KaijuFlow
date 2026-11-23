@@ -13,6 +13,10 @@ import glob
 import json
 import os
 import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import runs  # noqa: E402
 
 LIMITS_FILE = 'limits.json'
 ROLLING = 'rolling-24h'
@@ -194,8 +198,11 @@ def last_complete_recording(runs_root, listname):
 
     Complete: its meta.json says status "recorded". The list comes from the first line of its stand-in log."""
     for folder in sorted(glob.glob(os.path.join(runs_root, '*-record')), reverse=True):
-        meta = _read_json(os.path.join(folder, 'meta.json'))
-        if not isinstance(meta, dict) or meta.get('status') != 'recorded':
+        try:
+            meta = runs.load(folder)
+        except runs.Unreadable:
+            continue
+        if meta.get('status') != 'recorded':
             continue
         log = os.path.join(folder, 'logs', 'standin.log')
         try:

@@ -8,8 +8,8 @@ Nothing is published: the script writes index.html, the whole page, and report.h
 ~/kaijuflow-notes/brain-1338/page/). RUNBOOK.md, "Publish the page", has the steps from there.
 
 The page is about one run: the newest timed run given, which must be finished (status "ok"), because its targets are
-judged. The newest finished run before it that is not marked never compared with (#153), when one is given, is what it is compared with ("what changed", the change
-under each headline number), and every timed run given gets a row in "Every run so far".
+judged. Its previous run (runs.previous, found in its runs root as CHECK.txt and report.md find it, #241) is what it is
+compared with ("what changed", the change under each headline number), and every timed run given gets a row in "Every run so far".
 
 Where things come from, never typed into the page by hand:
 
