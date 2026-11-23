@@ -28,7 +28,7 @@ Untouched answers (#185): every answer goes out as the indexer sent it (only its
 no trimming and no filter: KaijuFlow's own filters choose, as at home. A search for a later page (offset > 0) is a request
 like any other: asked of the indexer when recording, stored, and replayed. tools/brain/docs/rules.md, "What a run is".
 """
-import argparse, signal, base64, hashlib, http.server, json, os, re, sys, threading, time, urllib.error, urllib.request
+import argparse, signal, base64, hashlib, html, http.server, json, os, re, sys, threading, time, urllib.error, urllib.request
 from urllib.parse import urlparse, parse_qsl, quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
@@ -106,6 +106,7 @@ class State:
         self.log_lines = []
         self.lock = threading.Lock()
         self.request_locks = {}
+        self.nzb_titles = {}  # indexer slug -> {link token: release title}, built on the first missed NZB
 
     def log(self, line):
         with self.lock:
@@ -135,6 +136,39 @@ class State:
     def path(self, slug, key):
         d = os.path.join(self.store, self.listname, slug)
         return d, os.path.join(d, key)
+
+    def nzb_title(self, slug, token):
+        """The release title the stored search answers give for an NZB link token, or '' (#229: a missed NZB is named by
+        its release). Built once per indexer from the stored answers, which a replay never changes."""
+        with self.lock:
+            if slug not in self.nzb_titles:
+                self.nzb_titles[slug] = nzb_titles(os.path.join(self.store, self.listname, slug))
+            return self.nzb_titles[slug].get(token, '')
+
+
+TITLE_OR_LINK = re.compile(rb'<title>(.*?)</title>|"title"\s*:\s*"((?:[^"\\]|\\.)*)"|' + re.escape(HOST_MARK) + rb'/nzb/([A-Za-z0-9_-]+)')
+
+
+def nzb_titles(d):
+    """{link token: release title} over the stored search answers in an indexer's folder: each link takes the last title
+    before it, as an item's title comes before its link in Newznab XML and JSON answers."""
+    out = {}
+    try:
+        names = sorted(f for f in os.listdir(d) if f.endswith('.body'))
+    except OSError:
+        return out
+    for name in names:
+        try:
+            body = rd(os.path.join(d, name), 'rb')
+        except OSError:
+            continue
+        title = ''
+        for m in TITLE_OR_LINK.finditer(body):
+            if m.group(3):
+                out.setdefault(m.group(3).decode(), title)
+            else:
+                title = html.unescape((m.group(1) or m.group(2) or b'').decode('utf-8', 'replace')).replace('\\/', '/')
+    return out
 
 
 def setting_conflicts(cfg, store, listname):
@@ -218,7 +252,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if (a.scheme, a.netloc) != (b.scheme, b.netloc):
                     return None
                 return raw.replace('{KEY}', ix['apikey'])
-            return self.serve(slug, key, f'nzb {token[:12]}', real_url, base, rewrite=False)
+            shown = f'nzb {key[:12]}'  # the key, not the token: every token starts with the same base64 of 'https://'
+            if st.mode == 'replay' and not os.path.exists(st.path(slug, key)[1] + '.body'):
+                shown += ' ' + (st.nzb_title(slug, token) or '(no title in the stored answers)')
+            return self.serve(slug, key, shown, real_url, base, rewrite=False)
         if len(parts) == 2 and parts[1] == 'api':
             drop = set(st.drop_params(slug))
             items = sorted((k, v) for k, v in q if k != KEY_PARAM and k not in drop)

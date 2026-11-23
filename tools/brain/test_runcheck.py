@@ -72,6 +72,49 @@ class CheckTests(unittest.TestCase):
         self.assertIn('KaijuFlow warm 1: 1', out)
         self.assertIn('Missed in warm rounds (side, title, round): KaijuFlow Beta (1).', out)
 
+    def test_check_counts_the_different_requests_missed_and_names_the_commonest(self):
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+            nzb = ['ninjacentral nzb 1a2b3c4d5e6f Joker.2019.720p'] * 3 + ['ninjacentral api t=search&q=Joker'] * 2
+            edit(run, 'raw.json', lambda raw: visit_of(raw, 'kaijuflow', 'warm', 'Beta').update(misses=nzb, played_source='Joker.2019.720p'))
+            code, out = run_check(run)
+        self.assertIn('Different requests missed: 2; most often: ninjacentral nzb 1a2b3c4d5e6f Joker.2019.720p (3 times); '
+                      'ninjacentral api t=search&q=Joker (2 times).', out)
+
+    def test_grabs_of_releases_never_played_are_listed_and_do_not_make_the_run_unusable(self):
+        # owner's decision on #218 (#235): the fallback's walk grabbed releases the recording does not hold; none was played
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+            nzb = ['ninjacentral nzb 1a2b3c4d5e6f Witcher.2160p-HONE', 'ninjacentral nzb 9f8e7d6c5b4a Witcher.2160p-EDITH']
+            edit(run, 'raw.json', lambda raw: visit_of(raw, 'kaijuflow', 'warm', 'Beta').update(
+                misses=nzb, played_source='Witcher.2160p-HHWEB', ok=True))
+            code, out = run_check(run)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out.startswith('Usable as a baseline: no missed request that counts (grabs of releases never played'), out)
+        self.assertIn('Missed, never played (listed, not counted against the run; #235): 2 grabs of 2 releases in 1 visits: '
+                      'KaijuFlow warm 1 Beta (2).', out)
+        self.assertNotIn('Missed requests (a side asked', out)
+
+    def test_a_missed_grab_of_the_played_release_or_with_no_title_still_makes_the_run_unusable(self):
+        for misses, played in ((['ninjacentral nzb 1a2b3c4d5e6f Witcher.2160p-HHWEB'], 'Witcher.2160p-HHWEB'),
+                               (['ninjacentral nzb aHR0cHM6Ly9u'], 'Witcher.2160p-HHWEB'),
+                               (['ninjacentral nzb 1a2b3c4d5e6f (no title in the stored answers)'], 'Witcher.2160p-HHWEB')):
+            with tempdir() as tmp:
+                run = copy_run(tmp)
+                edit(run, 'raw.json', lambda raw: visit_of(raw, 'kaijuflow', 'warm', 'Beta').update(
+                    misses=misses, played_source=played, ok=True))
+                code, out = run_check(run)
+            self.assertNotEqual(code, 0, misses)
+            self.assertTrue(out.startswith('Not usable as a baseline: 1 requests missed the recording in 1 visits.'), out)
+
+    def test_every_miss_of_a_visit_that_did_not_play_counts(self):
+        with tempdir() as tmp:
+            run = copy_run(tmp)
+            edit(run, 'raw.json', lambda raw: visit_of(raw, 'kaijuflow', 'warm', 'Beta').update(
+                misses=['ninjacentral nzb 1a2b3c4d5e6f Witcher.2160p-HONE'], played_source=None, ok=False))
+            code, out = run_check(run)
+        self.assertNotEqual(code, 0, out)
+
     def test_a_short_run_exits_nonzero_with_its_reason_and_still_prints_the_other_lines(self):
         for what in ('KaijuFlow, 1 round, 2 titles', 'KaijuFlow, 2 rounds, 1 title'):
             with tempdir() as tmp:

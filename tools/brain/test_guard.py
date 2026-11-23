@@ -194,6 +194,10 @@ class GhTest(GuardCase):
             'gh issue view 161 --comments': 'gh issue view 161 --json number,title,body,labels,comments',
             'gh issue view --comments 7': 'gh issue view 7 --json number,title,body,labels,comments',
             'gh issue view 161 -c': 'gh issue view 161 --json number,title,body,labels,comments',
+            'gh issue view 218': 'gh issue view 218 --json number,title,body,labels,comments',
+            'cd x && gh issue view 219 -R o/r': 'gh issue view 219 --json number,title,body,labels,comments',
+            'gh pr checks 230 --json name,bucket': 'python3 -I tools/brain/prwatch.py 230',
+            's=$(gh pr checks 230 --json name,bucket 2>/dev/null)': 'python3 -I tools/brain/prwatch.py 230',
             'gh pr edit 5 --body-file b.md': 'gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<file>',
             'gh pr edit 5 --add-label x': 'gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<file>',
             'gh issue create --title t --body b --parent 159':
@@ -206,8 +210,8 @@ class GhTest(GuardCase):
 
     def test_allows_working_gh_calls(self):
         for cmd in ('gh issue view 161 --json number,title,body,labels,comments', 'gh issue create --title t --body "mentions --parent"',
-                    'gh issue comment 161 --body "gh pr edit fails"', 'gh pr view 5', 'gh api -X PATCH repos/{owner}/{repo}/pulls/5 -F body=@b.md',
-                    'gh issue list --state open', 'git commit -m "gh issue view 1 --comments"'):
+                    'gh issue comment 161 --body "gh pr edit fails"', 'gh pr view 5', 'gh pr checks 230', 'gh pr checks 230 --watch', 'gh api -X PATCH repos/{owner}/{repo}/pulls/5 -F body=@b.md',
+                    'gh issue list --state open', 'gh issue view 218 --json title,body -q .body', 'gh issue view 9 --web', 'git commit -m "gh issue view 1 --comments"'):
             self.assertIsNone(self.bash(cmd), cmd)
 
 

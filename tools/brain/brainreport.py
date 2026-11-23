@@ -286,6 +286,21 @@ def assign_standin(visits, lines, addresses=None):
     return unmatched
 
 
+
+def unplayed_release(miss, visit):
+    """True when a miss is an NZB grab of a release the visit never played (owner's decision on #218, #235: such a miss does
+    not make a run unusable). Only for a visit that played, and only for a miss that names its release (#229) other than
+    the visit's played Source; any other miss (a search, the played release, an NZB with no title) counts."""
+    parts = miss.split(' ', 3)
+    if not visit.get('ok') or len(parts) < 4 or parts[1] != 'nzb' or parts[3].startswith('(no title'):
+        return False
+    return parts[3] != (visit.get('played_source') or '')
+
+
+def counted_misses(visit):
+    """The visit's misses that make a run unusable: all of them but the unplayed releases."""
+    return [m for m in visit.get('misses') or [] if not unplayed_release(m, visit)]
+
 # --------------------------------------------------------------------------- metrics
 
 def median(xs):
