@@ -123,7 +123,7 @@ export async function useFakeNews(configData, config) {
  * answers 430). `delayMs` slows every BODY reply; `slow(prefix, ms)` slows every
  * reply for ids starting with prefix. Records `reads` (message ids whose bodies
  * were asked for), `stats` (ids asked for with STAT), `asks` ({ id, asked,
- * answered } times in ms, per BODY or STAT), `drops` (ids of BODY asks
+ * answered } times in ms, per BODY or STAT), `drops` ({ id, at } of BODY asks
  * answered by closing the connection, see `drop`) and the `peak` number of
  * open connections.
  */
@@ -156,7 +156,7 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
           if (drop !== undefined) {
             const left = dropped.get(drop) - 1;
             if (left > 0) dropped.set(drop, left); else dropped.delete(drop);
-            state.drops.push(id);
+            state.drops.push({ id, at: Date.now() });
             sock.destroy();
             return;
           }

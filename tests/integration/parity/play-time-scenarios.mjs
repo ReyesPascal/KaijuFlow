@@ -819,6 +819,7 @@ export const playTimeScenarios = [
         const uploaded = w.backend.uploadedNzbs(top.tag);
         assert.equal(uploaded.length, 1, 'one upload');
         assert.equal(w.backend.rarVolumeCheck(uploaded[0]), null, 'AltMount gets the parts renamed in real order');
+        assert.equal(w.news.state.drops.filter(d => d.id.startsWith(top.dropAt)).length, 1, 'one of Unscramble\'s connections was dropped');
         assert.ok(w.news.state.peak <= 8, `the checks and Unscramble together held ${w.news.state.peak} connections, cap 8`);
       } finally {
         w.news.drop(top.dropAt, 0);
@@ -844,14 +845,14 @@ export const playTimeScenarios = [
         assertBytes(r.body, next.media, 'the next Healthy Source plays');
         assert.deepEqual(unscrambleResults(lines, top.item.title), ['read-error', 'read-error'], 'a read-error, retried once');
         assert.deepEqual(w.backend.uploadedNzbs(top.tag), [], 'nothing is uploaded for the set');
-        assert.equal(w.news.state.drops.length, 2, 'the first read and the retry each lost a connection');
-        // The retry's reads: the first articles asked for after the first dropped one, up to the second.
-        const firsts = w.news.state.asks.filter(a => a.id.startsWith(`${top.tag}-v`) && a.id.endsWith('-s1@fake'));
-        const dropped = firsts.filter(a => a.answered === null);
-        const from = dropped[0].asked, to = dropped[1].asked;
-        const during = w.news.state.asks.filter(a => a.id.startsWith('retrybad-next-') && a.asked >= from && a.asked <= to);
-        assert.deepEqual(during.map(a => a.id), [], 'the next Source\'s check asks nothing while the retry reads');
-        assert.ok(w.news.state.asks.some(a => a.id.startsWith('retrybad-next-') && a.asked < from), 'its check was under way when the retry began');
+        const drops = w.news.state.drops.filter(d => d.id.startsWith(top.dropAt));
+        assert.equal(drops.length, 2, 'the first read and the retry each lost a connection');
+        // The retry reads from the first drop to the second.
+        const [from, to] = drops.map(d => d.at);
+        const nextAsks = w.news.state.asks.filter(a => a.id.startsWith('retrybad-next-'));
+        assert.ok(nextAsks.some(a => a.asked < from && (a.answered ?? Infinity) > from), 'the next Source\'s check was under way when the retry began');
+        assert.deepEqual(nextAsks.filter(a => a.asked >= from && a.asked <= to).map(a => a.id), [], 'its check asks nothing while the retry reads');
+        assert.ok(nextAsks.some(a => a.asked > to), 'its check runs again after the retry');
         assert.equal(w.backend.grabs.filter(g => g.tag === 'retrybad-next').length, 1, 'its check runs again, the Source is not grabbed again');
         w.news.drop(top.dropAt, 0);
         const again = (await w.list('movie', id)).filter(s => !isBest(s)).map(entryTitle);
