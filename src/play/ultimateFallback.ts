@@ -321,7 +321,7 @@ export async function ultimateFallbackFromCandidates(
   // health-check switches say (GLOSSARY: Unchecked Source). With no enabled provider every
   // check answers an error, so nothing is handed over and the play shows the failure video.
   const providers = enabledHealthCheckProviders();
-  const pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
+  let pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
 
   try {
     // Opted-out indexers are not walked.
@@ -369,6 +369,45 @@ export async function ultimateFallbackFromCandidates(
       if (walk.done) finish();
     };
 
+    // The Play-time check of a grabbed Source. While the checks are stopped (an Unscramble retry, ADR 0005) it waits;
+    // a check stopped under way is run again from the start once they go on, so the Walk only sees it take longer.
+    const checking = new Map<number, object>(); // index -> its check under way
+    let held: number[] | null = null; // checks waiting while stopped
+    const check = (index: number): void => {
+      if (held) { held.push(index); return; }
+      const mine = {};
+      checking.set(index, mine);
+      const verdict = (event: WalkEvent) => {
+        if (checking.get(index) !== mine) return; // stopped: run again later
+        checking.delete(index);
+        post(event);
+      };
+      // The check samples the file AltMount is told to play (#203): the episode selector it is sent.
+      const used = pool;
+      checkSource({ ...list[index], episodePattern: filePattern }, used)
+        .then(result => {
+          if (checking.get(index) !== mine) return;
+          runOf(index).containerType = result.containerType;
+          // A check whose pool was stopped (its Walk ended, #244) was not answered: no verdict to log.
+          if (!isHealthy(result) && !used?.stopped) console.log(`${tag} ❌ #${index + 1} not healthy (${result.message}) — ${list[index].title}`);
+          verdict({ type: 'checked', index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true });
+        }, () => verdict({ type: 'checked', index, verdict: 'error' }));
+    };
+    // Stop the Walk's other checks for an Unscramble retry: their connections close at once (a fresh pool for later).
+    const stopChecks = (): (() => void) => {
+      if (held) return () => {};
+      held = [...checking.keys()];
+      checking.clear();
+      if (held.length > 0) console.log(`${tag} ⏸️ Checks stopped for an Unscramble retry: ${held.map(i => `#${i + 1}`).join(', ')}`);
+      pool?.stop();
+      pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
+      return () => {
+        const again = held ?? [];
+        held = null;
+        for (const index of again) check(index);
+      };
+    };
+
     // The Backend prepare: submit (the grab's NZB), wait for the job, find the video, probe its first byte.
     const prepare = async (index: number): Promise<void> => {
       const c = list[index];
@@ -384,6 +423,7 @@ export async function ultimateFallbackFromCandidates(
             pollIntervalMs: 250,
             onJob: jobId => { r.nzoId = jobId; },
             isCancelled: () => r.cancelled === true,
+            stopChecks,
           },
         );
         if (r.cancelled) return;
@@ -419,13 +459,7 @@ export async function ultimateFallbackFromCandidates(
           return;
         }
         case 'check':
-          // The check samples the file AltMount is told to play (#203): the episode selector it is sent.
-          checkSource({ ...list[d.index], episodePattern: filePattern }, pool)
-            .then(result => {
-              runOf(d.index).containerType = result.containerType;
-              if (!isHealthy(result) && !pool?.stopped) console.log(`${tag} ❌ #${d.index + 1} not healthy (${result.message}) — ${list[d.index].title}`);
-              post({ type: 'checked', index: d.index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true });
-            }, () => post({ type: 'checked', index: d.index, verdict: 'error' }));
+          check(d.index);
           return;
         case 'prepare':
           console.log(`${tag} 🚀 Submitting ${name(d.index)} [${list[d.index].indexerName}] to the Backend`);
