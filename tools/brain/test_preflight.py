@@ -446,13 +446,30 @@ class PreflightTest(unittest.TestCase):
         self.assert_stops('run', self.world(), 'incomplete', 'missed 2 requests', 'KaijuFlow asked',
                           'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
 
-    def ran(self, name, started, misses, recording='l'):
-        """A run folder in the runs root: its meta.json as a run writes it."""
+    def ran(self, name, started, misses, recording='l', visits=None):
+        """A run folder in the runs root: its meta.json as a run writes it, and with `visits` its raw.json."""
         self.cfg['runs_root'] = os.path.join(os.path.dirname(self.td), 'runs')
         d = os.path.join(self.cfg['runs_root'], name)
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, 'meta.json'), 'w') as f:
             json.dump({'name': name, 'status': 'ok', 'started': started, 'recording': recording, 'standin_misses': misses}, f)
+        if visits is not None:
+            with open(os.path.join(d, 'raw.json'), 'w') as f:
+                json.dump({'status': 'ok', 'visits': visits}, f)
+
+    def test_a_last_run_whose_only_misses_are_releases_never_played_passes_a_run(self):
+        record(self.cfg)
+        walk = ['ninjacentral nzb 1a2b3c4d5e6f Witcher.2160p-HONE'] * 162
+        self.ran('2026-11-11T100000Z-baseline', '2026-11-11T10:00:00Z', 162,
+                 visits=[{'ok': True, 'played_source': 'Witcher.2160p-HHWEB', 'misses': walk}])
+        code, text = run_command('run', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
+    def test_a_last_run_that_missed_a_search_still_stops_a_run(self):
+        record(self.cfg)
+        self.ran('2026-11-11T100000Z-baseline', '2026-11-11T10:00:00Z', 2,
+                 visits=[{'ok': True, 'played_source': 'X', 'misses': ['ninjacentral api t=search&q=x', 'ninjacentral nzb ab Y']}])
+        self.assert_stops('run', self.world(), 'missed 1 requests')
 
     def test_a_recording_the_last_run_missed_stops_a_run_with_the_record_command(self):
         record(self.cfg)  # recorded 2026-11-10T09:00:00Z
