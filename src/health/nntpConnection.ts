@@ -298,12 +298,27 @@ function openAuthenticatedSocket(provider: NntpProvider): Promise<NntpSocket> {
 export class NntpConnectionPool {
   private pools = new Map<string, NntpSocket[]>();
   private unregisterIdle = new Map<NntpSocket, () => void>();
+  /** Sockets handed out and not released yet (stop() closes them too). */
+  private lent = new Set<NntpSocket>();
+  private stopped = false;
 
   private key(provider: { host: string; port: number; username: string }): string {
     return `${provider.host}:${provider.port}:${provider.username}`;
   }
 
   async acquire(provider: NntpProvider): Promise<NntpSocket> {
+    const socket = await this.take(provider);
+    if (this.stopped) {
+      socket.destroy();
+      throw new Error('Connection pool stopped');
+    }
+    for (const s of this.lent) if (s.destroyed) this.lent.delete(s);
+    this.lent.add(socket);
+    return socket;
+  }
+
+  private async take(provider: NntpProvider): Promise<NntpSocket> {
+    if (this.stopped) throw new Error('Connection pool stopped');
     const k = this.key(provider);
     const stack = this.pools.get(k);
     while (stack && stack.length > 0) {
@@ -320,7 +335,23 @@ export class NntpConnectionPool {
     return connectToUsenet(provider);
   }
 
+  /**
+   * Stop everything using this pool (a Walk's checks, for an Unscramble retry, ADR 0005): every socket it handed out
+   * or holds idle is closed, so their slots under the cap free at once, and later acquires fail.
+   */
+  stop(): void {
+    this.stopped = true;
+    for (const s of this.lent) s.destroy();
+    this.lent.clear();
+    this.destroyAll();
+  }
+
   release(provider: { host: string; port: number; username: string }, socket: NntpSocket): void {
+    this.lent.delete(socket);
+    if (this.stopped) {
+      socket.destroy();
+      return;
+    }
     // Someone is waiting for a slot under the cap: close instead of parking.
     if (socket.destroyed || !socket.writable) {
       try { socket.destroy(); } catch {}

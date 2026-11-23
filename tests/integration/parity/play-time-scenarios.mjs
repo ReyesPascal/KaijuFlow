@@ -4,6 +4,7 @@
 // reached the fake AltMount; one scenario asserts on the log lines the brain tools read.
 import assert from 'node:assert/strict';
 import { assertBytes } from './bytes.mjs';
+import { scrambledRarSet } from './fake-nntp.mjs';
 
 const mediaFor = tag => Buffer.from(`KaijuFlow play-time bytes for ${tag}: 0123456789abcdefghijklmnopqrstuvwxyz`);
 const GB = 1024 ** 3;
@@ -799,7 +800,96 @@ export const playTimeScenarios = [
       assert.deepEqual([...gone].sort(), specs.slice(0, 5).map(s => s.tag).sort(), 'each gone Source grabbed once');
     },
   },
+  {
+    // #245 (ADR 0005, amended 2026-11-23): the news server drops one of Unscramble's connections, a read-error. It is
+    // retried once and the retry Unscrambles the set, so the Scrambled RAR set plays; AltMount gets only the renamed
+    // NZB. The Walk's checks and Unscramble stay under the one connection cap (the default, 8) all along.
+    id: 'an-unscramble-read-error-is-retried-and-the-source-plays',
+    async run(w) {
+      const top = offerScrambled(w, 'retryok');
+      const { id } = top;
+      w.indexer.offer(id, [top.item, healthyBelow(w, 'retryok-next', 10)]);
+      w.news.drop(top.dropAt, 1);
+      w.news.state.peak = w.news.state.open;
+      try {
+        const { result: r, lines } = await withLogs(async () => play((await w.list('movie', id))[0].url));
+        assert.equal(r.status, 200, 'Best plays');
+        assertBytes(r.body, top.item.media, 'the Scrambled RAR set plays');
+        assert.deepEqual(unscrambleResults(lines, top.item.title), ['read-error', 'unscrambled'], 'one read-error, then the retry Unscrambles it');
+        const uploaded = w.backend.uploadedNzbs(top.tag);
+        assert.equal(uploaded.length, 1, 'one upload');
+        assert.equal(w.backend.rarVolumeCheck(uploaded[0]), null, 'AltMount gets the parts renamed in real order');
+        assert.ok(w.news.state.peak <= 8, `the checks and Unscramble together held ${w.news.state.peak} connections, cap 8`);
+      } finally {
+        w.news.drop(top.dropAt, 0);
+      }
+    },
+  },
+  {
+    // #245: the retry gets a read-error too. Nothing is uploaded for the Scrambled RAR set (AltMount always rejects
+    // the original) and the Walk moves on: the next Healthy Source plays. The set is not dead (ADR 0004), so its
+    // title's next list still offers it. The retry runs with the Walk's other checks stopped: the next Source's check,
+    // slowed so it is under way, asks nothing while the retry reads and is run again after it, not grabbed again.
+    id: 'an-unscramble-that-fails-its-retry-is-not-uploaded-and-the-next-source-plays',
+    async run(w) {
+      const top = offerScrambled(w, 'retrybad');
+      const { id } = top;
+      const next = healthyBelow(w, 'retrybad-next', 10);
+      w.indexer.offer(id, [top.item, next]);
+      w.news.drop(top.dropAt);
+      w.news.slow('retrybad-next-', 1500);
+      try {
+        const { result: r, lines } = await withLogs(async () => play((await w.list('movie', id))[0].url));
+        assert.equal(r.status, 200, 'Best plays');
+        assertBytes(r.body, next.media, 'the next Healthy Source plays');
+        assert.deepEqual(unscrambleResults(lines, top.item.title), ['read-error', 'read-error'], 'a read-error, retried once');
+        assert.deepEqual(w.backend.uploadedNzbs(top.tag), [], 'nothing is uploaded for the set');
+        assert.equal(w.news.state.drops.length, 2, 'the first read and the retry each lost a connection');
+        // The retry's reads: the first articles asked for after the first dropped one, up to the second.
+        const firsts = w.news.state.asks.filter(a => a.id.startsWith(`${top.tag}-v`) && a.id.endsWith('-s1@fake'));
+        const dropped = firsts.filter(a => a.answered === null);
+        const from = dropped[0].asked, to = dropped[1].asked;
+        const during = w.news.state.asks.filter(a => a.id.startsWith('retrybad-next-') && a.asked >= from && a.asked <= to);
+        assert.deepEqual(during.map(a => a.id), [], 'the next Source\'s check asks nothing while the retry reads');
+        assert.ok(w.news.state.asks.some(a => a.id.startsWith('retrybad-next-') && a.asked < from), 'its check was under way when the retry began');
+        assert.equal(w.backend.grabs.filter(g => g.tag === 'retrybad-next').length, 1, 'its check runs again, the Source is not grabbed again');
+        w.news.drop(top.dropAt, 0);
+        const again = (await w.list('movie', id)).filter(s => !isBest(s)).map(entryTitle);
+        assert.ok(again.includes(top.item.title), 'the set is not dead: its title\'s next list still offers it');
+      } finally {
+        w.news.drop(top.dropAt, 0);
+        w.news.slow('retrybad-next-', 0);
+      }
+    },
+  },
 ];
+
+/**
+ * A Scrambled RAR set of 12 parts for a new movie title, its first articles on the news server; to offer on top of
+ * the list. `dropAt` names one part's first article (one the Play-time check doesn't read) for `news.drop`.
+ */
+function offerScrambled(w, tag) {
+  const id = `tt${nextImdb++}`;
+  const title = `KaijuFlow.PlayTime.${tag}.2026.2160p.WEB-DL.H265-GRP`;
+  const media = mediaFor(tag);
+  const set = scrambledRarSet({ base: `${tag}0a1b2c3d4e5f`, parts: 12, startAt: 10, tag });
+  for (const [articleId, bytes] of set.articles) w.news.articles.set(articleId, bytes);
+  const link = w.backend.addScrambled(tag, title, media, set);
+  return { id, tag, dropAt: `${tag}-v7-s1@`, item: { tag, title, media, link, size: 20 * GB } };
+}
+
+/** A Healthy Source to offer below, `sizeGb` big. */
+function healthyBelow(w, tag, sizeGb) {
+  const title = `KaijuFlow.PlayTime.${tag}.2026.2160p.WEB-DL.H265-GRP`;
+  const media = mediaFor(tag);
+  return { tag, title, media, link: w.backend.addMovie(tag, title, media), size: sizeGb * GB };
+}
+
+/** The `unscramble` step lines' results for a Source, in order. */
+function unscrambleResults(lines, title) {
+  return lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)))
+    .filter(s => s.step === 'unscramble' && s.title === title).map(s => s.result);
+}
 
 /**
  * One Walk over gone Sources (#228): 30 grabs reached the indexer, the top 30 of the list, none twice, never more than
