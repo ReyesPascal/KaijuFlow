@@ -11,7 +11,8 @@ Config (outside the repo, holds the real keys): {"indexers": {"<slug>": {"url": 
 Store layout: <store>/<list>/<slug>/<sha256>.body + .meta.json. Switch list while running: GET /_standin/list?name=X.
 Status: GET /_standin/status. A "limit reached" answer while recording writes <store>/LIMIT_REACHED.json, logs a
 LIMIT_REACHED line, shows in /_standin/status, is NOT stored, and makes the process exit with status 3 when stopped.
-No real indexer is contacted in replay mode.
+No real indexer is contacted in replay mode; a request the recording lacks gets 503 "not recorded" (a refusal, not a 404,
+so KaijuFlow never marks a Source dead for a gap in a Recording: ADR 0004) and a MISS line.
 Indexer time (#73): each stored answer keeps the milliseconds the real indexer took ("ms" in .meta.json). Replay waits that
 long before answering (search answers and NZB files) unless --no-wait; every served stored answer logs
 "HIT <slug> <request> wait_ms=<n> from=<ip> t=<epoch ms>" (n is 0 when the wait is off, in record mode, or the recording has
@@ -295,8 +296,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             st.log(f'HIT {slug} {shown} wait_ms={waited}{self.who()}')
             return self.answer(meta['status'], meta['content_type'], body, base)
         if st.mode == 'replay':
-            st.log(f'MISS {slug} {shown}{self.who()}')
-            return self.reply(404, 'text/plain', b'not recorded')
+            st.log(f'MISS {slug} {shown}{self.who()}')  # a refusal, so a gap in a Recording never marks a Source dead (ADR 0004)
+            return self.reply(503, 'text/plain', b'not recorded')
         ix = st.cfg['indexers'][slug]
         url = real_url(ix)
         if url is None:
