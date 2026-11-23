@@ -46,7 +46,8 @@ export function isHealthy(result: HealthCheckResult): boolean {
  * enabled health-check provider nothing can be checked, so the answer is an
  * error and the Source is not played.
  * `pool`: share NNTP connections across the checks of one Best press. A check whose pool was stopped (its Walk
- * ended, GLOSSARY: Walk) answered nothing: it writes no play_check line.
+ * ended, GLOSSARY: Walk, or its checks were stopped for an Unscramble retry, ADR 0005) answered nothing: it writes no
+ * play_check line.
  */
 export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPool): Promise<HealthCheckResult> {
   const t0 = Date.now();
