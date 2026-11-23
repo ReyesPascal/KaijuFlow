@@ -4,6 +4,8 @@
 // reached the fake AltMount; one scenario asserts on the log lines the brain tools read.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { assertBytes } from './bytes.mjs';
 import { scrambledRarSet } from './fake-nntp.mjs';
 
@@ -494,6 +496,15 @@ export const playTimeScenarios = [
       });
       const played = stepsOf(lines).filter(s => s.step === 'played').map(s => s.title);
       assert.deepEqual(played, [sources[0].title, sources[1].title], 'one played line for Best\'s press, one for the list entry');
+    },
+  },
+  {
+    // #246: a list request writes its fallback group, with its play context, to disk once (config/fallback-groups.json).
+    id: 'a-list-request-writes-its-fallback-group-once',
+    async run(w) {
+      const { id } = offerMovie(w, [{ tag: 'fbgonce-a' }, { tag: 'fbgonce-b' }]);
+      const writes = await groupFileWrites(() => w.list('movie', id));
+      assert.equal(writes, 1, 'one write of the fallback groups file');
     },
   },
   {
@@ -1389,6 +1400,22 @@ function assertRefusingIndexerSkipped(w, refuser, prefix) {
     const again = await w.list('movie', id);
     for (const s of refused) assert.ok(again.some(e => !isBest(e) && entryTitle(e) === s.title), `${s.tag} is not dead: the list still offers it`);
   }));
+}
+
+/**
+ * How many times KaijuFlow writes its fallback groups file (config/fallback-groups.json) while fn runs: fs.writeFileSync
+ * is counted for the time (synced into KaijuFlow's `import * as fs` with syncBuiltinESMExports), then put back.
+ */
+async function groupFileWrites(fn) {
+  const real = fs.writeFileSync;
+  let writes = 0;
+  fs.writeFileSync = (file, ...rest) => {
+    if (String(file).endsWith('/config/fallback-groups.json')) writes++;
+    return real(file, ...rest);
+  };
+  syncBuiltinESMExports();
+  try { await fn(); } finally { fs.writeFileSync = real; syncBuiltinESMExports(); }
+  return writes;
 }
 
 /** Run fn with this indexer added to the suite's, then put the suite's back. */
