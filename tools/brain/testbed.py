@@ -233,6 +233,7 @@ def check_empty(test_dir, sides=None, http=default_http):
 
 STANDIN_PORT = 1340
 PROVIDER_LIMIT = 100  # NewsHosting plan, owner 2026-11-09
+KF_DEFAULT_CONNECTION_CAP = 8  # KaijuFlow's health-check cap when its config names none (DEFAULT_HEALTH_CHECK_CONNECTION_CAP, src/health/nntpConnection.ts; test_testbed ties the two)
 STANDIN_HOST = "host.docker.internal"
 # One table of the sides in the settings table, in column order: title (column head), short name, and the JSON config
 # (relative to the test folder) of the sides that have one.
@@ -375,10 +376,12 @@ def counted_rows(rows):
 def connection_caps(settings):
     """NewsHosting connections each test copy may open: {side: int or None when it cannot be read}.
 
-    KaijuFlow: its health-check cap. AltMount: its enabled providers, every entry on the main provider's Usenet host counted,
-    backup flag or not; an entry on another host is shown beside and not counted.
+    KaijuFlow: its health-check cap (healthChecks.maxTotalConnections, every check and provider together; KaijuFlow's
+    default when the config names none). AltMount: its enabled providers, every entry on the main provider's Usenet host
+    counted, backup flag or not; an entry on another host is shown beside and not counted.
     """
-    caps = {"kaijuflow": _int(settings.get("kaijuflow", {}).get("healthChecks.maxConnections"))}
+    kf = settings.get("kaijuflow") or {}
+    caps = {"kaijuflow": _int(kf.get("healthChecks.maxTotalConnections", KF_DEFAULT_CONNECTION_CAP)) if kf else None}
     for side in YAML_CONFIGS:
         mine, _other = counted_rows(provider_rows(settings.get(side, {})))
         caps[side] = sum(r["max"] for r in mine) if mine and None not in [r["max"] for r in mine] else None
@@ -436,10 +439,8 @@ def _rows(rep):
         return "max %s%s" % (rep["caps"][s], "".join(" (+ other host max %s, own limit)" % r["max"] for r in other))
 
     yield "Usenet connections (NewsHosting)", {s: conns(s) for s in SETTINGS_SIDES}
-    yield "Health check: samples per NZB / NZBs inspected", per(kf, lambda f: _cell(f, "healthChecks.sampleCount", "healthChecks.nzbsToInspect"))
-    yield "Health check: method / batch / extra runs / min healthy", per(kf, lambda f: _cell(
-        f, "healthChecks.inspectionMethod", "healthChecks.smartBatchSize", "healthChecks.smartAdditionalRuns", "healthChecks.smartMinHealthy"))
-    yield "Health check: archive inspection", per(kf, lambda f: _cell(f, "healthChecks.archiveInspection"))
+    yield "Play-time check: Sources at a time / samples per Source", per(kf, lambda f: _cell(
+        f, "ultimateFallback.candidateCount", "ultimateFallback.sampleCount"))
     yield "Pages per enabled indexer (maxPages)", {s: _per_indexer(g(s), "maxPages", on(s)) for s in kf}
     yield "Pages: season pack / series pack extra pages", per(kf, lambda f: _cell(f, "searchConfig.seasonPackAdditionalPages", "searchConfig.seriesPackAdditionalPages"))
     yield "Indexer timeout (s)", {**{s: _per_indexer(g(s), "timeout", on(s)) for s in kf}, **per(am, _am_timeouts)}

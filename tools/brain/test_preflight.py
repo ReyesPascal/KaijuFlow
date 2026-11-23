@@ -584,7 +584,7 @@ class SettingDifferencesTest(unittest.TestCase):
     def settings(self, **changes):
         """What the settings reader gives for copies that match EXPECTED, then changed: settings(kaijuflow={name: value})."""
         rules_ = {'movieFilters.maxFileSize': 30, 'movieFilters.sortOrder[0]': 'a', 'movieFilters.sortOrder[1]': 'b',
-                  'movieFilters.none': '[]', 'cacheTTL': 9000, 'healthChecks.maxConnections': 12}
+                  'movieFilters.none': '[]', 'cacheTTL': 9000, 'healthChecks.maxTotalConnections': 12}
         got = {'kaijuflow': dict(rules_), 'altmount-kf': {'import.max_processor_workers': '2', 'streaming.max_prefetch': '3'}}
         for side, change in changes.items():
             got[side.replace('_', '-')].update(change)
@@ -671,8 +671,7 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         entry = brainrun.load_expected_settings()[1]  # #185: a fallback counts as played, so KaijuFlow plays as at home
         self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {  # #190: the Play-time check's settings
             'ultimateFallback.enabled': True, 'ultimateFallback.candidateCount': 3, 'ultimateFallback.preferenceMode': 'priority',
-            'ultimateFallback.whenToResolve': 'on-tile-selection', 'ultimateFallback.maxAttempts': 0,
-            'ultimateFallback.desiredBackups': 0}))
+            'ultimateFallback.whenToResolve': 'on-results', 'ultimateFallback.maxAttempts': 0}))  # the Head start (#206)
 
     def test_a_kaijuflow_copy_with_its_fallback_off_stops_with_one_sentence(self):
         td = make_copies(self, kf_fallback=False)

@@ -20,6 +20,8 @@ import 'dotenv/config';
 import crypto from 'crypto';
 import { configData, saveConfigFile } from './schema.js';
 import { migratePlaySettings } from './playSettingsMigration.js';
+import { dropDeletedSettings, DELETED_ENV } from './deletedSettingsMigration.js';
+import { migrateToHeadStart } from './headStartMigration.js';
 
 // Migrate from .env if config is empty and .env has indexers
 if (configData.indexers.length === 0) {
@@ -48,7 +50,6 @@ if (configData.indexers.length === 0) {
 if (configData.healthChecks?.usenetHost && !configData.healthChecks.providers?.length) {
   const hc = configData.healthChecks;
   configData.healthChecks = {
-    enabled: hc.enabled,
     providers: [{
       id: crypto.randomUUID(),
       name: 'Primary Provider',
@@ -60,10 +61,6 @@ if (configData.healthChecks?.usenetHost && !configData.healthChecks.providers?.l
       enabled: true,
       type: 'pool'
     }],
-    nzbsToInspect: hc.nzbsToInspect,
-    maxConnections: hc.maxConnections ?? 12,
-    autoQueueMode: hc.autoQueueMode,
-    hideBlocked: hc.hideBlocked
   };
   saveConfigFile(configData);
   console.log('✅ Migrated health check config to multi-provider format');
@@ -391,6 +388,20 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   }
 }
 
+// Deleted settings go from an old config (the one drop list, deletedSettingsMigration.ts): the list-time
+// Smart and Fixed checks (#191), Auto-queue (#226) and backups (#192). Runs after the single-provider
+// migration above, which still writes some of them.
+{
+  if (dropDeletedSettings(configData as unknown as Record<string, unknown>)) {
+    saveConfigFile(configData);
+    console.log('✅ Removed deleted settings: the list-time health checks (#191), Auto-queue (#226), backups (#192)');
+  }
+  const ignored = DELETED_ENV.filter(name => process.env[name] !== undefined && process.env[name] !== '');
+  if (ignored.length > 0) {
+    console.warn(`⚠️  Deprecated env vars set but ignored: ${ignored.join(', ')}. A Source is always checked when it is played, and only the Source being played is prepared.`);
+  }
+}
+
 // The play settings lose their NzbDAV names (#200), and the streaming-mode choice is
 // dropped: KaijuFlow always plays through the Backend.
 {
@@ -407,7 +418,7 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
 }
 
 // Migrate NZB Fallback → Ultimate Fallback. UF fully replaces fallback semantics;
-// migrants land on the new UF default baseline (on-tile-selection)
+// migrants land on the UF default baseline (on-results, the Head start, #206)
 // rather than deriving from prior NZB Fallback toggles — fresh start.
 {
   const c = configData as any;
@@ -424,9 +435,8 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
       const ur = (c.ultimateFallback ??= {});
       ur.enabled = true;
       ur.candidateCount = 1;
-      ur.desiredBackups = 0;
       ur.preferenceMode = 'priority';
-      ur.whenToResolve = 'on-tile-selection';
+      ur.whenToResolve = 'on-results';
       // 'uf-lobby' = "Use Ultimate Fallback to Resolve From Top of List"
       // — closest 1:1 to NZB Fallback's v1.3.0 behavior (auto-iterate
       // candidates from the start of the list when a stream tile fails).
@@ -448,6 +458,14 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   const stillSet = removedEnv.filter(name => process.env[name] !== undefined && process.env[name] !== '');
   if (stillSet.length > 0) {
     console.warn(`⚠️  Deprecated env vars set but ignored: ${stillSet.join(', ')}. NZB Fallback was replaced by Ultimate Fallback — remove these from your environment.`);
+  }
+}
+
+// The Head start (#206): a config that saved the old default, Best on a press, gets the new one once.
+{
+  if (migrateToHeadStart(configData as unknown as Record<string, unknown>)) {
+    saveConfigFile(configData);
+    console.log('✅ Best begins when the list is asked for (the Head start, #206)');
   }
 }
 

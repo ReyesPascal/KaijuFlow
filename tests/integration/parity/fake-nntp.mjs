@@ -25,6 +25,23 @@ export function rar5FirstArticle(volume, fillerBytes = 300) {
   return Buffer.concat([RAR5_SIGNATURE, header, filler]);
 }
 
+/**
+ * First bytes of RAR5 volume `volume` as a real Scrambled set has them: the
+ * main archive header, then a stored file header for `name` (the video each
+ * volume holds a piece of), then filler for its packed data. The health check
+ * reads the file header; Unscramble reads only the volume number.
+ */
+export function rar5VideoFirstArticle(volume, name = 'synthetic.mkv') {
+  const plain = rar5FirstArticle(volume);
+  const nameBytes = [...Buffer.from(name, 'utf8')];
+  // Type 2 (file), header flags 0x02 (data area follows), data size, file flags 0,
+  // unpacked size, attributes 0, compression info 0 (stored), host OS 0, name.
+  const body = [...vint(2), ...vint(0x02), ...vint(750000), ...vint(0), ...vint(9000000), ...vint(0), ...vint(0), ...vint(0), ...vint(nameBytes.length), ...nameBytes];
+  const fileHeader = Buffer.from([0, 0, 0, 0, ...vint(body.length), ...body]); // CRC32 not checked
+  const mainEnd = plain.length - 300; // signature + main header; the rest is filler
+  return Buffer.concat([plain.subarray(0, mainEnd), fileHeader, plain.subarray(mainEnd)]);
+}
+
 /** A RAR4 first article (old signature), for the "not RAR5" case. */
 export function rar4FirstArticle() {
   return Buffer.concat([Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]), Buffer.alloc(100, 0x41)]);
@@ -64,10 +81,12 @@ const xmlEscape = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>
  * `startAt`, volumes shuffled across the names. Every part has 3 segments
  * listed out of order (first article = segment number 1). Also an .nfo and a
  * .par2 that must stay untouched. `tag` goes in a kf-tag meta so the fake
- * Backends know the Source; `head` = extra <meta> elements.
+ * Backends know the Source; `head` = extra <meta> elements. Each first article
+ * holds a stored video's file header, as a real set's do, so the Play-time
+ * check passes the set (a clicked Source is always checked, #191).
  * Returns { nzb, articles: Map<messageId, Buffer>, parts: [{ name, volume, firstId }] }.
  */
-export function scrambledRarSet({ base, parts, startAt = 10, width = 2, seed = 7, tag = base, head = '', firstArticle = rar5FirstArticle }) {
+export function scrambledRarSet({ base, parts, startAt = 10, width = 2, seed = 7, tag = base, head = '', firstArticle = rar5VideoFirstArticle }) {
   const volumes = shuffled([...Array(parts).keys()], seed);
   const articles = new Map();
   const list = volumes.map((volume, i) => {

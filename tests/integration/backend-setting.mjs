@@ -1,5 +1,7 @@
 // AltMount is KaijuFlow's only Backend (#188): an old config naming NzbDAV is read as AltMount,
 // its nzbdav* play settings load under the play* names with no streaming-mode key (#200),
+// the list-time health-check settings (#191), Auto-queue's setting (#226) and the backup settings (#192) are dropped
+// from an old config and from a save by an old page, an old config on Best-on-a-press gets the Head start once (#206),
 // AltMount settings save and reload, AltMount "test connection".
 // Real config/settings/test routes over HTTP; the Backend is a fake AltMount on loopback.
 import assert from 'node:assert/strict';
@@ -33,8 +35,16 @@ try {
     nzbdavMoviesCategory: 'M', nzbdavTvCategory: 'T' };
   // Its play settings under their old names (#200), each off its default.
   const OLD_PLAY = { streamingMode: 'nzbdav', nzbdavStreamingMethod: 'direct', nzbdavStreamBufferMB: 64, nzbdavPipeBufferMB: 4, nzbdavCacheTimeouts: false };
+  // Its list-time health-check settings (#191) and Auto-queue's setting (#226), beside the provider, cap and TLS choice that stay.
+  const provider = { id: 'p1', name: 'News', host: 'news.example', port: 563, useTLS: true, username: 'u', password: 'p', enabled: true, type: 'pool' };
+  const OLD_LIST_TIME = { enabled: true, mode: 'full', archiveInspection: true, sampleCount: 7, nzbsToInspect: 6, inspectionMethod: 'smart',
+    smartBatchSize: 3, smartAdditionalRuns: 1, smartMinHealthy: 1, hideBlocked: true, maxConnections: 12, healthCheckIndexers: { Ninja: false } };
+  const healthChecks = { ...OLD_LIST_TIME, providers: [provider], maxTotalConnections: 9, verifyTlsCertificates: false, autoQueueMode: 'top' };
+  // Its fallback settings: the old default, Best on a press (before #206), and backups (before #192).
+  const ultimateFallback = { enabled: true, candidateCount: 3, whenToResolve: 'on-tile-selection', desiredBackups: 1, backupProcessingLimit: 2 };
   const old = { indexers: [], cacheEnabled: true, cacheTTL: 9000, indexManager: 'newznab',
-    altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY };
+    altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY, healthChecks, ultimateFallback,
+    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, enabledForHealthCheck: false, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] }] };
   fs.mkdirSync(root + '/config', { recursive: true });
   fs.writeFileSync(configFile, JSON.stringify(old));
 
@@ -81,6 +91,56 @@ try {
     for (const k of Object.keys(OLD_PLAY)) assert.equal(json[k], undefined, k);
     assert.equal(json.playDeliveryMethod, 'direct'); assert.equal(json.playStreamBufferMB, 64);
     assert.equal(json.playPipeBufferMB, 4); assert.equal(json.playCacheTimeouts, false);
+  });
+
+  await check('an old config holding Auto-queue loads without it; its other health-check settings are kept (#226)', async () => {
+    const d = diskConfig().healthChecks;
+    assert.equal('autoQueueMode' in d, false, 'on disk');
+    assert.deepEqual(d.providers, [provider]); assert.equal(d.maxTotalConnections, 9); assert.equal(d.verifyTlsCertificates, false);
+    const { json } = await call('GET', '/api/config');
+    assert.equal('autoQueueMode' in json.healthChecks, false, 'in the config the UI reads');
+    assert.equal(json.healthChecks.maxTotalConnections, 9); assert.equal(json.healthChecks.verifyTlsCertificates, false);
+  });
+
+  await check('an old config loses the list-time health-check settings and keeps the rest (#191)', async () => {
+    const d = diskConfig();
+    for (const k of Object.keys(OLD_LIST_TIME)) assert.equal(d.healthChecks[k], undefined, k);
+    assert.deepEqual(d.healthChecks.providers, [provider]);
+    assert.equal(d.healthChecks.maxTotalConnections, 9); assert.equal(d.healthChecks.verifyTlsCertificates, false);
+    assert.equal(d.syncedIndexers[0].enabledForHealthCheck, undefined); assert.equal(d.syncedIndexers[0].enabledForSearch, true);
+    const { json } = await call('GET', '/api/config');
+    for (const k of Object.keys(OLD_LIST_TIME)) assert.equal(json.healthChecks[k], undefined, k);
+    assert.equal(json.healthChecks.maxTotalConnections, 9);
+  });
+
+  await check('an old config on Best-on-a-press gets the Head start, and loses the backup settings (#206, #192)', async () => {
+    const d = diskConfig().ultimateFallback;
+    assert.equal(d.whenToResolve, 'on-results', 'on disk');
+    for (const k of ['desiredBackups', 'backupProcessingLimit']) assert.equal(k in d, false, `${k} on disk`);
+    assert.equal(d.candidateCount, 3); assert.equal(d.enabled, true);
+    const { json } = await call('GET', '/api/config');
+    assert.equal(json.ultimateFallback.whenToResolve, 'on-results', 'in the config the UI reads');
+    for (const k of ['desiredBackups', 'backupProcessingLimit']) assert.equal(k in json.ultimateFallback, false, `${k} in the config the UI reads`);
+  });
+
+  await check('a deleted setting sent by an old page is not saved (#191, #226, #192)', async () => {
+    const put = await call('PUT', '/api/settings', {
+      healthChecks: { providers: [provider], maxTotalConnections: 9, inspectionMethod: 'fixed', nzbsToInspect: 4, hideBlocked: false, autoQueueMode: 'all' },
+      ultimateFallback: { enabled: true, candidateCount: 3, desiredBackups: 2, backupProcessingLimit: 1 },
+    });
+    assert.equal(put.status, 200);
+    const d = diskConfig();
+    for (const k of ['inspectionMethod', 'nzbsToInspect', 'hideBlocked', 'autoQueueMode']) assert.equal(d.healthChecks[k], undefined, k);
+    assert.equal(d.healthChecks.maxTotalConnections, 9);
+    for (const k of ['desiredBackups', 'backupProcessingLimit']) assert.equal(d.ultimateFallback[k], undefined, k);
+    assert.equal(d.ultimateFallback.candidateCount, 3);
+  });
+
+  await check('the Head start move runs once: a later choice of Best on a press stays (#206)', async () => {
+    const put = await call('PUT', '/api/settings', { ultimateFallback: { enabled: true, whenToResolve: 'on-tile-selection' } });
+    assert.equal(put.status, 200);
+    assert.equal(diskConfig().ultimateFallback.whenToResolve, 'on-tile-selection');
+    assert.equal(diskConfig().headStartMigrated, true);
   });
 
   await check('AltMount settings save to disk and reload', async () => {

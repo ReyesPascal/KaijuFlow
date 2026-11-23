@@ -41,8 +41,8 @@ test('timeStep logs once per call, with the elapsed time, also when the work fai
 
 test('the request reference set around a handler is added to every line inside it', async () => {
   const logs = await captureLogs(async () => {
-    await withStepRef('tt0133093', async () => { logStep({ step: 'health_batch', ms: 5, count: 3 }); });
-    logStep({ step: 'health_batch', ms: 6 });
+    await withStepRef('tt0133093', async () => { logStep({ step: 'indexer_page', source: 'Idx', ms: 5, page: 1 }); });
+    logStep({ step: 'indexer_page', source: 'Idx', ms: 6, page: 1 });
   });
   const recs = stepLines(logs).map(l => parseStepLine(l)!);
   assert.equal(recs[0].ref, 'tt0133093');
@@ -54,9 +54,9 @@ test('lines never carry an API key or a URL query', async () => {
   assert.doesNotMatch(logs, /apikey|https?:\/\//i);
 });
 
-test('parseStepLine ignores other log lines, and the step names are the eight agreed ones', () => {
+test('parseStepLine ignores other log lines, and the step names are the seven agreed ones (health_batch went with the list-time check, #191)', () => {
   assert.equal(parseStepLine('Searching x'), null);
-  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'health_batch', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte']);
+  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte']);
 });
 
 test('timeIndexerPage writes an indexer_page line with source and page, and passes the result through', async () => {

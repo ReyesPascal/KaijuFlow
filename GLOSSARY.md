@@ -56,18 +56,17 @@ _Avoid_: obfuscated release (obfuscated names can still be in order), broken RAR
 Renaming the parts of a Scrambled RAR set into a normal RAR volume series in their real volume order, before the Source goes to the Backend.
 _Avoid_: reorder, repair, fix names
 
-**Auto-queue**:
-KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list is built and before any play (the top one, all of them, or off). A play of a Source already being prepared joins that prepare.
+**Auto-queue** (deleted, #226):
+KaijuFlow preparing the Healthy Sources of a list on the Backend in the background, right after the list was built and before any play (setting `autoQueueMode`: the top one, all of them, or off). Deleted in #226 with its setting and UI control; an old config's `autoQueueMode` is dropped at startup. Head start replaces it (owner, 2026-11-20).
 _Avoid_: pre-warm, preload, prefetch
-To be replaced by Head start (owner, 2026-11-20).
 
 **Head start**:
-The Play-time check of the Best entry's Sources and the prepare of the first Healthy one, begun in the background as soon as any player asks for a title's stream list, so a press of Best finds the check done and the video ready. In Stremio the list is asked for when a film's page opens or an episode is picked. Only the newest list request has a Head start: a new one stops what is unfinished for the one before.
-_Avoid_: prefetch, pre-warm, auto-queue (once built)
+The Play-time check of the Best entry's Sources and the prepare of the first Healthy one, begun in the background as soon as any player asks for a title's stream list, so a press of Best finds the check done and the video ready. In Stremio the list is asked for when a film's page opens or an episode is picked. Only the newest list request has a Head start: a new one stops what is unfinished for the one before, unless a press of Best is waiting on it (a press makes it a play). On by default (#206): Ultimate Fallback's "On Search" (`whenToResolve` on-results); "On Click" turns it off, and Best then starts on the press.
+_Avoid_: prefetch, pre-warm, auto-queue
 
 **Play-time check**:
-The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then. Replaces checking a whole list before it is shown.
-_Avoid_: lazy check, on-demand check, deferred check
+The health check run when a Source is clicked rather than before the stream list is sent: the list goes out at once, unchecked, and the Sources about to be played are checked then. KaijuFlow's only health check: it replaced checking the list before it is shown (the list-time Smart and Fixed checks, deleted in #191), and no setting turns it off.
+_Avoid_: lazy check, on-demand check, deferred check, list-time check (deleted)
 
 **Best entry**:
 The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source.

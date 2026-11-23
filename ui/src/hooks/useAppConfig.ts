@@ -325,7 +325,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     const timer = setTimeout(() => saveSettings({ healthChecks: { ...healthCheckSettings, providers: undefined } }), 500);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [healthChecks.enabled, healthChecks.archiveInspection, healthChecks.sampleCount, healthChecks.nzbsToInspect, healthChecks.inspectionMethod, healthChecks.smartBatchSize, healthChecks.smartAdditionalRuns, healthChecks.smartMinHealthy, healthChecks.maxConnections, healthChecks.maxTotalConnections, healthChecks.verifyTlsCertificates, healthChecks.autoQueueMode, healthChecks.hideBlocked, healthChecks.healthCheckIndexers, saveSettings]);
+  }, [healthChecks.maxTotalConnections, healthChecks.verifyTlsCertificates, saveSettings]);
 
   // Auto-save: Ultimate-Fallback settings
   useEffect(() => {
@@ -333,7 +333,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     const timer = setTimeout(() => saveSettings({ ultimateFallback }), 500);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ultimateFallback.enabled, ultimateFallback.whenToResolve, ultimateFallback.userPickFallback, ultimateFallback.candidateCount, ultimateFallback.preferenceMode, ultimateFallback.archiveInspection, ultimateFallback.sampleCount, ultimateFallback.maxAttempts, ultimateFallback.desiredBackups, ultimateFallback.backupProcessingLimit, ultimateFallback.priorityMoviesTimeoutSeconds, ultimateFallback.priorityTvTimeoutSeconds, ultimateFallback.prioritySeasonPackTimeoutSeconds, ultimateFallback.speedMoviesTimeoutSeconds, ultimateFallback.speedTvTimeoutSeconds, ultimateFallback.speedSeasonPackTimeoutSeconds, ultimateFallback.healthCheckIndexers, saveSettings]);
+  }, [ultimateFallback.enabled, ultimateFallback.whenToResolve, ultimateFallback.userPickFallback, ultimateFallback.candidateCount, ultimateFallback.preferenceMode, ultimateFallback.archiveInspection, ultimateFallback.sampleCount, ultimateFallback.maxAttempts, ultimateFallback.priorityMoviesTimeoutSeconds, ultimateFallback.priorityTvTimeoutSeconds, ultimateFallback.prioritySeasonPackTimeoutSeconds, ultimateFallback.speedMoviesTimeoutSeconds, ultimateFallback.speedTvTimeoutSeconds, ultimateFallback.speedSeasonPackTimeoutSeconds, ultimateFallback.healthCheckIndexers, saveSettings]);
 
   // Auto-save: addon enabled/disabled
   useEffect(() => {

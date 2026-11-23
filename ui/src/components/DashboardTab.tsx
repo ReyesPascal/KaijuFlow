@@ -62,7 +62,6 @@ export interface DashboardTabProps {
     enabled: boolean;
     candidateCount: number;
     preferenceMode: 'priority' | 'speed';
-    desiredBackups: number;
   };
   statsData: any;
   fetchStats: () => void;
@@ -106,9 +105,10 @@ export function DashboardTab({
   handleCardDrop,
   handleCardDragEnd,
 }: DashboardTabProps) {
-  // Ultimate Fallback needs the Backend's capability: off for AltMount until the play-time check (#190).
-  const ufAvailable = false;
-  const ufActive = ultimateFallback.enabled && ufAvailable;
+  // Ultimate Fallback, the Play-time check's engine, is on for AltMount since #190.
+  const ufActive = ultimateFallback.enabled;
+  // Each Source is checked when it is played (#191): that needs an enabled health-check provider.
+  const hasHealthProvider = healthChecks.providers.some(p => p.enabled);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 animate-fade-in-up">
@@ -641,28 +641,19 @@ export function DashboardTab({
                       <span className="text-slate-400 text-sm">Health Checks</span>
                     </div>
                     <div className="text-3xl font-bold group-hover:text-pink-400 group-active:text-pink-400 transition-colors">
-                      {healthChecks.enabled ? 'Enabled' : 'Disabled'}
-                      {healthChecks.enabled && healthChecks.autoQueueMode !== 'off' && (
-                        <span className="text-lg font-normal text-pink-400 ml-2">
-                          + {healthChecks.autoQueueMode === 'top' ? 'Top Result' : 'All Healthy'}
-                        </span>
-                      )}
+                      {hasHealthProvider ? 'At play' : 'No provider'}
                     </div>
                     <div className="text-xs text-slate-500 mt-1 group-hover:text-slate-400 group-active:text-slate-400 transition-colors">
-                      {healthChecks.enabled
+                      {hasHealthProvider
                         ? (() => {
                             const total = healthChecks.providers.length;
                             const enabled = healthChecks.providers.filter(p => p.enabled).length;
                             const disabled = total - enabled;
                             const parts = [`${enabled} active`];
                             if (disabled > 0) parts.push(`${disabled} disabled`);
-                            const inspectionSummary = healthChecks.inspectionMethod === 'smart'
-                              ? `Smart ${healthChecks.smartBatchSize * (1 + (healthChecks.smartAdditionalRuns || 0))} max`
-                              : `${healthChecks.nzbsToInspect} NZBs`;
-                            const modeSummary = `${healthChecks.sampleCount} samples${healthChecks.archiveInspection ? ' · inspection' : ''}`;
-                            return `${parts.join(', ')} of ${total} provider${total !== 1 ? 's' : ''} · ${inspectionSummary} · ${modeSummary}`;
+                            return `${parts.join(', ')} of ${total} provider${total !== 1 ? 's' : ''} · each Source checked when played`;
                           })()
-                        : 'Click to configure →'}
+                        : 'Click to add a provider →'}
                     </div>
                   </div>
                 ),
@@ -675,16 +666,13 @@ export function DashboardTab({
                     onDrop={(e) => handleCardDrop(e, 'ultimateFallback')}
                     onDragEnd={handleCardDragEnd}
                     className={clsx(
-                      "card p-4 group transition-all relative overflow-hidden",
-                      !ufAvailable
-                        ? "opacity-50 cursor-not-allowed"
-                        : "cursor-move hover:!border-amber-400/50 hover:!shadow-amber-500/30 active:!border-amber-400/50 active:!shadow-amber-500/30",
+                      "card p-4 group transition-all relative overflow-hidden cursor-move hover:!border-amber-400/50 hover:!shadow-amber-500/30 active:!border-amber-400/50 active:!shadow-amber-500/30",
                       isDragging && "opacity-50 scale-95",
                       isOver && "ring-2 ring-amber-400 scale-105",
                       ufActive && "!border-amber-500/30"
                     )}
                     onClick={() => {
-                      if (!draggedCard && ufAvailable) setActiveOverlay('ultimateFallback');
+                      if (!draggedCard) setActiveOverlay('ultimateFallback');
                     }}
                   >
                     {ufActive && (
@@ -713,14 +701,12 @@ export function DashboardTab({
                         ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent"
                         : "group-hover:text-amber-400 group-active:text-amber-400"
                     )}>
-                      {ufActive
-                        ? <>Enabled{ultimateFallback.desiredBackups > 0 && <span className="text-lg font-normal text-amber-400 ml-2">+ {ultimateFallback.desiredBackups} NZB Backup{ultimateFallback.desiredBackups === 1 ? '' : 's'}</span>}</>
-                        : ufAvailable ? 'Disabled' : 'Unavailable'}
+                      {ufActive ? 'Enabled' : 'Disabled'}
                     </div>
                     <div className="relative text-xs text-slate-500 mt-1">
                       {ufActive
                         ? `${ultimateFallback.candidateCount} candidate${ultimateFallback.candidateCount !== 1 ? 's' : ''} · ${ultimateFallback.preferenceMode === 'priority' ? 'Priority' : 'Speed'} mode`
-                        : ufAvailable ? 'Click to configure \u2192' : 'Not available with AltMount yet'}
+                        : 'Click to configure \u2192'}
                     </div>
                   </div>
                 ),

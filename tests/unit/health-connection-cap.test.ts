@@ -1,14 +1,16 @@
 // KaijuFlow finding 6: health checks never hold more Usenet connections at
-// once than the total cap, across all workers and providers combined.
+// once than the total cap, across all checks and providers combined. The checks
+// run in parallel on one shared pool, as Best checks its Sources (#190), through
+// the Play-time check's call (checkSource), which a clicked list entry makes too.
+// The cap is the setting (healthChecks.maxTotalConnections): nothing sets it
+// before a check (#191's review, rule 4).
 // Run: npm run test:unit
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import {
-  performBatchHealthChecks,
-  setHealthCheckConnectionCap,
-  DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
-} from '../../src/health/index.ts';
+import { NntpConnectionPool } from '../../src/health/index.ts';
+import { configData } from '../../src/config/index.ts';
+import { checkSource } from '../../src/play/playTimeCheck.ts';
 import { cacheNzbContent } from '../../src/health/nzbContentCache.ts';
 import type { UsenetProvider } from '../../src/types.ts';
 
@@ -78,46 +80,52 @@ const providers: UsenetProvider[] = servers.map((s, i) => ({
   type: 'pool',
 }));
 
+const savedHealthChecks = configData.healthChecks;
 after(() => {
-  setHealthCheckConnectionCap(DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
+  configData.healthChecks = savedHealthChecks;
   for (const s of sockets) s.destroy();
   for (const s of servers) s.close();
 });
 
-async function runBatch(cap: number) {
+/** Check all 8 Sources at once on one shared pool, with the connection cap setting at `cap`. */
+async function runChecks(cap: number) {
   for (let i = 0; i < names.length; i++) cacheNzbContent(urls[i], nzbXml(names[i]));
-  setHealthCheckConnectionCap(cap);
+  configData.healthChecks = { ...savedHealthChecks, providers, maxTotalConnections: cap } as typeof savedHealthChecks;
   open = 0;
   peak = 0;
-  const { results } = await performBatchHealthChecks(
-    urls, providers, 'test-agent', 8, { archiveInspection: true, sampleCount: 3 },
-  );
+  const pool = new NntpConnectionPool();
+  let results;
+  try {
+    results = await Promise.all(urls.map((u, i) => checkSource({ nzbUrl: u, title: names[i], indexerName: 'Parity' }, pool)));
+  } finally {
+    pool.destroyAll();
+  }
   // Let the server see the pool's sockets close.
   await new Promise(r => setTimeout(r, 50));
-  const playable = Object.fromEntries([...results].map(([u, r]) => [u, r.playable]));
+  const playable = Object.fromEntries(results.map((r, i) => [urls[i], r.playable]));
   return { playable, peak };
 }
 
-test('without a tight cap, 8 workers x 2 providers open far more than 3 connections', async () => {
-  const { playable, peak } = await runBatch(100);
+test('without a tight cap, 8 checks x 2 providers open far more than 3 connections', async () => {
+  const { playable, peak } = await runChecks(100);
   assert.deepEqual(playable, expectedPlayable);
   assert.ok(peak > 3, `expected the uncapped run to exceed 3 connections, saw ${peak}`);
 });
 
-test('a cap of 3 holds across all workers and providers, with the same verdicts', async () => {
-  const { playable, peak } = await runBatch(3);
+test('a cap of 3 holds across all checks and providers, with the same verdicts', async () => {
+  const { playable, peak } = await runChecks(3);
   assert.ok(peak <= 3, `peak simultaneous connections was ${peak}, cap is 3`);
   assert.ok(peak >= 1);
   assert.deepEqual(playable, expectedPlayable);
 });
 
 test('a cap of 1 still gives the same verdicts, only slower', async () => {
-  const { playable, peak } = await runBatch(1);
+  const { playable, peak } = await runChecks(1);
   assert.equal(peak, 1);
   assert.deepEqual(playable, expectedPlayable);
 });
 
-test('all connections are closed after a capped batch', async () => {
-  await runBatch(2);
+test('all connections are closed after capped checks', async () => {
+  await runChecks(2);
   assert.equal(open, 0);
 });

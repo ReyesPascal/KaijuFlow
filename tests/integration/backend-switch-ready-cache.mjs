@@ -8,6 +8,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { createFakeAltmount } from './parity/fake-altmount.mjs';
 import { assertBytes } from './parity/bytes.mjs';
+import { useFakeNews } from './parity/fake-nntp.mjs';
 const root = process.env.A4_APP_ROOT, output = process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root + '/../app-import.started'));
 assert.match(root, /kaijuflow-a4-[^/]+\/positive\/work$/);
@@ -19,6 +20,11 @@ const listen = async handler => { const s = http.createServer(handler); await ne
 const media = Buffer.from('KaijuFlow backend switch bytes 0123456789abcdefghijklmnopqrstuvwxyz');
 try {
   const alt = await createFakeAltmount(listen);
+  // The config loads before the play modules (which read the ready cache written below).
+  const { config, configData } = await load('config/index');
+  alt.configure(configData);
+  // Every Source is checked when it is played (#191): the fake news server holds their articles.
+  alt.useNews(await useFakeNews(configData, config));
   const old = { title: 'KaijuFlow.Old.Movie.2026.1080p.WEB-DL.H264', tag: 'old' };
   const tagged = { title: 'KaijuFlow.Tagged.Movie.2026.1080p.WEB-DL.H264', tag: 'tagged' };
   for (const s of [old, tagged]) s.nzb = alt.addMovie(s.tag, s.title, media);
@@ -31,8 +37,6 @@ try {
     [`${tagged.nzb}::${tagged.title}`]: entry(tagged, 'nzbdav'),
   }));
 
-  const { config, configData } = await load('config/index');
-  alt.configure(configData);
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream, prepareStream } = await load('play/streamHandler');
   const { findReadyStream, getCacheEntries } = await load('play/streamCache');

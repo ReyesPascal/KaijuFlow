@@ -12,10 +12,10 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
-import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
+import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, logBestPlays } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
-import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
+import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -52,6 +52,10 @@ const EXO_PLAYER_BUDGET_MS = 8_000;      // Max blocking time per post-redirect 
 // ready next time. Only applies when Ultimate Fallback gives a next candidate.
 // PTP 1.0.2.1 gives up on a source at ~42 s (30 s soft + 12 s hard), so 25 s
 // leaves room for the backup. 0 disables.
+// The one exception to "the next Source is prepared only when the one being
+// played fails" (#192, owner's decision on #192, 2026-11-20: keep it): a first
+// Source still loading after 25 s gets the next one beside it, and whichever is
+// ready first plays.
 const FIRST_SOURCE_SWITCH_MS = (() => {
   const raw = process.env.PLAY_FIRST_SOURCE_SWITCH_MS;
   const n = raw === undefined || raw === '' ? NaN : Number(raw);
@@ -225,7 +229,8 @@ export async function prepareStream(
   // Steps 1-3: hand the Source to the Backend and wait for its video.
   // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
-  if (isUltimateFallbackActive()) await requireHealthySource(source, logPrefix);
+  // It is the only health check since #191, so it runs whatever the fallback setting.
+  await requireHealthySource(source, logPrefix);
 
   const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
   const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;
@@ -572,12 +577,9 @@ export async function handleStream(
   // stream tile (user_pick=1), await its session promise instead of starting
   // our own Backend submission. Self-redirect keeps ExoPlayer alive.
   if (!userPick && isUltimateFallbackActive() && sessionKey) {
-    // On-tile-selection mode: UF didn't fire on search; trigger it here so
-    // the existing await-flow below picks up the new session promise.
-    if (
-      globalConfig.ultimateFallback?.whenToResolve === 'on-tile-selection'
-      && !getSessionPromise(sessionKey)
-    ) {
+    // No session for this title (no Head start: off, stopped by a newer list request, or a player that only
+    // asks at play): Best starts here, so the await-flow below picks up the new session promise.
+    if (!getSessionPromise(sessionKey)) {
       const group = fallbackGroupId ? getFallbackGroup(fallbackGroupId) : undefined;
       if (!group?.candidates?.length) {
         console.log(`👑 UF tile click but no fallback group (sk=${sessionKey}, fbg=${fallbackGroupId}) — falling through`);
@@ -596,6 +598,8 @@ export async function handleStream(
       }
     }
     const sessionPromise = getSessionPromise(sessionKey);
+    // This press waits on the session: a newer list request no longer stops it (#206).
+    claimSession(sessionKey);
     if (sessionPromise) {
       const elapsed = Date.now() - streamStartTime;
       const remainingMs = STREMIO_TIMEOUT_MS - elapsed - STREMIO_SAFETY_MARGIN_MS;
@@ -638,6 +642,8 @@ export async function handleStream(
           }
           if (shouldLogLobby) console.log(`👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}`);
           else if (shouldLogCached) console.log(`👑 Lobby: cached resolve served (sk=${sessionKey})`);
+          // A Head start prepared it before the press, so no prepare line follows this press's '/stream hit'.
+          if ((shouldLogLobby || shouldLogCached) && streamData.sourceTitle) logBestPlays(streamData.sourceTitle);
           const lobbySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
           if (mode !== 'direct') {
             const inline = proxyFn && !lobbyFallbackOn;
@@ -859,7 +865,6 @@ export async function handleStream(
         FIRST_SOURCE_SWITCH_MS > 0
         && i === candidateOrder[0]
         && candidateOrder.length > 1
-        && req.query.auto !== 'true'
       ) {
         // KaijuFlow (finding 5): first source on a fresh request with a backup
         // available. candidateOrder already honors userPickFallback (it holds a
@@ -903,13 +908,6 @@ export async function handleStream(
       // Check again after await — client may have disconnected while waiting
       if (req.socket.destroyed) {
         console.log(`🔌 Client disconnected — aborting redirect for: ${candidate.title}`);
-        return;
-      }
-
-      // Auto-queue: only pre-cache the stream, don't proxy the video
-      if (req.query.auto === 'true') {
-        if (verbose) console.log(`  ✅ Auto-queue cached: ${candidate.title}`);
-        res.json({ cached: true, videoPath: streamData.videoPath });
         return;
       }
 

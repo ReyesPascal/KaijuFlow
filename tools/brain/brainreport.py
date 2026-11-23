@@ -362,18 +362,26 @@ def _norm(text):
     return re.sub(r'[^a-z0-9]+', '', str(text).lower())
 
 
+PREPARE_LINE = re.compile(r'Starting new stream preparation: (.+?)\s*$')
+PRESS_LINES = (PREPARE_LINE, re.compile(r'Best plays: (.+?)\s*$'), re.compile(r'Streaming (.+?): \d+ requests'))
+
+
 def played_source(text):
-    """The release name of the Source KaijuFlow played in one visit, from its own log: the name on the first
-    'Starting new stream preparation' (a cold play) or 'Streaming' (a play that reused what the Backend held) line
-    after the '/stream hit' line. None when the log shows neither."""
-    seen = False
-    for _, msg in _lines(text):
-        if '/stream hit' in msg:
-            seen = True
-        elif seen:
-            m = re.search(r'Starting new stream preparation: (.+?)\s*$', msg) or re.search(r'Streaming (.+?): \d+ requests', msg)
-            if m:
-                return m.group(1)
+    """The release name of a visit's top pick, from KaijuFlow's own log: the first Source KaijuFlow prepared for the play,
+    the one played unless it fell back (fallbacks() then counts the refusal). Its play begins at the press's '/stream hit'
+    line, or earlier at the last 'Head start: checking' line before it (#206): the Head start prepares Best's Source while
+    the list is open, so its first 'Starting new stream preparation' line counts as a press-started Best's does. With none
+    in the play, the press's own 'Best plays' line (it played what its session held) or 'Streaming' line (a play that
+    reused what the Backend held) after '/stream hit'. None when the log shows none of them."""
+    lines = [msg for _, msg in _lines(text)]
+    hit = next((i for i, msg in enumerate(lines) if '/stream hit' in msg), None)
+    if hit is None:
+        return None
+    begun = next((i for i in range(hit - 1, -1, -1) if 'Head start: checking' in lines[i]), hit)
+    for i, msg in enumerate(lines[begun:], begun):
+        m = PREPARE_LINE.search(msg) if i < hit else next((m for r in PRESS_LINES if (m := r.search(msg))), None)
+        if m:
+            return m.group(1)
     return None
 
 

@@ -38,8 +38,8 @@ test('a server listening on IPv4 only is reachable at getSelfUrl', async () => {
 });
 
 test('self-request call sites use getSelfUrl, not localhost', () => {
+  // healthCheckCoordinator.ts (now verifiedMarks.ts) made self-requests for the list-time check (#191) and Auto-queue (#226); both are deleted.
   const files = [
-    'src/addon/healthCheckCoordinator.ts',
     'src/addon/index.ts',
     'src/addon/streamBuilder.ts',
   ];

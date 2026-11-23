@@ -44,10 +44,6 @@ if [[ -f "$sandbox/positive/react-results.json" ]]; then
   sudo cp "$sandbox/positive/react-results.json" "$ROOT/a4-react-results.json"
   sudo chown "$(id -u):$(id -g)" "$ROOT/a4-react-results.json"
 fi
-if [[ -f "$sandbox/positive/coordinator-results.json" ]]; then
-  sudo cp "$sandbox/positive/coordinator-results.json" "$ROOT/a4-coordinator-results.json"
-  sudo chown "$(id -u):$(id -g)" "$ROOT/a4-coordinator-results.json"
-fi
 if [[ -f "$sandbox/positive/cache-results.json" ]]; then
   sudo cp "$sandbox/positive/cache-results.json" "$ROOT/a4-cache-results.json"
   sudo chown "$(id -u):$(id -g)" "$ROOT/a4-cache-results.json"

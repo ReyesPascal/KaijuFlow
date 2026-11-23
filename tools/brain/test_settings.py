@@ -45,9 +45,9 @@ def rules(films=3000, episodes=1000):
     return {'movieFilters': one(films), 'tvFilters': one(episodes)}
 
 
-# The Play-time check's settings of the committed expected settings file (#190), as an applied copy holds them.
-PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-tile-selection', 'maxAttempts': 0,
-                   'desiredBackups': 0}
+# The Play-time check's settings of the committed expected settings file (#190; its Head start on, #206), as an applied
+# copy holds them.
+PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-results', 'maxAttempts': 0}
 
 
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 25),
@@ -57,8 +57,8 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
     """A fake kaijuflow-test folder: KaijuFlow and its AltMount, the one setup (#187), plus the key file. KaijuFlow holds
     the sort and filter rules of rules() unless others are given (kf_rules: what goes into the config; {} for none), and its
     fallback is on (ultimateFallback.enabled, #185) unless kf_fallback is False, with the Play-time check's settings (#190). caps: KaijuFlow's and its AltMount's
-    connection caps; altkf_off: indexers its AltMount has switched off. host_ip: HOST_IP in the folder's .env, beside a
-    secret; altmount_url: KaijuFlow's altmountUrl (None leaves either out)."""
+    connection caps (KaijuFlow's None: its config names none); altkf_off: indexers its AltMount has switched off. host_ip:
+    HOST_IP in the folder's .env, beside a secret; altmount_url: KaijuFlow's altmountUrl (None leaves either out)."""
     base = base or tempdir(case)
     td = os.path.join(base, 'kaijuflow-test')
     kf_cap, altkf_cap = caps
@@ -67,8 +67,7 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
             **(rules() if own is None else own),
             'indexers': [{'name': NAMES[s], 'url': url(s), 'apiKey': SECRET, 'enabled': s in enabled, 'maxPages': 3, 'timeout': 15}
                          for s in list(enabled) + list(disabled)],
-            'healthChecks': {'sampleCount': 3, 'nzbsToInspect': 6, 'maxConnections': cap, 'inspectionMethod': 'smart',
-                             'smartBatchSize': 3, 'smartAdditionalRuns': 1, 'smartMinHealthy': 1, 'archiveInspection': True,
+            'healthChecks': {**({} if cap is None else {'maxTotalConnections': cap}),
                              'providers': [{'name': 'p', 'host': 'h', 'username': SECRET, 'password': SECRET}]},
             'searchConfig': {'seasonPackAdditionalPages': 2, 'seriesPackAdditionalPages': 2},
             'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False,
@@ -101,6 +100,13 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(rep['limit'], 100)
         self.assertNotIn(SECRET, json.dumps(rep))
         self.assertNotIn(SECRET, testbed.render_settings(rep))
+
+    def test_kaijuflows_cap_is_its_total_connection_cap_and_its_default_when_unnamed(self):
+        # #191: the worker count (maxConnections) went with the list-time check; the cap every check shares stays.
+        self.assertEqual(testbed.settings_report(make_copies(self, caps=(9, 25)), limit=100)['caps']['kaijuflow'], 9)
+        rep = testbed.settings_report(make_copies(self, caps=(None, 25)), limit=100)
+        self.assertEqual(rep['caps']['kaijuflow'], 8)  # KaijuFlow's default (src/health/nntpConnection.ts)
+        self.assertEqual(rep['total'], 33)
 
     def test_every_entry_on_the_main_providers_host_counts_backup_flag_or_not(self):
         td = make_copies(self, backup_host='news.example')  # the backup entries use the same Usenet host as the main provider

@@ -25,11 +25,11 @@ const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, ultimateFallbackFromCandidates, ultimateFallbackOptions, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStart, ultimateFallbackOptions, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
-import { coordinateHealthChecks, autoMarkRemainingResults, autoQueueToBackend } from './healthCheckCoordinator.js';
+import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
 import { isDeadNzbByUrl, isDeadNzb, getDeadCacheKey } from '../play/streamCache.js';
 import { requestContext } from '../requestContext.js';
@@ -276,7 +276,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     // === SHARED: Filter dead NZBs from raw results ===
     const filterDeadFromRaw = (results: any[]) => {
       if (!config.filterDeadNzbs) return results;
-      const SELF_URL = getSelfUrl(); // must match healthCheckCoordinator's dead-NZB keys
+      const SELF_URL = getSelfUrl(); // must match the EasyNews NZB URLs the play side marks dead
       const manifestKey = requestContext.getStore()?.manifestKey || '';
       let cachePattern: string | undefined;
       if (type === 'series' && season !== undefined && episode !== undefined) {
@@ -306,10 +306,8 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       return filtered;
     };
 
-    // === SHARED: Trigger auto-resolve or Ultimate-Fallback if enabled ===
-    const triggerAutoResolve = (fallbackCandidates: any[] | undefined, episodesInSeason?: number, episodeAired?: string) => {
-      if (!fallbackCandidates?.length) return;
-
+    // === SHARED: the Head start (#206): Best's check and prepare begin when the list is asked for ===
+    const startHeadStart = (fallbackCandidates: any[] | undefined, episodesInSeason?: number, episodeAired?: string) => {
       const contentKey = `${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
       const ufManifestKey = requestContext.getStore()?.manifestKey || '';
       const sessionKey = `${ufManifestKey}:${contentKey}`;
@@ -321,23 +319,20 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         filePattern = datePattern ? `(?:${cachePattern}|${datePattern})` : cachePattern;
       }
 
-      // Ultimate-Fallback takes priority — handles health checking + the Backend hand-off internally.
+      // Head start (#206): the list goes out now; Best's check and prepare begin in the background.
+      // On-tile-selection turns it off: UF waits for a press of Best (the lobby in streamHandler.ts).
       if (isUltimateFallbackActive() && config.ultimateFallback) {
-        // On-tile-selection: defer UF until the user clicks the lobby tile.
-        // The lobby handler in streamHandler.ts triggers UF there.
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
-        const ur = config.ultimateFallback;
-        ultimateFallbackFromCandidates(
-          sessionKey, fallbackCandidates, ultimateFallbackOptions(ur),
+        // Every list request counts, one with nothing to check too: it stops the Head start before it.
+        headStart(
+          sessionKey, fallbackCandidates ?? [], ultimateFallbackOptions(config.ultimateFallback),
           cachePattern, filePattern, type, episodesInSeason,
-        ).catch(err => console.error('❌ Ultimate-Fallback error:', err));
-        return;
+        );
       }
-
     };
 
-    // === SHARED: Process from raw results → streams (filter, sort, health check, build) ===
-    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], healthMap: Map<string, any>, titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
+    // === SHARED: Process from raw results → streams (filter, sort, build) ===
+    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
       // season packs of remade shows take the deprioritized path (applyRemakeFilter)
       // and would otherwise bypass the dead-NZB DB.
@@ -347,42 +342,14 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // Apply current user filter/sort preferences (deprioritized packs appended after sort)
       allResults = applyUserFilters(allResults, titleMeta.type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks);
 
-      // Play-time check on (#190): the list goes out at once, unchecked; each
-      // Source is checked when it is about to be played. Otherwise the list-time
-      // check pre-filters results (pre-existing health data lets the coordinator
-      // skip already-checked results; its inner gate respects
-      // config.healthChecks.enabled). #191 deletes the list-time check.
-      if (!isUltimateFallbackActive()) {
-        const { healthResults: newHealth, filteredResults } = await coordinateHealthChecks({
-          allResults,
-          type: titleMeta.type,
-          season: titleMeta.season,
-          episode: titleMeta.episode,
-          episodesInSeason: titleMeta.episodesInSeason,
-          episodeAired: titleMeta.episodeAired,
-          preExistingHealth: healthMap.size > 0 ? healthMap : undefined,
-        });
-        for (const [key, val] of newHealth) healthMap.set(key, val);
-        allResults = filteredResults;
-      }
-
-      // Auto-mark EasyNews and Zyclops results as verified
-      autoMarkRemainingResults(allResults, healthMap);
-
-      // Auto-queue to the Backend if enabled. Safe alongside Ultimate Fallback in
-      // on-tile-selection mode (UF defers submit until click). Skipped when UF
-      // is in on-results mode — UF already submits at search time and would
-      // race auto-queue on the same NZBs.
-      const ufSubmitsAtSearch = isUltimateFallbackActive()
-        && config.ultimateFallback?.whenToResolve !== 'on-tile-selection';
-      if (!ufSubmitsAtSearch) {
-        autoQueueToBackend(allResults, healthMap, titleMeta.type, titleMeta.season, titleMeta.episode, titleMeta.episodesInSeason);
-      }
+      // No health check here (#191): the list goes out at once, unchecked; each
+      // Source is checked when it is about to be played (Play-time check, #190).
+      // Only EasyNews and Zyclops results carry a verified mark, made afresh each time.
 
       // Build streams
       const { streams, fallbackGroupId, fallbackCandidates } = buildStreams({
         allResults,
-        healthResults: healthMap,
+        healthResults: verifiedMarks(allResults),
         type: titleMeta.type,
         imdbId,
         season: titleMeta.season,
@@ -398,31 +365,24 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
     // Check cache first (cacheTTL of 0 means disabled)
     if (config.cacheEnabled && config.cacheTTL > 0) {
-      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; healthMap: Record<string, any>; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number } }>(cacheKey);
+      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number } }>(cacheKey);
       if (cached) {
         console.log(`💾 Cache hit for ${type} ${imdbId}`);
 
         const now = Date.now();
-        const healthMap = new Map<string, any>(Object.entries(cached.healthMap || {}));
 
-        // Re-apply filters, sort, health checks, and build streams with current settings
+        // Re-apply filters and sort, and build streams with current settings
         const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
-          cached.rawResults, cached.deprioritizedPacks || [], healthMap,
+          cached.rawResults, cached.deprioritizedPacks || [],
           { type, season, episode, episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime }
         );
-
-        // Update cache with new health results
-        cache.set(cacheKey, {
-          ...cached,
-          healthMap: Object.fromEntries(healthMap),
-        }, config.cacheTTL);
 
         // Create fallback group from current filtered results
         if (fallbackGroupId && fallbackCandidates) {
           createFallbackGroup(fallbackGroupId, fallbackCandidates, type, season?.toString(), episode?.toString(), cached._meta.episodesInSeason);
         }
 
-        triggerAutoResolve(fallbackCandidates, cached._meta.episodesInSeason, cached._meta.episodeAired);
+        startHeadStart(fallbackCandidates, cached._meta.episodesInSeason, cached._meta.episodeAired);
         return { streams };
       }
     }
@@ -462,21 +422,19 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     // === STEP 3: DEDUP + CONTENT-DEPENDENT PRE-FILTERING (cacheable) ===
     const { results: rawResults, deprioritizedPacks } = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
 
-    // === STEP 4: FILTER, SORT, HEALTH CHECK, BUILD (user-preference-dependent) ===
+    // === STEP 4: FILTER, SORT, BUILD (user-preference-dependent; no health check, #191) ===
     const now = Date.now();
-    const healthMap = new Map<string, any>();
     const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
-      rawResults, deprioritizedPacks, healthMap,
+      rawResults, deprioritizedPacks,
       { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime }
     );
 
-    // Cache raw results + deprioritized packs + health map (filters/sorts reapply on cache hits).
+    // Cache raw results + deprioritized packs (filters, sorts and marks reapply on cache hits).
     const skipEmptyCache = config.searchConfig?.cacheEmptyResults === false && rawResults.length === 0;
     if (config.cacheEnabled && config.cacheTTL > 0 && !skipEmptyCache) {
       cache.set(cacheKey, {
         rawResults,
         deprioritizedPacks,
-        healthMap: Object.fromEntries(healthMap),
         _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime },
       }, config.cacheTTL);
     } else if (skipEmptyCache && config.cacheEnabled && config.cacheTTL > 0) {
@@ -488,7 +446,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       createFallbackGroup(fallbackGroupId, fallbackCandidates, type, season?.toString(), episode?.toString(), titleInfo.episodesInSeason);
     }
 
-    triggerAutoResolve(fallbackCandidates, titleInfo.episodesInSeason, titleInfo.episodeAired);
+    startHeadStart(fallbackCandidates, titleInfo.episodesInSeason, titleInfo.episodeAired);
 
     return { streams };
   } catch (error) {

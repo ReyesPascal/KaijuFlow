@@ -3,7 +3,7 @@
 import { after } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { cacheNzbContent } from '../../src/health/nzbContentCache.ts';
-import { rar5FirstArticle, startFakeNntp } from '../integration/parity/fake-nntp.mjs';
+import { rar5FirstArticle, scrambledRarSet, startFakeNntp } from '../integration/parity/fake-nntp.mjs';
 
 const servers: Array<{ close(): Promise<void> }> = [];
 after(async () => { for (const s of servers) await s.close(); });
@@ -13,7 +13,7 @@ after(async () => { for (const s of servers) await s.close(); });
  * segment each); without it every article is filler (a RAR5 first article for
  * a `.rar` name).
  */
-export type F = { name: string; segs?: number; bytes?: number; data?: Buffer };
+export type F = { name: string; segs?: number; bytes?: number; data?: Buffer; /** list the segments last first in the NZB, as some posters do */ reversed?: boolean };
 
 function chunks(f: F): Buffer[] {
   const n = f.segs ?? 1;
@@ -26,8 +26,9 @@ function nzbXml(files: F[], tag: string, password?: string): string {
   const head = password ? `<head><meta type="password">${password}</meta></head>` : '';
   const body = files.map(f => {
     const parts = chunks(f);
-    const segs = parts.map((c, i) =>
-      `<segment bytes="${f.data ? c.length : f.bytes ?? 1000}" number="${i + 1}">${tag}-${f.name}-${i + 1}@fake</segment>`).join('');
+    const listed = parts.map((c, i) =>
+      `<segment bytes="${f.data ? c.length : f.bytes ?? 1000}" number="${i + 1}">${tag}-${f.name}-${i + 1}@fake</segment>`);
+    const segs = (f.reversed ? listed.reverse() : listed).join('');
     return `<file subject="&quot;${f.name}&quot; yEnc (1/${parts.length})"><segments>${segs}</segments></file>`;
   }).join('');
   return `<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">${head}${body}</nzb>`;
@@ -57,6 +58,34 @@ export async function nzbWithNews(files: F[], { served = true, password, missing
 }
 
 /** A real archive from tests/fixtures/archives (see make.sh there). */
-export function archiveFixture(name: string): Buffer {
+export function archiveFixture(name: string): Buffer<ArrayBuffer> {
   return readFileSync(new URL(`../fixtures/archives/${name}`, import.meta.url));
+}
+
+/**
+ * A captured NZB from tests/fixtures/nzbs (scrubbed, see scrub.py there),
+ * cached under a fresh URL, with a fake news server holding every article
+ * except those of the files whose name contains one of `missing`.
+ */
+export async function capturedNzbWithNews(fixture: string, { missing = [] }: { missing?: string[] } = {}) {
+  const xml = readFileSync(new URL(`../fixtures/nzbs/${fixture}`, import.meta.url), 'utf8');
+  const articles = new Map<string, Buffer>();
+  for (const [, subject, body] of xml.matchAll(/<file [^>]*subject="([^"]*)"[^>]*>([\s\S]*?)<\/file>/g)) {
+    if (missing.some(m => subject.includes(m))) continue;
+    for (const [, id] of body.matchAll(/<segment [^>]*>([^<]+)<\/segment>/g)) articles.set(id, Buffer.alloc(100, 0x41));
+  }
+  const news = await startFakeNntp({ articles });
+  servers.push(news);
+  const url = `http://indexer.invalid/captured-${++n}.nzb`;
+  cacheNzbContent(url, xml);
+  return { url, provider: news.provider(), state: news.state };
+}
+
+/**
+ * A 7z set named `<hash>.7z.001` ... `.004` (the 7z sets in the Test 1 run,
+ * 2026-11-15, were named `<hash>.7z.NNN`; this base is invented), its first
+ * articles real 7z volumes.
+ */
+export function sevenZipSet() {
+  return scrambledRarSet({ base: 'Xq7Lm2Pz9Rb4Vn8Kw3Ty5uhaF.7z', parts: 4, startAt: 1, width: 3, firstArticle: (v: number) => archiveFixture(`stored-split.7z.00${v + 1}`) });
 }

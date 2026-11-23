@@ -2,7 +2,7 @@
  * Backend slot (spec #16, ADR 0001).
  *
  * A Backend turns one chosen Source into a Stream KaijuFlow can serve. Every
- * caller (stream handling, Ultimate Fallback, auto-queue, dashboard status)
+ * caller (stream handling, Ultimate Fallback, dashboard status)
  * talks to the Backend through this interface and never calls a Backend's own
  * code directly. AltMount is KaijuFlow's only Backend (#188).
  */

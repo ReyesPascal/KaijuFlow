@@ -184,8 +184,8 @@ class CheckTests(unittest.TestCase):
         self.assertIn('KaijuFlow, cold 1, Alpha (', out)
 
     def test_work_done_during_the_browse_pause_is_no_step_gap(self):
-        # #205: list 1 s, then the 5 s Browse pause, so the play begins at 6 s. Work KaijuFlow does before that (today's
-        # Auto-queue) is no part of the start: an NZB fetch inside the pause is left out, and a step that began in the pause
+        # #205: list 1 s, then the 5 s Browse pause, so the play begins at 6 s. Work KaijuFlow does before that (the
+        # Head start, #206) is no part of the start: an NZB fetch inside the pause is left out, and a step that began in the pause
         # counts only from the play on (3 s of unscramble ending at 6.1 s counts 0.1 s). Start 1.0 s = 0.1 + 0.6 + 0.3.
         with tempdir() as tmp:
             run = copy_run(tmp)

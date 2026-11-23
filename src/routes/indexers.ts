@@ -134,10 +134,10 @@ export function createIndexerRoutes(deps: IndexerDeps): Router {
       // Validate and strip preZyclopsState to known fields only
       if (updates.zyclops?.preZyclopsState != null) {
         const pzs = updates.zyclops.preZyclopsState;
-        if (typeof pzs.enabled !== 'boolean' || typeof pzs.proxy !== 'boolean' || typeof pzs.healthCheck !== 'boolean') {
-          return res.status(400).json({ error: 'Invalid preZyclopsState: expected { enabled: boolean, proxy: boolean, healthCheck: boolean }' });
+        if (typeof pzs.enabled !== 'boolean' || typeof pzs.proxy !== 'boolean') {
+          return res.status(400).json({ error: 'Invalid preZyclopsState: expected { enabled: boolean, proxy: boolean }' });
         }
-        updates.zyclops.preZyclopsState = { enabled: pzs.enabled, proxy: pzs.proxy, healthCheck: pzs.healthCheck };
+        updates.zyclops.preZyclopsState = { enabled: pzs.enabled, proxy: pzs.proxy };
       }
 
       // Log Zyclops state changes
@@ -171,11 +171,10 @@ export function createIndexerRoutes(deps: IndexerDeps): Router {
       }
 
       const indexer = updateIndexer(name, updates);
-      // Include proxy/healthCheck state so frontend can stay in sync
+      // Include proxy state so frontend can stay in sync
       res.json({
         ...indexer,
         _proxyEnabled: config.proxyIndexers?.[indexer.name] ?? true,
-        _healthCheckEnabled: config.healthChecks?.healthCheckIndexers?.[indexer.name] ?? true,
       });
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });

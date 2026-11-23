@@ -4,7 +4,7 @@
 
 import { Bot, X, Shield } from 'lucide-react';
 import clsx from 'clsx';
-import type { Config, ZyclopsIndexerConfig, HealthChecksState, ApiFetch } from '../../types';
+import type { Config, ZyclopsIndexerConfig, ApiFetch } from '../../types';
 import { ZYCLOPS_BACKBONES } from '../../constants';
 
 interface ZyclopsOverlayProps {
@@ -28,8 +28,6 @@ interface ZyclopsOverlayProps {
   setInflightToggle: React.Dispatch<React.SetStateAction<Set<string>>>;
   proxyIndexers: Record<string, boolean>;
   setProxyIndexers: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  healthChecks: HealthChecksState;
-  setHealthChecks: React.Dispatch<React.SetStateAction<HealthChecksState>>;
 }
 
 export function ZyclopsOverlay({
@@ -53,8 +51,6 @@ export function ZyclopsOverlay({
   setInflightToggle,
   proxyIndexers,
   setProxyIndexers,
-  healthChecks,
-  setHealthChecks,
 }: ZyclopsOverlayProps) {
   return (
     <>
@@ -82,7 +78,7 @@ export function ZyclopsOverlay({
             {/* Safety Warning */}
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
               <p className="text-xs text-red-300">
-                <span className="font-semibold">⚠️ Safety Notice:</span> When Zyclops is enabled for an indexer, that indexer will <strong>never</strong> be queried directly. All requests go through the Zyclops proxy. This also disables per-indexer proxy and health check toggles for that indexer (Zyclops handles verification).
+                <span className="font-semibold">⚠️ Safety Notice:</span> When Zyclops is enabled for an indexer, that indexer will <strong>never</strong> be queried directly. All requests go through the Zyclops proxy. This also disables the per-indexer proxy toggle for that indexer (Zyclops handles verification).
               </p>
             </div>
 
@@ -197,13 +193,9 @@ export function ZyclopsOverlay({
                                       return;
                                     }
                                     const serverIndexer = await res.json();
-                                    const { _proxyEnabled, _healthCheckEnabled, ...indexerData } = serverIndexer;
+                                    const { _proxyEnabled, ...indexerData } = serverIndexer;
                                     setConfig(p => p ? { ...p, indexers: p.indexers.map(i => i.name === indexer.name ? indexerData : i) } : p);
                                     setProxyIndexers(p => ({ ...p, [indexer.name]: _proxyEnabled ?? false }));
-                                    setHealthChecks(p => ({
-                                      ...p,
-                                      healthCheckIndexers: { ...p.healthCheckIndexers, [indexer.name]: _healthCheckEnabled ?? false }
-                                    }));
                                   }).catch(() => {
                                     alert('Failed to disable Zyclops — network error');
                                   }).finally(() => {
@@ -387,7 +379,6 @@ export function ZyclopsOverlay({
                     const preZyclopsState = {
                       enabled: indexer.enabled,
                       proxy: proxyIndexers[indexerName] !== false,
-                      healthCheck: healthChecks.healthCheckIndexers[indexerName] !== false,
                     };
                     const newConfig: ZyclopsIndexerConfig = {
                       ...existing,
@@ -407,16 +398,12 @@ export function ZyclopsOverlay({
                         return;
                       }
                       const serverIndexer = await res.json();
-                      const { _proxyEnabled, _healthCheckEnabled, ...indexerData } = serverIndexer;
+                      const { _proxyEnabled, ...indexerData } = serverIndexer;
                       setConfig(prev => prev ? {
                         ...prev,
                         indexers: prev.indexers.map(i => i.name === indexerName ? indexerData : i)
                       } : prev);
                       setProxyIndexers(prev => ({ ...prev, [indexerName]: _proxyEnabled ?? false }));
-                      setHealthChecks(prev => ({
-                        ...prev,
-                        healthCheckIndexers: { ...prev.healthCheckIndexers, [indexerName]: _healthCheckEnabled ?? false }
-                      }));
                     }).catch(() => {
                       alert('Failed to enable Zyclops — network error');
                     }).finally(() => {

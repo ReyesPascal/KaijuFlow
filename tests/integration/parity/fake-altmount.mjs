@@ -52,6 +52,26 @@ export async function createFakeAltmount(listen) {
       ids.map((id, i) => `<segment bytes="750000" number="${i + 1}">${id}</segment>`).join('') + `</segments></file>\n</nzb>\n`;
   };
 
+  /**
+   * With a fake news server: a season pack of loose videos laid out like the
+   * edge2020 pack captured in #189 (tests/fixtures/nzbs/season-pack-loose-edge2020.nzb):
+   * an obfuscated par2 first, then one file per episode in episode order, 3
+   * segments each. The articles of the episodes in `deadEpisodes` are missing.
+   */
+  const checkablePackNzb = (tag, files, { deadEpisodes = [] } = {}) => {
+    const fileXml = (name, idBase, dead, i, total) => {
+      const ids = [1, 2, 3].map(n => `${tag}-${idBase}-s${n}@fake`);
+      if (!dead) for (const id of ids) news.articles.set(id, Buffer.alloc(200, 0x41));
+      const subject = `[${i}/${total}] - &quot;${name.replace(/&/g, '&amp;')}&quot; yEnc (1/3)`;
+      return `<file poster="kf@fake" date="1700000000" subject="${subject}"><groups><group>alt.binaries.synthetic</group></groups><segments>` +
+        ids.map((id, n) => `<segment bytes="750000" number="${n + 1}">${id}</segment>`).join('') + `</segments></file>\n`;
+    };
+    const total = files.length + 1;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"><head><meta type="kf-tag">${tag}</meta></head>\n` +
+      fileXml(`${crypto.createHash('md5').update(tag).digest('hex')}.par2`, 'par2', false, 1, total) +
+      files.map((f, i) => fileXml(f.path.split('/').pop(), `e${f.episode}`, deadEpisodes.includes(f.episode), i + 2, total)).join('') + `</nzb>\n`;
+  };
+
   base = await listen(async (req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
     const path = u.pathname;
@@ -160,11 +180,15 @@ export async function createFakeAltmount(listen) {
       if (news) sources.get(tag).nzb = checkableNzb(tag, `${title}.mkv`, opts);
       return `${base}/${tag}.nzb`;
     },
-    /** Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}]. */
+    /**
+     * Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}].
+     * With a news server, opts { dead: true } leaves an episode's articles missing, and a pack's NZB names each
+     * episode file, opts { deadEpisodes: [episode numbers] } leaving those episodes' articles missing.
+     */
     addSeries(tag, title, episodes, opts = {}) {
       const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}.mkv` }));
       sources.set(tag, { tag, title, files, queueId: nextQueueId++, submits: 0, completed: false });
-      if (news) sources.get(tag).nzb = checkableNzb(tag, `${title}.mkv`, opts);
+      if (news) sources.get(tag).nzb = files.length > 1 ? checkablePackNzb(tag, files, opts) : checkableNzb(tag, `${title}.mkv`, opts);
       return `${base}/${tag}.nzb`;
     },
     /**
@@ -176,6 +200,35 @@ export async function createFakeAltmount(listen) {
       const nzb = this.addMovie(tag, title, media);
       sources.get(tag).nzb = set.nzb;
       for (const p of set.parts) volumeOf.set(p.firstId, p.volume);
+      // With a news server the parts' later articles and the .nfo and .par2 are there too (the scenario
+      // posts the first ones), so the play-time check can sample them and AltMount's probe finds them.
+      if (news) {
+        for (const p of set.parts) for (const n of [2, 3]) news.articles.set(`${tag}-v${p.volume}-s${n}@fake`, Buffer.alloc(200, 0x41));
+        for (const id of [`${tag}-nfo@fake`, `${tag}-par2@fake`]) news.articles.set(id, Buffer.alloc(200, 0x41));
+      }
+      return nzb;
+    },
+    /**
+     * Register a stored 7z set Source (#193): a real stored 7z split in volumes (tests/fixtures/archives,
+     * stored-split.7z.001 to .004, from make.sh), posted as `<title>.7z.001` ... in volume order, each
+     * part's real bytes cut into three articles (a 7z keeps its header at the end), every article on
+     * the news server. Real AltMount v0.4.0 streams a stored 7z (spec #183, Test 1), so it plays; a
+     * compressed one is refused (addRefused).
+     */
+    addSevenZip(tag, title, media) {
+      if (!news) throw new Error('a 7z set Source needs the news server (useNews)');
+      const nzb = this.addMovie(tag, title, media);
+      const files = [1, 2, 3, 4].map(n => {
+        const data = fixture(`stored-split.7z.00${n}`);
+        const size = Math.ceil(data.length / 3);
+        const segs = [0, 1, 2].map(i => ({ id: `${tag}-p${n}-s${i + 1}@fake`, bytes: data.subarray(i * size, (i + 1) * size) }));
+        for (const s of segs) news.articles.set(s.id, s.bytes);
+        const subject = `[${n}/4] - &quot;${title}.7z.00${n}&quot; yEnc (1/3)`;
+        return `<file poster="kf@fake" date="1700000000" subject="${subject}"><groups><group>alt.binaries.synthetic</group></groups><segments>` +
+          segs.map((s, i) => `<segment bytes="${s.bytes.length}" number="${i + 1}">${s.id}</segment>`).join('') + `</segments></file>\n`;
+      });
+      sources.get(tag).nzb = `<?xml version="1.0" encoding="UTF-8"?>\n<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"><head><meta type="kf-tag">${tag}</meta></head>\n` +
+        files.join('') + `</nzb>\n`;
       return nzb;
     },
     /** Why real AltMount v0.4.0 would fail this NZB's RAR set, or null if it would accept it. */

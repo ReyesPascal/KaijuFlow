@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+<file poster="poster@example.invalid" date="1756160922" subject="[2/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.vol00+01.par2&quot; yEnc  7924716 (1/12)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739662" number="1">f1-1@fixture</segment>
+  <segment bytes="739675" number="2">f1-2@fixture</segment>
+  <segment bytes="739532" number="7">f1-7@fixture</segment>
+  <segment bytes="739671" number="11">f1-11@fixture</segment>
+  <segment bytes="41369" number="12">f1-12@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160922" subject="[3/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.vol01+02.par2&quot; yEnc  15809584 (1/23)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739643" number="1">f2-1@fixture</segment>
+  <segment bytes="739580" number="2">f2-2@fixture</segment>
+  <segment bytes="739653" number="12">f2-12@fixture</segment>
+  <segment bytes="739971" number="22">f2-22@fixture</segment>
+  <segment bytes="41384" number="23">f2-23@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160922" subject="[1/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.par2&quot; yEnc  39848 (1/1)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="41289" number="1">f3-1@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160922" subject="[5/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.vol07+08.par2&quot; yEnc  63198248 (1/89)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739556" number="1">f4-1@fixture</segment>
+  <segment bytes="739659" number="2">f4-2@fixture</segment>
+  <segment bytes="739809" number="45">f4-45@fixture</segment>
+  <segment bytes="739744" number="88">f4-88@fixture</segment>
+  <segment bytes="123740" number="89">f4-89@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160922" subject="[4/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.vol03+04.par2&quot; yEnc  31619048 (1/45)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739570" number="1">f5-1@fixture</segment>
+  <segment bytes="739528" number="2">f5-2@fixture</segment>
+  <segment bytes="739554" number="23">f5-23@fixture</segment>
+  <segment bytes="739471" number="44">f5-44@fixture</segment>
+  <segment bytes="82526" number="45">f5-45@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160923" subject="[7/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.vol31+32.par2&quot; yEnc  252514536 (1/353)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739575" number="1">f6-1@fixture</segment>
+  <segment bytes="739776" number="2">f6-2@fixture</segment>
+  <segment bytes="739378" number="177">f6-177@fixture</segment>
+  <segment bytes="739488" number="352">f6-352@fixture</segment>
+  <segment bytes="207521" number="353">f6-353@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160923" subject="[6/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.vol15+16.par2&quot; yEnc  126316920 (1/177)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739865" number="1">f7-1@fixture</segment>
+  <segment bytes="739480" number="2">f7-2@fixture</segment>
+  <segment bytes="739680" number="89">f7-89@fixture</segment>
+  <segment bytes="739822" number="176">f7-176@fixture</segment>
+  <segment bytes="165343" number="177">f7-177@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160923" subject="[8/9] - &quot;itaABctXnxRnJPWGlR0gDTb3XqvmVAlx.vol63+36.par2&quot; yEnc  284054008 (1/397)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="739498" number="1">f8-1@fixture</segment>
+  <segment bytes="739562" number="2">f8-2@fixture</segment>
+  <segment bytes="739566" number="199">f8-199@fixture</segment>
+  <segment bytes="739824" number="396">f8-396@fixture</segment>
+  <segment bytes="207677" number="397">f8-397@fixture</segment>
+ </segments>
+</file>
+<file poster="poster@example.invalid" date="1756160924" subject="[9/9] - &quot;Thief.1981.Directors.Cut.UHD.BluRay.2160p.DD.5.1.DV.HDR.x265-BHDStudio.mp4&quot; yEnc  15511410391 (1/21640)">
+ <groups>
+  <group>alt.binaries.friends</group>
+ </groups>
+ <segments>
+  <segment bytes="729189" number="1">f9-1@fixture</segment>
+  <segment bytes="731346" number="2">f9-2@fixture</segment>
+  <segment bytes="739627" number="10821">f9-10821@fixture</segment>
+  <segment bytes="740185" number="21639">f9-21639@fixture</segment>
+  <segment bytes="594203" number="21640">f9-21640@fixture</segment>
+ </segments>
+</file>
+<!-- newznab 2025-08-25 23:46:14 -->
+</nzb>

@@ -19,11 +19,12 @@ import { config as globalConfig } from '../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-import { NntpConnectionPool, setHealthCheckConnectionCap, DEFAULT_HEALTH_CHECK_CONNECTION_CAP } from '../health/nntpConnection.js';
+import { NntpConnectionPool } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import { isDeadNzbByUrl, getCacheKey, setReadyCacheEntry, setDeadNzbEntry, addDeadNzbByUrl, saveCacheToDisk, logPrepareStart } from './streamCache.js';
 import { prefetchNzb } from '../backends/nzbGrab.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
+import { sourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
 import type { FallbackCandidate, StreamData } from './types.js';
 import type { UltimateFallbackConfig } from '../types.js';
@@ -53,6 +54,7 @@ interface CandidateState {
   prepareDeadWritten?: boolean; // setDeadNzbEntry already wrote a specific Backend-failure entry — don't shadow it with a generic URL-only one at end-of-pipeline
   grabFailed?: boolean;        // Grab never produced an NZB (indexer/network/VPN transient) — don't persist to dead NZB DB
   backendFailed?: boolean;     // Prepare failed for a reason that is not the Source's (Backend unreachable, ADR 0004) — don't persist to dead NZB DB
+  episodeOnlyDead?: boolean;   // Its check blocked the wanted episode of a pack of loose videos (#203): dead for this episode only
   libraryHitDeferred?: LibraryHit; // Priority mode: library hit waiting for an earlier in-flight candidate to terminate
 }
 
@@ -60,8 +62,6 @@ interface UltimateFallbackOptions {
   candidateCount: number;
   /** Picks the wait times only: Best hands over the first healthy Source in list order whatever it says (#190). */
   preferenceMode: 'priority' | 'speed';
-  desiredBackups: number;
-  backupProcessingLimit: number;
   priorityMoviesTimeoutSeconds: number;
   priorityTvTimeoutSeconds: number;
   prioritySeasonPackTimeoutSeconds: number;
@@ -241,6 +241,50 @@ export function cancelAllUltimateFallbacks(): void {
   }
 }
 
+// ── Head start (#206) ───────────────────────────────────────────────
+
+/** Sessions a press of Best is waiting on: a newer list request never stops them. Emptied as each session ends. */
+const claimedSessions = new Set<string>();
+/** The title of the newest list request's Head start, until a press of Best claims it. */
+let headStartKey: string | null = null;
+
+/**
+ * Head start (GLOSSARY): a title's stream list was asked for, so Best's check and prepare begin now in the
+ * background. Only the newest list request has one: the one before is stopped unless a press of Best is waiting
+ * on it. A title whose Best already runs or is done keeps that session (a press joins it).
+ */
+export function headStart(
+  sessionKey: string,
+  candidates: FallbackCandidate[],
+  options: UltimateFallbackOptions,
+  cachePattern?: string,
+  filePattern?: string,
+  contentType?: string,
+  episodesInSeason?: number,
+): void {
+  const before = headStartKey;
+  headStartKey = sessionKey;
+  if (before && before !== sessionKey && !claimedSessions.has(before)) {
+    const controller = activeSessions.get(before);
+    if (controller) {
+      console.log(`👑 Ultimate-Fallback [${before}] Head start stopped: a newer list request [${sessionKey}] has it`);
+      controller.abort();
+    }
+  }
+  if (candidates.length === 0 || sessionPromises.has(sessionKey)) return;
+  console.log(`👑 Ultimate-Fallback [${sessionKey}] Head start: checking Best's Sources before a press`);
+  ultimateFallbackFromCandidates(sessionKey, candidates, options, cachePattern, filePattern, contentType, episodesInSeason)
+    .catch(err => console.error('❌ Ultimate-Fallback error (Head start):', err));
+}
+
+/** A press of Best waits on this title's session: from now on it is a play, which no newer list request stops. */
+export function claimSession(sessionKey: string): void {
+  if (!activeSessions.has(sessionKey) || claimedSessions.has(sessionKey)) return;
+  console.log(`👑 Ultimate-Fallback [${sessionKey}] Best pressed: a play now, no newer list request stops it`);
+  claimedSessions.add(sessionKey);
+  if (headStartKey === sessionKey) headStartKey = null;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Limit concurrency for a batch of async tasks. */
@@ -262,8 +306,7 @@ async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], limit: number)
 /** The engine's options from the Ultimate Fallback settings (both ways in: on search results, on a press of Best). */
 export function ultimateFallbackOptions(ur: UltimateFallbackConfig): UltimateFallbackOptions {
   return {
-    candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, desiredBackups: ur.desiredBackups,
-    backupProcessingLimit: ur.backupProcessingLimit, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds,
+    candidateCount: ur.candidateCount, preferenceMode: ur.preferenceMode, priorityMoviesTimeoutSeconds: ur.priorityMoviesTimeoutSeconds,
     priorityTvTimeoutSeconds: ur.priorityTvTimeoutSeconds, prioritySeasonPackTimeoutSeconds: ur.prioritySeasonPackTimeoutSeconds,
     speedMoviesTimeoutSeconds: ur.speedMoviesTimeoutSeconds, speedTvTimeoutSeconds: ur.speedTvTimeoutSeconds,
     speedSeasonPackTimeoutSeconds: ur.speedSeasonPackTimeoutSeconds, healthCheckIndexers: ur.healthCheckIndexers,
@@ -293,13 +336,15 @@ export async function ultimateFallbackFromCandidates(
   const deferred: DeferredStream = { promise: sessionPromise, resolve: sessionResolveRaw, reject: sessionReject, backupUrls: new Set(), backupStreams: [] };
   // Wrap resolve to stamp the persistable fields and write to disk so the
   // session survives an addon restart.
-  const sessionResolve = (data: StreamData) => {
+  // The played Source's release name rides along, so a press can name what it plays (brain tools' played_source).
+  const sessionResolve = (video: StreamData, sourceTitle: string) => {
+    const data = { ...video, sourceTitle };
     deferred.resolvedData = data;
     deferred.expiresAt = Date.now() + SESSION_TTL_MS;
     sessionResolveRaw(data);
     saveSessionsToDisk();
   };
-  deferred.resolve = sessionResolve;
+  deferred.resolve = data => sessionResolve(data, data.sourceTitle ?? '');
   sessionPromises.set(sessionKey, deferred);
 
   const tag = `👑 Ultimate-Fallback [${sessionKey}]`;
@@ -307,7 +352,6 @@ export async function ultimateFallbackFromCandidates(
   // health-check switches say (GLOSSARY: Unchecked Source). With no enabled provider every
   // check answers an error, so nothing is handed over and the play shows the failure video.
   const providers = enabledHealthCheckProviders();
-  if (providers.length > 0) setHealthCheckConnectionCap(globalConfig.healthChecks?.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
   const pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
 
   try {
@@ -366,7 +410,6 @@ export async function ultimateFallbackFromCandidates(
     let duplicateCount = 0;
     let failedBackupCount = 0;
     let backupLimitReached = false;
-    let postPrimaryGrabs = 0;
 
     const hits: LibraryHit[] = libraryResults
       .filter((r): r is LibraryHit => r.data !== null)
@@ -407,7 +450,7 @@ export async function ultimateFallbackFromCandidates(
         cs.prepareStatus = 'skipped';
         cs.containerType = hitExt || undefined;
         cs.videoSize = hit.data.videoSize;
-        sessionResolve(hit.data);
+        sessionResolve(hit.data, hit.candidate.title);
         console.log(`${tag} 📦 Container locked: ${requiredContainerType || 'unknown'} (from library hit #${cs.poolIndex + 1}, videoPath: ${hit.data.videoPath})`);
         console.log(`${tag} ✅ Resolved via library in ${libElapsed}s`);
         return 'primary';
@@ -502,9 +545,11 @@ export async function ultimateFallbackFromCandidates(
 
     const startHealthCheck = (cs: CandidateState) => {
       cs.healthStatus = 'checking';
-      cs.healthPromise = checkSource(cs.candidate, pool).then(result => {
+      // The check samples the file AltMount is told to play (#203): the episode selector it is sent.
+      cs.healthPromise = checkSource({ ...cs.candidate, episodePattern: filePattern }, pool).then(result => {
         cs.healthStatus = isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'dead' : 'error';
         cs.containerType = result.containerType;
+        cs.episodeOnlyDead = result.episodeOnly === true;
         if (!isHealthy(result)) console.log(`${tag} ❌ #${cs.poolIndex + 1} not healthy (${result.message}) — ${cs.candidate.title}`);
         return { cs, result };
       }).catch(err => {
@@ -585,29 +630,17 @@ export async function ultimateFallbackFromCandidates(
       // is called inline from the completion handlers — without this, a fresh
       // candidate gets grabbed between backupCount incrementing and the next
       // iteration's drain signal.
-      if (primaryResolved) {
-        // No backups wanted — block any post-primary grab. Catches the
-        // inline-call race where `backupLimitReached` hasn't been set yet
-        // by the top of the loop. Already-grabbed candidates still flow
-        // through the Backend hand-off (free backups); we just refuse to
-        // start *new* work. Free library hits are picked up by the
-        // post-drain sweep below regardless.
-        if (options.desiredBackups === 0) return null;
-        if (options.desiredBackups > 0 && backupCount >= options.desiredBackups) return null;
-        // Cap NEW post-primary grabs only. Pre-primary refills (added before
-        // primary resolved while still searching) are free and flow through
-        // as backups via selectNext. Library hits don't charge either.
-        if (options.backupProcessingLimit > 0 && postPrimaryGrabs >= options.backupProcessingLimit) {
-          return null;
-        }
-      }
+      // Only the Source being played is prepared (#192): no grab once it is found. Catches the
+      // inline-call race where `backupLimitReached` hasn't been set yet by the top of the loop.
+      // Already-grabbed candidates are not handed to the Backend either (selectNext). Free
+      // library hits are picked up by the post-drain sweep below regardless.
+      if (primaryResolved) return null;
       // No attempts cap before the primary: Best checks until one is healthy or the list runs out (#190).
       while (nextCandidateIdx < allCandidates.length) {
         const c = allCandidates[nextCandidateIdx];
         nextCandidateIdx++;
         if (isDeadNzbByUrl(c.nzbUrl)) continue;
         const cs = addToPool(c, nextCandidateIdx - 1);
-        if (primaryResolved && !hitUrls.has(c.nzbUrl)) postPrimaryGrabs++;
         deferred.lastVettedUrl = c.nzbUrl;
         if (hitUrls.has(c.nzbUrl)) {
           promoteLibraryCandidate(cs);
@@ -622,6 +655,10 @@ export async function ultimateFallbackFromCandidates(
     // Only a Source the check found healthy is handed to the Backend, never one still being checked:
     // the first healthy Source in list order, waiting while an earlier one is still grabbed or checked.
     const selectNext = (): CandidateState | null => {
+      // Prepare only the Source being played (#192), whatever an old config's backup settings said: the
+      // healthy Sources checked alongside the played one are not handed to the Backend; the next is
+      // prepared only when the one being prepared fails.
+      if (primaryResolved) return null;
       for (const cs of activePool) {
         if (cs.prepareStatus !== 'idle') continue;
         if (cs.healthStatus === 'dead' || cs.healthStatus === 'error') continue;
@@ -636,21 +673,14 @@ export async function ultimateFallbackFromCandidates(
     // ── Event loop (continues after primary for backup pre-caching) ──
     let activePrepareCs: CandidateState | null = null;
     let preparePromise: Promise<StreamData | null> | null = null;
+    // A stop (a newer list request's Head start, a settings change) wakes the loop at once.
+    const stopped = new Promise<void>(resolve => controller.signal.addEventListener('abort', () => resolve(), { once: true }));
 
     while (!controller.signal.aborted) {
-      // Backup limit checks
-      if (primaryResolved) {
-        if (options.desiredBackups === 0 && !backupLimitReached) {
-          backupLimitReached = true;
-          console.log(`${tag} 📦 No replacement grabs (desiredBackups=0) — draining; free library hits still captured`);
-        } else if (options.desiredBackups > 0 && backupCount >= options.desiredBackups && !backupLimitReached) {
-          backupLimitReached = true;
-          console.log(`${tag} 📦 Desired backups reached (${backupCount}/${options.desiredBackups}) — draining pool`);
-        }
-        if (options.backupProcessingLimit > 0 && !backupLimitReached && postPrimaryGrabs >= options.backupProcessingLimit) {
-          backupLimitReached = true;
-          console.log(`${tag} 📦 Backup processing limit reached (${postPrimaryGrabs}/${options.backupProcessingLimit}) — draining pool`);
-        }
+      // Found the Source to play: no more grabs or prepares (#192), only the checks under way end
+      if (primaryResolved && !backupLimitReached) {
+        backupLimitReached = true;
+        console.log(`${tag} 📦 No more grabs: only the Source being played is prepared — draining; free library hits still captured`);
       }
 
       const pending: Promise<unknown>[] = [];
@@ -661,21 +691,21 @@ export async function ultimateFallbackFromCandidates(
       if (preparePromise) pending.push(preparePromise);
       if (pending.length === 0 && !selectNext()) {
         // Pool drained — try pulling more candidates before exiting.
-        // pullReplacement self-gates on backupLimitReached/desiredBackups/BPL,
-        // so it returns null when budget or candidates are exhausted. This
+        // pullReplacement self-gates on backupLimitReached and the primary,
+        // so it returns null when the primary is found or candidates are exhausted. This
         // matters especially when the initial pool was fully resolved by
         // library hits (status='skipped') and no grabs were ever started.
         if (!backupLimitReached) {
           const pulled = pullReplacement();
           if (pulled) {
-            console.log(`${tag} Pool drained — pulled replacement to satisfy desiredBackups`);
+            console.log(`${tag} Pool drained — pulled the next candidate`);
             continue;
           }
         }
         break;
       }
 
-      if (pending.length > 0) await Promise.race(pending);
+      if (pending.length > 0) await Promise.race([...pending, stopped]);
       if (controller.signal.aborted) break;
 
       // Process grab completions → start health checks
@@ -722,7 +752,7 @@ export async function ultimateFallbackFromCandidates(
           activePrepareCs.videoSize = resolvedStreamData.videoSize;
           const elapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
           console.log(`${tag} ✅ Resolved in ${elapsed}s — ${activePrepareCs.candidate.title} [${activePrepareCs.candidate.indexerName}]`);
-          sessionResolve(resolvedStreamData);
+          sessionResolve(resolvedStreamData, activePrepareCs.candidate.title);
           if (requiredContainerType) {
             console.log(`${tag} 📦 Container locked: ${requiredContainerType} (from primary #${activePrepareCs.poolIndex + 1}, videoPath: ${resolvedStreamData.videoPath})`);
           } else {
@@ -822,23 +852,22 @@ export async function ultimateFallbackFromCandidates(
       if (allProcessed && nextCandidateIdx >= allCandidates.length) {
         if (!primaryResolved) {
           console.log(`${tag} ❌ Exhausted all ${allCandidates.length} candidates`);
-        } else if (options.desiredBackups > 0) {
-          const pipelineBackups = backupCount - libraryBackupCount;
-          if (pipelineBackups < options.desiredBackups) {
-            console.log(`${tag} 📦 Exhausted all candidates — ${pipelineBackups}/${options.desiredBackups} backups found`);
-          } else {
-            console.log(`${tag} 📦 Desired backups reached (${pipelineBackups}/${options.desiredBackups}) — stopping`);
-          }
         }
         break;
       }
     }
 
+    // Stopped: a Source not yet handed over is not handed over (AltMount cannot stop an import it has begun).
+    if (controller.signal.aborted && activePrepareCs?.prepareStatus === 'submitted') {
+      activePrepareCs.cancelled = true;
+      activePrepareCs.prepareStatus = 'failed';
+      preparePromise?.catch(() => {});
+      if (activePrepareCs.nzoId) backend.cancel(activePrepareCs.nzoId, 'stopped').catch(() => {});
+    }
+
     // ── Post-drain library sweep ─────────────────────────────────
     // Library hits cost no NNTP grab, so the sweep is always exhaustive when
-    // primary resolved. desiredBackups is treated as a target for grabbed
-    // backups; free library hits are added on top of the target rather than
-    // counting against it. More mid-stream fallback protection at zero cost.
+    // primary resolved: more mid-stream fallback protection at zero cost.
     if (primaryResolved) {
       for (const hit of hits) {
         if (libraryResolvedUrls.has(hit.candidate.nzbUrl)) continue;
@@ -874,8 +903,7 @@ export async function ultimateFallbackFromCandidates(
     const settingsLine = [
       `pool: ${options.candidateCount}`,
       'list order',
-      `desiredBackups: ${options.desiredBackups === 0 ? 'Off' : options.desiredBackups}`,
-      `backupProcessingLimit: ${options.backupProcessingLimit === 0 ? 'all' : `${postPrimaryGrabs}/${options.backupProcessingLimit}`}`,
+      'only the Source played is prepared',
     ].join(' · ');
     console.log(`${tag} ${divider}`);
     console.log(`${tag}   ${activePool.length} checked · ${healthy} healthy · ${dead} dead · ${skipped} skipped · ${totalElapsed}s`);
@@ -950,7 +978,7 @@ export async function ultimateFallbackFromCandidates(
         ? ` (${pipelineBackups} pipeline + ${libraryBackupCount} library)`
         : libraryBackupCount > 0 ? ' (library)' : '';
       console.log(`${tag} ${divider}`);
-      console.log(`${tag}   📦 Backups: ${backupCount}${options.desiredBackups > 0 ? `/${options.desiredBackups}` : ''}${sourceBreakdown} · ${evaluatedAfterPrimary} evaluated · ${skippedMismatch} mismatch · ${skippedUnknown} unknown · ${duplicateCount} duplicate · ${failedBackupCount} failed`);
+      console.log(`${tag}   📦 Backups: ${backupCount}${sourceBreakdown} · ${evaluatedAfterPrimary} evaluated · ${skippedMismatch} mismatch · ${skippedUnknown} unknown · ${duplicateCount} duplicate · ${failedBackupCount} failed`);
       console.log(`${tag} ${divider}`);
     }
 
@@ -962,7 +990,12 @@ export async function ultimateFallbackFromCandidates(
     let deadWrites = 0;
     for (const cs of activePool) {
       if (cs.healthStatus === 'dead' && !cs.prepareDeadWritten && !cs.grabFailed && !cs.backendFailed) {
-        addDeadNzbByUrl(cs.candidate.nzbUrl, cs.candidate.title, cs.candidate.indexerName, cs.candidate.size);
+        // A pack blocked on its wanted episode is remembered for that episode only, as a prepare failure is (#203).
+        if (cs.episodeOnlyDead) {
+          setDeadNzbEntry(cs.candidate.nzbUrl, cs.candidate.title, sourceFailure('Health check: blocked', false, true), cachePattern, cs.candidate.indexerName, cs.candidate.size, cs.candidate.isSeasonPack);
+        } else {
+          addDeadNzbByUrl(cs.candidate.nzbUrl, cs.candidate.title, cs.candidate.indexerName, cs.candidate.size);
+        }
         deadWrites++;
       }
     }
@@ -974,6 +1007,12 @@ export async function ultimateFallbackFromCandidates(
   } finally {
     pool?.destroyAll();
     activeSessions.delete(sessionKey);
+    claimedSessions.delete(sessionKey);
+    // A run that ends with nothing to play settles its session whatever the way out (an early end such as every
+    // Source remembered dead, or a stop), so a press waiting on it goes on at once. Settling twice does nothing.
+    if (deferred.resolvedData === undefined) {
+      sessionReject(new Error(controller.signal.aborted ? 'Ultimate-Fallback stopped' : 'Ultimate-Fallback found no Source to play'));
+    }
     // Persist end-of-pipeline state — captures final backup arrays + lastVettedUrl
     // so a UF tile click after addon restart can serve from the vetted backups.
     saveSessionsToDisk();

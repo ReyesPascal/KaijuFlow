@@ -11,7 +11,7 @@ let nextImdb = 1000001;
 
 /**
  * Offer movie Sources for a new title, in list order (same quality, sizes going down, so KaijuFlow's sort keeps
- * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'rejected' | 'scrambled-rar4' | 'disc-image' }.
+ * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'rejected' | 'never-ready' | 'scrambled-rar4' | 'disc-image' }.
  * Returns { id, sources: [{ tag, title, media }] }.
  */
 function offerMovie({ backend, indexer }, specs) {
@@ -23,6 +23,7 @@ function offerMovie({ backend, indexer }, specs) {
     const link = kind === 'healthy' ? backend.addMovie(spec.tag, title, media)
       : kind === 'dead' ? backend.addMovie(spec.tag, title, media, { dead: true })
       : kind === 'rejected' ? backend.addRejected(spec.tag, title)
+      : kind === 'never-ready' ? backend.addNeverReady(spec.tag, title)
       : backend.addRefused(spec.tag, title, kind);
     return { tag: spec.tag, title, media, link, size: (20 - i) * GB };
   });
@@ -43,10 +44,64 @@ function offerEpisode({ backend, indexer }, specs) {
   return { id: `${show}:1:2`, sources: items };
 }
 
+/**
+ * Offer, for S01E02 of a new show, a season pack of loose videos (S01E01 to S01E03, one file per episode, the
+ * layout of #189's edge2020 pack) on top, then a single-episode Source. `deadEpisodes`: the pack episodes whose
+ * articles are missing. Returns { id, pack, single }.
+ */
+function offerPackThenEpisode({ backend, indexer }, tag, deadEpisodes) {
+  const show = `tt${nextImdb++}`;
+  const packTitle = `KaijuFlow.PlayTime.Pack.S01.2160p.WEB-DL.H265-${tag}`;
+  const episodes = [1, 2, 3].map(episode => ({ season: 1, episode, media: mediaFor(`${tag}-e${episode}`) }));
+  const pack = { tag: `${tag}-pack`, title: packTitle, media: episodes[1].media, size: 30 * GB };
+  pack.link = backend.addSeries(pack.tag, packTitle, episodes, { deadEpisodes });
+  const single = { tag: `${tag}-single`, title: `KaijuFlow.PlayTime.Pack.S01E02.2160p.WEB-DL.H265-${tag}`, media: mediaFor(`${tag}-single`), size: 8 * GB };
+  single.link = backend.addSeries(single.tag, single.title, [{ season: 1, episode: 2, media: single.media }]);
+  indexer.offer(show, [pack, single]);
+  return { id: `${show}:1:2`, pack, single };
+}
+
+/**
+ * A pack blocked on its wanted episode (S01E02, `id`) is remembered dead for that episode only (#203): S01E02's list no
+ * longer offers it, S01E03's still does.
+ */
+async function assertDeadForThisEpisodeOnly(w, id, pack) {
+  const titles = async episodeId => (await w.list('series', episodeId)).filter(s => !isBest(s)).map(entryTitle);
+  assert.ok(!(await titles(id)).includes(pack.title), 'the pack is dead for the episode its check blocked');
+  assert.ok((await titles(id.replace(/:2$/, ':3'))).includes(pack.title), 'another episode\'s list still offers the pack');
+}
+
 async function play(url, range) {
   const res = await fetch(url, { headers: range ? { Range: range } : {}, signal: AbortSignal.timeout(30000) });
   return { status: res.status, headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
+
+/** Run fn(lines) and collect what KaijuFlow logs meanwhile (its console.log lines). */
+async function withLogs(fn) {
+  const lines = [];
+  const saved = console.log;
+  console.log = (...a) => { lines.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); };
+  try { return { result: await fn(lines), lines }; } finally { console.log = saved; }
+}
+
+/** Wait until a log line passes test, or fail after 20 s naming what. */
+async function until(test, what) {
+  const deadline = Date.now() + 20000;
+  while (!test()) {
+    if (Date.now() > deadline) throw new Error(`${what} not within 20 s`);
+    await new Promise(r => setTimeout(r, 25));
+  }
+}
+
+/** Wait until Best's run has ended (its summary line "N checked · N healthy"), so every import it makes has been made.
+ *  With a title id, only that title's run counts. */
+async function bestDone(lines, id = '') {
+  const done = new RegExp(`Ultimate-Fallback \\[[^\\]]*${id}[^\\]]*\\]\\s+\\d+ checked · \\d+ healthy`);
+  await until(() => lines.some(l => done.test(l)), `Best's run${id ? ` for ${id}` : ''}`);
+}
+
+/** How many of a Source's articles the fake news server was asked about (it was checked). */
+const checked = (w, tag) => w.news.state.stats.filter(x => x.startsWith(`${tag}-s`)).length;
 
 /** The failure video is a long video/mp4, much bigger than the synthetic media. */
 function assertFailureVideo(r) {
@@ -78,40 +133,182 @@ function mostAtOnce(times) {
   return most;
 }
 
+/**
+ * A run's visit as the brain tools read it: the list request, a Browse pause long enough for the Head start, then a
+ * press of Best. Returns KaijuFlow's lines, each after its time as `docker logs --timestamps` writes it, and the play.
+ */
+async function capturedVisit(w, id) {
+  const lines = [];
+  const saved = console.log;
+  console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
+  try {
+    const streams = await w.list('movie', id);
+    await bestDone(lines, id);
+    const r = await play(streams[0].url);
+    return { lines, r };
+  } finally { console.log = saved; }
+}
+
 const isBest = s => s.name.includes('KaijuFlow ▶ Best');
 /** The release name a list entry plays (from its tile envelope). */
 const entryTitle = s => JSON.parse(Buffer.from(new URL(s.url).searchParams.get('t'), 'base64url').toString()).title;
 
 export const playTimeScenarios = [
   {
-    // The list goes out at once, sorted and unchecked, with the Best entry on top and the full list below.
+    // The list goes out at once, sorted and unchecked, with the Best entry on top and the full list below: it waits
+    // for no check (the Head start's checks answer after it).
     id: 'list-at-once-unchecked-best-on-top',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'list-a' }, { tag: 'list-b' }, { tag: 'list-c', kind: 'dead' }]);
-      const asked = w.news.state.stats.length + w.news.state.reads.length;
-      const streams = await w.list('movie', id);
-      assert.equal(streams.length, 4, 'Best plus every Source');
-      assert.ok(isBest(streams[0]), `Best is on top (got ${streams[0].name})`);
-      assert.equal(streams.slice(1).map(entryTitle).join(' | '), sources.map(s => s.title).join(' | '), 'the full list below, in sort order');
-      assert.equal(w.news.state.stats.length + w.news.state.reads.length, asked, 'no article is checked before the list goes out');
-      assert.equal(w.backend.submitted.length, 0, 'nothing reaches AltMount before a play');
-      assert.ok(!streams.some(s => /✅|❌|🚫/.test(s.title)), 'no Source shows a health verdict');
+      w.news.slow('list-', 500);
+      try {
+        const streams = await w.list('movie', id);
+        const listed = Date.now();
+        assert.equal(streams.length, 4, 'Best plus every Source');
+        assert.ok(isBest(streams[0]), `Best is on top (got ${streams[0].name})`);
+        assert.equal(streams.slice(1).map(entryTitle).join(' | '), sources.map(s => s.title).join(' | '), 'the full list below, in sort order');
+        const answered = w.news.state.asks.filter(a => a.id.startsWith('list-') && a.answered !== null && a.answered <= listed);
+        assert.equal(answered.length, 0, 'no check had answered when the list went out');
+        assert.ok(!streams.some(s => /✅|❌|🚫/.test(s.title)), 'no Source shows a health verdict');
+      } finally {
+        w.news.slow('list-', 0);
+      }
     },
   },
   {
-    // The brain tools read a Best press from KaijuFlow's log (tools/brain/docs/formats.md): one play_check line per
-    // Source Best checked, the dead one too, and the played Source's name on the first prepare line after the
-    // press's '/stream hit' line. Best's backups are prepared after it. A scrubbed capture of these lines is
-    // tools/brain/fixtures/2026-11-21-best/, which the brain tests read.
+    // Head start (#206): a list request alone starts Best's check and one AltMount import, the first healthy
+    // Source; a press of Best then plays it with no new import.
+    id: 'head-start-checks-and-prepares-best-before-a-play',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'hs-dead', kind: 'dead' }, { tag: 'hs-ok' }, { tag: 'hs-other' }]);
+      const before = w.backend.submitted.length;
+      const { result: streams } = await withLogs(async lines => {
+        const out = await w.list('movie', id);
+        await bestDone(lines, id);
+        return out;
+      });
+      for (const s of sources) assert.ok(checked(w, s.tag) > 0, `${s.tag} was checked before any play`);
+      assert.deepEqual(w.backend.submitted.slice(before), ['hs-ok'], 'one AltMount import before any play, the first healthy Source');
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the Source its Head start prepared');
+      assert.deepEqual(w.backend.submitted.slice(before), ['hs-ok'], 'the press makes no new import');
+    },
+  },
+  {
+    // Head start, one title at a time (#206): a list request for another title stops the unfinished check of the
+    // one before, so none of its Sources reaches AltMount; a press of its Best later still plays, checked then.
+    id: 'a-newer-list-request-stops-the-head-start-before-it',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'stop-a1' }, { tag: 'stop-a2' }]);
+      const b = offerMovie(w, [{ tag: 'stop-b1' }]);
+      const before = w.backend.submitted.length;
+      const aTags = ['stop-a1', 'stop-a2'];
+      w.news.slow('stop-a', 1500);
+      let streamsA;
+      try {
+        await withLogs(async lines => {
+          streamsA = await w.list('movie', a.id);
+          await until(() => w.news.state.asks.some(x => x.id.startsWith('stop-a')), 'the first title\'s check');
+          await w.list('movie', b.id);
+          await bestDone(lines, a.id);
+          const answered = w.news.state.asks.filter(x => x.id.startsWith('stop-a') && x.answered !== null);
+          assert.equal(answered.length, 0, 'the first title\'s run ended mid-check, stopped');
+          await bestDone(lines, b.id);
+        });
+        await new Promise(r => setTimeout(r, 1700)); // the first title's checks would have answered by now
+        for (const tag of aTags) assert.equal(w.backend.submitsFor(tag), 0, `${tag} never reaches AltMount`);
+        assert.deepEqual(w.backend.submitted.slice(before), ['stop-b1'], 'only the newest title\'s Head start imports');
+      } finally {
+        w.news.slow('stop-a', 0);
+      }
+      const r = await play(streamsA[0].url);
+      assert.equal(r.status, 200, 'a press of the stopped title\'s Best still plays');
+      assertBytes(r.body, a.sources[0].media, 'its Best checks and prepares on the press');
+      assert.equal(w.backend.submitsFor('stop-a1'), 1);
+    },
+  },
+  {
+    // Head start, one title at a time (#206), stopped mid-import: a list request for another title while the first
+    // title's import is under way stops its run. AltMount ends an import it has begun on its own (KaijuFlow cannot
+    // stop it), but KaijuFlow hands it nothing more for the first title: that import fails and no next Source follows.
+    id: 'a-newer-list-request-stops-the-head-start-mid-import',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'stopimp-a1', kind: 'never-ready' }, { tag: 'stopimp-a2' }]);
+      const b = offerMovie(w, [{ tag: 'stopimp-b1' }]);
+      const before = w.backend.submitted.length;
+      const { result: streamsA } = await withLogs(async lines => {
+        const out = await w.list('movie', a.id);
+        await until(() => w.backend.submitsFor('stopimp-a1') === 1, 'the first title\'s import');
+        await w.list('movie', b.id);
+        await bestDone(lines, a.id);
+        await bestDone(lines, b.id);
+        return out;
+      });
+      await new Promise(r => setTimeout(r, 600)); // the first title's import has failed by now (AltMount answers 408 after 300 ms)
+      assert.equal(w.backend.submitsFor('stopimp-a2'), 0, 'the first title\'s next Source never reaches AltMount');
+      assert.deepEqual(w.backend.submitted.slice(before), ['stopimp-a1', 'stopimp-b1'], 'the import under way, then only the newest title\'s');
+      const r = await play(streamsA[0].url);
+      assert.equal(r.status, 200, 'a press of the stopped title\'s Best still plays');
+      assertBytes(r.body, a.sources[1].media, 'checked and prepared on the press');
+    },
+  },
+  {
+    // A player that asks for the list only when it plays (no Browse pause): the press joins the Head start just
+    // begun and plays, with one import.
+    id: 'a-player-that-asks-only-at-play-still-plays',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'atplay-a' }, { tag: 'atplay-b' }]);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
+        const out = await play(streams[0].url);
+        await bestDone(lines, id);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[0].media, 'Best plays the top Source');
+      assert.deepEqual(w.backend.submitted.slice(before), ['atplay-a'], 'one import');
+    },
+  },
+  {
+    // A press of Best makes its title's run a play: a list request for another title that comes while Best is
+    // still checking does not stop it (Stremio asks for the next episode's list during a play).
+    id: 'a-newer-list-request-does-not-stop-a-pressed-best',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'claim-a' }]);
+      const b = offerMovie(w, [{ tag: 'claim-b' }]);
+      w.news.slow('claim-a', 800);
+      try {
+        const { result: r } = await withLogs(async lines => {
+          const streams = await w.list('movie', a.id);
+          const pressed = play(streams[0].url);
+          await until(() => lines.some(l => l.includes(a.id) && l.includes('Best pressed')), 'the press');
+          await w.list('movie', b.id);
+          const out = await pressed;
+          await bestDone(lines, b.id);
+          return out;
+        });
+        assert.equal(r.status, 200, 'the pressed Best plays');
+        assertBytes(r.body, a.sources[0].media, 'its Source, though another title\'s list came meanwhile');
+        assert.equal(w.backend.submitsFor('claim-a'), 1);
+        assert.equal(w.backend.submitsFor('claim-b'), 1, 'the newer title has its Head start too');
+      } finally {
+        w.news.slow('claim-a', 0);
+      }
+    },
+  },
+  {
+    // The brain tools read a visit from KaijuFlow's log (tools/brain/docs/formats.md), from its list request on: one
+    // play_check line per Source Best checked, the dead one too, and the top pick's name on the first prepare line
+    // after the Head start's 'Head start: checking' line (#206), or after the press's '/stream hit' line without one;
+    // the press writes 'Best plays' with the Source it played; the other healthy Source it checked is never prepared
+    // (#192). The scenario's lines go out in its result (`capture`); scrubbed, they are
+    // tools/brain/fixtures/2026-11-21-best/kaijuflow-best-dead-first.txt, which the brain tests read.
     id: 'best-press-log-lines-the-brain-tools-read',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'log-dead', kind: 'dead' }, { tag: 'log-ok' }, { tag: 'log-backup' }]);
-      const streams = await w.list('movie', id);
-      const lines = [];
-      const saved = console.log;
-      console.log = (...a) => { lines.push(`${new Date().toISOString()} ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`); };
-      let r;
-      try { r = await play(streams[0].url); } finally { console.log = saved; }
+      const { lines, r } = await capturedVisit(w, id);
       assertBytes(r.body, sources[1].media, 'Best plays the first healthy Source');
       const steps = lines.filter(l => l.includes('[KF-STEP] ')).map(l => JSON.parse(l.split('[KF-STEP] ')[1]));
       const check = tag => steps.filter(s => s.step === 'play_check' && s.title === sources.find(x => x.tag === tag).title);
@@ -119,9 +316,33 @@ export const playTimeScenarios = [
       assert.deepEqual(check('log-ok').map(s => [s.ok, s.status]), [[true, 'verified']], 'the played Source\'s check is one line');
       const hit = lines.findIndex(l => l.includes('/stream hit'));
       assert.ok(hit >= 0, 'the press writes its /stream hit line');
-      const prepared = lines.slice(hit).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
-      assert.equal(prepared[0], sources[1].title, 'the first prepare line after the press names the played Source');
-      assert.ok(!prepared.includes(sources[0].title), 'the dead Source is never prepared');
+      const played = lines.slice(hit).map(l => l.match(/(?:Starting new stream preparation|Best plays): (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.equal(played[0], sources[1].title, 'the first prepare or Best plays line after the press names the played Source');
+      const prepared = lines.map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.deepEqual(prepared, [sources[1].title], 'only the played Source is prepared: not the dead one, not the other healthy one (#192)');
+      return { capture: lines };
+    },
+  },
+  {
+    // A refusal during a Head start (#206): AltMount refuses the first healthy Source before the press, so the
+    // Head start prepares the next one, and the press plays it with no new import. The brain tools count it a fallback
+    // like a press-started one: the first prepare line after 'Head start: checking' names the refused top pick.
+    // Scrubbed, the scenario's lines are tools/brain/fixtures/2026-11-21-best/kaijuflow-head-start-refused-first.txt.
+    id: 'head-start-refusal-log-lines-the-brain-tools-read',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'hsr-refused', kind: 'rejected' }, { tag: 'hsr-ok' }, { tag: 'hsr-other' }]);
+      const before = w.backend.submitted.length;
+      const { lines, r } = await capturedVisit(w, id);
+      assertBytes(r.body, sources[1].media, 'Best plays the next Source after the refusal');
+      assert.equal(w.backend.submitsFor('hsr-refused'), 1, 'the refused Source was imported once, before the press');
+      assert.deepEqual(w.backend.submitted.slice(before).filter(t => t !== 'hsr-refused'), ['hsr-ok'], 'the refusal makes one more import, the next Source');
+      const hit = lines.findIndex(l => l.includes('/stream hit'));
+      const start = lines.findLastIndex((l, i) => i < hit && l.includes('Head start: checking'));
+      assert.ok(start >= 0 && hit > start, 'the Head start began before the press');
+      const prepared = lines.slice(start).map(l => l.match(/Starting new stream preparation: (.+?)\s*$/)?.[1]).filter(Boolean);
+      assert.deepEqual(prepared, [sources[0].title, sources[1].title], 'the Head start prepared the top pick, then the next one');
+      assert.ok(lines.slice(hit).some(l => l.endsWith(`Best plays: ${sources[1].title}`)), 'the press names the Source it played');
+      return { capture: lines };
     },
   },
   {
@@ -139,6 +360,45 @@ export const playTimeScenarios = [
       const again = await play(streams[0].url);
       assertBytes(again.body, sources[1].media, 'a second press plays the same Source');
       assert.equal(w.backend.submitsFor('second-ok'), 1, 'without a new import');
+    },
+  },
+  {
+    // Prepare only the Source being played (#192): Best checks the top 3, all healthy, and AltMount gets one
+    // import, the one played; the other two healthy Sources are checked but never imported.
+    id: 'one-play-makes-one-altmount-import',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'one-a' }, { tag: 'one-b' }, { tag: 'one-c' }]);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
+        const out = await play(streams[0].url);
+        await bestDone(lines, id);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[0].media, 'Best plays the top Source');
+      for (const s of sources) assert.ok(checked(w, s.tag) > 0, `${s.tag} was checked`);
+      assert.deepEqual(w.backend.submitted.slice(before), ['one-a'], 'one play makes one AltMount import');
+    },
+  },
+  {
+    // A failure makes the next import (#192): AltMount refuses the top Source, so the next healthy one is
+    // imported and played; the third, also healthy, is not imported.
+    id: 'a-failure-makes-the-next-altmount-import',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'next-refused', kind: 'rejected' }, { tag: 'next-b' }, { tag: 'next-c' }]);
+      const before = w.backend.submitted.length;
+      const { result: r } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
+        const out = await play(streams[0].url);
+        await bestDone(lines, id);
+        return out;
+      });
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the next Source after the refusal');
+      assert.ok(checked(w, 'next-c') > 0, 'the third Source was checked');
+      assert.equal(w.backend.submitsFor('next-refused'), 1, 'the refused Source was imported once');
+      assert.deepEqual(w.backend.submitted.slice(before).filter(t => t !== 'next-refused'), ['next-b'], 'the failure makes one more import, the next Source');
     },
   },
   {
@@ -208,9 +468,10 @@ export const playTimeScenarios = [
   },
   {
     // A list entry is checked when it is clicked: a healthy one plays after its articles are checked; a dead one
-    // never reaches AltMount and the play falls back to the next Source of the list.
+    // never reaches AltMount and the play falls back to the next Source of the list. With the Head start off, so
+    // nothing is checked before the click.
     id: 'list-entry-is-checked-on-click',
-    async run(w) {
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
       const { id, sources } = offerMovie(w, [{ tag: 'pick-dead', kind: 'dead' }, { tag: 'pick-next' }, { tag: 'pick-ok' }]);
       const streams = await w.list('movie', id);
       const checked = tag => w.news.state.stats.filter(x => x.startsWith(`${tag}-s`)).length;
@@ -224,7 +485,7 @@ export const playTimeScenarios = [
       assertBytes(r.body, sources[1].media, 'a dead entry falls back to the next Source');
       assert.ok(checked('pick-dead') > 0, 'the dead entry was checked on click');
       assert.equal(w.backend.submitsFor('pick-dead'), 0, 'and never reached AltMount');
-    },
+    }),
   },
   {
     // ADR 0009 at play time: an archive the pass rule blocks (a Scrambled RAR4 set, which AltMount refused in Test 1,
@@ -265,9 +526,10 @@ export const playTimeScenarios = [
     },
   },
   {
-    // A list entry AltMount refuses falls back to the next Source (fresh title, nothing remembered).
+    // A list entry AltMount refuses falls back to the next Source (fresh title, nothing remembered: the Head start
+    // off, so no Best run has met the refusal first).
     id: 'list-entry-refused-falls-back-to-next',
-    async run(w) {
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
       const { id, sources } = offerMovie(w, [{ tag: 'entry-refused', kind: 'rejected' }, { tag: 'entry-next' }]);
       const streams = await w.list('movie', id);
       const r = await play(streams[1].url);
@@ -275,7 +537,7 @@ export const playTimeScenarios = [
       assertBytes(r.body, sources[1].media, 'the next Source plays');
       assert.equal(w.backend.submitsFor('entry-refused'), 1);
       assert.equal(w.backend.submitsFor('entry-next'), 1);
-    },
+    }),
   },
   {
     // A failed list entry falls back to the next Source even when an older config still says "failure video"
@@ -311,14 +573,58 @@ export const playTimeScenarios = [
     },
   },
   {
+    // #203: in a season pack of loose videos the check samples the wanted episode's file, not the first one.
+    // Its first episode is complete but S01E02 is gone: Best does not hand the pack to AltMount. The pack is
+    // remembered dead for S01E02 only: S01E03's list still offers it.
+    id: 'best-checks-the-wanted-episode-of-a-pack',
+    async run(w) {
+      const { id, pack, single } = offerPackThenEpisode(w, 'packbest', [2]);
+      const streams = await w.list('series', id);
+      assert.equal(entryTitle(streams[1]), pack.title, 'the pack is the top Source');
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, single.media, 'Best plays the next Source');
+      assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose wanted episode is gone never reaches AltMount');
+      await assertDeadForThisEpisodeOnly(w, id, pack);
+    },
+  },
+  {
+    // #203, the reverse: the pack's first episode is gone but S01E02 is complete, so the pack passes the check
+    // and is the first Source Best hands AltMount, told the episode.
+    id: 'best-passes-a-pack-whose-wanted-episode-is-complete',
+    async run(w) {
+      const { id, pack } = offerPackThenEpisode(w, 'packok', [1]);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('series', id);
+      await play(streams[0].url);
+      assert.equal(w.backend.submitted[before], pack.tag, 'the pack is the first Source AltMount gets');
+      const f = w.backend.submitFields[before];
+      assert.equal(`${f.season}x${f.episode}`, '1x2', 'AltMount is told the episode the check sampled');
+    },
+  },
+  {
+    // #203 from a list entry: a click on the pack checks the wanted episode's file and falls back to the next Source;
+    // the pack is remembered dead for that episode only.
+    id: 'list-entry-checks-the-wanted-episode-of-a-pack',
+    async run(w) {
+      const { id, pack, single } = offerPackThenEpisode(w, 'packpick', [2]);
+      const streams = await w.list('series', id);
+      const r = await play(streams[1].url);
+      assert.equal(r.status, 200);
+      assertBytes(r.body, single.media, 'the click falls back to the next Source');
+      assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose wanted episode is gone never reaches AltMount');
+      await assertDeadForThisEpisodeOnly(w, id, pack);
+    },
+  },
+  {
     // AltMount unreachable while Best is pressed: the failure video, but the checked Source is not dead, so
     // it plays once AltMount is back (ADR 0004).
     id: 'best-with-altmount-unreachable-not-dead',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'down-ok' }]);
-      const streams = await w.list('movie', id);
-      w.backend.setDown(true);
+      w.backend.setDown(true); // before the list: its Head start meets AltMount down too
       try {
+        const streams = await w.list('movie', id);
         assertFailureVideo(await play(streams[0].url));
       } finally {
         w.backend.setDown(false);
@@ -337,9 +643,9 @@ export const playTimeScenarios = [
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'unanswered-a' }, { tag: 'unanswered-b' }]);
       const before = w.backend.submitted.length;
-      const streams = await w.list('movie', id);
-      w.backend.setIndexerDown(503);
+      w.backend.setIndexerDown(503); // before the list: its Head start cannot get the NZBs either
       try {
+        const streams = await w.list('movie', id);
         assertFailureVideo(await play(streams[1].url));
       } finally {
         w.backend.setIndexerDown(0);
@@ -360,10 +666,11 @@ export const playTimeScenarios = [
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'noprov-a' }, { tag: 'noprov-b' }]);
       const before = w.backend.submitted.length;
-      const streams = await w.list('movie', id);
       const saved = w.configData.healthChecks;
+      // Before the list: its Head start has no provider either.
       w.configData.healthChecks = { ...saved, providers: saved.providers.map(p => ({ ...p, enabled: false })) };
       try {
+        const streams = await w.list('movie', id);
         assertFailureVideo(await play(streams[0].url));
         assertFailureVideo(await play(streams[1].url));
       } finally {
@@ -387,6 +694,50 @@ export const playTimeScenarios = [
       assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
     },
   },
+  {
+    // #193 (spec #183, Seam 1): a stored 7z set, its parts named `<name>.7z.001` ..., holds no RAR names, so
+    // Unscramble skips it from the names alone, before reading any article, and it goes up as it is; the check
+    // passes it (stored 7z, ADR 0009) and it plays.
+    id: 'a-stored-7z-set-is-skipped-by-unscramble-and-plays',
+    async run(w) {
+      const id = `tt${nextImdb++}`;
+      const title = 'KaijuFlow.PlayTime.SevenZip.2026.2160p.WEB-DL.H265-GRP';
+      const media = mediaFor('sevenzip');
+      const link = w.backend.addSevenZip('sevenzip', title, media);
+      w.indexer.offer(id, [{ tag: 'sevenzip', title, media, link, size: 20 * GB }]);
+      const original = await (await fetch(link)).text();
+      const { result: r, lines } = await withLogs(async lines => {
+        const streams = await w.list('movie', id);
+        await bestDone(lines, id);
+        return play(streams[0].url);
+      });
+      const steps = lines.filter(l => l.startsWith('[KF-STEP] ')).map(l => JSON.parse(l.slice('[KF-STEP] '.length)));
+      assert.deepEqual(steps.filter(s => s.step === 'play_check' && s.title === title).map(s => s.status), ['verified_stored'], 'the check passes it');
+      // no RAR-named or number-named parts: Unscramble ends before reading anything (its reads: unscramble-step.test.ts)
+      assert.deepEqual(steps.filter(s => s.step === 'unscramble' && s.title === title).map(s => [s.result, s.parts]), [['not-scrambled', 0]],
+        'Unscramble decides from its names alone');
+      assert.deepEqual(w.backend.uploadedNzbs('sevenzip'), [original], 'it goes up as it is');
+      assert.equal(r.status, 200, 'the 7z set plays');
+      assertBytes(r.body, media, 'its video');
+    },
+  },
+  {
+    // A Best run that ends before checking anything settles its session (#206): here the Head start found every
+    // Source dead, so the press's own run finds them all remembered dead and ends at once. The press goes on to the
+    // failure video at once, not after the lobby's wait for a session that never answers.
+    id: 'a-press-whose-best-run-ends-early-goes-on-at-once',
+    async run(w) {
+      const { id } = offerMovie(w, [{ tag: 'gone-1', kind: 'dead' }, { tag: 'gone-2', kind: 'dead' }]);
+      const { result: streams } = await withLogs(async lines => {
+        const out = await w.list('movie', id);
+        await bestDone(lines, id);
+        return out;
+      });
+      const pressed = Date.now();
+      assertFailureVideo(await play(streams[0].url));
+      assert.ok(Date.now() - pressed < 10000, `the press ends at once (took ${Date.now() - pressed} ms)`);
+    },
+  },
 ];
 
 /** Run every play-time scenario. Returns per-scenario results. */
@@ -395,8 +746,9 @@ export async function runPlayTimeParity(w) {
   for (const s of playTimeScenarios) {
     const before = w.backend.requests.length;
     try {
-      await s.run(w);
-      results.push({ id: s.id, status: 'pass' });
+      const out = await s.run(w);
+      // A scenario's captured log lines (`capture`) ride in its result, for the brain tools' fixtures.
+      results.push({ id: s.id, status: 'pass', ...(out?.capture ? { capture: out.capture } : {}) });
     } catch (e) {
       results.push({ id: s.id, status: 'fail', error: String(e?.stack || e), requests: w.backend.requests.slice(before).slice(-15) });
     }

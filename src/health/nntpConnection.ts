@@ -55,6 +55,7 @@ class ConnectionLimiter {
 
   /** Wait for a slot. Returns a release function that is safe to call twice. */
   async acquire(): Promise<() => void> {
+    this.setCap(readCap() ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
     if (this.open < this.cap) {
       this.open++;
     } else {
@@ -94,12 +95,19 @@ class ConnectionLimiter {
   }
 }
 
-const limiter = new ConnectionLimiter();
+let readCap: () => number | undefined = () => DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
 
-/** Set the total health-check connection cap (the "Max Total Connections" setting, 1-100). */
-export function setHealthCheckConnectionCap(cap: number): void {
-  limiter.setCap(cap);
+/**
+ * Bind the total health-check connection cap (the "Max Total Connections" setting,
+ * `healthChecks.maxTotalConnections`, 1-100). The reader is called on every new
+ * connection, a Play-time check's or Unscramble's alike, so the setting applies
+ * to every one without a caller setting it first. Bound once, where the config loads.
+ */
+export function bindHealthCheckConnectionCap(read: () => number | undefined): void {
+  readCap = read;
 }
+
+const limiter = new ConnectionLimiter();
 
 let readVerifyTlsCertificates: () => boolean = () => true;
 

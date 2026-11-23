@@ -14,7 +14,7 @@ Private, self-hosted Usenet discovery, verification, fallback, and original-qual
 
 KaijuFlow checks a Source's health, so the title you press is the one that plays, and hands it to AltMount, its one Backend, to stream. Every change is measured on Brain against KaijuFlow's own previous run: first no fails, then the fastest time from title to video.
 
-It started from that release: the backend, React UI and media assets, search and indexer integrations, NNTP providers, Smart and Fixed health checks, archive inspection, automatic fallback, caches, installation scripts, and Docker tooling. It streams through AltMount alone; NzbDAV streaming was removed (#188). See [UPSTREAM.md](UPSTREAM.md) for provenance and licensing.
+It started from that release: the backend, React UI and media assets, search and indexer integrations, NNTP providers, Smart and Fixed health checks (deleted in #191: KaijuFlow checks a Source when it is played), archive inspection, automatic fallback, caches, installation scripts, and Docker tooling. It streams through AltMount alone; NzbDAV streaming was removed (#188). See [UPSTREAM.md](UPSTREAM.md) for provenance and licensing.
 
 ## Getting started
 

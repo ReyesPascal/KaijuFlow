@@ -37,6 +37,9 @@ async function createFakeIndexer() {
 }
 
 try {
+  // KaijuFlow's address goes into the stream list's links (the request's baseUrl), so it listens first.
+  let app;
+  const kaijuflow = await listen((req, res) => app(req, res));
   const backend = await createFakeAltmount(listen);
   const { config, configData } = await load('config/index');
   backend.configure(configData);
@@ -54,9 +57,9 @@ try {
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream } = await load('play/streamHandler');
   const { createPlayStreamRoutes } = await load('routes/play');
-  const app = express();
+  app = express();
+  // The player's mount, as server.ts has it (KaijuFlow makes no self-request since #191 and #226).
   app.use('/stremio/:manifestKey/play', createPlayStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
-  const kaijuflow = await listen(app);
   const { default: addon } = await load('addon/index');
   const { requestContext } = await load('requestContext');
   /** The stream list a player gets for a title (Stremio id, e.g. tt0000001 or tt0000002:1:2). */

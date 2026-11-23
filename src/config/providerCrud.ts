@@ -16,13 +16,7 @@ export function getProviders(): UsenetProvider[] {
 export function addProvider(provider: Omit<UsenetProvider, 'id'>): UsenetProvider {
   if (!configData.healthChecks) {
     configData.healthChecks = {
-      enabled: false,
-      archiveInspection: true,
-      sampleCount: 3,
       providers: [],
-      nzbsToInspect: 6,
-      autoQueueMode: 'all',
-      hideBlocked: true
     };
   }
 
