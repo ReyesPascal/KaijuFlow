@@ -24,8 +24,9 @@ const _require = createRequire(import.meta.url);
 const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
 import { withStepRef } from '../utils/stepTiming.js';
-import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { createFallbackGroup, clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { config } from '../config/index.js';
+import { clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { sessionKeyOf, makePlayContext, episodeOf, type PlayContext } from '../play/playContext.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
@@ -274,18 +275,14 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     const cacheKey = buildSearchCacheKey(requestManifestKey, type, id, config);
 
     // Best's session for this title. Another title's unfinished Walk ends here, before this list's search (#244).
-    const sessionKey = `${requestManifestKey}:${type}:${imdbId}:${season ?? ''}:${episode ?? ''}`;
-    listAsked(sessionKey);
+    listAsked(sessionKeyOf(requestManifestKey, type, imdbId, season, episode));
 
     // === SHARED: Filter dead NZBs from raw results ===
-    const filterDeadFromRaw = (results: any[]) => {
+    const filterDeadFromRaw = (results: any[], play: PlayContext) => {
       if (!config.filterDeadNzbs) return results;
       const SELF_URL = getSelfUrl(); // must match the EasyNews NZB URLs the play side marks dead
       const manifestKey = requestContext.getStore()?.manifestKey || '';
-      let cachePattern: string | undefined;
-      if (type === 'series' && season !== undefined && episode !== undefined) {
-        cachePattern = buildEpisodePattern(season, episode, getTvAllowMultiEpisode(config));
-      }
+      const cachePattern = episodeOf(play).episodePattern;
       const isDead = (url: string) =>
         (cachePattern && isDeadNzb(getDeadCacheKey(url, cachePattern))) || isDeadNzbByUrl(url);
       const before = results.length;
@@ -311,56 +308,47 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
     };
 
     // === SHARED: the Head start (#206): Best's check and prepare begin when the list is asked for ===
-    const startHeadStart = (fallbackCandidates: any[] | undefined, episodesInSeason?: number, episodeAired?: string) => {
-      let cachePattern: string | undefined;
-      let filePattern: string | undefined;
-      if (type === 'series' && season !== undefined && episode !== undefined) {
-        cachePattern = buildEpisodePattern(season, episode, getTvAllowMultiEpisode(config));
-        const datePattern = buildDateEpisodePattern(episodeAired);
-        filePattern = datePattern ? `(?:${cachePattern}|${datePattern})` : cachePattern;
-      }
-
+    const startHeadStart = (fallbackCandidates: any[] | undefined, play: PlayContext) => {
       // Head start (#206): the list goes out now; Best's check and prepare begin in the background.
       // On-tile-selection turns it off: UF waits for a press of Best (the lobby in streamHandler.ts).
       if (isUltimateFallbackActive() && config.ultimateFallback) {
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
-        headStart(
-          sessionKey, fallbackCandidates ?? [], config.ultimateFallback,
-          cachePattern, filePattern, type, episodesInSeason,
-        );
+        headStart(play, fallbackCandidates ?? [], config.ultimateFallback);
       }
     };
 
     // === SHARED: Process from raw results → streams (filter, sort, build) ===
-    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
+    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
+      // The play context (#246): made once here, stored with the list's fallback group, read by every play of it.
+      const play = makePlayContext({
+        manifestKey: requestManifestKey, type, imdbId, season, episode,
+        aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason,
+      });
+
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
       // season packs of remade shows take the deprioritized path (applyRemakeFilter)
       // and would otherwise bypass the dead-NZB DB.
-      let allResults = filterDeadFromRaw(rawResults);
-      const filteredDeprioritizedPacks = filterDeadFromRaw(deprioritizedPacks);
+      let allResults = filterDeadFromRaw(rawResults, play);
+      const filteredDeprioritizedPacks = filterDeadFromRaw(deprioritizedPacks, play);
 
       // Apply current user filter/sort preferences (deprioritized packs appended after sort)
-      allResults = applyUserFilters(allResults, titleMeta.type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks);
+      allResults = applyUserFilters(allResults, type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks);
 
       // No health check here (#191): the list goes out at once, unchecked; each
       // Source is checked when it is about to be played (Play-time check, #190).
       // Only EasyNews and Zyclops results carry a verified mark, made afresh each time.
 
       // Build streams
-      const { streams, fallbackGroupId, fallbackCandidates } = buildStreams({
+      // Build streams (and the list's fallback group, written once)
+      const { streams, fallbackCandidates } = buildStreams({
         allResults,
         healthResults: verifiedMarks(allResults),
-        type: titleMeta.type,
-        imdbId,
-        season: titleMeta.season,
-        episode: titleMeta.episode,
-        episodesInSeason: titleMeta.episodesInSeason,
-        episodeAired: titleMeta.episodeAired,
+        play,
         now: titleMeta.now,
         runtime: titleMeta.runtime,
       });
 
-      return { streams, fallbackGroupId, fallbackCandidates, allResults };
+      return { streams, fallbackCandidates, play };
     };
 
     // Check cache first (cacheTTL of 0 means disabled)
@@ -372,17 +360,12 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         const now = Date.now();
 
         // Re-apply filters and sort, and build streams with current settings
-        const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
+        const { streams, fallbackCandidates, play } = await processFromRaw(
           cached.rawResults, cached.deprioritizedPacks || [],
-          { type, season, episode, episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime }
+          { episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime }
         );
 
-        // Create fallback group from current filtered results
-        if (fallbackGroupId && fallbackCandidates) {
-          createFallbackGroup(fallbackGroupId, fallbackCandidates, type, season?.toString(), episode?.toString(), cached._meta.episodesInSeason);
-        }
-
-        startHeadStart(fallbackCandidates, cached._meta.episodesInSeason, cached._meta.episodeAired);
+        startHeadStart(fallbackCandidates, play);
         return { streams };
       }
     }
@@ -424,9 +407,9 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
     // === STEP 4: FILTER, SORT, BUILD (user-preference-dependent; no health check, #191) ===
     const now = Date.now();
-    const { streams, fallbackGroupId, fallbackCandidates } = await processFromRaw(
+    const { streams, fallbackCandidates, play } = await processFromRaw(
       rawResults, deprioritizedPacks,
-      { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime }
+      { episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime }
     );
 
     // Cache raw results + deprioritized packs (filters, sorts and marks reapply on cache hits).
@@ -441,12 +424,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       console.log(`⏭️  Skipping cache write — 0 results for ${type} ${imdbId}`);
     }
 
-    // Create fallback group
-    if (fallbackGroupId && fallbackCandidates) {
-      createFallbackGroup(fallbackGroupId, fallbackCandidates, type, season?.toString(), episode?.toString(), titleInfo.episodesInSeason);
-    }
-
-    startHeadStart(fallbackCandidates, titleInfo.episodesInSeason, titleInfo.episodeAired);
+    startHeadStart(fallbackCandidates, play);
 
     return { streams };
   } catch (error) {

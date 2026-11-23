@@ -190,12 +190,13 @@ export async function createFakeAltmount(listen) {
       return `${base}/${tag}.nzb`;
     },
     /**
-     * Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}].
+     * Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media, name?}]
+     * (name: the file's name without .mkv, as a daily show's pack names its files by aired date; default <title>.SxxEyy).
      * With a news server, opts { dead: true } leaves an episode's articles missing, and a pack's NZB names each
      * episode file, opts { deadEpisodes: [episode numbers] } leaving those episodes' articles missing.
      */
     addSeries(tag, title, episodes, opts = {}) {
-      const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}.mkv` }));
+      const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${e.name ?? `${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}`}.mkv` }));
       sources.set(tag, { tag, title, files, queueId: nextQueueId++, submits: 0, completed: false });
       if (news) sources.get(tag).nzb = files.length > 1 ? checkablePackNzb(tag, files, opts) : checkableNzb(tag, `${title}.mkv`, opts);
       return `${base}/${tag}.nzb`;

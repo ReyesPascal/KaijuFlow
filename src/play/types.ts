@@ -3,6 +3,8 @@
  * Fallback.
  */
 
+import type { PlayContext } from './playContext.js';
+
 export interface StreamData {
   nzoId: string;
   videoPath: string;
@@ -39,9 +41,7 @@ export interface FallbackCandidate {
 
 export interface FallbackGroup {
   candidates: FallbackCandidate[];
-  type: string;
-  season?: string;
-  episode?: string;
-  episodesInSeason?: number;
+  /** What a play of this list is for, made once when the list was built (#246). */
+  context: PlayContext;
   createdAt: number;
 }

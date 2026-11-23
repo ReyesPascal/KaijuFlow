@@ -6,7 +6,7 @@
  */
 
 import { Request, Response as ExpressResponse } from 'express';
-import { config as globalConfig, getTvAllowMultiEpisode } from '../config/index.js';
+import { config as globalConfig } from '../config/index.js';
 import { pipeline } from 'stream';
 import { promisify } from 'util';
 import fs from 'fs';
@@ -14,7 +14,8 @@ import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
 import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, logBestPlays } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
-import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
+import { getDeliveryLog, WebDav404Error, isUltimateFallbackActive } from './utils.js';
+import { episodeOf, episodeForTile, playContextOfTile, type PlayContext } from './playContext.js';
 import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, walkFoundNothing, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
@@ -364,11 +365,10 @@ export async function handleStream(
   let indexerName: string;
   let fallbackGroupId: string | undefined;
   let contentType: string | undefined;
-  let seasonParam: string | undefined;
-  let episodeParam: string | undefined;
+  // What this play is for (#246): the play context the list made, from its fallback group, or what the tile carries.
+  let play: PlayContext | undefined;
   let tPackSessionKey: string | undefined;
   let tPackSp: string | undefined;
-  let tPackEpcount: string | undefined;
   let tPackUserPick = false;
   let tPackRc: number | undefined;
   let tPackCi: number | undefined;
@@ -389,6 +389,8 @@ export async function handleStream(
     nzbUrl = '';
     title = '';
     indexerName = '';
+    play = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.context : undefined;
+    contentType = play?.type;
   } else {
     // Regular result tile. fbg+idx points into the in-memory fallback group;
     // url/title/indexer ride along as fallbacks for when the group has been
@@ -398,12 +400,10 @@ export async function handleStream(
     nzbUrl = cand?.nzbUrl ?? payload.url ?? '';
     title = cand?.title ?? payload.title ?? '';
     indexerName = cand?.indexerName ?? payload.indexer ?? '';
-    contentType = group?.type ?? payload.ty;
+    play = group?.context ?? playContextOfTile(payload);
+    contentType = group?.context.type ?? payload.ty;
     tPackSearchExitIp = cand?.searchExitIp ?? payload.ip;
-    seasonParam = payload.season !== undefined ? String(payload.season) : undefined;
-    episodeParam = payload.episode !== undefined ? String(payload.episode) : undefined;
     tPackSp = payload.seasonpack === 1 ? '1' : undefined;
-    tPackEpcount = payload.epcount !== undefined ? String(payload.epcount) : undefined;
     tPackUserPick = true;
   }
   const userPick = tPackUserPick;
@@ -419,26 +419,11 @@ export async function handleStream(
 
   const streamStartTime = Date.now();
 
-  // Build episode pattern for season pack file selection (e.g. "S02E05").
-  // When the tile envelope carries an aired-date (daily/talk shows), append
-  // a date-pattern alternation so the file picker matches either SxxExx or
-  // YYYY.MM.DD-named files inside the pack. Restricted to a single show's
-  // pack so the cross-show false-positive risk that gates the library scan's
-  // two-pass approach doesn't apply here.
-  let cachePattern: string | undefined;
-  let filePattern: string | undefined;
-  const epcountParam = tPackEpcount ?? (req.query.epcount as string | undefined);
-  const episodesInSeason = epcountParam ? parseInt(epcountParam, 10) : undefined;
+  // The episode this play is for (e.g. "S02E05"), and for a daily show the file named by its aired date: the
+  // file picker in a season pack matches either.
+  const { episodePattern: cachePattern, filePattern } = episodeOf(play);
+  const episodesInSeason = play?.episodesInSeason;
   const isSeasonPackRequest = (tPackSp ?? req.query.sp) === '1';
-  if (seasonParam && episodeParam) {
-    cachePattern = buildEpisodePattern(
-      parseInt(seasonParam, 10),
-      parseInt(episodeParam, 10),
-      getTvAllowMultiEpisode(globalConfig),
-    );
-    const datePattern = buildDateEpisodePattern(payload.aired);
-    filePattern = datePattern ? `(?:${cachePattern}|${datePattern})` : cachePattern;
-  }
 
   // Build the list of candidates to try (primary first, then fallbacks).
   // Skip the initial candidate when nzbUrl/title are empty (UF tile request case):
@@ -478,19 +463,6 @@ export async function handleStream(
         candidates.push(...group.candidates);
       }
       if (verbose) console.log(`🔄 Fallback group loaded: ${candidates.length} candidates`);
-
-      // If episode info wasn't in the request URL (individual episode stream),
-      // use the group's stored episode so season pack fallbacks select the right file.
-      if (!cachePattern && group.season && group.episode) {
-        const s = parseInt(group.season, 10).toString().padStart(2, '0');
-        const e = parseInt(group.episode, 10).toString().padStart(2, '0');
-        const allowMultiEp = getTvAllowMultiEpisode(globalConfig);
-        cachePattern = allowMultiEp
-          ? `S${s}(?:[. _-]?E\\d+|-\\d{1,2})*(?:[. _-]?E${e}|-${e})(?!\\d)`
-          : `S${s}[. _-]?E${e}(?!\\d|[. _-]?E\\d|-\\d)`;
-        // Group envelope does not carry aired, so file pattern matches cache pattern here.
-        filePattern = cachePattern;
-      }
     }
   }
 
@@ -581,16 +553,8 @@ export async function handleStream(
         console.log(`👑 UF tile click but no fallback group (sk=${sessionKey}, fbg=${fallbackGroupId}) — falling through`);
       } else {
         console.log(`👑 UF fired on tile click [${sessionKey}]`);
-        const ur = globalConfig.ultimateFallback!;
-        const onTileCachePattern = (group.type === 'series' && group.season && group.episode)
-          ? buildEpisodePattern(parseInt(group.season, 10), parseInt(group.episode, 10), getTvAllowMultiEpisode(globalConfig))
-          : undefined;
-        // Group envelope does not carry aired, so file pattern matches cache pattern here.
-        const onTileFilePattern = onTileCachePattern;
-        ultimateFallbackFromCandidates(
-          sessionKey, group.candidates, ur,
-          onTileCachePattern, onTileFilePattern, group.type, group.episodesInSeason,
-        ).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
+        // Its Walk reads the list's play context, so it looks for the episode the Head start would have (#246).
+        ultimateFallbackFromCandidates(group.context, group.candidates, globalConfig.ultimateFallback!).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
       }
     }
     const sessionPromise = getSessionPromise(sessionKey);
@@ -730,9 +694,6 @@ export async function handleStream(
     if (nextCandidate && groupForFallthrough) {
       const remaining = groupForFallthrough.candidates.filter(c => !triedUrls.has(c.nzbUrl)).length;
       const filename = encodeURIComponent(nextCandidate.title || 'stream');
-      const seasonNum = groupForFallthrough.season ? parseInt(groupForFallthrough.season, 10) : undefined;
-      const episodeNum = groupForFallthrough.episode ? parseInt(groupForFallthrough.episode, 10) : undefined;
-      const includeSeasonPack = nextCandidate.isSeasonPack && seasonNum != null && episodeNum != null && !Number.isNaN(seasonNum) && !Number.isNaN(episodeNum);
       const fallthroughT = encodeTileEnvelope({
         url: nextCandidate.nzbUrl,
         title: nextCandidate.title,
@@ -742,12 +703,7 @@ export async function handleStream(
         ...(contentType === 'movie' || contentType === 'series' ? { ty: contentType } : {}),
         ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
         ...(sessionKey ? { sk: sessionKey } : {}),
-        ...(includeSeasonPack ? {
-          season: seasonNum,
-          episode: episodeNum,
-          seasonpack: 1 as const,
-          ...(groupForFallthrough.episodesInSeason != null ? { epcount: groupForFallthrough.episodesInSeason } : {}),
-        } : {}),
+        ...(nextCandidate.isSeasonPack ? episodeForTile(groupForFallthrough.context) : {}),
       });
       const fallthroughUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/stream/${filename}?t=${fallthroughT}`);
       console.log(`👑 UF tile: ${ufBackups?.backupStreams?.length ?? 0} UF backup(s) exhausted — falling through to fallback group (${remaining} candidate(s) remaining)`);
