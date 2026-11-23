@@ -8,8 +8,8 @@ Nothing is published: the script writes index.html, the whole page, and report.h
 ~/kaijuflow-notes/brain-1338/page/). RUNBOOK.md, "Publish the page", has the steps from there.
 
 The page is about one run: the newest timed run given, which must be finished (status "ok"), because its targets are
-judged. The newest finished run before it that is not marked never compared with (#153), when one is given, is what it is compared with ("what changed", the change
-under each headline number), and every timed run given gets a row in "Every run so far".
+judged. Its previous run (runs.previous, found in its runs root as CHECK.txt and report.md find it, #241) is what it is
+compared with ("what changed", the change under each headline number), and every timed run given gets a row in "Every run so far".
 
 Where things come from, never typed into the page by hand:
 
@@ -25,7 +25,6 @@ numbers and verdicts.
 """
 import argparse
 import datetime
-import json
 import os
 import re
 import sys
@@ -33,6 +32,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
 import pagetargets as pt  # noqa: E402
+import runs  # noqa: E402
 import startline  # noqa: E402
 
 DEFAULT_OUT = os.path.expanduser('~/kaijuflow-notes/brain-1338/page/')
@@ -48,14 +48,13 @@ def fails(f):
 class Run:
     """One timed run folder: its meta.json and its visits."""
 
-    def __init__(self, folder):
-        self.folder = folder.rstrip('/') + '/'
-        self.folder_name = os.path.basename(self.folder.rstrip('/'))
-        with open(self.folder + 'meta.json') as fh:
-            self.meta = json.load(fh)
+    def __init__(self, run):
+        """`run` as runs.load reads a run folder."""
+        self.meta = run
+        self.folder = run['dir'].rstrip('/') + '/'
+        self.folder_name = run['folder']
         self.name = self.meta.get('label') or self.meta.get('name') or self.folder_name  # a label (#153) is the readable name
-        with open(self.folder + 'raw.json') as fh:
-            self.visits = json.load(fh)['visits']
+        self.visits = run['visits']
         self.titles = []
         for v in self.visits:
             if v['title'] not in self.titles:
@@ -146,15 +145,10 @@ class Run:
         return out
 
 
-def refuse_short_run(folder):
+def refuse_short_run(folder, run):
     """A short run (brainrun's --sides, --rounds, --quick or a titles subset) is not a baseline and has no place on the page."""
-    try:
-        with open(os.path.join(folder, 'meta.json')) as fh:
-            short = json.load(fh).get('short')
-    except (OSError, ValueError):
-        return
-    if short:
-        raise SystemExit(f'{folder}: a short run ({short}) is not a baseline, so the page does not show it.')
+    if run.get('short'):
+        raise SystemExit(f"{folder}: a short run ({run['short']}) is not a baseline, so the page does not show it.")
 
 
 def refuse_archived_run(folder):
@@ -166,20 +160,22 @@ def refuse_archived_run(folder):
 def find_runs(folders):
     """The timed runs among the given folders (those with raw.json), newest first. A recording folder (meta mode
     'record') may be named beside its run; nothing on the page is read from it."""
-    runs = []
+    found = []
     for f in folders:
         refuse_archived_run(f)
-        refuse_short_run(f)
-        if os.path.exists(os.path.join(f, 'raw.json')):
-            runs.append(Run(f))
-            continue
-        with open(os.path.join(f, 'meta.json')) as fh:
-            if json.load(fh).get('mode') != 'record':
-                raise SystemExit(f'{f}: neither a timed run (raw.json) nor a recording (meta.json with mode "record")')
-    if not runs:
+        try:
+            run = runs.load(f)
+        except runs.Unreadable as e:
+            raise SystemExit(f'{f}: {e}') from None
+        refuse_short_run(f, run)
+        if run['raw_error'] is None:
+            found.append(Run(run))
+        elif run.get('mode') != 'record':
+            raise SystemExit(f'{f}: neither a timed run (raw.json) nor a recording (meta.json with mode "record")')
+    if not found:
         raise SystemExit('Give at least one timed run folder (one that holds raw.json).')
-    runs.sort(key=lambda r: r.folder_name, reverse=True)
-    return runs
+    found.sort(key=lambda r: r.folder_name, reverse=True)
+    return found
 
 
 def read_findings(run):
@@ -236,14 +232,14 @@ def speed_model(run):
                           'lists': [(f'{x.capitalize()} list', r['result'], r['why']) for x, r in bar['lists'].items()]}}
 
 
-def page_model(runs):
-    """Everything the page shows, as plain values, from runs (newest first). The newest must be finished."""
-    run = runs[0]
+def page_model(shown):
+    """Everything the page shows, as plain values, from runs (the run folders given, newest first). The newest must be finished."""
+    run = shown[0]
     why = pt.targets_not_judged(run.status)
     if why:
         raise SystemExit(f'{run.folder}: no page for this run: {why}.')
-    # A speed test is compared with a speed test, a run without tags with one without: their titles are not alike.
-    prev = next((r for r in runs[1:] if r.status == 'ok' and not br.never_compared(r.meta) and r.tagged == run.tagged), None)
+    prev = runs.previous(run.meta)  # the one Previous run, as CHECK.txt and report.md take it (#241)
+    prev = prev and Run(prev)
     targets = run.targets()
     findings, next_step = read_findings(run)
     setups = [{'id': side, 'name': startline.SETUP_NAMES.get(side, side), **run.numbers(side)} for side in run.sides]
@@ -263,7 +259,7 @@ def page_model(runs):
         'speed': speed_model(run) if run.tagged else None,
         'prev_speed': speed_model(prev) if prev and run.tagged else None,
         'findings': findings, 'next': next_step,
-        'history': [history_row(r) for r in runs],
+        'history': [history_row(r) for r in shown],
     }
 
 

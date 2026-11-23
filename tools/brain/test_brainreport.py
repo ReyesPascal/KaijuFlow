@@ -12,6 +12,9 @@ from unittest import mock
 import brainreport as br
 import common
 import runcheck
+import runfolders
+import runs
+from runfolders import run_folder
 from test_settings import tempdir
 
 KF_LOG = """2026-11-10T18:00:01.100000000Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":200,"ok":true,"t":"2026-11-10T18:00:01.000Z","ref":"tt1","page":1}
@@ -142,16 +145,6 @@ class DiffTest(unittest.TestCase):
         self.assertIn('2026-11-10 20:00', text)
         self.assertIn('2026-11-10 22:30', text)
         self.assertNotIn('null run', '\n'.join(br.diff_runs(self.base, cur)))
-
-    def test_null_runs_between_found_in_runs_root(self):
-        root = tempdir(self)
-        for name, status, started in (('a', 'ok', '2026-11-10T10:00:00Z'), ('b', 'null', '2026-11-10T11:00:00Z'),
-                                      ('c', 'ok', '2026-11-10T12:00:00Z'), ('d', 'null', '2026-11-10T13:00:00Z')):
-            os.makedirs(os.path.join(root, name))
-            with open(os.path.join(root, name, 'meta.json'), 'w') as f:
-                json.dump({'status': status, 'started': started}, f)
-        found = br.null_runs_between(root, '2026-11-10T10:00:00Z', exclude='d')
-        self.assertEqual([n['started'] for n in found], ['2026-11-10T11:00:00Z'])
 
     def test_every_kind_of_change(self):
         cur = json.loads(json.dumps(self.base))
@@ -288,6 +281,10 @@ class ReportTest(unittest.TestCase):
         h = br.headline(runs_fixture())
         self.assertIn('KaijuFlow', h)
         self.assertIn('2', h)
+
+
+def without_visits(run):
+    return {k: v for k, v in run.items() if k != 'visits'}
 
 
 def baseline_picks():
@@ -452,20 +449,15 @@ class TopPickTest(unittest.TestCase):
         self.assertEqual(br.diff_runs(no_picks, baseline_picks())[0],
                          'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.')
 
-    def run_folder(self, root, name, run, visits):
-        """A run folder as the runner leaves it: meta.json without the visits, raw.json with them."""
-        os.makedirs(os.path.join(root, name))
-        with open(os.path.join(root, name, 'meta.json'), 'w') as f:
-            json.dump({k: v for k, v in run.items() if k != 'visits'}, f)
-        if visits is not None:
-            with open(os.path.join(root, name, 'raw.json'), 'w') as f:
-                json.dump({'status': run['status'], 'visits': visits}, f)
+    def previous_of(self, root):
+        """The Previous run of a run that comes after every folder in `root`, on the recording 'l'."""
+        return runs.previous({'dir': os.path.join(root, 'zzzz-later'), 'recording': 'l'})
 
     def test_the_top_picks_of_the_previous_run_are_read_from_its_run_folder(self):
         root, prev = tempdir(self), baseline_picks()
-        self.run_folder(root, '2026-11-13T053200Z-baseline', prev, prev['visits'])
+        run_folder(root, '2026-11-13T053200Z-baseline', {**without_visits(prev), 'recording': 'l'}, prev['visits'])
         cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000, 'x 💾 21.9 GB')
-        lines = self.changed(br.previous_run(root), cur)
+        lines = self.changed(self.previous_of(root), cur)
         self.assertEqual(len(lines), 1, lines)
         self.assertIn('KaijuFlow, Inception (Cold 1, Warm 1, Cold 2, Warm 2)', lines[0])
 
@@ -473,12 +465,11 @@ class TopPickTest(unittest.TestCase):
         cur = self.with_pick('kaijuflow', 'Inception', 'Inception.2010.2160p.WEB-DL.DDP5.1.HEVC-NEW', 22300000000, 'x 💾 21.9 GB')
         prev = baseline_picks()
         cut_down = [{k: v for k, v in visit.items() if k not in ('tries', 'played_source')} for visit in prev['visits']]
-        for name, visits in (('no-raw', None), ('cut-down', cut_down)):
-            root = tempdir(self)
-            self.run_folder(root, name, prev, visits)
-            out = br.diff_runs(br.previous_run(root), cur)
-            self.assertEqual(self.changed(br.previous_run(root), cur), [], name)
-            self.assertEqual(out[0], 'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.', name)
+        root = tempdir(self)
+        run_folder(root, '2026-11-13T053200Z-cut-down', {**without_visits(prev), 'recording': 'l'}, cut_down)
+        out = br.diff_runs(self.previous_of(root), cur)
+        self.assertEqual(self.changed(self.previous_of(root), cur), [])
+        self.assertEqual(out[0], 'Nothing changed in the settings, KaijuFlow code, titles, indexers or sides.')
 
 
 def baseline_run():
@@ -1019,15 +1010,6 @@ class RunRecordTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             br.append_index_row(idx, dict(date='d', name='two', result='ok', changed=[], headline='', folder='f2'))
 
-    def test_previous_run_skips_null_and_self(self):
-        for name, status in (('2026-11-10T100000Z-a', 'ok'), ('2026-11-10T110000Z-b', 'null'), ('2026-11-10T120000Z-c', 'ok')):
-            d = os.path.join(self.root, name)
-            os.makedirs(d)
-            json.dump({'status': status, 'commit': name}, open(os.path.join(d, 'meta.json'), 'w'))
-        prev = br.previous_run(self.root, exclude='2026-11-10T120000Z-c')
-        self.assertEqual(prev['commit'], '2026-11-10T100000Z-a')
-        self.assertIsNone(br.previous_run(self.root + '/none'))
-
 
 TAGGED_TITLES = [('movie', 'tt1', 'Matrix', 'easy'), ('movie', 'tt2', 'Dune', 'easy'),
                  ('movie', 'tt3', 'Old Film', 'hard'), ('series', 'tt4:1:1', 'Rare Show S01E01', 'hard')]
@@ -1052,21 +1034,15 @@ def tagged_run_folder(case, changed=None, sides=('kaijuflow', 'kaijuflow-1page')
     changed = changed or {}
     visits = [tagged_visit(side, phase, rnd, t[2], **changed.get((side, phase, rnd, t[2]), {}))
               for phase, rnd in br.RUN_ORDER for t in TAGGED_TITLES for side in sides]
-    folder = os.path.join(tempdir(case), '2026-11-16T100000Z-speed')
-    os.makedirs(folder)
     meta = dict(name='speed', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z', commit='abc',
                 dirty=False, titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES},
                 indexers=['ninjacentral'], sides=list(sides), rounds=2, short=None, settings={},
                 null=None, standin_misses=0, changes=['First run.'])
-    with open(os.path.join(folder, 'meta.json'), 'w') as f:
-        json.dump(meta, f)
-    with open(os.path.join(folder, 'raw.json'), 'w') as f:
-        json.dump({'status': 'ok', 'visits': visits}, f)
-    return folder
+    return run_folder(tempdir(case), '2026-11-16T100000Z-speed', meta, visits)
 
 
 def tagged_report(case, changed=None):
-    return br.render_report(br.load_run(tagged_run_folder(case, changed)), ['First run.'])
+    return br.render_report(runs.load(tagged_run_folder(case, changed)), ['First run.'])
 
 
 class KaijuFlowAloneTest(unittest.TestCase):
@@ -1113,7 +1089,7 @@ class KaijuFlowAloneTest(unittest.TestCase):
                       'cold title to video 3.50 s; warm title to video 3.50 s.', lines)
 
     def test_the_report_shows_the_fallback_as_played_with_its_title_to_video(self):
-        text = br.render_report(br.load_run(self.folder), ['First run.'])
+        text = br.render_report(runs.load(self.folder), ['First run.'])
         [row] = [r for r in per_title_rows(text) if (r['Title'], r['Side'], r['Run']) == ('Old Film', 'KaijuFlow', 'Cold 1')]
         self.assertEqual((row['Title to video'], row['Result']), ('8', 'played after 1 fallback, 2.50 s extra'))
         self.assertIn('| KaijuFlow | Cold 1 | 4 of 4 | 1 | 0 | 0 | 0 | 0 | 0 |', text)  # played, and shown as a fallback
@@ -1188,7 +1164,7 @@ class TaggedRunTest(unittest.TestCase):
                       'fallbacks none; cold title to video 3.50 s; warm title to video 3.50 s.', lines)
 
     def test_the_report_of_a_tagged_run_opens_on_fails_then_title_to_video_and_start_times_stay_as_detail(self):
-        run = br.load_run(tagged_run_folder(self, merged(self.FAILS, video('kaijuflow', 'hard', 5.0))))
+        run = runs.load(tagged_run_folder(self, merged(self.FAILS, video('kaijuflow', 'hard', 5.0))))
         first = br.render_report(run, ['First run.']).splitlines()[0]
         self.assertEqual(first, 'Across 4 titles (2 easy, 2 hard), each round done twice. Fails, every round: KaijuFlow '
                                 'easy 0 titles failed · 0 of 8 plays, hard 1 title failed · 1 of 8 plays; KaijuFlow, one page per indexer '
@@ -1200,7 +1176,7 @@ class TaggedRunTest(unittest.TestCase):
         self.assertNotIn('pressing play', first)
 
     def test_the_replayed_2026_11_13_run_read_untagged_gives_altmount_direct_40_of_40_and_no_lists(self):
-        run = br.load_run(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports'))
+        run = runs.load(runfolders.fixture('run-2026-11-13-imports'))
         self.assertEqual(br.side_plays(run['visits'], 'altmount-addon'), (40, 40))  # four of them after a fallback (#185)
         self.assertEqual(br.run_lists(run['visits']), [])
         text = br.render_report(run, ['x'])

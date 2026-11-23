@@ -543,7 +543,7 @@ def top_pick_changes(before, now):
 
 
 def _picks_of(meta):
-    """The top picks of a run meta: kept in it (previous_run reads them from the run folder) or made from its visits; None
+    """The top picks of a run meta: kept in it or made from its visits (runs.load reads them from the run folder); None
     when the meta holds neither."""
     if 'top_picks' in meta:
         return meta['top_picks']
@@ -751,7 +751,7 @@ def _settings_and_facts(meta):
 def diff_runs(prev, cur, nulls=None):
     """Plain list of every difference between two run metas (settings, code, titles, indexers, time of day).
 
-    nulls: metas of the null runs that lie between the two (see null_runs_between); they are counted with their times.
+    nulls: metas of the null runs that lie between the two (runs.nulls_between); they are counted with their times.
     """
     if prev is None:
         return ['No earlier run to compare with: this is the first one.']
@@ -811,21 +811,6 @@ def is_archived(folder):
 def never_compared(meta):
     """True when a run's meta.json marks it never compared with (#153): kept and shown under its "label", never a comparison."""
     return bool(meta.get('never_compared'))
-
-
-def null_runs_between(root, since, exclude=None):
-    """meta.json of every null run in the runs root that started after `since` (ISO time), oldest first."""
-    found = []
-    for d in run_folders(root):
-        if d == exclude:
-            continue
-        try:
-            meta = json.loads(_slurp(os.path.join(root, d, 'meta.json')))
-        except (OSError, ValueError):
-            continue
-        if meta.get('status') == 'null' and meta.get('started') and parse_ts(meta['started']) > parse_ts(since):
-            found.append(meta)
-    return sorted(found, key=lambda m: m['started'])
 
 
 # --------------------------------------------------------------------------- figures per side
@@ -988,15 +973,6 @@ def _table(cols, rows):
 
 def _defs(cols):
     return [f'- **{c}**: {COLUMN_HELP.get(c) or LIST_COLUMN_HELP[c]}' for c in cols]
-
-
-def load_run(folder):
-    """A run folder as the report reads a run: its meta.json, with the visits of its raw.json under 'visits'."""
-    with open(os.path.join(folder, 'meta.json')) as f:
-        run = json.load(f)
-    with open(os.path.join(folder, 'raw.json'), encoding='utf-8') as f:
-        run['visits'] = json.load(f).get('visits') or []
-    return run
 
 
 def tagged(visits):
@@ -1324,46 +1300,3 @@ def append_index_row(path, row):
         elif not old.endswith('\n'):
             f.write('\n')
         f.write(line)
-
-
-def run_before(run_dir, recording):
-    """The run a run is judged against (#186, rules.md "Judged against the previous run"): the newest earlier finished run
-    in the same runs root on the same recording, not archived, not short and not marked never compared with, as load_run
-    reads it with its `folder`; None when there is none or `recording` is None."""
-    root, name = os.path.split(os.path.abspath(run_dir).rstrip(os.sep))
-    for d in reversed(run_folders(root)):
-        folder = os.path.join(root, d)
-        if d >= name or is_archived(folder):
-            continue
-        try:
-            run = load_run(folder)
-        except (OSError, ValueError):
-            continue
-        if recording is not None and run.get('recording') == recording and run.get('status') == 'ok' \
-                and not run.get('short') and not never_compared(run):
-            run['folder'] = d
-            return run
-    return None
-
-
-def previous_run(root, exclude=None, usable=None):
-    """meta.json of the newest earlier finished (non-null) run, or None. A short run or one marked never compared with is never it. `usable(run folder)`, when
-    given, must also say yes (a short run is compared with the last run usable as a baseline); the meta gets its `folder`. Its top picks are added from the folder's raw.json
-    (`top_picks`), so the next run can be compared with them; a folder that holds none stays without."""
-    for d in reversed(run_folders(root)):
-        if d == exclude:
-            continue
-        try:
-            meta = json.loads(_slurp(os.path.join(root, d, 'meta.json')))
-        except (OSError, ValueError):
-            continue
-        if meta.get('status') == 'ok' and not meta.get('short') and not never_compared(meta) and (usable is None or usable(os.path.join(root, d))):
-            meta['folder'] = d
-            try:
-                picks = top_picks(json.loads(_slurp(os.path.join(root, d, 'raw.json')))['visits'])
-            except (OSError, ValueError, KeyError, TypeError):
-                picks = None
-            if picks:
-                meta['top_picks'] = picks
-            return meta
-    return None
