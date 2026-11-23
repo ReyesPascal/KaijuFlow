@@ -458,6 +458,41 @@ export const playTimeScenarios = [
     },
   },
   {
+    // The same for a connect under way (#239 story 8): with one health-check connection allowed, a Head start's check
+    // stuck in a stalled news server's greeting holds the only one, and its other check waits for it. The next title's
+    // list request stops the Walk: that connect is closed before its search and the waiting one never opens, so the
+    // next title's check gets the connection at once, not after the stuck connect's 10 s timeout.
+    id: 'a-newer-list-request-closes-the-stopped-walks-connects',
+    async run(w) {
+      const a = offerMovie(w, [{ tag: 'conn-a1' }, { tag: 'conn-a2' }]);
+      const b = offerMovie(w, [{ tag: 'conn-b1' }]);
+      const saved = w.configData.healthChecks;
+      w.configData.healthChecks = { ...saved, maxTotalConnections: 1 };
+      const from = w.news.state.connections.length;
+      const mine = () => w.news.state.connections.slice(from);
+      w.news.hold(1);
+      try {
+        await withLogs(async lines => {
+          await w.list('movie', a.id);
+          await until(() => mine().some(c => c.held), 'the first title\'s connect, its greeting held');
+          await w.list('movie', b.id);
+          await bestDone(lines, b.id);
+        });
+        const search = w.indexer.searches.find(s => `tt${s.imdbid}` === b.id);
+        assert.ok(search, `${b.id} was searched`);
+        const held = mine().find(c => c.held);
+        assert.ok(held.closed !== undefined && held.closed <= search.at, 'the stuck connect was closed before the next title\'s search');
+        const ask = w.news.state.asks.find(x => x.id.startsWith('conn-b1'));
+        assert.ok(ask, 'the next title was checked');
+        assert.ok(ask.asked - search.at < 3000, `the next title's check got the connection ${ask.asked - search.at} ms after its search began`);
+        assert.equal(mine().filter(c => !c.held && c.asked === 0).length, 0, 'the stopped Walk opened no connection after its stop');
+      } finally {
+        w.news.hold(0);
+        w.configData.healthChecks = saved;
+      }
+    },
+  },
+  {
     // The brain tools read a visit from KaijuFlow's step lines only (tools/brain/docs/formats.md), from its list request
     // on: one play_check line per Source Best checked, the dead one too, and one `played` line when the press serves the
     // Source's video; the other healthy Source it checked is never prepared (#192). The real reader
