@@ -45,9 +45,13 @@ export async function grabNzb(
     // Download NZB from indexer with timeout
     const downloadUserAgent = globalConfig.userAgents?.nzbDownload || getLatestVersions().chrome;
     console.log(`${logPrefix}  \u{1F4E5} Downloading NZB from indexer: ${nzbUrl.substring(0, 80)}...`);
-    await verifyProxyCircuit(nzbUrl, 'nzb-grab', indexerName, searchExitIp);
-
     const stopped = () => new Error(`NZB download stopped for ${indexerForLog}`);
+    try {
+      await verifyProxyCircuit(nzbUrl, 'nzb-grab', indexerName, searchExitIp, stop);
+    } catch (err) {
+      if (stop?.aborted) throw stopped();
+      throw err;
+    }
     if (stop?.aborted) throw stopped();
     const controller = new AbortController();
     const downloadTimeoutMs = remainingBudget();
