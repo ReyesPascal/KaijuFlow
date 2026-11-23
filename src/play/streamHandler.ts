@@ -21,8 +21,8 @@ import { episodeOf, episodeForTile, playContextOfTile, type PlayContext } from '
 import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, walkFoundNothing, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
 import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
+import { serveVideo, type InlineProxy } from './delivery.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
-import { formatBytes } from '../parsers/metadataParsers.js';
 import { resolveBaseUrl } from '../utils/urlHelpers.js';
 import type { StreamData, FallbackCandidate } from './types.js';
 
@@ -62,7 +62,7 @@ const FIRST_SOURCE_SWITCH_MS = (() => {
   return Number.isFinite(n) && n >= 0 ? n : 25_000;
 })();
 const DEDUP_CACHE_TTL_MS = 600_000;      // 10 min — covers a typical play session's seeks/probes without library-check overhead; eviction mid-session self-heals via the broken-path marker + live videoPathExists gate
-const LOBBY_CACHED_LOG_THROTTLE_MS = 15_000; // Suppress repeat "cached resolve served" lines within this window (matches /stream hit throttle)
+const LOBBY_LOG_THROTTLE_MS = 15_000; // Suppress repeat "Lobby: serving" lines for one video within this window (matches /stream hit throttle)
 // Self-redirect query params (internal, appended to stream URL during 302 redirects):
 //   _rc — redirect count: how many self-redirects have occurred (prevents infinite loops)
 //   _ci — candidate index: which fallback candidate to resume at (avoids restarting from 0)
@@ -77,6 +77,7 @@ interface StreamLogState {
 
 const streamLogState = new Map<string, StreamLogState>();
 const deadSkipLoggedGroups = new Map<string, number>(); // key → timestamp for TTL cleanup
+const lobbyServeLogged = new Map<string, number>(); // videoPath → when the lobby last said it serves it
 
 // Delivery log lives in utils.ts to avoid circular dep between streamCache and streamHandler.
 const lastDeliveryLog = getDeliveryLog();
@@ -126,6 +127,9 @@ function shouldLogStreamRequest(title: string, event: 'request' | 'disconnect'):
     for (const [key, ts] of deadSkipLoggedGroups) {
       if (now - ts > STREAM_LOG_STATE_TTL_MS) deadSkipLoggedGroups.delete(key);
     }
+    for (const [key, ts] of lobbyServeLogged) {
+      if (now - ts > STREAM_LOG_STATE_TTL_MS) lobbyServeLogged.delete(key);
+    }
     return false;
   }
 
@@ -154,7 +158,8 @@ function isClientDisconnect(error: unknown): boolean {
 // short-circuit seeks in inline-proxy mode so they skip library check.
 // Completely outside the cache pipeline — doesn't interfere with library checks.
 
-interface CachedDelivery { streamData: StreamData; streamingMethod: 'pipe' | 'proxy' | 'direct'; timestamp: number; played: FallbackCandidate }
+// It holds the video, not the Delivery method: every request is served with the method as it is now (#248).
+interface CachedDelivery { streamData: StreamData; timestamp: number; played: FallbackCandidate }
 const recentDeliveries = new Map<string, CachedDelivery>();
 
 function cleanupRecentDeliveries(): void {
@@ -176,6 +181,15 @@ function logPlayedOnce(req: Request, source: { title: string; indexerName?: stri
   playedLogged.add(entry);
   setTimeout(() => playedLogged.delete(entry), PLAYED_LOG_TTL_MS).unref?.();
   logPlayed(source.title, source.indexerName);
+}
+
+/** The lobby's line for a press of Best it serves, once per video in LOBBY_LOG_THROTTLE_MS (range probes and seeks repeat it). */
+function logLobbyServe(sessionKey: string, videoPath: string): void {
+  const now = Date.now();
+  const last = lobbyServeLogged.get(videoPath);
+  if (last !== undefined && now - last < LOBBY_LOG_THROTTLE_MS) return;
+  lobbyServeLogged.set(videoPath, now);
+  console.log(last === undefined ? `👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}` : `👑 Lobby: cached resolve served (sk=${sessionKey})`);
 }
 
 /** Per-attempt budget in ms. Returns 0 (no limit) — UF uses its own per-mode timeouts. */
@@ -337,11 +351,6 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
   return `${backend.id}|${keyOf(candidate, play)}`;
 }
 
-/** Delivery method for the first response of a Stream: the streaming-method setting. */
-function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
-  return globalConfig.playDeliveryMethod ?? 'proxy';
-}
-
 /**
  * Express handler for /play/stream endpoint
  * Supports automatic fallback: if the chosen NZB fails, tries the next candidates
@@ -350,7 +359,7 @@ function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
 export async function handleStream(
   req: Request,
   res: ExpressResponse,
-  proxyFn?: (req: Request, res: ExpressResponse, videoPath: string, usePipe: boolean) => Promise<void>
+  proxyFn?: InlineProxy,
 ): Promise<void> {
   const backend = getActiveBackend();
   // Express returns string[] for repeated query keys (`?t=a&t=b`). Take the
@@ -509,34 +518,7 @@ export async function handleStream(
         // to a fresh candidate loop via the live videoPathExists gate above.
         if (verbose) console.log(`📦 Stream dedup hit (delivered ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
         logPlayedOnce(req, cached.played);
-        const fallbackOn = isUltimateFallbackActive();
-        const sizeSuffix = cached.streamData.videoSize ? ` (${formatBytes(cached.streamData.videoSize)})` : '';
-        // Dedup the per-mode delivery log on this videoPath so repeat probes
-        // don't spam the same line. lastDeliveryLog is shared with primary delivery.
-        const lastCached = lastDeliveryLog.get(cached.streamData.videoPath);
-        const shouldLogCachedDelivery = !lastCached || lastCached.mode !== cached.streamingMethod;
-        lastDeliveryLog.set(cached.streamData.videoPath, { mode: cached.streamingMethod, at: Date.now() });
-        if (cached.streamingMethod === 'direct') {
-          const directUrl = new URL(backend.directUrl(cached.streamData.videoPath));
-          const safePath = directUrl.pathname;
-          if (shouldLogCachedDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${sizeSuffix}`);
-          res.redirect(302, directUrl.href);
-        } else if (!fallbackOn && proxyFn) {
-          // Inline proxy — no redirect, matches primary delivery path. Runs
-          // another proxyVideoStream for this request; req.on('close') ensures
-          // cleanup if the client aborts.
-          const label = cached.streamingMethod === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-          if (shouldLogCachedDelivery) console.log(`  ${label} streaming: ${cached.streamData.videoPath}${sizeSuffix}`);
-          await proxyFn(req, res, cached.streamData.videoPath, cached.streamingMethod !== 'proxy');
-        } else {
-          const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-          proxyUrl.searchParams.set('path', cached.streamData.videoPath);
-          proxyUrl.searchParams.set('_fb', req.originalUrl);
-          if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-          const label = cached.streamingMethod === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-          if (shouldLogCachedDelivery) console.log(`  ${label} 302 streaming: ${cached.streamData.videoPath}${sizeSuffix}`);
-          res.redirect(302, proxyUrl.href);
-        }
+        await serveVideo(req, res, cached.streamData, proxyFn);
         return;
       }
     }
@@ -590,44 +572,12 @@ export async function handleStream(
           }
 
           // Ultimate-Fallback resolved — deliver the stream
-          const lobbyFallbackOn = isUltimateFallbackActive();
-          const mode = deliveryMethod();
-          const lastLobby = lastDeliveryLog.get(streamData.videoPath);
-          const shouldLogLobby = !lastLobby || lastLobby.mode !== mode;
-          const nowTs = Date.now();
-          // Throttle the cached-resolve log so range probes and seek bursts
-          // don't emit one line per request; only relog after the window elapses.
-          const shouldLogCached = !shouldLogLobby
-            && (!lastLobby || (nowTs - lastLobby.at) >= LOBBY_CACHED_LOG_THROTTLE_MS);
-          if (shouldLogLobby || shouldLogCached) {
-            lastDeliveryLog.set(streamData.videoPath, { mode, at: nowTs });
-          } else {
-            // Keep mode current but don't push the throttle window forward
-            lastDeliveryLog.set(streamData.videoPath, { mode, at: lastLobby!.at });
-          }
-          if (shouldLogLobby) console.log(`👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}`);
-          else if (shouldLogCached) console.log(`👑 Lobby: cached resolve served (sk=${sessionKey})`);
+          logLobbyServe(sessionKey, streamData.videoPath);
           if (streamData.sourceTitle) {
             const fromGroup = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.candidates.find(c => c.title === streamData.sourceTitle) : undefined;
             logPlayedOnce(req, { title: streamData.sourceTitle, indexerName: fromGroup?.indexerName });
           }
-          const lobbySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
-          if (mode !== 'direct') {
-            const inline = proxyFn && !lobbyFallbackOn;
-            const label = mode === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-            if (shouldLogLobby) console.log(`  ${label}${inline ? '' : ' 302'} streaming: ${streamData.videoPath}${lobbySizeSuffix}`);
-            if (inline) {
-              await proxyFn!(req, res, streamData.videoPath, mode !== 'proxy');
-            } else {
-              const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-              proxyUrl.searchParams.set('path', streamData.videoPath);
-              proxyUrl.searchParams.set('_fb', req.originalUrl);
-              if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-              res.redirect(302, proxyUrl.href);
-            }
-          } else {
-            res.redirect(302, backend.directUrl(streamData.videoPath));
-          }
+          await serveVideo(req, res, streamData, proxyFn);
           return;
         } catch (err) {
           if ((err as any).isLobbyTimeout) {
@@ -669,19 +619,7 @@ export async function handleStream(
     if (usable) {
       const idxTag = usable.candidateIndex !== undefined ? `#${usable.candidateIndex} ` : '';
       console.log(`👑 Ultimate-Fallback [${sessionKey}] Primary path no longer available — falling back to backup: ${idxTag}${usable.title} [${usable.indexerName}]`);
-      const lobbyFallbackOn = isUltimateFallbackActive();
-      const mode = deliveryMethod();
-      if (mode === 'direct') {
-        res.redirect(302, backend.directUrl(usable.videoPath));
-      } else if (proxyFn && !lobbyFallbackOn) {
-        await proxyFn(req, res, usable.videoPath, mode !== 'proxy');
-      } else {
-        const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-        proxyUrl.searchParams.set('path', usable.videoPath);
-        proxyUrl.searchParams.set('_fb', req.originalUrl);
-        if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-        res.redirect(302, proxyUrl.href);
-      }
+      await serveVideo(req, res, usable, proxyFn);
       return;
     }
     if (walkFoundNoSource) {
@@ -872,16 +810,6 @@ export async function handleStream(
         return;
       }
 
-      // Decide delivery method: pipe/proxy (buffered) or direct redirect.
-      // When fallback is off, the initial-delivery mode still forces proxy for
-      // logging/dedup consistency; /v's proxyVideoStream independently reads
-      // config on each range request, so seeks honor the user's current method.
-      const fallbackOn = isUltimateFallbackActive();
-      const mode = deliveryMethod();
-      const last = lastDeliveryLog.get(streamData.videoPath);
-      const shouldLogDelivery = !last || last.mode !== mode;
-      lastDeliveryLog.set(streamData.videoPath, { mode, at: Date.now() });
-
       // Cache delivery for Stremio request dedup (10 min TTL) — populated BEFORE
       // delivery so concurrent probes from Stremio land on the dedup path instead
       // of triggering another prep.
@@ -889,41 +817,15 @@ export async function handleStream(
       // requests for the same click hit dedup, even when fallback-chain walked
       // past the click and resolved a later candidate.
       const dedupCandidate = candidates[0] ?? candidate;
-      const key = dedupKey(backend, dedupCandidate, play);
-      recentDeliveries.set(key, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
+      recentDeliveries.set(dedupKey(backend, dedupCandidate, play), { streamData, timestamp: Date.now(), played: candidate });
       // Also key on the resolved candidate's URL so direct second-clicks of the
       // resolved tile (different click URL) also dedup.
       if (candidate !== dedupCandidate) {
-        const resolvedKey = dedupKey(backend, candidate, play);
-        recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now(), played: candidate });
+        recentDeliveries.set(dedupKey(backend, candidate, play), { streamData, timestamp: Date.now(), played: candidate });
       }
 
       logPlayedOnce(req, candidate);
-      const deliverySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
-      if (mode !== 'direct') {
-        const inline = !fallbackOn && proxyFn;
-        const label = mode === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
-        if (shouldLogDelivery) console.log(`  ${label}${inline ? '' : ' 302'} streaming: ${streamData.videoPath}${deliverySizeSuffix}`);
-        if (inline) {
-          // Inline proxy — no 302, broadest player compatibility. Subsequent seeks
-          // come back to handleStream but hit recentDeliveries (10 min TTL) and
-          // skip library check + submission.
-          await proxyFn!(req, res, streamData.videoPath, mode !== 'proxy');
-        } else {
-          // Redirect to /v endpoint which adds auth + buffering + transparent reconnect
-          const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
-          proxyUrl.searchParams.set('path', streamData.videoPath);
-          proxyUrl.searchParams.set('_fb', req.originalUrl);
-          if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
-          res.redirect(302, proxyUrl.href);
-        }
-      } else {
-        // Direct: redirect to WebDAV URL with embedded credentials (desktop players)
-        const directUrl = new URL(backend.directUrl(streamData.videoPath));
-        const safePath = directUrl.pathname;
-        if (shouldLogDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${deliverySizeSuffix}`);
-        res.redirect(302, directUrl.href);
-      }
+      await serveVideo(req, res, streamData, proxyFn);
       return;
 
     } catch (error) {

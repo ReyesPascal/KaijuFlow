@@ -1128,7 +1128,48 @@ export const playTimeScenarios = [
       assert.deepEqual(goneGrabs(), goneTags, 'the next play\'s Walk grabs none of them again');
     },
   },
+  {
+    // The Delivery method as it is now serves every request of a play (#248): the player's next request of a list
+    // entry (a seek or probe, which the Stremio dedup answers without a new prepare) goes out with the method set
+    // since its first request, not the one that first request was served with.
+    id: 'a-play-s-next-request-uses-the-delivery-method-as-it-is-now',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'dlvnow' }]);
+      const saved = w.configData.playDeliveryMethod;
+      try {
+        w.configData.playDeliveryMethod = 'proxy';
+        const { result: streams } = await withLogs(async lines => {
+          const out = await w.list('movie', id);
+          await bestDone(lines, id);
+          return out;
+        });
+        const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+        const first = await askOnce(entry.url);
+        assert.equal(first.status, 302, 'with the fallback on, proxy answers with a redirect');
+        assert.match(first.location, /\/play\/v\?/, 'proxy goes through KaijuFlow\'s video route');
+        const imports = w.backend.submitsFor('dlvnow');
+        w.configData.playDeliveryMethod = 'direct';
+        const second = await askOnce(entry.url);
+        assert.equal(second.status, 302);
+        assert.match(second.location, /\/api\/files\/stream\?/, 'the next request goes direct, the method set now');
+        assert.equal(w.backend.submitsFor('dlvnow'), imports, 'the next request makes no new import');
+        const r = await play(second.location);
+        assert.equal(r.status, 200);
+        assertBytes(r.body, sources[0].media, 'the direct link plays the Source');
+      } finally {
+        w.configData.playDeliveryMethod = saved;
+      }
+    },
+  },
 ];
+
+/** One request of a play, its redirect not followed: { status, location, at } (at: ms it took). */
+async function askOnce(url, timeoutMs = 30000) {
+  const asked = Date.now();
+  const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+  await res.arrayBuffer().catch(() => {});
+  return { status: res.status, location: res.headers.get('location'), at: Date.now() - asked };
+}
 
 /** Run fn with this indexer added to the suite's, then put the suite's back. */
 async function withIndexer(w, entry, fn) {
