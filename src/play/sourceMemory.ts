@@ -11,6 +11,6 @@ export function remember(outcome: { source: RememberedSource; play?: PlayContext
 }
 
 export function recall(source: RememberedSource, play?: PlayContext): { ready?: StreamData } {
-  const ready = findReadyStream(source.nzbUrl, source.title, episodeOf(play).filePattern);
+  const ready = findReadyStream(source.nzbUrl, source.title, episodeOf(play).episodePattern);
   return ready ? { ready } : {};
 }
