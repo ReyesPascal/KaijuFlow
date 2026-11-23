@@ -2,7 +2,7 @@
  * The play context (GLOSSARY: Play context, #246): what a play of a list is for (type, season, episode, aired date,
  * episodes in season, Best's session). Made once when the list is built and stored on its fallback group; the Head
  * start, a press of Best and a list-entry play all read it, so each looks for the same episode. It holds identity
- * only: the keys the caches compose from it stay with the caches.
+ * only: how a Source is keyed for the play is the Source memory's (`sourceMemory.ts`, #247).
  */
 
 import { config as globalConfig, getTvAllowMultiEpisode } from '../config/index.js';

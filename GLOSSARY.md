@@ -80,6 +80,10 @@ _Avoid_: pool loop, fallback walk, search (search finds the list; the walk check
 What a play of a list is for: the title's type, season, episode, aired date and episodes in season, and Best's session for it. Made once when the list is built and kept with the list, so a Head start, a press of Best and a played list entry all look for the same episode; a daily show's episode is found by its aired date whichever of them plays it (#246). It says what is wanted, not how the caches remember it.
 _Avoid_: play params, episode info, session data
 
+**Source memory**:
+What KaijuFlow remembers of Sources across plays and restarts: the ready ones (the Backend made their video, so a later play reuses it) and the dead ones (bad Sources, ADR 0004, kept out of lists and walks). A play remembers what it learned and recalls a Source as its play context asks for it; the memory alone decides how a Source is keyed, so a Source remembered by one play is found by another for the same episode, a dated one included (#247). A dead mark is the Source's for every episode when its link is gone or the check blocked it, otherwise its episode's, unless a season pack fails whole before any episode of it played.
+_Avoid_: NZB database, healthy cache, stream cache (the prepares under way)
+
 **Disc image**:
 A Source whose content is a disc image file (`.iso`, `.img`) that the Backends cannot play; the health check blocks it.
 _Avoid_: ISO release, Blu-ray rip
