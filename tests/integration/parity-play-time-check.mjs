@@ -8,13 +8,14 @@ import os from 'node:os';
 import http from 'node:http';
 import { createFakeAltmount } from './parity/fake-altmount.mjs';
 import { useFakeNews } from './parity/fake-nntp.mjs';
+import { createFakeTvdb } from './parity/fake-tvdb.mjs';
 import { runPlayTimeParity } from './parity/play-time-scenarios.mjs';
 const root = process.env.A4_APP_ROOT, output = process.env.INTEGRATION_RESULTS;
 assert.ok(root && output && fs.existsSync(root + '/../app-import.started'));
 assert.match(root, /kaijuflow-a4-[^/]+\/positive\/work$/);
 assert.deepEqual(Object.keys(os.networkInterfaces()), ['lo']);
 const load = p => import(root + '/dist/' + p + '.js');
-const report = { id: 'INT-PARITY-PLAY-TIME-CHECK-001', backend: 'altmount', boundaries: ['Fake indexer answers every search with the Sources a scenario offers for that IMDB id', 'Fake news server holds the articles of healthy Sources only', 'Fake AltMount prepares at once', 'Synthetic media bytes, not decodable video'] };
+const report = { id: 'INT-PARITY-PLAY-TIME-CHECK-001', backend: 'altmount', boundaries: ['Fake indexer answers every search with the Sources a scenario offers for that IMDB id', 'Fake news server holds the articles of healthy Sources only', 'Fake TVDB knows only the shows a scenario adds','Fake AltMount prepares at once', 'Synthetic media bytes, not decodable video'] };
 const servers = [];
 const listen = async handler => { const s = http.createServer(handler); await new Promise(r => s.listen(0, '127.0.0.1', r)); servers.push(s); return 'http://127.0.0.1:' + s.address().port; };
 
@@ -71,6 +72,10 @@ try {
     healthChecks: { ...configData.healthChecks, enabled: true },
     ultimateFallback: { enabled: true },
   });
+  // TVDB answers on loopback (the network is lo only); a scenario turns it on with the TVDB key (withTvdb).
+  const tvdb = await createFakeTvdb(listen);
+  const { default: axios } = await import(root + '/node_modules/axios/index.js');
+  axios.interceptors.request.use(cfg => { cfg.url = cfg.url?.replace('https://api4.thetvdb.com', tvdb.url); return cfg; });
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream } = await load('play/streamHandler');
   const { createPlayStreamRoutes } = await load('routes/play');
@@ -84,7 +89,7 @@ try {
     const out = await requestContext.run({ baseUrl: kaijuflow, pathPrefix: '/stremio', manifestKey: 'synthetic-manifest' }, () => addon.get('stream', type, id));
     return out.streams;
   };
-  const results = await runPlayTimeParity({ kaijuflow, backend, news, indexer, refusing, list, configData });
+  const results = await runPlayTimeParity({ kaijuflow, backend, news, indexer, refusing, tvdb, list, configData });
   Object.assign(report, { status: results.every(r => r.status === 'pass') ? 'pass' : 'fail', results });
 } catch (e) { Object.assign(report, { status: 'fail', error: String(e?.stack || e) }); }
 fs.writeFileSync(output, JSON.stringify(report, null, 2));

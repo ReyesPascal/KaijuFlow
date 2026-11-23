@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import type { FallbackCandidate, FallbackGroup } from './types.js';
+import type { PlayContext } from './playContext.js';
 import { config as globalConfig } from '../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,16 +28,14 @@ export function getFallbackGroupTTLMs(): number {
 // the original fbg inside, finds no in-memory group, and breaks the
 // alternative-candidate fallback. Mirrors streamCache.ts.
 const FALLBACK_GROUPS_FILE = path.join(__dirname, '..', '..', 'config', 'fallback-groups.json');
-const FALLBACK_GROUPS_SCHEMA_VERSION = 2;
+// v3 (#246): a group holds its play context in place of type, season, episode and episodes in season.
+const FALLBACK_GROUPS_SCHEMA_VERSION = 3;
 
 interface SerializedFallbackGroup {
   version: number;
   id: string;
   candidates: FallbackCandidate[];
-  type: string;
-  season?: string;
-  episode?: string;
-  episodesInSeason?: number;
+  context: PlayContext;
   createdAt: number;
 }
 
@@ -73,14 +72,8 @@ function saveFallbackGroupsToDisk(): void {
 
 loadFallbackGroupsFromDisk();
 
-export function createFallbackGroup(
-  id: string,
-  candidates: FallbackCandidate[],
-  type: string,
-  season?: string,
-  episode?: string,
-  episodesInSeason?: number,
-): void {
+/** Store a list's fallback group with its play context: one disk write. */
+export function createFallbackGroup(id: string, candidates: FallbackCandidate[], context: PlayContext): void {
   // Clean up expired groups opportunistically
   const now = Date.now();
   for (const [key, group] of fallbackGroups.entries()) {
@@ -89,14 +82,7 @@ export function createFallbackGroup(
     }
   }
 
-  fallbackGroups.set(id, {
-    candidates,
-    type,
-    season,
-    episode,
-    episodesInSeason,
-    createdAt: now,
-  });
+  fallbackGroups.set(id, { candidates, context, createdAt: now });
   saveFallbackGroupsToDisk();
 }
 

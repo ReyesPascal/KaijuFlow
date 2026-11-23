@@ -76,6 +76,10 @@ _Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a
 One play's progress down a list: grabbing and checking Sources a few at a time from the top until one is healthy, the list runs out, or the walk stops. A failed grab is replaced once. Why it failed decides what follows (ADR 0004): an indexer that refuses a grab (a limit, an outage, refused credentials) is skipped for the rest of the walk, while a Source the indexer says is gone is a bad Source and the walk moves on. A walk stops after 30 grabs and ends as if the list had run out, so a list of gone Sources can't be walked to its end. A walk ends when any player asks for another title's list: its unfinished grabs and checks stop, unless a press is still waiting on it for its video, and a video already playing goes on. A Head start begins a walk; a press of Best joins it, and walks on its own only when there is none (On Click, or the Head start was stopped), so the 30 grabs are one walk's whether it began before or at the press.
 _Avoid_: pool loop, fallback walk, search (search finds the list; the walk checks it)
 
+**Play context**:
+What a play of a list is for: the title's type, season, episode, aired date and episodes in season, and Best's session for it. Made once when the list is built and kept with the list, so a Head start, a press of Best and a played list entry all look for the same episode; a daily show's episode is found by its aired date whichever of them plays it (#246). It says what is wanted, not how the caches remember it.
+_Avoid_: play params, episode info, session data
+
 **Disc image**:
 A Source whose content is a disc image file (`.iso`, `.img`) that the Backends cannot play; the health check blocks it.
 _Avoid_: ISO release, Blu-ray rip

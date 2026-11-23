@@ -19,7 +19,7 @@ export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, del
 export { headStart, listAsked, ultimateFallbackFromCandidates, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';
 
 // Shared utilities
-export { buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
+export { isUltimateFallbackActive } from './utils.js';
 
 // Stream handler (Express endpoint)
 export { handleStream } from './streamHandler.js';

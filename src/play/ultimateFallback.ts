@@ -25,6 +25,7 @@ import type { UltimateFallbackConfig } from '../types.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
 import { checkSource, isHealthy, enabledHealthCheckProviders } from './playTimeCheck.js';
 import { Walk, WALK_MAX_GRABS, type WalkDecision, type WalkEvent } from './walk.js';
+import { episodeOf, type PlayContext } from './playContext.js';
 
 // ── Active session tracking ─────────────────────────────────────────
 
@@ -225,18 +226,10 @@ export function listAsked(sessionKey: string): void {
  * background (listAsked has stopped the one before). A title whose Best already runs or is done keeps that
  * session (a press joins it).
  */
-export function headStart(
-  sessionKey: string,
-  candidates: FallbackCandidate[],
-  settings: UltimateFallbackConfig,
-  cachePattern?: string,
-  filePattern?: string,
-  contentType?: string,
-  episodesInSeason?: number,
-): void {
-  if (candidates.length === 0 || sessionPromises.has(sessionKey)) return;
-  console.log(`👑 Ultimate-Fallback [${sessionKey}] Head start: checking Best's Sources before a press`);
-  ultimateFallbackFromCandidates(sessionKey, candidates, settings, cachePattern, filePattern, contentType, episodesInSeason)
+export function headStart(play: PlayContext, candidates: FallbackCandidate[], settings: UltimateFallbackConfig): void {
+  if (candidates.length === 0 || sessionPromises.has(play.sessionKey)) return;
+  console.log(`👑 Ultimate-Fallback [${play.sessionKey}] Head start: checking Best's Sources before a press`);
+  ultimateFallbackFromCandidates(play, candidates, settings)
     .catch(err => console.error('❌ Ultimate-Fallback error (Head start):', err));
 }
 
@@ -283,16 +276,15 @@ interface SourceRun {
   prepareError?: Error;
 }
 
+/** Best's Walk for a play (its play context, #246): the Head start's, or a press's that walks on its own. */
 export async function ultimateFallbackFromCandidates(
-  sessionKey: string,
+  play: PlayContext,
   candidates: FallbackCandidate[],
   settings: UltimateFallbackConfig,
-  cachePattern?: string,
-  filePattern?: string,
-  contentType?: string,
-  episodesInSeason?: number,
 ): Promise<void> {
+  const { sessionKey, type: contentType, episodesInSeason } = play;
   if (activeSessions.has(sessionKey)) return;
+  const { episodePattern: cachePattern, filePattern } = episodeOf(play);
 
   const controller = new AbortController();
   activeSessions.set(sessionKey, controller);

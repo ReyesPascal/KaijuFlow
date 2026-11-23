@@ -67,6 +67,49 @@ function offerPackThenEpisode({ backend, indexer }, tag, deadEpisodes) {
 }
 
 /**
+ * Offer, for S01E02 of a new daily show (TVDB: aired 2026-11-03), a season pack whose files are named by aired date,
+ * not SxxExx (S01E01 to S01E03), on top, then a single-episode Source of S01E02. S01E02's file in the pack is gone
+ * (its articles missing), the others are complete. Returns { id, pack, single }.
+ */
+function offerDailyPackThenEpisode({ backend, indexer, tvdb }, tag) {
+  const show = `tt${nextImdb++}`;
+  const aired = ['2026-11-02', '2026-11-03', '2026-11-04'];
+  tvdb.addShow(show, `KaijuFlow Daily ${tag}`, aired.map((a, i) => ({ season: 1, episode: i + 1, aired: a })));
+  const packTitle = `KaijuFlow.PlayTime.Daily.S01.1080p.WEB-DL.H264-${tag}`;
+  const episodes = aired.map((a, i) => ({ season: 1, episode: i + 1, media: mediaFor(`${tag}-e${i + 1}`), name: `KaijuFlow.PlayTime.Daily.${a.replace(/-/g, '.')}.1080p.WEB-DL.H264-${tag}` }));
+  const pack = { tag: `${tag}-pack`, title: packTitle, media: episodes[1].media, size: 30 * GB };
+  pack.link = backend.addSeries(pack.tag, packTitle, episodes, { deadEpisodes: [2] });
+  const single = { tag: `${tag}-single`, title: `KaijuFlow.PlayTime.Daily.S01E02.1080p.WEB-DL.H264-${tag}`, media: mediaFor(`${tag}-single`), size: 2 * GB };
+  single.link = backend.addSeries(single.tag, single.title, [{ season: 1, episode: 2, media: single.media }]);
+  indexer.offer(show, [pack, single]);
+  return { id: `${show}:1:2`, pack, single };
+}
+
+/** Run fn with the fake TVDB's key in the settings, so titles get their episodes (and aired dates) from it. */
+async function withTvdb(w, fn) {
+  const saved = w.configData.searchConfig;
+  w.configData.searchConfig = { ...saved, tvdbApiKey: w.tvdb.key };
+  try { return await fn(); } finally { w.configData.searchConfig = saved; }
+}
+
+/**
+ * A press of Best on a daily show's date-named pack (offerDailyPackThenEpisode) checks the pack on S01E02's file,
+ * found by its aired date, so the pack whose S01E02 is gone never reaches AltMount and Best plays S01E02 from the
+ * next Source. The same whether the press walks on its own (On Click) or joins its Head start (On Search).
+ */
+async function assertBestPlaysTheAiredEpisode(w, { id, pack, single }, headStart) {
+  await withLogs(async lines => {
+    const streams = await w.list('series', id);
+    assert.equal(entryTitle(streams[1]), pack.title, 'the pack is the top Source');
+    if (headStart) await bestDone(lines, id.split(':')[0]);
+    const r = await play(streams[0].url);
+    assert.equal(r.status, 200);
+    assertBytes(r.body, single.media, 'Best plays S01E02 from the next Source');
+  });
+  assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose aired-date file is gone never reaches AltMount');
+}
+
+/**
  * A pack blocked on its wanted episode (S01E02, `id`) is remembered dead for that episode only (#203): S01E02's list no
  * longer offers it, S01E03's still does.
  */
@@ -769,6 +812,18 @@ export const playTimeScenarios = [
       assert.equal(w.backend.submitsFor(pack.tag), 0, 'the pack whose wanted episode is gone never reaches AltMount');
       await assertDeadForThisEpisodeOnly(w, id, pack);
     },
+  },
+  {
+    // #246: a press of Best that walks on its own (On Click, no Head start) reads the play context the list made, so
+    // it looks for a daily show's episode file by its aired date as the Head start does.
+    id: 'on-click-best-finds-a-daily-episode-by-its-aired-date',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, () =>
+      withTvdb(w, () => assertBestPlaysTheAiredEpisode(w, offerDailyPackThenEpisode(w, 'dailyclick'), false))),
+  },
+  {
+    // #246: the same layout under On Search: the Head start finds the same file.
+    id: 'head-start-finds-a-daily-episode-by-its-aired-date',
+    run: w => withTvdb(w, () => assertBestPlaysTheAiredEpisode(w, offerDailyPackThenEpisode(w, 'dailysearch'), true)),
   },
   {
     // AltMount unreachable while Best is pressed: the failure video, but the checked Source is not dead, so
