@@ -806,13 +806,16 @@ class FixtureTest(unittest.TestCase):
     def test_the_scrub_check_would_catch_a_key(self):
         self.assertTrue(re.search(r'(?i)api_?key', 'GET /api?apikey=abc123'))
 
+    def test_a_log_from_before_step_play_lines_is_not_read_again(self):
+        # the run's raw.json keeps what was read from it then (#242): its log has no played or play_failed line
+        text = fixture('kaijuflow-oppenheimer-cold1.txt')
+        self.assertEqual(br.read_play(text, self.opp_visit()), {'played_source': None, 'cause': ''})
+
     def test_failed_top_pick_shows_its_real_cause(self):
         text = fixture('kaijuflow-oppenheimer-cold1.txt')
-        self.assertEqual(br.failure_cause(text), 'Video file not servable (probe failed after 2 attempts); AltMount probe returned 400')
-        self.assertEqual(br.played_source(text), self.OPP)
         v = self.opp_visit()
-        v['played_source'] = br.played_source(text)
-        v['cause'] = br.failure_cause(text)
+        v['played_source'] = self.OPP  # as the run's raw.json stores them
+        v['cause'] = 'Video file not servable (probe failed after 2 attempts); AltMount probe returned 400'
         v['steps'] = br.attribute_steps(v, br.parse_step_lines(text))
         self.assertEqual(br.classify_failure(v), 'backend_rejection')
         self.assertIn('probe returned 400', br.visit_cause(v))
@@ -824,7 +827,7 @@ class FixtureTest(unittest.TestCase):
     def test_only_the_played_sources_steps_count(self):
         text = fixture('kaijuflow-oppenheimer-cold1.txt')
         v = self.opp_visit()
-        v['played_source'] = br.played_source(text)
+        v['played_source'] = self.OPP
         got = br.attribute_steps(v, br.parse_step_lines(text))
         self.assertEqual({s['title'] for s in got if 'title' in s}, {self.OPP})
         self.assertEqual([s['step'] for s in got],
@@ -839,9 +842,9 @@ class FixtureTest(unittest.TestCase):
 
     def test_a_warm_start_shows_no_import_and_no_unscramble(self):
         warm = fixture('kaijuflow-matrix-warm1.txt')
-        self.assertEqual(br.played_source(warm), 'The Matrix 1999 2160p MA WEB-DL TrueHD Atmos 7 1 DV HDR H 265-FLUX')
         v = dict(side='kaijuflow', id='tt0133093', t_start='2026-11-10T07:45:41.014Z', ok=True,
-                 tries=[{'title': 'x'}], played_source=br.played_source(warm), imports=[])
+                 tries=[{'title': 'x'}], played_source='The Matrix 1999 2160p MA WEB-DL TrueHD Atmos 7 1 DV HDR H 265-FLUX',
+                 imports=[])
         steps = br.parse_step_lines(warm)
         # the cold visit's lines are older than this visit; a background line of another Source started inside it
         steps.append(dict(step='import_wait', ms=900, t='2026-11-10T07:45:45.000Z', ok=True, title='The.Matrix.Other.2160p', job='99'))
@@ -871,30 +874,36 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(rows[0]['ip'], '192.168.80.6')
 
 
-BEST_FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-21-best')
+BEST_FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-23-step-lines')
+
+
+def best_text(name):
+    with open(os.path.join(BEST_FIXTURES, name), encoding='utf-8') as f:
+        return f.read()
 
 
 def best_visit(name, **extra):
-    """A Best press from one of the 2026-11-21-best captures (their README says how they were made): the visit as
-    brainrun.collect_visit builds it from KaijuFlow's log, its times taken from the log's own lines: the list request (the
-    first line), the list going out (the Head start's first line), the press (the '/stream hit' line) and the video (the
-    302 to the Backend's file)."""
-    with open(os.path.join(BEST_FIXTURES, name), encoding='utf-8') as f:
-        text = f.read()
+    """A Best press from one of the 2026-11-23-step-lines captures (their README says how they were made): the visit as
+    brainrun.collect_visit builds it from KaijuFlow's log (read_play), its times taken from the log's own lines: the list
+    request (the first line), the list going out (the Head start's first line), the press (the '/stream hit' line) and the
+    video (the 302 to the Backend's file)."""
+    text = best_text(name)
 
     def at(needle):
         return next(t for t, msg in br._lines(text) if needle in msg).timestamp()
     start, listed, press, video = (at(n) for n in ('', 'Head start: checking', '/stream hit', '302 streaming'))
-    v = dict(side='kaijuflow', id='tt1000000', t_start=br.iso(datetime.datetime.fromtimestamp(start, datetime.timezone.utc)),
+    vid = re.search(r'Searching for movie (tt\d+)', text).group(1)  # the title the capture asked for
+    v = dict(side='kaijuflow', id=vid, t_start=br.iso(datetime.datetime.fromtimestamp(start, datetime.timezone.utc)),
              list_s=round(listed - start, 3), browse_pause_s=round(press - listed, 3), start_s=round(video - press, 3),
-             ok=True, tries=[{'title': 'KaijuFlow ▶ Best'}], played_source=br.played_source(text), **{'imports': [], **extra})
+             ok=True, tries=[{'title': 'KaijuFlow ▶ Best'}], **{'imports': [], **extra})
+    v.update(br.read_play(text, v))
     v['steps'] = br.attribute_steps(v, br.parse_step_lines(text))
     return text, v
 
 
 class BestPressFixtureTest(unittest.TestCase):
     """A Best press after its Head start (#206), from KaijuFlow's own log: captured from the Play-time check Parity suite
-    (tests/integration/parity/play-time-scenarios.mjs, best-press-log-lines-the-brain-tools-read) on tuning-183, real
+    (tests/integration/parity/play-time-scenarios.mjs, best-press-log-lines-the-brain-tools-read) on step-lines-242, real
     KaijuFlow with fakes for indexer, news server and AltMount. The first Source is dead, the second plays, the third is
     healthy and never prepared (#192)."""
     DEAD, OK, OTHER = (f'KaijuFlow.PlayTime.{t}.2026.2160p.WEB-DL.H265-GRP' for t in ('log-dead', 'log-ok', 'log-backup'))
@@ -911,23 +920,30 @@ class BestPressFixtureTest(unittest.TestCase):
         self.assertEqual(v['played_source'], self.OK)
 
     def test_the_press_names_what_it_plays(self):
-        # a press whose visit holds no Head start line (it began before the visit's log): its 'Best plays' line names it
-        text, _ = self.visit()
-        self.assertEqual(br.played_source(text[text.index('\n', text.index('Head start: checking')):]), self.OK)
+        # the Head start's lines all before the visit (it began earlier): the press's own played line names the Source
+        text, v = self.visit()
+        lines = text.splitlines()
+        hit = next(i for i, line in enumerate(lines) if '/stream hit' in line)
+        press = '\n'.join(lines[hit:]) + '\n'
+        at = br.iso(next(t for t, _ in br._lines(press)))
+        self.assertEqual(br.read_play(press, {'id': v['id'], 't_start': at}), {'played_source': self.OK, 'cause': ''})
+        self.assertEqual(br.read_play(text, {'id': v['id'], 't_start': '2026-11-24T00:00:00Z'})['played_source'], None,
+                         'nothing before the visit began')
 
     def test_every_checked_source_keeps_its_check_and_only_the_played_one_its_prepare_steps(self):
         text, v = self.visit()
         self.assertEqual(sorted((s['title'], s['ok']) for s in v['steps'] if s['step'] == 'play_check'),
                          sorted([(self.DEAD, False), (self.OK, True), (self.OTHER, True)]))
-        self.assertEqual([(s['step'], s['title']) for s in v['steps'] if s['step'] != 'play_check'],
+        self.assertEqual([(s['step'], s['title']) for s in v['steps'] if s['step'] not in br.SEARCH_STEPS + (br.PLAY_CHECK,)],
                          [(n, self.OK) for n in ('nzb_fetch', 'unscramble', 'import_wait', 'first_byte')])
-        self.assertNotIn(f'Starting new stream preparation: {self.OTHER}', text)  # #192: the other healthy one is not prepared
+        # #192: the other healthy one is not prepared
+        self.assertEqual({s['step'] for s in br.parse_step_lines(text) if s.get('title') == self.OTHER}, {'play_check'})
 
     def test_the_wait_for_the_checks_is_the_health_time(self):
-        # dead and played checked together, 43 ms each, ending at 51.249; the other one's check ended later
+        # the played Source's check took 42 ms, ending at 12.046; the dead one's and the other one's checks ended after it
         _, v = self.visit()
-        self.assertEqual(br.play_check_s(v), 0.043)
-        self.assertEqual(br.visit_metrics(v)['health_s'], 0.043)
+        self.assertEqual(br.play_check_s(v), 0.042)
+        self.assertEqual(br.visit_metrics(v)['health_s'], 0.042)
 
     def test_the_head_starts_work_is_no_part_of_the_start(self):
         # checks, import and first byte all ran before the press (#206): no step is measured against the start
@@ -944,9 +960,9 @@ class BestPressFixtureTest(unittest.TestCase):
 
 class HeadStartRefusalFixtureTest(unittest.TestCase):
     """A refusal during a Head start (#206), from KaijuFlow's own log: captured from the same Parity suite
-    (head-start-refusal-log-lines-the-brain-tools-read). AltMount refuses the top pick before the press, the Head start
-    prepares the next one, and the press plays it: a fallback, counted as a press-started one is (spec #183: played, with
-    its extra seconds). The fake AltMount writes no log, so the visit's two imports are given as AltMount's reader gives
+    (head-start-refusal-log-lines-the-brain-tools-read). AltMount refuses the top pick before the press (its play_failed
+    line), the Head start prepares the next one, and the press plays it (its played line): a fallback, counted as a
+    press-started one is (spec #183: played, with its extra seconds). The fake AltMount writes no log, so the visit's two imports are given as AltMount's reader gives
     them (altmount_imports, tested on its own capture)."""
     REFUSED, OK = (f'KaijuFlow.PlayTime.{t}.2026.2160p.WEB-DL.H265-GRP' for t in ('hsr-refused', 'hsr-ok'))
 
@@ -971,16 +987,47 @@ class HeadStartRefusalFixtureTest(unittest.TestCase):
         self.assertEqual(br.fallback_text(v), 'played after 1 fallback, 0.40 s extra')
         self.assertIsNone(br.top_pick(v)['size'])  # a fallback's size says nothing about the top pick
 
-    def test_counted_the_same_as_a_press_started_fallback(self):
-        # a press-started Best names its top pick on the first prepare line after the press: the same visit as if the
-        # Head start's lines had come after the '/stream hit' line counts the same
+    def test_the_refusal_is_in_kaijuflows_words(self):
+        _, v = self.visit()
+        self.assertEqual(v['cause'], 'AltMount could not process the Source: {"error":"NZB processing failed"}')
+
+    def test_another_titles_line_is_not_this_visits(self):
+        # the Head start's lines carry the title's ref; a line of another title's Head start, written inside this
+        # visit, is that title's
         text, v = self.visit()
-        lines = text.splitlines()
-        hit = next(i for i, line in enumerate(lines) if '/stream hit' in line)
-        start = next(i for i, line in enumerate(lines) if 'Head start: checking' in line)
-        pressed = '\n'.join(lines[:start] + [lines[hit]] + lines[start:hit] + lines[hit + 1:]) + '\n'
-        press_started = dict(v, played_source=br.played_source(pressed))
-        self.assertEqual((br.fallbacks(press_started), br.fallback_s(press_started)), (br.fallbacks(v), br.fallback_s(v)))
+        other = ('2026-11-23T20:35:12.120Z [KF-STEP] {"step":"play_failed","source":"Parity","ms":0,"ok":false,'
+                 '"t":"2026-11-23T20:35:12.120Z","ref":"tt9999999","title":"Other.Title.2160p","reason":"x"}\n')
+        self.assertEqual(br.read_play(other + text, v), br.read_play(text, v))
+
+
+class FailedPressFixtureTest(unittest.TestCase):
+    """A failed press of Best, from KaijuFlow's own log: captured from the same Parity suite
+    (failed-best-press-log-lines-the-brain-tools-read). Its one Source is checked healthy, AltMount answers 400 at the
+    first byte, and the press shows the failure video."""
+    TOP = 'KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP'
+
+    def visit(self):
+        text = best_text('kaijuflow-best-first-byte-failed.txt')
+        start = next(t for t, _ in br._lines(text))
+        v = dict(side='kaijuflow', id='tt1000012', t_start=br.iso(start), ok=False, note='failure video',
+                 tries=[{'title': 'KaijuFlow ▶ Best'}], imports=[])
+        v.update(br.read_play(text, v))
+        v['steps'] = br.attribute_steps(v, br.parse_step_lines(text))
+        return text, v
+
+    def test_fixture_holds_no_keys(self):
+        text, _ = self.visit()
+        self.assertIsNone(re.search(r'(?i)api_?key|(?:key|token|password|secret)=\S', text))
+
+    def test_the_top_pick_and_why_it_failed(self):
+        _, v = self.visit()
+        self.assertEqual((v['played_source'], v['cause']), (self.TOP, 'First byte failed (status 400); the Source is kept'))
+        self.assertEqual(br.visit_cause(v), v['cause'])
+
+    def test_counted_a_backend_rejection(self):
+        _, v = self.visit()
+        self.assertEqual(br.classify_failure(v), 'backend_rejection')  # its first_byte line failed
+        self.assertIsNone(br.top_pick(v)['size'])
 
 
 class RunRecordTest(unittest.TestCase):

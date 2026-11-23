@@ -576,7 +576,8 @@ def attribute_steps(visit, steps, end=None):
     skips the ones whose check fails, and that wait is the visit's. Other prepare-side lines carry the release `title` of the
     Source: kept only for the Source that was played, found by its name in the visit's `played_source` (from KaijuFlow's step
     lines, read_play) or in the played stream's text. No Source found means no such lines: a play that reused what the Backend held shows no
-    import and no Unscramble, and another Source's background work (Best's backups) never lands here.
+    import and no Unscramble, and another Source's background work (Best's backups) never lands here. The play's own
+    events (`played`, `play_failed`, #242) are no steps: read_play reads them.
     """
     lo = parse_ts(visit['t_start']) - datetime.timedelta(seconds=1)
 
@@ -592,7 +593,7 @@ def attribute_steps(visit, steps, end=None):
     played = ' '.join(str(t.get('title', '')) for t in visit.get('tries', [])[:1])
     src = _norm(visit.get('played_source') or '')
     for s in steps:
-        if s.get('step') in SEARCH_STEPS + (PLAY_CHECK,) or not s.get('title') or not inside(s):
+        if s.get('step') in SEARCH_STEPS + (PLAY_CHECK,) + PLAY_STEPS or not s.get('title') or not inside(s):
             continue
         n = _norm(s['title'])
         if (src and n == src) or (len(n) >= 8 and n in _norm(played)):
