@@ -9,6 +9,7 @@ import os
 import unittest
 
 import brainreport as br
+import runs
 import pagetargets as pt
 from test_brainreport import fail, merged, tagged_run_folder, video
 from test_settings import tempdir
@@ -220,7 +221,7 @@ def speed_run_folder(case, *changes, sides=THREE):
 
 
 def speed_judgement(case, *changes, sides=THREE):
-    return pt.speed_test_judgement(br.load_run(speed_run_folder(case, *changes, sides=sides))['visits'])
+    return pt.speed_test_judgement(runs.load(speed_run_folder(case, *changes, sides=sides))['visits'])
 
 
 def speed_verdicts(case, *changes, sides=THREE):
@@ -352,7 +353,7 @@ class FinalBarTest(unittest.TestCase):
                          (pt.NOT_MET, {'easy': pt.NOT_MET, 'hard': pt.MET}))
 
     def test_a_targets_file_whose_speed_test_part_cannot_be_used_gives_one_sentence(self):
-        visits = br.load_run(speed_run_folder(self))['visits']
+        visits = runs.load(speed_run_folder(self))['visits']
         path = os.path.join(tempdir(self), 'targets.json')
         with open(pt.TARGETS_FILE) as f:
             data = json.load(f)

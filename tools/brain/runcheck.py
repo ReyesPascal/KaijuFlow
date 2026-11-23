@@ -10,25 +10,15 @@ judges KaijuFlow's run per list against the previous run on the same recording, 
 The run command prints the same lines at its end and stores them in the run folder as CHECK.txt.
 """
 import collections
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
+import runs  # noqa: E402
 
 CHECK_FILE = 'CHECK.txt'
 GAP_S = 0.5  # a visit whose step times and measured start differ by more than this is listed
-
-
-def _load(run_dir, name):
-    try:
-        with open(os.path.join(run_dir, name)) as f:
-            return json.load(f), None
-    except FileNotFoundError:
-        return None, f'{name} is missing'
-    except (OSError, ValueError) as e:
-        return None, f'{name} cannot be read ({type(e).__name__})'
 
 
 def _side(s):
@@ -121,41 +111,28 @@ def _fallback_secs(x):
     return 'unknown' if x is None else f'{x:.2f} s'
 
 
-def _why_not_judged(meta):
-    """Why this run's lists cannot be judged (a run that did not finish, or a short run, played fewer plays than the
-    previous run, so fewer fails says nothing), or None when they can (spec #183)."""
-    status = meta.get('status')
-    if status == 'stopped':
-        return 'this run was stopped'
-    if status != 'ok':
-        return f'this run did not finish (status {status})'
-    if meta.get('short'):
-        return f"this run is short ({meta['short']})"
-    return None
-
-
 def _compared(name, now, was, words, by):
     """'cold title to video 1.50 s (was 2.00 s), better': one figure of this run against the previous run's."""
     return f"{name} {words(now)} (was {words(was)}), {by or 'not compared'}"
 
 
-def judged_lines(run_dir, meta, visits):
+def judged_lines(run):
     """KaijuFlow's run judged against its previous run on the same recording (#186, rules.md "Judged against the previous
     run"): per list, the fails and the median cold title to video, each better, same or worse than the previous run's,
     and kept or not kept; then the verdict over every list. Each list's line also shows, against the previous run's, its
     median warm title to video (spec #183) and its fallback time (the fallbacks' extra seconds added up,
     brainreport.fallback_total_s, #187); the verdict leaves those out. A previous run with another Browse pause is not
     compared, with why (#205, rules.md "Browse pause")."""
-    side, recording = br.JUDGED, meta.get('recording')
-    prev = br.run_before(run_dir, recording)
+    side, visits = br.JUDGED, run['visits']
+    prev = runs.previous(run)
     if prev is None:
-        return [f'Against the previous run: not compared, no earlier run on the same recording ({recording}).']
-    was, now = (br.browse_pause_of(m) for m in (prev, meta))
+        return [f"Against the previous run: not compared, no earlier run on the same recording ({run.get('recording')})."]
+    was, now = (br.browse_pause_of(m) for m in (prev, run))
     if was != now:  # #205: the pause lets work begun at list time show in the start, so it is no like for like
-        return [f"Against the previous run on the same recording ({recording}): {prev['folder']}: not compared, its Browse pause "
-                f"was {br.pause_text(was)} and this run's is {br.pause_text(now)}; a run is judged only against a run with the same pause."]
-    out, verdicts = [f"Against the previous run on the same recording ({recording}): {prev['folder']}."], []
-    why_not = _why_not_judged(meta)
+        return [f"{runs.against(prev)}: not compared, its Browse pause was {br.pause_text(was)} and this run's is "
+                f"{br.pause_text(now)}; a run is judged only against a run with the same pause."]
+    out, verdicts = [f'{runs.against(prev)}.'], []
+    why_not = runs.why_not_judged(run)
     for x in br.run_lists(visits) or [None]:
         fails = [br.fail_figure(vs, side, lst=x) for vs in (visits, prev['visits'])]
         cold, warm = ([br.side_time(vs, side, phase, 'video', lst=x) for vs in (visits, prev['visits'])]
@@ -189,11 +166,11 @@ def judged_lines(run_dir, meta, visits):
 
 def check_run(run_dir):
     """Returns (usable, lines) for one run folder."""
-    meta, err = _load(run_dir, 'meta.json')
-    if err:
-        return False, [f'Not usable as a baseline: {err}.']
-    raw, err = _load(run_dir, 'raw.json')
-    visits = (raw or {}).get('visits') or []
+    try:
+        meta = runs.load(run_dir)
+    except runs.Unreadable as e:
+        return False, [f'Not usable as a baseline: {e}.']
+    visits, err = meta['visits'], meta['raw_error']
     status = meta.get('status')
     reasons, lines = [], []
     recording = meta.get('mode') == 'record'
@@ -286,7 +263,7 @@ def check_run(run_dir):
         lines.append(f'Played after a fallback ({len(fell_back)}), counted as played:')
         lines += [f'- {_visit_name(v)}: {br.fallback_text(v)}' for v in fell_back]
     lines += list_lines(visits, sides)
-    lines += judged_lines(run_dir, meta, visits)
+    lines += judged_lines(meta)
     if reasons:
         lines.insert(0, 'Not usable as a baseline: ' + '; '.join(reasons) + '.')
     else:

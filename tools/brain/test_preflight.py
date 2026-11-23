@@ -10,12 +10,14 @@ import ipaddress
 import json
 import os
 import re
+import shutil
 import subprocess
 import unittest
 from unittest import mock
 
 import brainrun
 import testbed
+from runfolders import run_folder
 from test_settings import HOST_IP, SECRET, make_copies, rules, tempdir
 
 COMMIT = 'a' * 40
@@ -446,16 +448,11 @@ class PreflightTest(unittest.TestCase):
         self.assert_stops('run', self.world(), 'incomplete', 'missed 2 requests', 'KaijuFlow asked',
                           'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
 
-    def ran(self, name, started, misses, recording='l', visits=None):
+    def ran(self, name, started, misses, recording='l', visits=None, **meta):
         """A run folder in the runs root: its meta.json as a run writes it, and with `visits` its raw.json."""
         self.cfg['runs_root'] = os.path.join(os.path.dirname(self.td), 'runs')
-        d = os.path.join(self.cfg['runs_root'], name)
-        os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, 'meta.json'), 'w') as f:
-            json.dump({'name': name, 'status': 'ok', 'started': started, 'recording': recording, 'standin_misses': misses}, f)
-        if visits is not None:
-            with open(os.path.join(d, 'raw.json'), 'w') as f:
-                json.dump({'status': 'ok', 'visits': visits}, f)
+        run_folder(self.cfg['runs_root'], name, {'name': name, 'status': 'ok', 'started': started, 'recording': recording,
+                                                 'standin_misses': misses, **meta}, visits)
 
     def test_a_last_run_whose_only_misses_are_releases_never_played_passes_a_run(self):
         record(self.cfg)
@@ -477,6 +474,18 @@ class PreflightTest(unittest.TestCase):
         self.cfg['topup_command'] = 'python3 -I tools/brain/brainrun.py record --name n --store S --list l'
         self.assert_stops('run', self.world(), 'The last run on', '2026-11-11T100000Z-baseline', 'missed 1840 requests',
                           'python3 -I tools/brain/brainrun.py record --name n --store S --list l')
+
+    def test_a_stopped_run_since_the_top_up_that_missed_still_blocks_the_recording(self):
+        """#241: the preflight asks its own question, not the Previous run's: a stopped or short run counts too."""
+        for name, meta in (('stopped', {'status': 'stopped', 'stopped': {'signal': 'SIGINT', 'plays_done': 3}}),
+                           ('short', {'short': 'KaijuFlow, 1 round, 2 titles'})):
+            with self.subTest(name):
+                record(self.cfg)  # the top-up, 2026-11-10T09:00:00Z
+                self.ran('2026-11-11T090000Z-baseline', '2026-11-11T09:00:00Z', 0)  # a finished run that missed nothing
+                self.ran(f'2026-11-11T100000Z-{name}', '2026-11-11T10:00:00Z', 1,
+                         visits=[{'ok': False, 'played_source': None, 'misses': ['ninjacentral api t=search&q=x']}], **meta)
+                self.assert_stops('run', self.world(), 'The last run on', f'2026-11-11T100000Z-{name}', 'missed 1 requests')
+                shutil.rmtree(self.cfg['runs_root'])
 
     def test_a_record_after_the_run_that_missed_passes_a_run(self):
         self.ran('2026-11-09T100000Z-baseline', '2026-11-09T10:00:00Z', 1840)
