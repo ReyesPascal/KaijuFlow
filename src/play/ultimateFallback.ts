@@ -269,6 +269,7 @@ interface SourceRun {
   nzoId?: string;
   cancelled?: boolean;
   containerType?: string;
+  grabError?: Error;
   video?: StreamData;
   prepareError?: Error;
 }
@@ -344,6 +345,7 @@ export async function ultimateFallbackFromCandidates(
       size: list.length,
       inFlight: Math.max(1, settings.candidateCount),
       isDead: index => isDeadNzbByUrl(list[index].nzbUrl),
+      indexerOf: index => list[index].indexerName,
       hits: new Map([...hits].map(([index, data]) => [index, data.videoPath])),
     });
     const runs = new Map<number, SourceRun>();
@@ -398,11 +400,11 @@ export async function ultimateFallbackFromCandidates(
         case 'grab': {
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
-          prefetchNzb(c.nzbUrl, `${tag} [grab #${d.index + 1}] `, true, c.title, c.indexerName, c.searchExitIp)
-            .catch(() => false)
-            .then(ok => {
-              if (!ok) console.log(`${tag} ❌ Grab failed for ${name(d.index)}`);
-              post({ type: ok ? 'grabbed' : 'grabFailed', index: d.index });
+          prefetchNzb(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp)
+            .then(() => post({ type: 'grabbed', index: d.index }), (err: Error) => {
+              runOf(d.index).grabError = err;
+              console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
+              post({ type: 'grabFailed', index: d.index, badSource: (err as { isBadSource?: boolean }).isBadSource === true });
             });
           return;
         }
@@ -452,6 +454,9 @@ export async function ultimateFallbackFromCandidates(
           console.log(`${tag}   📦 #${d.index + 1} Backup ready (library hit, videoPath: ${data.videoPath}) — ${c.title.substring(0, 60)} [${c.indexerName}]`);
           return;
         }
+        case 'skipIndexer':
+          console.log(`${tag} ⏭️ ${d.indexer} refused a grab: skipped for the rest of the Walk, its Sources kept (ADR 0004)`);
+          return;
         case 'ceiling':
           console.log(`${tag} 🛑 Walk stopped: ${d.grabs} grabs, the most one Walk makes — ending as if the list had run out`);
           return;
@@ -464,7 +469,9 @@ export async function ultimateFallbackFromCandidates(
         case 'markDead': {
           // ADR 0004: a bad Source is remembered dead, so no later play grabs it again.
           const c = list[d.index];
-          if (d.cause === 'check') addDeadNzbByUrl(c.nzbUrl, c.title, c.indexerName, c.size);
+          // A gone link is gone for every episode: the mark is the Source's.
+          if (d.cause === 'grab') setDeadNzbEntry(c.nzbUrl, c.title, runOf(d.index).grabError!, undefined, c.indexerName, c.size, c.isSeasonPack);
+          else if (d.cause === 'check') addDeadNzbByUrl(c.nzbUrl, c.title, c.indexerName, c.size);
           // A pack blocked on its wanted episode is remembered for that episode only, as a prepare failure is (#203).
           else if (d.cause === 'check-episode') setDeadNzbEntry(c.nzbUrl, c.title, sourceFailure('Health check: blocked', false, true), cachePattern, c.indexerName, c.size, c.isSeasonPack);
           else setDeadNzbEntry(c.nzbUrl, c.title, runOf(d.index).prepareError!, cachePattern, c.indexerName, runOf(d.index).video?.videoSize || c.size, c.isSeasonPack);
