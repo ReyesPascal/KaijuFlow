@@ -22,3 +22,12 @@ The first-byte check asks the Backend for the first byte of the video. Same rule
 When a first byte fails, KaijuFlow logs one line with the status, the path it asked for and the names of the files the Backend offered. No addresses, no keys.
 
 The case behind it, Oppenheimer: the release name ends in `.mkv`, so AltMount stored it as a folder. The file route answered 400 twice for that folder, KaijuFlow marked a good Source dead, and it plays on NzbDAV. Fixing the folder itself is a separate change in the AltMount adapter (#85). The Parity scenarios `first-byte-400-or-dropped-not-dead` and `first-byte-404-dead` run against every Backend.
+
+## The walk's grabs (deepening spec, 2026-11-23)
+
+The Walk's grab (`prefetchNzb`) used to treat every failed download alike: the Source was skipped for that play, never marked dead, and grabbed again on every later play, while the full grab (`grabNzb`) already followed this ADR. Found by the architecture review and #228 (a failed grab was also replaced twice, so a walk doubled through 324 Sources in 4.7 s). Owner's decision ("yes to all", grilling of 2026-11-23):
+
+- The walk's grab sorts its answers as `grabNzb` does: a link the indexer says is gone (404, other 4xx) or bad content marks the Source dead; a refusal (429, 5xx, 401/403, a network error, a timeout) says nothing about the Source.
+- An indexer that refuses a grab is skipped for the rest of that walk, so one indexer refusing downloads can't spend the day's allowance.
+- A walk stops after 30 grabs, about twice the deepest walk measured (16, The Twilight Zone S02E06), and ends as when the list runs out.
+- The test stand-in answers a recording miss with 503 ("not recorded"), a refusal, so a gap in a Recording never writes a dead mark.
