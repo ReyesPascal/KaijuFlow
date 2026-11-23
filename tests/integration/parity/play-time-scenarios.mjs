@@ -1239,13 +1239,14 @@ export const keepAliveScenarios = [
   {
     // Keep-alive (#248): one rule for the time left. A request still waiting near the end of the player's 60 s
     // window (at 55 s, 5 s to spare) answers with a self-redirect, whatever entry it plays: here a list entry whose
-    // one Source is still preparing, which held the request until its video came.
+    // one Source is still preparing, which held the request until its video came. No Head start: its Walk gives
+    // AltMount 30 s for a movie and marks a Source that takes longer dead, which is the Walk's rule, not the player's.
     id: 'a-list-entry-still-preparing-at-55-s-redirects-to-itself',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'window' }]);
       w.backend.slowImports('window', 59000);
       try {
-        await withPrepareTimeout(w, 90, async () => {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 90, async () => {
           const streams = await w.list('movie', id);
           const url = streams.find(s => !isBest(s)).url;
           const r = await askOnce(url, 70000);
@@ -1254,7 +1255,7 @@ export const keepAliveScenarios = [
           const played = await play(r.location);
           assert.equal(played.status, 200);
           assertBytes(played.body, sources[0].media, 'the player following the redirect gets the video');
-        });
+        }));
       } finally {
         w.backend.slowImports('window', 0);
       }
