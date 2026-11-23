@@ -197,15 +197,32 @@ export function cancelAllUltimateFallbacks(): void {
 
 // ── Head start (#206) ───────────────────────────────────────────────
 
-/** Sessions a press of Best is waiting on: a newer list request never stops them. Emptied as each session ends. */
+/** Sessions a press of Best is waiting on, or played: claimed. Emptied as each session ends. */
 const claimedSessions = new Set<string>();
-/** The title of the newest list request's Head start, until a press of Best claims it. */
-let headStartKey: string | null = null;
+
+/**
+ * A Walk ends when any player asks for another title's list (GLOSSARY: Walk, #244). Called as the list request
+ * arrives, before its search, so the new title's search and Head start have the connections to themselves: an
+ * unclaimed Head start is stopped, and so is a play's Walk once its video has arrived (its leftover grabs and
+ * checks). A press still waiting for its video keeps its Walk; a video already playing goes on (its session stays).
+ */
+export function listAsked(sessionKey: string): void {
+  for (const [key, controller] of activeSessions) {
+    if (key === sessionKey) continue;
+    const played = sessionPromises.get(key)?.resolvedData !== undefined;
+    if (!claimedSessions.has(key)) {
+      console.log(`👑 Ultimate-Fallback [${key}] Head start stopped: a newer list request [${sessionKey}] has it`);
+    } else if (played) {
+      console.log(`👑 Ultimate-Fallback [${key}] Walk stopped: its video arrived and a newer list request [${sessionKey}] came`);
+    } else continue;
+    controller.abort();
+  }
+}
 
 /**
  * Head start (GLOSSARY): a title's stream list was asked for, so Best's check and prepare begin now in the
- * background. Only the newest list request has one: the one before is stopped unless a press of Best is waiting
- * on it. A title whose Best already runs or is done keeps that session (a press joins it).
+ * background (listAsked has stopped the one before). A title whose Best already runs or is done keeps that
+ * session (a press joins it).
  */
 export function headStart(
   sessionKey: string,
@@ -216,27 +233,18 @@ export function headStart(
   contentType?: string,
   episodesInSeason?: number,
 ): void {
-  const before = headStartKey;
-  headStartKey = sessionKey;
-  if (before && before !== sessionKey && !claimedSessions.has(before)) {
-    const controller = activeSessions.get(before);
-    if (controller) {
-      console.log(`👑 Ultimate-Fallback [${before}] Head start stopped: a newer list request [${sessionKey}] has it`);
-      controller.abort();
-    }
-  }
   if (candidates.length === 0 || sessionPromises.has(sessionKey)) return;
   console.log(`👑 Ultimate-Fallback [${sessionKey}] Head start: checking Best's Sources before a press`);
   ultimateFallbackFromCandidates(sessionKey, candidates, settings, cachePattern, filePattern, contentType, episodesInSeason)
     .catch(err => console.error('❌ Ultimate-Fallback error (Head start):', err));
 }
 
-/** A press of Best waits on this title's session: from now on it is a play, which no newer list request stops. */
+/** A press of Best waits on this title's session: from now on it is a play, which no newer list request stops
+ *  until its video has arrived (listAsked). */
 export function claimSession(sessionKey: string): void {
   if (!activeSessions.has(sessionKey) || claimedSessions.has(sessionKey)) return;
   console.log(`👑 Ultimate-Fallback [${sessionKey}] Best pressed: a play now, no newer list request stops it`);
   claimedSessions.add(sessionKey);
-  if (headStartKey === sessionKey) headStartKey = null;
 }
 
 
@@ -411,7 +419,7 @@ export async function ultimateFallbackFromCandidates(
           checkSource({ ...list[d.index], episodePattern: filePattern }, pool)
             .then(result => {
               runOf(d.index).containerType = result.containerType;
-              if (!isHealthy(result)) console.log(`${tag} ❌ #${d.index + 1} not healthy (${result.message}) — ${list[d.index].title}`);
+              if (!isHealthy(result) && !pool?.stopped) console.log(`${tag} ❌ #${d.index + 1} not healthy (${result.message}) — ${list[d.index].title}`);
               post({ type: 'checked', index: d.index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true });
             }, () => post({ type: 'checked', index: d.index, verdict: 'error' }));
           return;
@@ -474,8 +482,8 @@ export async function ultimateFallbackFromCandidates(
       }
     };
 
-    // A stop (a newer list request's Head start, a settings change) ends the Walk at once.
-    controller.signal.addEventListener('abort', () => post({ type: 'stop' }), { once: true });
+    // A stop (a newer list request, a settings change) ends the Walk at once: its checks' connections close now.
+    controller.signal.addEventListener('abort', () => { pool?.stop(); post({ type: 'stop' }); }, { once: true });
     for (const d of walk.start()) run(d);
     if (walk.done) finish();
     await finished;

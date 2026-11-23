@@ -18,14 +18,16 @@ const report = { id: 'INT-PARITY-PLAY-TIME-CHECK-001', backend: 'altmount', boun
 const servers = [];
 const listen = async handler => { const s = http.createServer(handler); await new Promise(r => s.listen(0, '127.0.0.1', r)); servers.push(s); return 'http://127.0.0.1:' + s.address().port; };
 
-/** A Newznab indexer that answers a search with the Sources offered for its IMDB id. */
+/** A Newznab indexer that answers a search with the Sources offered for its IMDB id; `searches` says when each came. */
 async function createFakeIndexer() {
   const offers = new Map(); // imdb id without "tt" -> [{ title, link, size }]
   const requests = [];
+  const searches = []; // { imdbid, at }
   const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const url = await listen((req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
     requests.push(u.searchParams.get('t'));
+    searches.push({ imdbid: u.searchParams.get('imdbid'), at: Date.now() });
     const items = offers.get(u.searchParams.get('imdbid')) ?? [];
     const cat = u.searchParams.get('t') === 'tvsearch' ? 5040 : 2040;
     res.setHeader('Content-Type', 'application/xml');
@@ -33,7 +35,7 @@ async function createFakeIndexer() {
       items.map(i => `<item><title>${xml(i.title)}</title><link>${xml(i.link)}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate>` +
         `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>');
   });
-  return { url, requests, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
+  return { url, requests, searches, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
 }
 
 try {
