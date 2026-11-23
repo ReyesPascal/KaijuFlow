@@ -7,7 +7,7 @@ The same rule holds on the indexer side (#51, 2026-11-09): an indexer that does 
 ## Consequences
 
 - Backends throw a Source failure (`isSourceFailure`) only for bad Sources; everything else is a plain error.
-- The NZB grab (`grabNzb`) throws a Source failure only for bad content: an invalid NZB body, an indexer error payload, or a link the indexer says is gone (404 and other 4xx). A 429, 5xx, 401/403, network error or download timeout is a plain error: failure video, Source kept. (A server that answers 500 for a removed NZB is retried on every play; that is the price of never killing a Source for a server fault.)
+- The NZB grab (`grabNzb`) throws a Source failure only for bad content: an invalid NZB body, or a link the indexer says is gone (404 and other 4xx, an error payload with code 300). A 429, 5xx, 401/403, an error payload with another code, network error or download timeout is a plain error: failure video, Source kept. (A server that answers 500 for a removed NZB is retried on every play; that is the price of never killing a Source for a server fault.)
 - The dead cache drops marks written by earlier builds for an unavailable indexer when it loads (`isIndexerUnavailableMessage`), so the lost Sources come back without a manual clean-up.
 - The Parity scenarios `unreachable-backend-not-dead` and `indexer-unavailable-not-dead` run against every Backend.
 
@@ -28,6 +28,7 @@ The case behind it, Oppenheimer: the release name ends in `.mkv`, so AltMount st
 The Walk's grab (`prefetchNzb`) used to treat every failed download alike: the Source was skipped for that play, never marked dead, and grabbed again on every later play, while the full grab (`grabNzb`) already followed this ADR. Found by the architecture review and #228 (a failed grab was also replaced twice, so a walk doubled through 324 Sources in 4.7 s). Owner's decision ("yes to all", grilling of 2026-11-23):
 
 - The walk's grab sorts its answers as `grabNzb` does: a link the indexer says is gone (404, other 4xx) or bad content marks the Source dead; a refusal (429, 5xx, 401/403, a network error, a timeout) says nothing about the Source.
+- A 200 with a Newznab error payload is sorted the same way, by its code: 300 (no such item) is a gone link, a Source failure and a dead mark; 1xx (credentials, suspended, privileges), 5xx (request or download limit) and every other code are a refusal, so the indexer is skipped for the rest of the walk and the Source is untouched (review of #239, 2026-11-23).
 - An indexer that refuses a grab is skipped for the rest of that walk, so one indexer refusing downloads can't spend the day's allowance.
 - A walk stops after 30 grabs, about twice the deepest walk measured (16, The Twilight Zone S02E06), and ends as when the list runs out.
 - The test stand-in answers a recording miss with 503 ("not recorded"), a refusal, so a gap in a Recording never writes a dead mark.

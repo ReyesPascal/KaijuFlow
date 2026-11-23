@@ -13,9 +13,9 @@
  * - A library hit (a Source the Backend already holds) plays without a grab, unless a Source above it is still
  *   grabbed or prepared; once one plays, the other library hits are kept beside it as backups.
  * - A Walk makes at most `maxGrabs` grabs (30), then ends as if the list had run out, and says so once (#228).
- * - An indexer that refuses a grab (429, 5xx, 401/403, a network error, a timeout) is skipped for the rest of the
+ * - An indexer that refuses a grab (429, 5xx, 401/403, an error payload not 300, a network error, a timeout) is skipped for the rest of the
  *   Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004).
- * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx) or bad, a check that blocks a
+ * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx, error payload 300) or bad, a check that blocks a
  *   Source, or a prepare that fails for the Source's own reason, marks it dead; a refused grab, a check that cannot
  *   answer, or a Backend failure leaves it alive.
  */

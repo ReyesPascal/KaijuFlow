@@ -1081,27 +1081,14 @@ export const playTimeScenarios = [
     // plays a Healthy Source from another indexer; no refused Source is dead. Best walks one Source at a time here,
     // so "once" is exact (at 3 at a time, the grabs already under way reach it too).
     id: 'a-refusing-indexer-is-asked-once-and-skipped',
-    run: w => withSettings(w, { candidateCount: 1 }, () => withIndexer(w, w.refusing.entry, async () => {
-      const id = `tt${nextImdb++}`;
-      const refused = [1, 2, 3, 4].map(i => ({ tag: `refused-${i}`, title: `KaijuFlow.PlayTime.refused-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
-      for (const s of refused) s.link = w.refusing.nzbLink(s.tag);
-      w.refusing.offer(id, refused);
-      const ok = { tag: 'refused-other-ok', title: 'KaijuFlow.PlayTime.refused-other-ok.2026.2160p.WEB-DL.H265-GRP', media: mediaFor('refused-other-ok'), size: 10 * GB };
-      ok.link = w.backend.addMovie(ok.tag, ok.title, ok.media);
-      w.indexer.offer(id, [ok]);
-      const before = w.refusing.grabs.length;
-      const { result: r, lines } = await withLogs(async () => {
-        const streams = await w.list('movie', id);
-        assert.equal(streams.slice(1).map(entryTitle).join(' | '), [...refused, ok].map(s => s.title).join(' | '), 'the refusing indexer\'s Sources are on top');
-        return play(streams[0].url);
-      });
-      assert.equal(r.status, 200, 'Best plays');
-      assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
-      assert.deepEqual(w.refusing.grabs.slice(before), ['refused-1'], 'the refusing indexer is asked once');
-      assert.equal(lines.filter(l => /Refusing.*skipped for the rest of the Walk/.test(l)).length, 1, 'the skip is logged once');
-      const again = await w.list('movie', id);
-      for (const s of refused) assert.ok(again.some(e => !isBest(e) && entryTitle(e) === s.title), `${s.tag} is not dead: the list still offers it`);
-    })),
+    run: w => assertRefusingIndexerSkipped(w, w.refusing, 'refused'),
+  },
+  {
+    // ADR 0004, "The walk's grabs": an indexer that answers a grab with 200 and a Newznab error payload is sorted by
+    // the payload's code, as an HTTP answer is by its status. Code 500 (its request limit) is a refusal, as a 429 is:
+    // asked once, skipped for the rest of the Walk, none of its Sources dead.
+    id: 'an-indexer-answering-an-error-payload-is-asked-once-and-skipped',
+    run: w => assertRefusingIndexerSkipped(w, w.limited, 'limited'),
   },
   {
     // ADR 0004, "The walk's grabs" (#243): a link the indexer says is gone (404) is a Source failure. The Walk marks
@@ -1298,6 +1285,36 @@ async function askOnce(url, timeoutMs = 30000) {
   const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
   await res.arrayBuffer().catch(() => {});
   return { status: res.status, location: res.headers.get('location'), at: Date.now() - asked };
+}
+
+/**
+ * A press of Best on a title whose top four Sources come from an indexer that refuses every grab (`refuser`, one of
+ * the play-time world's), then a Healthy Source of the suite's indexer. Best walks one Source at a time, so "once" is
+ * exact: the refuser is asked once, the skip is logged once, Best plays the Healthy Source and no refused Source is dead.
+ */
+function assertRefusingIndexerSkipped(w, refuser, prefix) {
+  return withSettings(w, { candidateCount: 1 }, () => withIndexer(w, refuser.entry, async () => {
+    const id = `tt${nextImdb++}`;
+    const refused = [1, 2, 3, 4].map(i => ({ tag: `${prefix}-${i}`, title: `KaijuFlow.PlayTime.${prefix}-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
+    for (const s of refused) s.link = refuser.nzbLink(s.tag);
+    refuser.offer(id, refused);
+    const ok = { tag: `${prefix}-other-ok`, title: `KaijuFlow.PlayTime.${prefix}-other-ok.2026.2160p.WEB-DL.H265-GRP`, media: mediaFor(`${prefix}-other-ok`), size: 10 * GB };
+    ok.link = w.backend.addMovie(ok.tag, ok.title, ok.media);
+    w.indexer.offer(id, [ok]);
+    const before = refuser.grabs.length;
+    const { result: r, lines } = await withLogs(async () => {
+      const streams = await w.list('movie', id);
+      assert.equal(streams.slice(1).map(entryTitle).join(' | '), [...refused, ok].map(s => s.title).join(' | '), 'the refusing indexer\'s Sources are on top');
+      return play(streams[0].url);
+    });
+    assert.equal(r.status, 200, 'Best plays');
+    assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
+    assert.deepEqual(refuser.grabs.slice(before), [`${prefix}-1`], 'the refusing indexer is asked once');
+    const skip = new RegExp(`${refuser.entry.name}.*skipped for the rest of the Walk`);
+    assert.equal(lines.filter(l => skip.test(l)).length, 1, 'the skip is logged once');
+    const again = await w.list('movie', id);
+    for (const s of refused) assert.ok(again.some(e => !isBest(e) && entryTitle(e) === s.title), `${s.tag} is not dead: the list still offers it`);
+  }));
 }
 
 /** Run fn with this indexer added to the suite's, then put the suite's back. */
