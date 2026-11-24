@@ -1424,7 +1424,7 @@ export const goBackPreparingScenarios = [
             'the first request ran out of time while the next Source was preparing, and resumed at it');
           assert.equal(w.backend.submitsFor('backrd-b'), 1, 'the next Source was tried');
           assert.equal(r.status, 200);
-          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms); ${lines.filter(l => /User-pick attempt|Decoded rc=|Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
+          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms); ${lines.filter(l => /User-pick attempt|Decoded rc=|Go-back state|Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
           assert.ok(took >= 71000, `it played once the first Source was ready (${took} ms)`);
           assert.equal(w.backend.submitsFor('backrd-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
         }));
