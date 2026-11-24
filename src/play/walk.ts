@@ -17,6 +17,10 @@
  *   that refuses a grab (429, 5xx, 401/403, an error payload not 300, a network error, a timeout) is skipped for the
  *   rest of the Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004).
  *   The grabs already under way when it refuses still reach it, so it is asked at most `inFlight` (candidateCount) times.
+ * - A list still growing (#301): when the list went out before a slower indexer answered, the Walk is `open` and its
+ *   late Sources join it (`more`, put after what the Walk reached) until the list is whole (`closed`). While open, a
+ *   Walk whose Sources all failed waits instead of ending, and a healthy maybe is not handed to the Backend: a sure
+ *   Source still to come goes first. A held maybe leaves its place in the Walk to a sure Source, never to a maybe. The sure Sources entered are handed over before the maybes, each in list order.
  * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx, error payload 300) or bad, a check that blocks a
  *   Source, or a prepare that fails for the Source's own reason, marks it dead; a refused grab, a check that cannot
  *   answer, or a Backend failure leaves it alive.
@@ -70,6 +74,10 @@ export type WalkEvent =
   | { type: 'checked'; index: number; verdict: 'healthy' | 'blocked' | 'error'; episodeOnly?: boolean }
   | { type: 'prepared'; index: number; videoPath: string }
   | { type: 'prepareFailed'; index: number; badSource: boolean }
+  /** Late Sources (#301): `count` of them were put in the list at `at`, at or after the first Source not reached. */
+  | { type: 'more'; at: number; count: number }
+  /** The list is whole: no more Sources will come. */
+  | { type: 'closed' }
   | { type: 'stop' };
 
 export type WalkEnd = 'ran-out' | 'ceiling' | 'stopped';
@@ -105,6 +113,10 @@ export interface WalkOptions {
   indexerOf: (index: number) => string;
   /** Library hits: list index -> the video path the Backend holds. */
   hits: ReadonlyMap<number, string>;
+  /** More Sources may come (#301): the Walk does not run out until `closed`. */
+  open?: boolean;
+  /** A maybe Source (Search Flow), read when the Walk reaches it: while the Walk is open it is not handed over. */
+  isMaybe?: (index: number) => boolean;
 }
 
 /** Where one Source of the Walk stands. */
@@ -115,6 +127,8 @@ export interface WalkMember {
   prepare: 'idle' | 'preparing' | 'done' | 'failed' | 'cancelled';
   /** A library hit: waiting (parked), played, kept as a backup, or passed by (same video, other container). */
   library?: 'parked' | 'played' | 'backup' | 'duplicate' | 'mismatch';
+  /** A maybe when the Walk reached it (a later extra proof does not move it, #190). */
+  maybe?: boolean;
 }
 
 const ext = (videoPath: string): string => {
@@ -129,8 +143,18 @@ export class Walk {
   private readonly limits = new WalkLimits();
   private played: number | null = null;
   private ended: WalkEnd | null = null;
+  private size: number;
+  private open: boolean;
+  private readonly hits: Map<number, string>;
 
-  constructor(private readonly opts: WalkOptions) {}
+  constructor(private readonly opts: WalkOptions) {
+    this.size = opts.size;
+    this.open = opts.open === true;
+    this.hits = new Map(opts.hits);
+  }
+
+  /** The first Source of the list the Walk has not reached: late Sources go at or after it. */
+  get reached(): number { return this.next; }
 
   /** The first decisions: fill the Walk from the top of the list. */
   start(): WalkDecision[] {
@@ -148,6 +172,12 @@ export class Walk {
       }
       if (this.played === null && this.ended === null) out.push({ type: 'settleNone', end: 'stopped' });
       this.ended = 'stopped';
+      return out;
+    }
+    if (event.type === 'more' || event.type === 'closed') {
+      if (event.type === 'more') this.insert(event.at, event.count);
+      else this.open = false;
+      this.advance(out);
       return out;
     }
     const m = this.members.find(x => x.index === event.index);
@@ -211,27 +241,52 @@ export class Walk {
     this.unpark(out);
     if (this.settled()) return;
     // Replace what finished, once each: the Walk keeps `inFlight` Sources going.
-    while (this.members.filter(m => !this.finished(m)).length < this.opts.inFlight && this.enter(out)) {
+    while (this.room() && this.enter(out)) {
       if (this.settled()) return;
     }
     this.handOver(out);
     if (this.settled()) return;
-    if (this.members.every(m => this.finished(m)) && !this.canEnter()) {
+    if (this.members.every(m => this.finished(m)) && !this.canEnter() && (!this.open || this.limits.stopped)) {
       this.ended = this.limits.stopped ? 'ceiling' : 'ran-out';
       out.push({ type: 'settleNone', end: this.ended });
     }
   }
 
+  /** A healthy maybe held while the list is open (#301): it waits for the sure Sources still to come. */
+  private held(m: WalkMember): boolean {
+    return this.open && m.maybe === true && m.check === 'healthy' && m.prepare === 'idle';
+  }
+
+  /** Room for one more Source: fewer than `inFlight` walked, or a held maybe that leaves its place to a sure one. */
+  private room(): boolean {
+    const walked = this.members.filter(m => !this.finished(m));
+    if (walked.length < this.opts.inFlight) return true;
+    if (walked.length - walked.filter(m => this.held(m)).length >= this.opts.inFlight) return false;
+    let i = this.next;
+    while (i < this.size && this.passedBy(i)) i++;
+    return i < this.size && !this.opts.isMaybe?.(i);
+  }
+
   private canEnter(): boolean {
     if (this.limits.stopped) return false;
     let i = this.next;
-    while (i < this.opts.size && this.passedBy(i)) i++;
-    return i < this.opts.size;
+    while (i < this.size && this.passedBy(i)) i++;
+    return i < this.size;
+  }
+
+  /** Late Sources put in the list at `at` (never before the first Source not reached): the library hits after move. */
+  private insert(at: number, count: number): void {
+    if (at < this.next || at > this.size) throw new Error(`Walk: late Sources at ${at}, the Walk reached ${this.next} of ${this.size}`);
+    if (count <= 0) return;
+    const moved = [...this.hits].map(([index, path]): [number, string] => [index >= at ? index + count : index, path]);
+    this.hits.clear();
+    for (const [index, path] of moved) this.hits.set(index, path);
+    this.size += count;
   }
 
   /** A Source the Walk does not reach: remembered dead, or not a library hit and from an indexer that refused. */
   private passedBy(index: number): boolean {
-    return this.opts.isDead(index) || (!this.opts.hits.has(index) && this.limits.skips(this.opts.indexerOf(index)));
+    return this.opts.isDead(index) || (!this.hits.has(index) && this.limits.skips(this.opts.indexerOf(index)));
   }
 
   private skipIndexer(indexer: string, out: WalkDecision[]): void {
@@ -241,17 +296,17 @@ export class Walk {
   /** Bring the next Source of the list into the Walk. False when none can come: the list ran out or the grabs did. */
   private enter(out: WalkDecision[]): boolean {
     if (this.limits.stopped) return false;
-    while (this.next < this.opts.size && this.passedBy(this.next)) this.next++;
-    if (this.next >= this.opts.size) return false;
+    while (this.next < this.size && this.passedBy(this.next)) this.next++;
+    if (this.next >= this.size) return false;
     const index = this.next;
-    if (!this.opts.hits.has(index) && this.limits.grab() !== 'grab') {
+    if (!this.hits.has(index) && this.limits.grab() !== 'grab') {
       out.push({ type: 'ceiling', grabs: this.limits.grabCount });
       return false;
     }
     this.next++;
-    const m: WalkMember = { index, grab: 'none', check: 'none', prepare: 'idle' };
+    const m: WalkMember = { index, grab: 'none', check: 'none', prepare: 'idle', ...(this.opts.isMaybe?.(index) ? { maybe: true } : {}) };
     this.members.push(m);
-    if (this.opts.hits.has(index)) {
+    if (this.hits.has(index)) {
       m.library = 'parked';
       this.tryLibrary(m, out, true);
     } else {
@@ -265,7 +320,7 @@ export class Walk {
   private tryLibrary(m: WalkMember, out: WalkDecision[], entering: boolean): void {
     const blocked = this.members.some(x => x.index < m.index && (x.grab === 'grabbing' || x.prepare === 'preparing'));
     if (blocked) { if (entering) out.push({ type: 'park', index: m.index }); return; }
-    this.settle(m, 'library', this.opts.hits.get(m.index)!, out);
+    this.settle(m, 'library', this.hits.get(m.index)!, out);
   }
 
   private unpark(out: WalkDecision[]): void {
@@ -276,11 +331,13 @@ export class Walk {
     }
   }
 
-  /** Hand the Backend the first healthy Source in list order, when none is being prepared; wait on one still walked above it. */
+  /** Hand the Backend the first healthy Source in list order, the sure ones before the maybes, when none is being
+   *  prepared; wait on one still walked above it. While the list is open a maybe waits (a sure one may still come). */
   private handOver(out: WalkDecision[]): void {
     if (this.members.some(m => m.prepare === 'preparing')) return;
-    for (const m of this.members) {
+    for (const m of [...this.members.filter(x => !x.maybe), ...this.members.filter(x => x.maybe)]) {
       if (this.finished(m)) continue;
+      if (m.maybe && this.open) return;
       if (m.library === 'parked' || m.check !== 'healthy') return;
       if (m.prepare !== 'idle') continue;
       m.prepare = 'preparing';
@@ -296,7 +353,7 @@ export class Walk {
     out.push({ type: 'settle', index: m.index, via });
     const container = ext(videoPath);
     const held = new Set([videoPath]);
-    for (const [index, path] of [...this.opts.hits].sort((a, b) => a[0] - b[0])) {
+    for (const [index, path] of [...this.hits].sort((a, b) => a[0] - b[0])) {
       if (index === m.index) continue;
       const member = this.members.find(x => x.index === index);
       const hitExt = ext(path);

@@ -61,6 +61,33 @@ export interface StreamBuildOutput {
 }
 
 /**
+ * The fallback group's candidates of a filtered, sorted list (every result that goes through the Backend; EasyNews
+ * direct downloads are left out), in list order. Also the late Sources' (#301), made the same way.
+ */
+export function candidatesOf(allResults: any[]): FallbackCandidate[] {
+  const streamManifestKey = requestContext.getStore()?.manifestKey || '';
+  return allResults
+    .filter(r => {
+      // Include all results that go through the Backend (skip EasyNews DDL)
+      if (r.easynewsMeta && config.easynewsMode !== 'nzb') return false;
+      return true;
+    })
+    .map(r => {
+      let nzbUrl = r.link;
+      // For EasyNews NZB mode, construct the proxy URL
+      if (r.easynewsMeta && config.easynewsMode === 'nzb') {
+        const meta = r.easynewsMeta;
+        const nzbParams = new URLSearchParams({
+          hash: meta.hash, filename: meta.filename, ext: meta.ext,
+        });
+        if (meta.sig) nzbParams.set('sig', meta.sig);
+        nzbUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/easynews/nzb?${nzbParams.toString()}`;
+      }
+      return { nzbUrl, title: r.title, indexerName: r.indexerName, size: r.size, isSeasonPack: r.isSeasonPack || false, searchExitIp: r.searchExitIp, flow: r.flow, flowWhy: r.flowWhy, proof: r.proof };
+    });
+}
+
+/**
  * Build Stremio Stream objects from processed search results.
  */
 export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
@@ -81,25 +108,7 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
   if (isUltimateFallbackActive() && allResults.length > 0) {
     fallbackGroupId = crypto.randomUUID().slice(0, 12);
 
-    fallbackCandidates = allResults
-      .filter(r => {
-        // Include all results that go through the Backend (skip EasyNews DDL)
-        if (r.easynewsMeta && config.easynewsMode !== 'nzb') return false;
-        return true;
-      })
-      .map(r => {
-        let nzbUrl = r.link;
-        // For EasyNews NZB mode, construct the proxy URL
-        if (r.easynewsMeta && config.easynewsMode === 'nzb') {
-          const meta = r.easynewsMeta;
-          const nzbParams = new URLSearchParams({
-            hash: meta.hash, filename: meta.filename, ext: meta.ext,
-          });
-          if (meta.sig) nzbParams.set('sig', meta.sig);
-          nzbUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/easynews/nzb?${nzbParams.toString()}`;
-        }
-        return { nzbUrl, title: r.title, indexerName: r.indexerName, size: r.size, isSeasonPack: r.isSeasonPack || false, searchExitIp: r.searchExitIp, flow: r.flow, flowWhy: r.flowWhy, proof: r.proof };
-      });
+    fallbackCandidates = candidatesOf(allResults);
 
     // One step line (#249): the group write saves every live group to disk, so it grows with the groups held.
     const group = fallbackCandidates;

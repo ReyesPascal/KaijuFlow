@@ -243,6 +243,33 @@ const isBest = s => s.name.includes('KaijuFlow ▶ Best');
 /** The release name a list entry plays (from its tile envelope). */
 const entryTitle = s => JSON.parse(Buffer.from(new URL(s.url).searchParams.get('t'), 'base64url').toString()).title;
 
+/** How long the slow indexer takes to answer a search in the list deadline's scenarios (#301). */
+const SLOW_INDEXER_MS = 1500;
+
+/**
+ * Offer movie Sources for a new title named `KaijuFlow PlayTime <name>` (2026) on the suite's indexer (fast) and on the
+ * second one, which answers SLOW_INDEXER_MS late (#301). Each spec: { tag, kind?: 'healthy' | 'dead' }. A tag that
+ * ends in `-CE` makes a maybe (`CE` between the name and the year), any other a sure Source. Sizes go down in the
+ * order given, fast ones first. Returns { id, fast: [...], slow: [...] }, each { tag, title, media, link, size }.
+ */
+function offerFastAndSlow(w, name, fastSpecs, slowSpecs) {
+  const id = `tt${nextImdb++}`;
+  w.cinemeta.add(id, { name: `KaijuFlow PlayTime ${name}`, year: '2026' });
+  let i = 0;
+  const make = spec => {
+    const group = spec.tag.endsWith('-CE') ? `${name}-CE` : name;
+    const title = `KaijuFlow.PlayTime.${group}.2026.2160p.WEB-DL.H265-${spec.tag.replace(/-/g, '')}`;
+    const media = mediaFor(spec.tag);
+    const link = w.backend.addMovie(spec.tag, title, media, spec.kind === 'dead' ? { dead: true } : {});
+    return { tag: spec.tag, title, media, link, size: (20 - i++) * GB };
+  };
+  const fast = fastSpecs.map(make), slow = slowSpecs.map(make);
+  w.indexer.offer(id, fast);
+  w.second.offer(id, slow);
+  w.second.slow(SLOW_INDEXER_MS);
+  return { id, fast, slow };
+}
+
 /**
  * Offer movie Releases for a new title on the suite's indexer and on the second one (#299), in list order (same
  * quality, sizes going down). Each spec: { tag, on: 'both' | 'one', apart? (the second indexer's size, off by this
@@ -295,6 +322,62 @@ export const playTimeScenarios = [
         });
       } finally {
         w.configData.movieFilters = saved;
+      }
+    },
+  },
+  {
+    // The list deadline (#301): the fast indexer's answer holds a sure Source, so the list goes out at its time, not
+    // the slow one's. That Source is dead; the slow indexer's healthy Source arrives after the list and joins the
+    // Head start's Walk, which waits for it instead of ending, and Best plays it. The next list request shows it.
+    id: 'a-late-source-joins-a-walk-whose-fast-sources-failed',
+    async run(w) {
+      const { id, fast: [dead], slow: [late] } = offerFastAndSlow(w, 'late', [{ tag: 'late-fast', kind: 'dead' }], [{ tag: 'late-slow' }]);
+      try {
+        await withIndexer(w, w.second.entry, async () => {
+          const t0 = Date.now();
+          const { result: streams, lines } = await withLogs(async () => {
+            const out = await w.list('movie', id);
+            await new Promise(r => setImmediate(r)); // the list's own step line is written one turn after the answer
+            return out;
+          });
+          const listed = Date.now() - t0;
+          assert.ok(listed < SLOW_INDEXER_MS - 300, `the list went out at the fast indexer's time (${listed} ms)`);
+          assert.deepEqual(stepsOf(lines).filter(x => x.step === 'list' && x.ref === id).map(x => x.not_waited_for), [['Second']], 'its list line names the indexer it did not wait for');
+          assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle), [dead.title], 'the fast indexer\'s Source alone');
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, late.media, 'Best plays the slow indexer\'s Source');
+          assert.ok((await w.list('movie', id)).filter(s => !isBest(s)).map(entryTitle).includes(late.title), 'the next list shows the late Source');
+        });
+      } finally {
+        w.second.slow(0);
+      }
+    },
+  },
+  {
+    // The list deadline (#301): the fast indexer's answer holds only a maybe, so the list waits for the slow one and
+    // holds both indexers' Sources; Best plays the slow indexer's sure Source, not the fast one's healthy maybe.
+    id: 'the-list-waits-for-the-slow-indexer-when-the-fast-one-has-nothing-sure',
+    async run(w) {
+      const { id, fast: [maybe], slow: [sure] } = offerFastAndSlow(w, 'wait', [{ tag: 'wait-CE' }], [{ tag: 'wait-sure' }]);
+      try {
+        await withIndexer(w, w.second.entry, async () => {
+          const t0 = Date.now();
+          const { result: streams, lines } = await withLogs(async () => {
+            const out = await w.list('movie', id);
+            await new Promise(r => setImmediate(r)); // the list's own step line is written one turn after the answer
+            return out;
+          });
+          const listedAt = Date.now();
+          assert.deepEqual(stepsOf(lines).filter(x => x.step === 'list' && x.ref === id).map(x => 'not_waited_for' in x), [false], 'its list line names no indexer it did not wait for');
+          assert.ok(listedAt - t0 >= SLOW_INDEXER_MS, `the list waited for the slow indexer (${listedAt - t0} ms)`);
+          assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle).sort(), [maybe.title, sure.title].sort(), 'both indexers\' Sources');
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, sure.media, 'Best plays the sure Source');
+        });
+      } finally {
+        w.second.slow(0);
       }
     },
   },

@@ -4,64 +4,18 @@
 // The fake indexers answer a name search with real answers of NinjaCentral and DrunkenSlug
 // (tests/fixtures/indexer-answers/, review rule 2), their links pointing back at the fake as the stand-in's did.
 // Run: npm run test:unit
-import { test, after, beforeEach } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
 import fs from 'node:fs';
-import { configData } from '../../src/config/index.ts';
 import { kaijuSearch, type SearchContext } from '../../src/addon/searchOrchestrator.ts';
-import { captureLogs } from './capture-logs.ts';
+import { ANSWERS, item, rss, quiet, plainSettings, twoIndexers } from './fake-indexers.ts';
 
-const ANSWERS = 'tests/fixtures/indexer-answers';
-const EMPTY = `<?xml version="1.0"?><rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response offset="0" total="0"/></channel></rss>`;
+beforeEach(plainSettings);
 
-/** A fake indexer that answers every name search with `body` (`@@STANDIN@@` becomes its own address, as the
- *  stand-in served it) and every other query with an empty answer. */
-function fakeIndexer(body: string) {
-  return http.createServer((req, res) => {
-    const p = new URL(req.url ?? '', 'http://x').searchParams;
-    const base = `http://${req.headers.host}`;
-    res.writeHead(200, { 'Content-Type': 'text/xml;charset=UTF-8' });
-    res.end(p.get('t') === 'search' ? body.replaceAll('@@STANDIN@@', base) : EMPTY);
-  });
-}
-
-const item = (title: string, guid: string, size: number) =>
-  `<item><title>${title}</title><guid>${guid}</guid><link>@@STANDIN@@/getnzb/${guid}.nzb</link>`
-  + `<pubDate>Mon, 01 Jan 2024 00:00:00 +0000</pubDate><enclosure url="@@STANDIN@@/getnzb/${guid}.nzb" length="${size}" type="application/x-nzb"/>`
-  + `<newznab:attr name="size" value="${size}"/></item>`;
-const rss = (items: string[]) => `<?xml version="1.0"?><rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">`
-  + `<channel><newznab:response offset="0" total="${items.length}"/>${items.join('')}</channel></rss>`;
-
-const servers: http.Server[] = [];
-async function listen(server: http.Server): Promise<string> {
-  servers.push(server);
-  await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
-  return `http://127.0.0.1:${(server.address() as { port: number }).port}/api`;
-}
-after(() => servers.forEach(s => s.close()));
-
-async function quiet<T>(fn: () => Promise<T>): Promise<T> {
-  let out: T | undefined;
-  await captureLogs(async () => { out = await fn(); });
-  return out as T;
-}
-
-const saved = { indexManager: configData.indexManager, indexers: configData.indexers, searchConfig: configData.searchConfig, devDiagnostics: configData.devDiagnostics, easynewsEnabled: configData.easynewsEnabled };
-after(() => Object.assign(configData, saved));
-beforeEach(() => {
-  configData.indexManager = 'newznab';
-  configData.searchConfig = { includeSeasonPacks: false, includeMultiSeasonPacks: false, aliasTitleFallback: false };
-  configData.devDiagnostics = false;
-  configData.easynewsEnabled = false;
-});
-
-/** Two indexers, NinjaCentral first (the owner's order), each asked by name only. */
-async function twoIndexers(ninja: string, slug: string) {
-  configData.indexers = [
-    { name: 'NinjaCentral', url: await listen(fakeIndexer(ninja)), apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q'], tvSearchParams: ['q'] } },
-    { name: 'DrunkenSlug', url: await listen(fakeIndexer(slug)), apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q'], tvSearchParams: ['q'] } },
-  ];
+/** Every indexer's answer: the list may go out before the second indexer answers (#301), whose Sources come later. */
+async function wholeSearch(ctx: SearchContext) {
+  const answer = await kaijuSearch(ctx);
+  return answer.late ? await answer.late : answer;
 }
 
 const girlfriends: SearchContext = { type: 'series', imdbId: 'tt0247102', title: 'Girlfriends', year: '2000', season: 4, episode: 4, isAnime: false, additionalTitles: [] };
@@ -75,7 +29,7 @@ const shown = (r: { title: string; sources: { indexerName: string; size: number 
 test('real answers of NinjaCentral and DrunkenSlug: an upload both have is one Release carrying both Sources; a copy more than 1 % apart in size stays its own', async () => {
   await twoIndexers(fs.readFileSync(`${ANSWERS}/ninjacentral-search-girlfriends-s04e04.xml`, 'utf8'),
     fs.readFileSync(`${ANSWERS}/drunkenslug-search-girlfriends-s04e04.xml`, 'utf8'));
-  const { indexer } = await quiet(() => kaijuSearch(girlfriends));
+  const { indexer } = await quiet(() => wholeSearch(girlfriends));
 
   const mine = indexer.filter(r => r.title === SQUALOR || r.title === REGRET).map(shown);
   assert.deepEqual(mine.sort(), [
@@ -100,7 +54,7 @@ test('the same name on two indexers matches with case and separators ignored, at
     rss([item('Girlfriends.S04E04.1080p.WEB-DL.H264-AAA', 'nc-a', 2 * GB), item('Girlfriends.S04E04.2160p.WEB-DL.H265-BBB', 'nc-b', 5 * GB)]),
     rss([item('girlfriends s04e04 1080p web_dl h264-aaa', 'ds-a', 2 * GB + 20_000_000), item('Girlfriends.S04E04.2160p.WEB-DL.H265-BBB', 'ds-b', 5 * GB + 51_000_000)]),
   );
-  const { indexer } = await quiet(() => kaijuSearch(girlfriends));
+  const { indexer } = await quiet(() => wholeSearch(girlfriends));
   assert.deepEqual(indexer.map(shown).sort(), [
     `Girlfriends.S04E04.1080p.WEB-DL.H264-AAA NinjaCentral:${2 * GB} DrunkenSlug:${2 * GB + 20_000_000}`, // 1 % exactly: one Release
     `Girlfriends.S04E04.2160p.WEB-DL.H265-BBB DrunkenSlug:${5 * GB + 51_000_000}`, // 1.01 %: two
@@ -111,7 +65,7 @@ test('the same name on two indexers matches with case and separators ignored, at
 test('two uploads of one name on the same indexer stay two Releases, even at the same size', async () => {
   const GB = 1_000_000_000;
   await twoIndexers(rss([item('Girlfriends.S04E04.1080p.WEB-DL.H264-AAA', 'nc-1', 2 * GB), item('Girlfriends.S04E04.1080p.WEB-DL.H264-AAA', 'nc-2', 2 * GB + 1)]), rss([]));
-  const { indexer } = await quiet(() => kaijuSearch(girlfriends));
+  const { indexer } = await quiet(() => wholeSearch(girlfriends));
   assert.equal(indexer.length, 2);
   assert.deepEqual(indexer.map(r => r.sources.length), [1, 1]);
 });

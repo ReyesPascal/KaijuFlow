@@ -17,12 +17,14 @@ export const PLAY_TIME_BOUNDARIES = ['Fake indexer answers every search with the
  * With `refuseGrabs` it also hands out its own NZB links (`nzbLink`) and refuses every grab of them, as an indexer at
  * its download limit does: `{ status: 429 }`, or `{ status: 200, body }` with a Newznab error payload as the body;
  * `grabbedTags` lists the tags of the grabs asked for (the fake AltMount's `grabs` holds each grab's times).
+ * `slow(ms)` makes it answer every search that long after it was asked (0: at once), as a slower indexer does (#301).
  */
 async function createFakeIndexer(listen, { refuseGrabs } = {}) {
   const offers = new Map(); // imdb id without "tt" -> [{ title, link, size }]
   const requests = [];
   const searches = []; // { imdbid, at }
   const grabbedTags = [];
+  let delayMs = 0;
   const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const url = await listen((req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
@@ -42,11 +44,16 @@ async function createFakeIndexer(listen, { refuseGrabs } = {}) {
     const items = offers.get(u.searchParams.get('imdbid')) ?? [];
     const cat = u.searchParams.get('t') === 'tvsearch' ? 5040 : 2040;
     res.setHeader('Content-Type', 'application/xml');
-    res.end(`<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response total="${items.length}" offset="0"/>` +
+    const answer = `<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response total="${items.length}" offset="0"/>` +
       items.map(i => `<item><title>${xml(i.title)}</title><link>${xml(i.link)}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate>` +
-        `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>');
+        `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>';
+    if (delayMs > 0) setTimeout(() => res.end(answer), delayMs); else res.end(answer);
   });
-  return { url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
+  return {
+    url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`,
+    offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); },
+    slow(ms) { delayMs = ms; },
+  };
 }
 
 /**

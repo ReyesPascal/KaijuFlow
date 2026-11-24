@@ -86,6 +86,21 @@ export function createFallbackGroup(id: string, candidates: FallbackCandidate[],
   saveFallbackGroupsToDisk();
 }
 
+/**
+ * Late candidates (#301): the ones a list's group does not hold yet (same NZB link and release name) are put at its
+ * end, so the list's entries keep their places. One disk write when any came. Nothing when the group is gone.
+ */
+export function addToFallbackGroup(id: string, candidates: FallbackCandidate[]): void {
+  const group = getFallbackGroup(id);
+  if (!group) return;
+  const key = (c: FallbackCandidate) => `${c.nzbUrl}\u0000${c.title}`;
+  const held = new Set(group.candidates.map(key));
+  const fresh = candidates.filter(c => !held.has(key(c)));
+  if (fresh.length === 0) return;
+  group.candidates.push(...fresh);
+  saveFallbackGroupsToDisk();
+}
+
 /** How many fallback groups are held now (the step line of a group write, #249). */
 export function fallbackGroupCount(): number {
   return fallbackGroups.size;
