@@ -55,3 +55,27 @@ test('saving over a config file gives the temp file that file\'s uid and gid bef
   assert.deepEqual(chown.slice(2), [String(otherThanMe.uid), String(otherThanMe.gid)]);
   assert.deepEqual(rename, ['rename', chown[1], CONFIG_FILE], 'chown hits the temp file, which is then renamed over');
 });
+
+test('saving with no config file there makes no chown call', () => {
+  fakeConfigFileOwner('missing');
+  const calls = recordChownAndRename();
+
+  saveConfigFile(configData);
+
+  assert.deepEqual(calls.map(c => c[0]), ['rename'], 'a new file is left as the process makes it');
+});
+
+test('a chown that throws still saves, and says so', () => {
+  fakeConfigFileOwner(otherThanMe);
+  const calls = recordChownAndRename(() => {
+    throw Object.assign(new Error('EPERM: operation not permitted, chown'), { code: 'EPERM' });
+  });
+  const warn = mock.method(console, 'warn', () => {});
+
+  assert.doesNotThrow(() => saveConfigFile(configData));
+
+  assert.deepEqual(calls.map(c => c[0]), ['chown', 'rename']);
+  assert.equal(calls[1][2], CONFIG_FILE);
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(String(warn.mock.calls[0].arguments[0]), /owner/);
+});

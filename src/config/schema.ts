@@ -155,12 +155,18 @@ export function saveConfigFile(data: ConfigData): void {
 
 /** Gives `tmpFile` the uid/gid of the file at `target`, when there is one and they differ. Never throws. */
 function keepOwner(target: string, tmpFile: string): void {
+  let old: fs.Stats, made: fs.Stats;
   try {
-    const old = fs.statSync(target);
-    const made = fs.statSync(tmpFile);
-    if (old.uid !== made.uid || old.gid !== made.gid) fs.chownSync(tmpFile, old.uid, old.gid);
+    old = fs.statSync(target);
+    made = fs.statSync(tmpFile);
   } catch {
-    // No file there yet (a new file stays as the process makes it), or a chown this process may not make.
+    return; // No file there yet: a new file stays as the process makes it.
+  }
+  if (old.uid === made.uid && old.gid === made.gid) return;
+  try {
+    fs.chownSync(tmpFile, old.uid, old.gid);
+  } catch (error) {
+    console.warn(`⚠️ Config saved, but could not keep its owner ${old.uid}:${old.gid}:`, (error as Error).message);
   }
 }
 
