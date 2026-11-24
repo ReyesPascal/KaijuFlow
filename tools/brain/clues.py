@@ -12,6 +12,7 @@ present (yes) and absent (no): test_diagnosis.py.
 """
 import collections
 import datetime
+import json
 import os
 import re
 import sys
@@ -192,3 +193,237 @@ def check_passed_source(evidence, failure):
 @clue('altmount-extension-refused', "Did AltMount refuse the Source's file for its extension?")
 def altmount_extension_refused(evidence, failure):
     return _altmount_said(evidence, failure, r'does not match allowed extensions', 'the file does not match allowed extensions')
+
+
+# --------------------------------------------------------------------------- AltMount's raw answer for an import (#284)
+#
+# KaijuFlow logs AltMount's HTTP answer to an import that failed (`AltMount could not process the Source: {"error":
+# {"code": ..., "message": ...}}`); the answer stops at the queue item's top-level error, and the reason under it is in
+# AltMount's log alone (DIAGNOSIS_EVIDENCE.md, section 2). altmount_answer joins the two for one Source.
+
+KF_ANSWER = re.compile(r'AltMount could not process the Source: (\{.*\})\s*$')
+QUEUED = 'msg="Added NZB file to queue"'
+QUEUE_ID = re.compile(r'\bqueue_id=(\d+)\b')
+ERROR_FIELD = re.compile(r'\berror="((?:[^"\\]|\\.)*)"')
+LEVEL = re.compile(r'\blevel=(WARN|ERROR)\b')
+MSG = re.compile(r'\bmsg="((?:[^"\\]|\\.)*)"')
+NOT_A_REASON = ('First segment has no data', 'subscriber channel full', 'Live heap is pressing', 'Processing failed',
+                'Item failed')  # noise in every import, good or bad (DIAGNOSIS_EVIDENCE.md 2), and the lifecycle itself
+REASONS = 5
+
+
+def kaijuflow_answer(evidence, release):
+    """(code, message) of AltMount's answer to KaijuFlow for one Source's failed import, from KaijuFlow's line nearest
+    its failed import_wait (within 2 s), or None."""
+    failed = [s for s in source_steps(evidence, release) if s.get('step') == 'import_wait' and not s.get('ok')]
+    if not failed:
+        return None
+    at, best = br.parse_ts(failed[-1]['t']), None
+    for line in evidence.kf_lines:
+        m, t = KF_ANSWER.search(line), _ts(line)
+        if not m or t is None:
+            continue
+        gap = abs((t - at).total_seconds())
+        if gap <= 2 and (best is None or gap < best[0]):
+            best = (gap, m.group(1))
+    if best is None:
+        return None
+    try:
+        err = (json.loads(best[1]).get('error') or {})
+    except ValueError:
+        return None
+    return err.get('code'), err.get('message')
+
+
+def altmount_import(evidence, release):
+    """{'queue_id', 'ended' (the last lifecycle line's msg), 'error', 'reasons' (its WARN and ERROR lines, noise left
+    out)} of AltMount's import of one Source while it was prepared, or None when its log has no queue line for it."""
+    lines = altmount_lines(evidence, release) or []
+    added = [line for line in lines if QUEUED in line and release + '.nzb' in line]
+    if not added:
+        return None
+    qid = QUEUE_ID.search(added[-1]).group(1)
+    start = lines.index(added[-1])
+    out = {'queue_id': qid, 'ended': None, 'error': None, 'reasons': []}
+    for line in lines[start + 1:]:
+        q = QUEUE_ID.search(line)
+        msg = (MSG.search(line) or [None, ''])[1]
+        if q and q.group(1) == qid and msg == 'Processing failed':
+            e = ERROR_FIELD.search(line)
+            out['ended'], out['error'] = msg, e.group(1).replace('\\"', '"') if e else None
+            continue  # its `Item failed` line follows
+        if q and q.group(1) == qid and msg in ('Item failed', 'Successfully processed queue item'):
+            out['ended'] = out['ended'] or msg
+            break
+        if q and q.group(1) != qid:
+            continue  # another queue item's line
+        if LEVEL.search(line) and not any(n in line for n in NOT_A_REASON):
+            if msg not in [MSG.search(r)[1] for r in out['reasons'] if MSG.search(r)] and len(out['reasons']) < REASONS:
+                out['reasons'].append(line)
+    return out
+
+
+@clue('altmount-refused-import', "Did AltMount refuse the Source's import (its answer, error and the reasons its log "
+      'gives under it)?')
+def altmount_refused_import(evidence, failure):
+    release = failure.get('release')
+    if not release:
+        return CANT, ['the failure names no Source, so no AltMount import is tied to it']
+    item = altmount_import(evidence, release)
+    if item is None:
+        return CANT, [f"AltMount's log has no queue line for {release} while it was prepared"]
+    if item['ended'] == 'Successfully processed queue item':
+        return NO, [f"queue item {item['queue_id']}: Successfully processed queue item"]
+    facts = []
+    answer = kaijuflow_answer(evidence, release)
+    if answer:
+        facts.append(f'AltMount answered KaijuFlow {answer[0]}: {answer[1]}')
+    if item['ended'] is None:
+        return CANT, facts + [f"queue item {item['queue_id']}: no end line while {release} was prepared"]
+    facts.append(f"queue item {item['queue_id']}: {item['ended']}" + (f": {item['error']}" if item['error'] else ''))
+    return YES, facts + item['reasons']
+
+
+# --------------------------------------------------------------------------- live read-only Clues (#284)
+#
+# A live Clue asks the provider, read-only, about the Source's NZB: `(evidence, failure, usenet) -> (answer, facts)`,
+# `usenet` the one connection (nntp.Usenet: STAT and BODY, nothing saved). Facts that fade (articles, retention) are
+# asked once, right after the check (diagnosis.live_clues), and the answers kept in the evidence folder's live.json; the
+# Clue registered under the same name in CLUES reads that kept answer, so a later diagnosis never asks again.
+
+LIVE = {}
+NZB_NS = '{http://www.newzbin.com/DTD/2003/nzb}'
+SUBJECT_NAME = re.compile(r'"([^"]+)"')
+MISS, HAVE = 430, 223
+
+
+def live_clue(name, question):
+    """Registers a live Clue under `name` in LIVE, and in CLUES the reader of its kept answer."""
+    def register(fn):
+        LIVE[name] = fn
+        clue(name, question)(lambda evidence, failure: kept_live_answer(evidence, failure, name))
+        return fn
+    return register
+
+
+def kept_live_answer(evidence, failure, name):
+    release = failure.get('release')
+    if not release:
+        return CANT, ['the failure names no Source, so no NZB was asked about']
+    if evidence.live.get('error'):
+        return CANT, [f"the live Clues could not run after this check: {evidence.live['error']}"]
+    kept = ((evidence.live.get('clues') or {}).get(name) or {}).get(release)
+    if kept is None:
+        why = 'no NZB of it was kept' if evidence.nzb(release) is None else 'the live Clues did not run after this check'
+        return CANT, [f'{name} was not asked live for {release}: {why}']
+    return kept['answer'], [f"asked live at {evidence.live.get('t')}"] + list(kept['facts'])
+
+
+def run_live(name, evidence, failure, usenet):
+    """{'clue', 'answer', 'facts'} of one live Clue, asked now. A Clue that raises answers can't tell, with the error."""
+    try:
+        answer, facts = LIVE[name](evidence, failure, usenet)
+    except Exception as e:  # noqa: BLE001  (a dropped connection never stops the other Clues)
+        answer, facts = CANT, [br.scrub_text(f'the Clue failed: {type(e).__name__}: {e}')]
+    return {'clue': name, 'answer': answer, 'facts': [fact(f) for f in facts]}
+
+
+def nzb_files(body):
+    """[(file name, [(segment number, bytes, message-id)] in number order)] of an NZB's bytes; the name is the one in the
+    subject's quotes, else the subject."""
+    import xml.etree.ElementTree as ET  # an NZB is the indexer's XML: parsed only when a live Clue needs it
+    out = []
+    for f in ET.fromstring(body).iter(NZB_NS + 'file'):
+        subject = f.get('subject') or ''
+        m = SUBJECT_NAME.search(subject)
+        segs = sorted(((int(s.get('number') or 0), int(s.get('bytes') or 0), (s.text or '').strip())
+                       for s in f.iter(NZB_NS + 'segment')), key=lambda s: s[0])
+        out.append((m.group(1) if m else subject, segs))
+    return out
+
+
+def _par2(name):
+    return name.lower().endswith('.par2')
+
+
+def _source_files(evidence, failure):
+    """(the Source's non-par2 files from its kept NZB, or None, and the facts when there are none to ask about)."""
+    release = failure.get('release')
+    if not release:
+        return None, ['the failure names no Source, so there is no NZB to ask about']
+    body = evidence.nzb(release)
+    if body is None:
+        return None, [f'no NZB of {release} was kept']
+    files = [(n, segs) for n, segs in nzb_files(body) if not _par2(n) and segs]
+    if not files:
+        return None, [f'the NZB of {release} lists no article outside its par2 files']
+    return files, []
+
+
+ENOUGH_MISSES = 10  # the sweep stops once this many articles answered 430: each costs the provider about 0.5 s (#284)
+FIRST_WINDOW, LAST_WINDOW = 10, 100  # STATs per window: from 10, doubling while every answer is 223
+
+
+def sweep(usenet, mids):
+    """(codes so far, articles asked) of a STAT sweep over `mids` in growing windows, stopping after the window in which
+    ENOUGH_MISSES articles have answered something other than 223; the articles that did are asked a second time, after
+    the sweep, so a moment's 430 is not counted."""
+    codes, window = [], FIRST_WINDOW
+    while len(codes) < len(mids):
+        got = usenet.stat(mids[len(codes):len(codes) + window])
+        codes += got
+        if sum(1 for c in codes if c != HAVE) >= ENOUGH_MISSES:
+            break
+        window = FIRST_WINDOW if any(c != HAVE for c in got) else min(window * 2, LAST_WINDOW)
+    again = [i for i, c in enumerate(codes) if c != HAVE]
+    for i, c in zip(again, usenet.stat([mids[i] for i in again]) if again else []):
+        codes[i] = c
+    return codes
+
+
+@live_clue('articles-missing', "Are articles of the Source's files (par2 left out) missing on the provider: a STAT of "
+           'every article, each miss asked again?')
+def articles_missing(evidence, failure, usenet):
+    files, facts = _source_files(evidence, failure)
+    if files is None:
+        return CANT, facts
+    mids = [s[2] for _, segs in files for s in segs]
+    codes = sweep(usenet, mids)
+    at, per_file = 0, []
+    for name, segs in files:
+        mine = codes[at:at + len(segs)]
+        at += len(segs)
+        if mine:
+            per_file.append((name, len(mine), sum(1 for c in mine if c == MISS), sum(1 for c in mine if c not in (HAVE, MISS))))
+    missing, odd = sum(p[2] for p in per_file), sum(p[3] for p in per_file)
+    asked = f'all {len(mids)}' if len(codes) == len(mids) else f'{len(codes)} of {len(mids)}'
+    facts = [f'STAT of {asked} articles of {len(files)} file{'' if len(files) == 1 else 's'} (par2 left out): {missing} missing (430 when asked twice), '
+             f'{odd} other answers' + ('' if len(codes) == len(mids) else
+                                       f'; the sweep stopped once {ENOUGH_MISSES} had not answered 223')]
+    facts += [f'{name}: {m} of the {n} articles asked missing' for name, n, m, _ in sorted(per_file, key=lambda p: -p[2])[:5] if m]
+    if missing:
+        return YES, facts
+    return (CANT if odd or len(codes) < len(mids) else NO), facts
+
+
+@live_clue('segment-crc-bad', "Does an article of the Source's biggest file come back damaged (its yEnc size or CRC32 "
+           'not the ones its trailer names) although the provider has it?')
+def segment_crc_bad(evidence, failure, usenet):
+    files, facts = _source_files(evidence, failure)
+    if files is None:
+        return CANT, facts
+    name, segs = max(files, key=lambda f: sum(s[1] for s in f[1]))
+    picks = sorted({0, len(segs) // 2, len(segs) - 1})  # first, middle and last, as KaijuFlow's own check picks
+    facts, damaged, read = [f'BODY of articles {", ".join(str(segs[i][0]) for i in picks)} of {name} ({len(segs)} '
+                            'articles), checked in memory and dropped'], 0, 0
+    for i in picks:
+        got = usenet.body(segs[i][2])
+        if got.get('code') != 222:
+            facts.append(f"{name} article {segs[i][0]}: answer {got.get('code')}, not read")
+            continue
+        read += 1
+        damaged += not got.get('intact')
+        facts.append(f"{name} article {segs[i][0]}: {got.get('why')}")
+    if damaged:
+        return YES, facts
+    return (NO if read == len(picks) else CANT), facts

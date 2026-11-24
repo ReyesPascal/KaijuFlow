@@ -47,7 +47,7 @@ class FoundTest(unittest.TestCase):
         [f] = answers(DEAD_PACK)
         self.assertEqual((f['release'], f['kind'], f['verdict']), (TWILIGHT, 'fail', 'found'))
         self.assertEqual(f['says'], 'found: unchecked-dead-season-pack, proved by Clues played-source-unchecked, '
-                                    'altmount-fast-fail-refused')
+                                    'altmount-fast-fail-refused, articles-missing')
         ruled = {t['id']: t for t in f['leads'] if t['result'] == 'ruled out'}
         self.assertEqual(set(ruled), {'unscramble-read-error'})  # it matched (all files failed validation), its recipe said no
         said = {c['clue']: c['answer'] for c in ruled['unscramble-read-error']['clues']}
@@ -95,6 +95,7 @@ CLUE_CAPTURES = [
     ('altmount-fast-fail-refused', DEAD_PACK, TWILIGHT, READ_ERROR, HHWEB),
     ('check-passed-source', TWO_REFUSALS, SIC, DEAD_PACK, TWILIGHT),
     ('altmount-extension-refused', TWO_REFUSALS, SIC, TWO_REFUSALS, HHWEB),
+    ('articles-missing', DEAD_PACK, TWILIGHT, TWO_REFUSALS, SIC),  # asked live (#284), the answers kept in live.json
 ]
 # Every confirming recipe that runs (all its Clues built), the same way.
 RECIPE_CAPTURES = [
@@ -123,7 +124,8 @@ class CluesOnRealCapturesTest(unittest.TestCase):
                             self.assertTrue(any(line.startswith(f.rstrip('…')) for line in seen), f)
 
     def test_every_clue_in_the_library_is_tried_on_two_captures(self):
-        self.assertEqual(sorted(clues.CLUES), sorted(c[0] for c in CLUE_CAPTURES))
+        from test_clues import TRIED_HERE  # the Clues test_clues.py tries on two captures (#284)
+        self.assertEqual(sorted(clues.CLUES), sorted([c[0] for c in CLUE_CAPTURES] + list(TRIED_HERE)))
 
     def test_every_recipe_that_runs_proves_its_cause_present_and_rules_it_out_absent(self):
         entries = {e['id']: e for e in diagnosis.load_index()}

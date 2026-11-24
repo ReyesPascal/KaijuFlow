@@ -1,0 +1,1995 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+<head>
+ <meta type="category">TV > HD</meta>
+ <meta type="name">The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF</meta>
+</head>
+<file poster="(scrubbed)" date="1293434143" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[01/33] - &quot;aaf-tz.s02e06.720p.nfo&quot; yEnc (1/1)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="5082" number="1">722c1fa0012d3fc1c5d3888b@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434143" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[02/33] - &quot;aaf-tz.s02e06.720p.par2&quot; yEnc (1/1)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="18430" number="1">88b1fea9ce8143853830f1a1@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434144" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[03/33] - &quot;aaf-tz.s02e06.720p.r00&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786966" number="1">3b2bcba9ac1bdde435adb036@kf-fixture</segment>
+  <segment bytes="787033" number="2">13e1014e9f38648babb25f9b@kf-fixture</segment>
+  <segment bytes="787111" number="3">ae57b9a8816e73c6e25886e0@kf-fixture</segment>
+  <segment bytes="786926" number="4">d8690f93535431b65ab25d20@kf-fixture</segment>
+  <segment bytes="787331" number="5">01e6e99b291a4c680c9fedc3@kf-fixture</segment>
+  <segment bytes="787009" number="6">029c51cb58ce776b7e37c54f@kf-fixture</segment>
+  <segment bytes="786914" number="7">e86806105d4c27ccf85e3b5f@kf-fixture</segment>
+  <segment bytes="787083" number="8">d9992bfc616d99d9a50aefb3@kf-fixture</segment>
+  <segment bytes="787080" number="9">bcd8e7dce81dc74caf1138f1@kf-fixture</segment>
+  <segment bytes="786949" number="10">1b0107144c73f056c8caa26d@kf-fixture</segment>
+  <segment bytes="786679" number="11">05901c0834fb7c4e320c4fd0@kf-fixture</segment>
+  <segment bytes="787180" number="12">a8198ce2ae4b9ec87be1a1ff@kf-fixture</segment>
+  <segment bytes="787582" number="13">b1daa6d162054642fdb18dba@kf-fixture</segment>
+  <segment bytes="786933" number="14">899e26cf41664ea9b504800c@kf-fixture</segment>
+  <segment bytes="786943" number="15">e21940d6bc3a9530cdee84ab@kf-fixture</segment>
+  <segment bytes="786997" number="16">0484d59c87d9c5c751072358@kf-fixture</segment>
+  <segment bytes="787118" number="17">6cb3ed4bd182ec85b940b096@kf-fixture</segment>
+  <segment bytes="786924" number="18">3a1651a2b9e686e3a1fda9e2@kf-fixture</segment>
+  <segment bytes="787067" number="19">89c361672d0dca33b07ab3fd@kf-fixture</segment>
+  <segment bytes="786904" number="20">0251d7745ce398e4b403bf51@kf-fixture</segment>
+  <segment bytes="787032" number="21">e1728266240797bbd74ae58a@kf-fixture</segment>
+  <segment bytes="787027" number="22">ec5a8907772fabb5312a9b95@kf-fixture</segment>
+  <segment bytes="787042" number="23">7efe3ce6f29848b34c9134e9@kf-fixture</segment>
+  <segment bytes="786975" number="24">8698eacdc04fea684c1873d9@kf-fixture</segment>
+  <segment bytes="787125" number="25">26a1d41d302f888b9353e706@kf-fixture</segment>
+  <segment bytes="786868" number="26">fe1cdb8c5332d472eb64aac7@kf-fixture</segment>
+  <segment bytes="786985" number="27">15942479e7acf646bc723a74@kf-fixture</segment>
+  <segment bytes="786998" number="28">ed996a194f6d398e31503f38@kf-fixture</segment>
+  <segment bytes="786877" number="29">8100c9ed279f9e9b49e3ce3e@kf-fixture</segment>
+  <segment bytes="787109" number="30">59ad709bb7014ef915dcaa18@kf-fixture</segment>
+  <segment bytes="786835" number="31">b0d0a74958960e0af6030547@kf-fixture</segment>
+  <segment bytes="786940" number="32">374bce3e21be85cfb4ded81c@kf-fixture</segment>
+  <segment bytes="786979" number="33">a4e8dffa3e1038e65cdbe4ff@kf-fixture</segment>
+  <segment bytes="787106" number="34">dde6c7a964597a815b10f0e6@kf-fixture</segment>
+  <segment bytes="787001" number="35">639b5d35a8898a99ced03d66@kf-fixture</segment>
+  <segment bytes="786825" number="36">fad50e871e64f270f1e040c4@kf-fixture</segment>
+  <segment bytes="786874" number="37">0627f4ee7cfe8ae0c7ba3e51@kf-fixture</segment>
+  <segment bytes="786880" number="38">a6323377a73385fb1aa6ce79@kf-fixture</segment>
+  <segment bytes="787058" number="39">e23f8940b943d9a2b6d17026@kf-fixture</segment>
+  <segment bytes="787147" number="40">48ad31e59a29d2dfa6b66d9c@kf-fixture</segment>
+  <segment bytes="787227" number="41">b573a7112a9b8a32e9becadc@kf-fixture</segment>
+  <segment bytes="787092" number="42">66aaddf942b99f7bbe4f0aac@kf-fixture</segment>
+  <segment bytes="786954" number="43">e12dbacbff9a27c450ce1b28@kf-fixture</segment>
+  <segment bytes="787024" number="44">ea448209faa259fffac9711a@kf-fixture</segment>
+  <segment bytes="787010" number="45">b82861583c00d9b26380aa79@kf-fixture</segment>
+  <segment bytes="787012" number="46">dcda67b2a00ae70f6abd0844@kf-fixture</segment>
+  <segment bytes="787012" number="47">2193b778314bfd328bc229b0@kf-fixture</segment>
+  <segment bytes="786938" number="48">4884111fd99959e728bcb5b1@kf-fixture</segment>
+  <segment bytes="787112" number="49">de38ee830c8c136f7b9028db@kf-fixture</segment>
+  <segment bytes="786907" number="50">a4c69406fb968c4c2464ad1b@kf-fixture</segment>
+  <segment bytes="786912" number="51">3614ed5437dd506a04a5fb7e@kf-fixture</segment>
+  <segment bytes="786950" number="52">0f76f12a60f313ef0da71253@kf-fixture</segment>
+  <segment bytes="786931" number="53">5384f48933aeba03678c752e@kf-fixture</segment>
+  <segment bytes="787101" number="54">c81f5770dd51389551d9b21f@kf-fixture</segment>
+  <segment bytes="787002" number="55">15892c8c070f4e7057a41639@kf-fixture</segment>
+  <segment bytes="786899" number="56">0737e20d563ee7620091771f@kf-fixture</segment>
+  <segment bytes="787067" number="57">58ab6df9e581e6cc20718860@kf-fixture</segment>
+  <segment bytes="787073" number="58">7fb3128397bc99fa3f1497db@kf-fixture</segment>
+  <segment bytes="786848" number="59">0c27e35b2f1a9b0c78f38805@kf-fixture</segment>
+  <segment bytes="786986" number="60">53e7c5104f686ed52e044100@kf-fixture</segment>
+  <segment bytes="786887" number="61">d251f45eec96f4fa7eda3d2b@kf-fixture</segment>
+  <segment bytes="787097" number="62">528fb8db631405251ed58c3e@kf-fixture</segment>
+  <segment bytes="786961" number="63">0393bea85c6b429e307d14e5@kf-fixture</segment>
+  <segment bytes="787089" number="64">f9c646bca94f004ef1a56d31@kf-fixture</segment>
+  <segment bytes="786906" number="65">ba0f9ecebf5d303834664baa@kf-fixture</segment>
+  <segment bytes="82715" number="66">ea05ab0fecadab81f43590de@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434144" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[04/33] - &quot;aaf-tz.s02e06.720p.r01&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786880" number="1">15c849465781df836db9be63@kf-fixture</segment>
+  <segment bytes="786971" number="2">b60159ef908086153c8e0814@kf-fixture</segment>
+  <segment bytes="786855" number="3">b2186bd296025f08ea0477b7@kf-fixture</segment>
+  <segment bytes="786950" number="4">08f3c143c91c3e1975965aef@kf-fixture</segment>
+  <segment bytes="786975" number="5">4943449d49352eb5bd50039c@kf-fixture</segment>
+  <segment bytes="787001" number="6">db58a544330171751c9aae85@kf-fixture</segment>
+  <segment bytes="786886" number="7">889b76607127805999047b0f@kf-fixture</segment>
+  <segment bytes="786978" number="8">959cbddf52c6eb08c54fbf7b@kf-fixture</segment>
+  <segment bytes="787069" number="9">0d4ee4e46a7bade1fa170d9e@kf-fixture</segment>
+  <segment bytes="787040" number="10">b799cb7349090620ddd18a8e@kf-fixture</segment>
+  <segment bytes="787050" number="11">35ea97d14ea38ebad8e383f9@kf-fixture</segment>
+  <segment bytes="793376" number="12">757180de1ca1154bffcc9236@kf-fixture</segment>
+  <segment bytes="787020" number="13">6f77a474ede4e0073a1af3a5@kf-fixture</segment>
+  <segment bytes="787067" number="14">2f01906b7710488ecd96dc18@kf-fixture</segment>
+  <segment bytes="787012" number="15">641a455b915a36b7f467112b@kf-fixture</segment>
+  <segment bytes="786891" number="16">8c0cb99645e2ab383dab90ac@kf-fixture</segment>
+  <segment bytes="787051" number="17">1070ffd3fd5e148faa22a551@kf-fixture</segment>
+  <segment bytes="786991" number="18">cebb31f6211439cc445b3f72@kf-fixture</segment>
+  <segment bytes="787220" number="19">ad4e64f5cdf72a34c17462c3@kf-fixture</segment>
+  <segment bytes="786810" number="20">076455aeba9e44f57595ab93@kf-fixture</segment>
+  <segment bytes="786924" number="21">6fcef5797f4574c73b596714@kf-fixture</segment>
+  <segment bytes="786884" number="22">d287002076c46782bb2ed8c4@kf-fixture</segment>
+  <segment bytes="787111" number="23">2fb4e8aaf45650a1eb2a5cb2@kf-fixture</segment>
+  <segment bytes="787010" number="24">98b22930ea53a625034064b2@kf-fixture</segment>
+  <segment bytes="786943" number="25">5b7fdd8dfc43617a49360b9e@kf-fixture</segment>
+  <segment bytes="787348" number="26">5b82f39f41a08f4811bbe52a@kf-fixture</segment>
+  <segment bytes="787441" number="27">a27659468cf0c9be0e53d359@kf-fixture</segment>
+  <segment bytes="786912" number="28">782ec3b51ea8d10e12f3659b@kf-fixture</segment>
+  <segment bytes="786988" number="29">108978b8ecf43bdb8c1c2d38@kf-fixture</segment>
+  <segment bytes="787090" number="30">3d0d7b3e43c3a567b9c78c0c@kf-fixture</segment>
+  <segment bytes="787117" number="31">ebafee3cc2d88635ce3b9df0@kf-fixture</segment>
+  <segment bytes="786936" number="32">0db85d19c7474783010ab32d@kf-fixture</segment>
+  <segment bytes="787012" number="33">bf86277a6af5b779efafcc75@kf-fixture</segment>
+  <segment bytes="787071" number="34">a8c11c22dd63b2da16ffbf57@kf-fixture</segment>
+  <segment bytes="787073" number="35">7045a7068a3803d3116c37b0@kf-fixture</segment>
+  <segment bytes="787013" number="36">b1b0de7ea7bbf97d8d76b4dc@kf-fixture</segment>
+  <segment bytes="787119" number="37">3d21b7df2edd2dfe917dc605@kf-fixture</segment>
+  <segment bytes="786917" number="38">8e4360d977523682449a2f9f@kf-fixture</segment>
+  <segment bytes="786985" number="39">9e8bdc52a7811ab73a2456ca@kf-fixture</segment>
+  <segment bytes="786970" number="40">ef95ece6ebef1f012cee8144@kf-fixture</segment>
+  <segment bytes="787211" number="41">1700e9c2d8893ad853675bcd@kf-fixture</segment>
+  <segment bytes="786931" number="42">6ca2b41fcbaafb942af13218@kf-fixture</segment>
+  <segment bytes="786998" number="43">be5f9582e806a359c4db3ba3@kf-fixture</segment>
+  <segment bytes="786953" number="44">e542ec1ef465947fa46c1e04@kf-fixture</segment>
+  <segment bytes="786938" number="45">aa02e2b167c74a72de14d09b@kf-fixture</segment>
+  <segment bytes="787001" number="46">6f5a583b80b01e9d49561194@kf-fixture</segment>
+  <segment bytes="786910" number="47">20a9384e51e3fd38df2a7fa0@kf-fixture</segment>
+  <segment bytes="786962" number="48">09eae9aaa6b6861d4c61b9c2@kf-fixture</segment>
+  <segment bytes="787116" number="49">f79f871716d9b162efcd4bcb@kf-fixture</segment>
+  <segment bytes="786981" number="50">e11524bc31f2590dd2fda8d5@kf-fixture</segment>
+  <segment bytes="786901" number="51">c196abbaa63289efe35cc0a1@kf-fixture</segment>
+  <segment bytes="787168" number="52">534792d4c8473a7191d52c8b@kf-fixture</segment>
+  <segment bytes="787046" number="53">81900b637b0f4afd4182161f@kf-fixture</segment>
+  <segment bytes="786938" number="54">acf12b0ffa84550f29cadea6@kf-fixture</segment>
+  <segment bytes="786918" number="55">ae4d12875db915a4abc1e9fa@kf-fixture</segment>
+  <segment bytes="787119" number="56">5c067c921733d22994a2cb64@kf-fixture</segment>
+  <segment bytes="787047" number="57">35d4ae2560edeb3deeb877c2@kf-fixture</segment>
+  <segment bytes="787094" number="58">d8dfcad4132a824d887b413b@kf-fixture</segment>
+  <segment bytes="786918" number="59">d8c801d5019c3021a6247941@kf-fixture</segment>
+  <segment bytes="787016" number="60">03ba828307051307cbcdca9a@kf-fixture</segment>
+  <segment bytes="786975" number="61">4d287e94f4802cbe102a6c3d@kf-fixture</segment>
+  <segment bytes="786905" number="62">6907e5a103163a30c6f17ef6@kf-fixture</segment>
+  <segment bytes="787006" number="63">8f807fc9dd5a37c332e718c2@kf-fixture</segment>
+  <segment bytes="787071" number="64">79f9ebb6d8be679023eb0673@kf-fixture</segment>
+  <segment bytes="786768" number="65">5e3f926ea63d38f3673eec7c@kf-fixture</segment>
+  <segment bytes="82759" number="66">59bb7d0057759de3244c2ee4@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434146" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[05/33] - &quot;aaf-tz.s02e06.720p.r02&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787121" number="1">208f6482407cf6f238d4a35b@kf-fixture</segment>
+  <segment bytes="786994" number="2">31cb0b22fce2cc9f11ec9018@kf-fixture</segment>
+  <segment bytes="787113" number="3">cd1cf446478d80477043e95b@kf-fixture</segment>
+  <segment bytes="786915" number="4">f098aff1bd2c307cb6d464fc@kf-fixture</segment>
+  <segment bytes="787105" number="5">15fc55dbf876327a518a7d60@kf-fixture</segment>
+  <segment bytes="786944" number="6">1f608a5042de90ce79c542fc@kf-fixture</segment>
+  <segment bytes="786906" number="7">5a8d5e43a61bf8c23a8edd7f@kf-fixture</segment>
+  <segment bytes="786840" number="8">4ce7db7a2e851a25cdb28c74@kf-fixture</segment>
+  <segment bytes="786889" number="9">2625e85f413e453365532550@kf-fixture</segment>
+  <segment bytes="787055" number="10">02e3cd93fe966ccb35144258@kf-fixture</segment>
+  <segment bytes="786708" number="11">7b12d41bb78b88f1847cd0a0@kf-fixture</segment>
+  <segment bytes="786887" number="12">73bf8139d1fc8e0ff22701a6@kf-fixture</segment>
+  <segment bytes="787022" number="13">273ccd911f2ee98aea887630@kf-fixture</segment>
+  <segment bytes="787137" number="14">e2a1f270994369e22f704164@kf-fixture</segment>
+  <segment bytes="786868" number="15">a2e34ea623222e3d325ca8fc@kf-fixture</segment>
+  <segment bytes="786971" number="16">9480356dc0819dd3c3c9ff0f@kf-fixture</segment>
+  <segment bytes="787149" number="17">4588c5cd782751fb9c23052d@kf-fixture</segment>
+  <segment bytes="786959" number="18">b450b1c04d112a49976ee1bb@kf-fixture</segment>
+  <segment bytes="786909" number="19">90e324bdadb2b92c91130714@kf-fixture</segment>
+  <segment bytes="786965" number="20">0e9d271169f3f26cb13fb3ea@kf-fixture</segment>
+  <segment bytes="786920" number="21">690c69fd4873b92984091248@kf-fixture</segment>
+  <segment bytes="786946" number="22">a7bbbead7a5b865692b780c5@kf-fixture</segment>
+  <segment bytes="787034" number="23">4acd230fa5e6124b72504946@kf-fixture</segment>
+  <segment bytes="787337" number="24">47cfd085cf3615f925558edc@kf-fixture</segment>
+  <segment bytes="787117" number="25">3c38f3e2bd917d4b831fecb5@kf-fixture</segment>
+  <segment bytes="786888" number="26">31c93ae34812fb1f35ef3572@kf-fixture</segment>
+  <segment bytes="787021" number="27">963b6286678d7756b8477e2d@kf-fixture</segment>
+  <segment bytes="786819" number="28">a3e573677548b7839d3d19c4@kf-fixture</segment>
+  <segment bytes="786984" number="29">258dee40a72c7c75293a2f38@kf-fixture</segment>
+  <segment bytes="787331" number="30">3450edb5dbd51816b549c7a0@kf-fixture</segment>
+  <segment bytes="786864" number="31">2544af5e6d7a5b5f22119c92@kf-fixture</segment>
+  <segment bytes="787017" number="32">99f1a174c676fcde11ef5c83@kf-fixture</segment>
+  <segment bytes="786901" number="33">20b8a372a5a2af93e67ac982@kf-fixture</segment>
+  <segment bytes="787306" number="34">2d35a2ac7e6e9154b15d2861@kf-fixture</segment>
+  <segment bytes="793638" number="35">1b2d2437991b3bc6d303de76@kf-fixture</segment>
+  <segment bytes="786897" number="36">62d8215b40f4df68facf6c71@kf-fixture</segment>
+  <segment bytes="787004" number="37">3160f79bf3add7713ff1eafb@kf-fixture</segment>
+  <segment bytes="793492" number="38">bf8d7280b8527f22ecdb3598@kf-fixture</segment>
+  <segment bytes="787070" number="39">8358fe6efe497bbe0dad3e3d@kf-fixture</segment>
+  <segment bytes="787090" number="40">eaf2d6f14fe828c9de5b0d0c@kf-fixture</segment>
+  <segment bytes="787391" number="41">6ea4573c7ef8d064759edd33@kf-fixture</segment>
+  <segment bytes="787018" number="42">71feaf43afa54a00c694e36a@kf-fixture</segment>
+  <segment bytes="787016" number="43">321185b1b67ac23a85e42b6d@kf-fixture</segment>
+  <segment bytes="786995" number="44">2cc21ddd79978316b7380a40@kf-fixture</segment>
+  <segment bytes="786982" number="45">d42b11ecd9a76793191a2f20@kf-fixture</segment>
+  <segment bytes="786962" number="46">51d94901816e6b14bd285b7b@kf-fixture</segment>
+  <segment bytes="787078" number="47">d62ae9584baddaca59773dec@kf-fixture</segment>
+  <segment bytes="787120" number="48">8e8e8ce0a6d927ff47b5db5c@kf-fixture</segment>
+  <segment bytes="787052" number="49">55408fdb07ea8b2d7ea4b1ba@kf-fixture</segment>
+  <segment bytes="787006" number="50">e374d46172f7e5723ca39b9f@kf-fixture</segment>
+  <segment bytes="786806" number="51">0ba78b6b90936c7ce6f6843b@kf-fixture</segment>
+  <segment bytes="786836" number="52">e2014b4a8369565ace6daeaa@kf-fixture</segment>
+  <segment bytes="787016" number="53">f545458013c856a95d90560d@kf-fixture</segment>
+  <segment bytes="786973" number="54">14559afc14f435874b6e80aa@kf-fixture</segment>
+  <segment bytes="787221" number="55">dd85c35d7458b871f6f2697b@kf-fixture</segment>
+  <segment bytes="786981" number="56">d5d362a911e31e949c6ea6f7@kf-fixture</segment>
+  <segment bytes="786880" number="57">00b26cfb88d8ba2641a64029@kf-fixture</segment>
+  <segment bytes="786945" number="58">668ff4ee82ace1e1afd886d7@kf-fixture</segment>
+  <segment bytes="787154" number="59">d71ee7919a712413c0721ed1@kf-fixture</segment>
+  <segment bytes="786916" number="60">a7d7fa1ae1ef56597eb527bf@kf-fixture</segment>
+  <segment bytes="787100" number="61">dbd20e2964312ed9376c4666@kf-fixture</segment>
+  <segment bytes="787028" number="62">58bb9032833c244b29821e2b@kf-fixture</segment>
+  <segment bytes="786893" number="63">4bce52ed0654ae11793b11c3@kf-fixture</segment>
+  <segment bytes="786997" number="64">4eeef6bf6bab06b9bcb60a3f@kf-fixture</segment>
+  <segment bytes="786940" number="65">327b1c574668e76644eb3cbd@kf-fixture</segment>
+  <segment bytes="82705" number="66">dd2964287a8b2fccc6586e73@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434147" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[06/33] - &quot;aaf-tz.s02e06.720p.r03&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786927" number="1">787884c0a206d9d8c68c8871@kf-fixture</segment>
+  <segment bytes="787043" number="2">22d629a373e18d6d79b4c0f0@kf-fixture</segment>
+  <segment bytes="787213" number="3">a70944f5a55b566297f22711@kf-fixture</segment>
+  <segment bytes="786910" number="4">2ce8d55d55cddaa8f037f91b@kf-fixture</segment>
+  <segment bytes="787138" number="5">fdc3d6ad939e6ad469b9471c@kf-fixture</segment>
+  <segment bytes="787117" number="6">d968056f69bf46917ebae5b2@kf-fixture</segment>
+  <segment bytes="787091" number="7">79d287d5f3d2f8fbc4efd686@kf-fixture</segment>
+  <segment bytes="786880" number="8">4cff1a854bd3d5939c978dfa@kf-fixture</segment>
+  <segment bytes="787007" number="9">ad86a1dbaca8d0946734fca1@kf-fixture</segment>
+  <segment bytes="786850" number="10">3fb9c42566fda155ee80b069@kf-fixture</segment>
+  <segment bytes="786762" number="11">8d3b0f81d88b76c9ee8187d1@kf-fixture</segment>
+  <segment bytes="787070" number="12">84009cfd494e35e842e691f4@kf-fixture</segment>
+  <segment bytes="787119" number="13">d4cc2928eed5dfa42d969c26@kf-fixture</segment>
+  <segment bytes="787082" number="14">6798f4800bfb68aa9ad78890@kf-fixture</segment>
+  <segment bytes="787050" number="15">2919a3e575aa5c8bfb440196@kf-fixture</segment>
+  <segment bytes="787031" number="16">5606163c5434834716741b38@kf-fixture</segment>
+  <segment bytes="786794" number="17">fa03d9fc2cb70a33e4197913@kf-fixture</segment>
+  <segment bytes="786997" number="18">9f7a8973c855b073b87a0174@kf-fixture</segment>
+  <segment bytes="786980" number="19">66ec3ce5dd080b921f8408db@kf-fixture</segment>
+  <segment bytes="786977" number="20">7c791562f187439f442260ff@kf-fixture</segment>
+  <segment bytes="787095" number="21">151aed3e529b32fe962a816c@kf-fixture</segment>
+  <segment bytes="787015" number="22">108636a56082bdd1b4f708cc@kf-fixture</segment>
+  <segment bytes="787039" number="23">341b312748a981675edd5431@kf-fixture</segment>
+  <segment bytes="787007" number="24">1a47b045a0a4d0118a941eb5@kf-fixture</segment>
+  <segment bytes="786925" number="25">4138015c8553e522aa712519@kf-fixture</segment>
+  <segment bytes="786925" number="26">c76ed30af5d35c12465f1718@kf-fixture</segment>
+  <segment bytes="786905" number="27">ab3c75fc2ea24a202982b321@kf-fixture</segment>
+  <segment bytes="786856" number="28">1e023d1c87358e2bc642a2cd@kf-fixture</segment>
+  <segment bytes="786851" number="29">4cbaa6322a855d3ac4ba74ae@kf-fixture</segment>
+  <segment bytes="786993" number="30">a0229768be62c5c470a400b1@kf-fixture</segment>
+  <segment bytes="786849" number="31">e4ee52dc4064cd0478d53c5a@kf-fixture</segment>
+  <segment bytes="787100" number="32">828b7dae37305071e92146f7@kf-fixture</segment>
+  <segment bytes="787060" number="33">0023f88d7b31771d880e147f@kf-fixture</segment>
+  <segment bytes="787042" number="34">3c10fc6c64b8f4ec2ee8b25c@kf-fixture</segment>
+  <segment bytes="787268" number="35">25c3aa9134962743c0ec92b8@kf-fixture</segment>
+  <segment bytes="786941" number="36">7d687bac16de6cbb0232e4fd@kf-fixture</segment>
+  <segment bytes="787029" number="37">84de29b87d46cb98c070d12e@kf-fixture</segment>
+  <segment bytes="786834" number="38">29ac8a71f3056e53422bbede@kf-fixture</segment>
+  <segment bytes="787067" number="39">36ed871023bdcfeb613dce0c@kf-fixture</segment>
+  <segment bytes="786952" number="40">8fe436708e1e864cf3f07ba2@kf-fixture</segment>
+  <segment bytes="787149" number="41">74e469b281e5586e61ada4b4@kf-fixture</segment>
+  <segment bytes="786843" number="42">d5f0dffa0df7edce66c62d83@kf-fixture</segment>
+  <segment bytes="786808" number="43">60fecdf41b853340e170ec94@kf-fixture</segment>
+  <segment bytes="786836" number="44">a582a7f4f23896935d45bf3d@kf-fixture</segment>
+  <segment bytes="793745" number="45">f2900bde1328575c64d47428@kf-fixture</segment>
+  <segment bytes="786892" number="46">470c1c173ea37acd9d7dd7da@kf-fixture</segment>
+  <segment bytes="786913" number="47">e0941fdc47c45cb95094d65e@kf-fixture</segment>
+  <segment bytes="786901" number="48">d65dd1def8a60d9152e9d5e0@kf-fixture</segment>
+  <segment bytes="787013" number="49">5fbb577410e3af6167994443@kf-fixture</segment>
+  <segment bytes="787062" number="50">d3bd7b9e6bd7913d85afb039@kf-fixture</segment>
+  <segment bytes="786821" number="51">6d1f1149869915847f3afa6f@kf-fixture</segment>
+  <segment bytes="786835" number="52">15c09128cd4211eac18ad2b3@kf-fixture</segment>
+  <segment bytes="786969" number="53">aa7eb9d2f44084158eab6bb8@kf-fixture</segment>
+  <segment bytes="787046" number="54">38725a4cfcc2ed899de88e9b@kf-fixture</segment>
+  <segment bytes="786963" number="55">728e0a612984d1eee45e9ce7@kf-fixture</segment>
+  <segment bytes="787032" number="56">8788cabfe47f226b4629c8fd@kf-fixture</segment>
+  <segment bytes="787127" number="57">a593a645229babe284d75887@kf-fixture</segment>
+  <segment bytes="787015" number="58">f04d37fc727f9aeac95c0e7b@kf-fixture</segment>
+  <segment bytes="786974" number="59">2c69cd5002e7a765049a3883@kf-fixture</segment>
+  <segment bytes="787035" number="60">c35dac5f89cae8da68132c52@kf-fixture</segment>
+  <segment bytes="787048" number="61">170882b24c370cb2c61afcd1@kf-fixture</segment>
+  <segment bytes="786857" number="62">c563cba9be2903c49a6c71e2@kf-fixture</segment>
+  <segment bytes="787049" number="63">6083dddc03e964e2534a8ae5@kf-fixture</segment>
+  <segment bytes="787041" number="64">29b7a7d0de5ec2ad7fc1e014@kf-fixture</segment>
+  <segment bytes="787002" number="65">e723143010cb7a27d227b929@kf-fixture</segment>
+  <segment bytes="82689" number="66">9f7923fa4fe24fa0830f1ffe@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434147" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[07/33] - &quot;aaf-tz.s02e06.720p.r04&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786857" number="1">ac53d04707d01d0ca37ca250@kf-fixture</segment>
+  <segment bytes="786986" number="2">c9b98f943aee83ff54e8da86@kf-fixture</segment>
+  <segment bytes="786863" number="3">fac93145ebd0d3a124a6b126@kf-fixture</segment>
+  <segment bytes="786993" number="4">619cdcd934685e5abfdd90c0@kf-fixture</segment>
+  <segment bytes="786844" number="5">2580b5b3716e743ffabfcee4@kf-fixture</segment>
+  <segment bytes="786833" number="6">d81655103c1a58884fafac54@kf-fixture</segment>
+  <segment bytes="786698" number="7">10ca93ed24b49e85cca42773@kf-fixture</segment>
+  <segment bytes="786941" number="8">20fd33dc37c9b0f84308560b@kf-fixture</segment>
+  <segment bytes="786896" number="9">da872b16e95b0489e084c981@kf-fixture</segment>
+  <segment bytes="786915" number="10">ea2abf7b26e6d79d43260e6c@kf-fixture</segment>
+  <segment bytes="786865" number="11">760f3ca1ca007945400c5530@kf-fixture</segment>
+  <segment bytes="786967" number="12">124199c715e185006d4c34bb@kf-fixture</segment>
+  <segment bytes="787037" number="13">358611d3e2999b3ffc991376@kf-fixture</segment>
+  <segment bytes="787058" number="14">4d3c67b74de91569f49a9213@kf-fixture</segment>
+  <segment bytes="786958" number="15">910d410ba314f7df89cd44b9@kf-fixture</segment>
+  <segment bytes="786927" number="16">cf5340568824637a9fd23e3d@kf-fixture</segment>
+  <segment bytes="787013" number="17">097c6c1a157b563e213eb8d1@kf-fixture</segment>
+  <segment bytes="787027" number="18">feb51322ed2a634a772d63d9@kf-fixture</segment>
+  <segment bytes="786816" number="19">3c672521b1bb2c313e3e6d4d@kf-fixture</segment>
+  <segment bytes="787007" number="20">bc3e3b43b338a610c906e90b@kf-fixture</segment>
+  <segment bytes="787035" number="21">37c8d0b68c6e36c6c7bed4bd@kf-fixture</segment>
+  <segment bytes="786966" number="22">1d690d36548d9026947ff428@kf-fixture</segment>
+  <segment bytes="787009" number="23">eb64178c1e22afac38e9617f@kf-fixture</segment>
+  <segment bytes="786835" number="24">b1a33711adef9139e22595d9@kf-fixture</segment>
+  <segment bytes="786999" number="25">151dc3699de4ac66c6178a93@kf-fixture</segment>
+  <segment bytes="787098" number="26">e58e2748fb6c1a204efd56ec@kf-fixture</segment>
+  <segment bytes="787010" number="27">f28d5ddbf1bcd145d10c96ae@kf-fixture</segment>
+  <segment bytes="786821" number="28">17828d658261d943abd24b81@kf-fixture</segment>
+  <segment bytes="786991" number="29">dea0adb9bb1ddecbc4a7d0f6@kf-fixture</segment>
+  <segment bytes="787140" number="30">88191ca7f942453e833d71ee@kf-fixture</segment>
+  <segment bytes="786878" number="31">e859bdacd1a58a684cd4fd90@kf-fixture</segment>
+  <segment bytes="787080" number="32">999f8cfcc8395bd3b97c93b8@kf-fixture</segment>
+  <segment bytes="786860" number="33">c427c7a4775378bb6d2c6bc7@kf-fixture</segment>
+  <segment bytes="786941" number="34">3917dcd9d1fc3c2900f7c415@kf-fixture</segment>
+  <segment bytes="787129" number="35">3e60af683983a23da58754b6@kf-fixture</segment>
+  <segment bytes="787014" number="36">1f1a107f2ab52ac24bd45c3f@kf-fixture</segment>
+  <segment bytes="787005" number="37">dea16df2ef9cc60c10f8ae23@kf-fixture</segment>
+  <segment bytes="786855" number="38">4886ff9e21ec47ee17e5770c@kf-fixture</segment>
+  <segment bytes="786716" number="39">3582be4bd00d796421c76251@kf-fixture</segment>
+  <segment bytes="787136" number="40">229668b9d2ed162f7df856c3@kf-fixture</segment>
+  <segment bytes="786949" number="41">3d68326c6e0b9eb8bba0e640@kf-fixture</segment>
+  <segment bytes="786955" number="42">583c49dea899bad2a1754f4d@kf-fixture</segment>
+  <segment bytes="786991" number="43">a812e76d490a87e35b754a3f@kf-fixture</segment>
+  <segment bytes="787092" number="44">2e2bcd51da0cc4e2e3a40c0d@kf-fixture</segment>
+  <segment bytes="786994" number="45">36c9059e3c3322dfeeeb7a3a@kf-fixture</segment>
+  <segment bytes="786861" number="46">1f93c894b9d9b15e41fcc99b@kf-fixture</segment>
+  <segment bytes="786930" number="47">5e907f285362a735cdf028aa@kf-fixture</segment>
+  <segment bytes="787001" number="48">6c791ac36a55dea247ff41df@kf-fixture</segment>
+  <segment bytes="786952" number="49">3b83316bb91d486d88b03077@kf-fixture</segment>
+  <segment bytes="787139" number="50">2bcb281a5776cd13304aea84@kf-fixture</segment>
+  <segment bytes="786897" number="51">0eadf3708cb4b4b14baaa1d2@kf-fixture</segment>
+  <segment bytes="787364" number="52">e7582942e37f59145f089120@kf-fixture</segment>
+  <segment bytes="786928" number="53">ea8b5185ba642bbedcf74fd8@kf-fixture</segment>
+  <segment bytes="787035" number="54">e5dc1ade03e05e5b9157739e@kf-fixture</segment>
+  <segment bytes="787101" number="55">2a294450527b3942b995124e@kf-fixture</segment>
+  <segment bytes="787102" number="56">971fb87e8320423a5c79e66e@kf-fixture</segment>
+  <segment bytes="787019" number="57">846eff0b1c238220ef70c04c@kf-fixture</segment>
+  <segment bytes="786986" number="58">0f87736c6a76e2cf756b1c39@kf-fixture</segment>
+  <segment bytes="786917" number="59">5daced6fa43c0a9280cee1a8@kf-fixture</segment>
+  <segment bytes="787017" number="60">bac3b8d309e891a5fcd27572@kf-fixture</segment>
+  <segment bytes="786903" number="61">bab5d3463ee503d4971e0c18@kf-fixture</segment>
+  <segment bytes="786906" number="62">bd01f6ada8fb8160bc4c9849@kf-fixture</segment>
+  <segment bytes="786982" number="63">3edad2f4297b51dc20b43468@kf-fixture</segment>
+  <segment bytes="786940" number="64">58f4916c5605ceb77964f127@kf-fixture</segment>
+  <segment bytes="787075" number="65">e08903c01a885650e6809eff@kf-fixture</segment>
+  <segment bytes="82647" number="66">379a44a13e48beeed719a072@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434148" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[08/33] - &quot;aaf-tz.s02e06.720p.r05&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787136" number="1">59b3e126527423fbfb99a46a@kf-fixture</segment>
+  <segment bytes="786951" number="2">d5907a2f9375acf90ad073bd@kf-fixture</segment>
+  <segment bytes="786976" number="3">a6bd052274f1b6398d3a2398@kf-fixture</segment>
+  <segment bytes="787081" number="4">1b7a89f3fc4f14fc8c5b9f8d@kf-fixture</segment>
+  <segment bytes="786889" number="5">eab482ee85e7c7f3e9e828cf@kf-fixture</segment>
+  <segment bytes="787153" number="6">5d83ea1a59e1977bdea666e1@kf-fixture</segment>
+  <segment bytes="787411" number="7">844c7d2f64141286c27831cc@kf-fixture</segment>
+  <segment bytes="787249" number="8">9a9d323b73a6ce7a19059e4d@kf-fixture</segment>
+  <segment bytes="787099" number="9">aad1de932ad43ee91199c7b4@kf-fixture</segment>
+  <segment bytes="793406" number="10">4c8c51e4724a40c38dd69969@kf-fixture</segment>
+  <segment bytes="787431" number="11">73bea2760728b79fb6a230ed@kf-fixture</segment>
+  <segment bytes="786790" number="12">7cf3a0f1e94e934213b349d2@kf-fixture</segment>
+  <segment bytes="786930" number="13">50adc16df3b4015817aff9cd@kf-fixture</segment>
+  <segment bytes="793557" number="14">ba3c86575b5fe269d8383c7c@kf-fixture</segment>
+  <segment bytes="787020" number="15">13a4fccb590aabc8d706eaf2@kf-fixture</segment>
+  <segment bytes="787229" number="16">8bf3cd11a86f7083073314e5@kf-fixture</segment>
+  <segment bytes="786959" number="17">800b647e114f95b63311ce11@kf-fixture</segment>
+  <segment bytes="787045" number="18">5a0e92ee6144fb4c71dc66b5@kf-fixture</segment>
+  <segment bytes="786879" number="19">d32dfe522186a5e4693a1c40@kf-fixture</segment>
+  <segment bytes="787250" number="20">2f559672b23ada5592ff5a97@kf-fixture</segment>
+  <segment bytes="786999" number="21">ab4d0d5ffad7389c5559662c@kf-fixture</segment>
+  <segment bytes="786904" number="22">550290103b2bf820152627d7@kf-fixture</segment>
+  <segment bytes="786757" number="23">4f6acb99a9a4e0bf83239075@kf-fixture</segment>
+  <segment bytes="787063" number="24">bff00ca0c9d4cb1c110357ce@kf-fixture</segment>
+  <segment bytes="786974" number="25">6540bf71ce2ed5f588ad218b@kf-fixture</segment>
+  <segment bytes="786923" number="26">8a295dbba8ed4ea2e5e72fbc@kf-fixture</segment>
+  <segment bytes="787018" number="27">115f2ab7b0eb9e8429d4012f@kf-fixture</segment>
+  <segment bytes="787061" number="28">72441a7a3c6c1223c0f7bb7c@kf-fixture</segment>
+  <segment bytes="787555" number="29">75660423b462e6c73b931313@kf-fixture</segment>
+  <segment bytes="787215" number="30">1482a5bb35f60c9ea6e1dd91@kf-fixture</segment>
+  <segment bytes="787411" number="31">2f27d9ad022304f145c7c6ef@kf-fixture</segment>
+  <segment bytes="786777" number="32">d0277fb0ba4e0f0cb3d80120@kf-fixture</segment>
+  <segment bytes="786885" number="33">967a2d543452b9835d7eeaf1@kf-fixture</segment>
+  <segment bytes="787082" number="34">f2baaf150e5897895eb555f2@kf-fixture</segment>
+  <segment bytes="787012" number="35">2c43b64f3f519936095c9463@kf-fixture</segment>
+  <segment bytes="787120" number="36">33598c44bba749f83e77f297@kf-fixture</segment>
+  <segment bytes="786902" number="37">3e3845568983af972b0ea08c@kf-fixture</segment>
+  <segment bytes="793473" number="38">333977892c3f8f4a09563ea8@kf-fixture</segment>
+  <segment bytes="787550" number="39">b0186f99b73f60f6282de9ae@kf-fixture</segment>
+  <segment bytes="787017" number="40">d2861542cfa29a7175d3041c@kf-fixture</segment>
+  <segment bytes="787111" number="41">b7843b609acba3ed3240f705@kf-fixture</segment>
+  <segment bytes="786899" number="42">0981cc76b4f16650d10e377d@kf-fixture</segment>
+  <segment bytes="786910" number="43">6a2de1fd89735611bd0031e8@kf-fixture</segment>
+  <segment bytes="786905" number="44">75f2da913655bfb55428fb43@kf-fixture</segment>
+  <segment bytes="787031" number="45">00a0a204959fe0d0ab9e18b5@kf-fixture</segment>
+  <segment bytes="786998" number="46">01cfe93eca720bc59c54e420@kf-fixture</segment>
+  <segment bytes="787044" number="47">68dcd96299d3be057dc5cfe9@kf-fixture</segment>
+  <segment bytes="787074" number="48">d0dd2b5fac22ca9423cd13b6@kf-fixture</segment>
+  <segment bytes="787181" number="49">e3422d276d922a6dd326f5a6@kf-fixture</segment>
+  <segment bytes="787066" number="50">7734d336836b94d7c56db32e@kf-fixture</segment>
+  <segment bytes="787137" number="51">5813d4d32cd17f0888f209a8@kf-fixture</segment>
+  <segment bytes="787111" number="52">7dac5d2fe91d2ec50f97192e@kf-fixture</segment>
+  <segment bytes="787160" number="53">e906e674dac5b54ccdb27952@kf-fixture</segment>
+  <segment bytes="787022" number="54">1290ee5ef9bdd8880939e524@kf-fixture</segment>
+  <segment bytes="786969" number="55">c7162d7fb3a7234cd8f32198@kf-fixture</segment>
+  <segment bytes="786716" number="56">10293d948604feb6297981f9@kf-fixture</segment>
+  <segment bytes="786887" number="57">23165c395aa6c35ec77c20ae@kf-fixture</segment>
+  <segment bytes="786904" number="58">f5bea24e58fbd16c43718f64@kf-fixture</segment>
+  <segment bytes="786822" number="59">256e22aec19c040ea2880d8a@kf-fixture</segment>
+  <segment bytes="786967" number="60">147d5989296562d8a6e7bc53@kf-fixture</segment>
+  <segment bytes="786773" number="61">117bffe8129abea3d28bc102@kf-fixture</segment>
+  <segment bytes="786900" number="62">a52fa18f063f890877f55ee3@kf-fixture</segment>
+  <segment bytes="786806" number="63">1df785951dc39e41039e7c55@kf-fixture</segment>
+  <segment bytes="787214" number="64">0a4373435650d7f1dfa11804@kf-fixture</segment>
+  <segment bytes="786794" number="65">f895dfc6781b787e94890a31@kf-fixture</segment>
+  <segment bytes="83645" number="66">084d6305c8a7d1a1dcd8487f@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434149" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[09/33] - &quot;aaf-tz.s02e06.720p.r06&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786991" number="1">21e48b763f6384a7293adfd7@kf-fixture</segment>
+  <segment bytes="787096" number="2">2fc9a4a90f0b453c79c0af25@kf-fixture</segment>
+  <segment bytes="786836" number="3">7c6bb2e13870513a77c8d62f@kf-fixture</segment>
+  <segment bytes="786983" number="4">5d5da7e6153c8859bcff2462@kf-fixture</segment>
+  <segment bytes="786976" number="5">d7b971b65a00e4a8a50fd235@kf-fixture</segment>
+  <segment bytes="786881" number="6">456f8c7f768b3ccfdf96978b@kf-fixture</segment>
+  <segment bytes="787035" number="7">ead609a943bd312e9bcd89d0@kf-fixture</segment>
+  <segment bytes="786886" number="8">60879bce9eb307b96a8ce91a@kf-fixture</segment>
+  <segment bytes="786975" number="9">56c0c9eba6e3f6bb8642e5f9@kf-fixture</segment>
+  <segment bytes="786838" number="10">6d4473123ccac54ee148f51e@kf-fixture</segment>
+  <segment bytes="786903" number="11">d52c769e7c09e0040bb8eec6@kf-fixture</segment>
+  <segment bytes="786950" number="12">3b2257e5cb0e90869955aa81@kf-fixture</segment>
+  <segment bytes="786976" number="13">cf2ecee1827fc2741a6fffa4@kf-fixture</segment>
+  <segment bytes="787023" number="14">856f81b0c826c28485b6baaa@kf-fixture</segment>
+  <segment bytes="786874" number="15">173b4673e395bf541694aa11@kf-fixture</segment>
+  <segment bytes="786762" number="16">980824ad415c234dd7b5bd1b@kf-fixture</segment>
+  <segment bytes="787003" number="17">482a2760c3cf76f66b87835a@kf-fixture</segment>
+  <segment bytes="787031" number="18">e29b4dbb7cd659f440108e53@kf-fixture</segment>
+  <segment bytes="786876" number="19">326391895a43d81eb44ad7de@kf-fixture</segment>
+  <segment bytes="786919" number="20">c2aeb19f3245d4a322b8c531@kf-fixture</segment>
+  <segment bytes="786998" number="21">28d8f66a5a50cfa8c2dbdef6@kf-fixture</segment>
+  <segment bytes="787019" number="22">2319148d89efe8f2cfd31aaa@kf-fixture</segment>
+  <segment bytes="787067" number="23">4c8d5adb6cce89b67da86fc0@kf-fixture</segment>
+  <segment bytes="786983" number="24">f12279e1d1c74a9a2b6e1c8a@kf-fixture</segment>
+  <segment bytes="786945" number="25">5075377282eb2a0f751d8d60@kf-fixture</segment>
+  <segment bytes="786897" number="26">f0ee7bdcef908e113c583668@kf-fixture</segment>
+  <segment bytes="787057" number="27">c9846598a7a2d62dbcab5b80@kf-fixture</segment>
+  <segment bytes="786875" number="28">80b557d675b83b58a197bcb3@kf-fixture</segment>
+  <segment bytes="786749" number="29">0d60168d3e302114eb17c544@kf-fixture</segment>
+  <segment bytes="786942" number="30">ab183a6f61f87de308df084e@kf-fixture</segment>
+  <segment bytes="787045" number="31">a0d8999592862ae93feee1a4@kf-fixture</segment>
+  <segment bytes="786942" number="32">96651d63c180f9f23f7ca14b@kf-fixture</segment>
+  <segment bytes="787012" number="33">973e0f8f750bb56896d91c6f@kf-fixture</segment>
+  <segment bytes="787034" number="34">c7650b9f29687e21d2b7178c@kf-fixture</segment>
+  <segment bytes="786867" number="35">e284876a784b699389e194e6@kf-fixture</segment>
+  <segment bytes="786924" number="36">9f207a20b15f1c77a6969a30@kf-fixture</segment>
+  <segment bytes="787091" number="37">3ec9e63f38313e1f6c6caa98@kf-fixture</segment>
+  <segment bytes="786905" number="38">7d7141fceef15becf9a59da8@kf-fixture</segment>
+  <segment bytes="787095" number="39">aa56561b56b56d2ce7435d64@kf-fixture</segment>
+  <segment bytes="786989" number="40">057c202ac07a4bfd9bb399e5@kf-fixture</segment>
+  <segment bytes="786985" number="41">755d974f741fa4e828964b3f@kf-fixture</segment>
+  <segment bytes="786983" number="42">4c7de5dc617f989c7dc5a362@kf-fixture</segment>
+  <segment bytes="786865" number="43">18348850b185f350e277378f@kf-fixture</segment>
+  <segment bytes="786782" number="44">6e4ad9d16d8a278c837e6bbb@kf-fixture</segment>
+  <segment bytes="786987" number="45">609cedd9a321e5702e6812ce@kf-fixture</segment>
+  <segment bytes="787003" number="46">91b72446984aa935b75d1ba4@kf-fixture</segment>
+  <segment bytes="787020" number="47">8614a7e432e16ca2de2bc259@kf-fixture</segment>
+  <segment bytes="787038" number="48">c803ab4c928754526c245083@kf-fixture</segment>
+  <segment bytes="787147" number="49">2cf1a20b92b39433c18516c6@kf-fixture</segment>
+  <segment bytes="786779" number="50">88854c3af4244cc8e29e0c50@kf-fixture</segment>
+  <segment bytes="786875" number="51">857093e1b9fd91e9cccc272e@kf-fixture</segment>
+  <segment bytes="787148" number="52">2994ec86fa3fc03ab425a585@kf-fixture</segment>
+  <segment bytes="786971" number="53">e2a8be2150eed5f9db3841e4@kf-fixture</segment>
+  <segment bytes="787010" number="54">30d39b84d739ff55468707a3@kf-fixture</segment>
+  <segment bytes="786996" number="55">a4019ee2367c5ab2e3acbc8d@kf-fixture</segment>
+  <segment bytes="786816" number="56">139067665b322c4561731b5d@kf-fixture</segment>
+  <segment bytes="786929" number="57">7aa5b1f1c1cae7b9fbffe777@kf-fixture</segment>
+  <segment bytes="786939" number="58">9e07aaafa10ab6118eeabd19@kf-fixture</segment>
+  <segment bytes="787074" number="59">e005c17b64486f3b287537a2@kf-fixture</segment>
+  <segment bytes="786995" number="60">47462cf581e26812f46260bb@kf-fixture</segment>
+  <segment bytes="787012" number="61">6d6bc688800f402e62c2d6e5@kf-fixture</segment>
+  <segment bytes="786758" number="62">99dd5c1a82510f551ae2280b@kf-fixture</segment>
+  <segment bytes="786911" number="63">a5c24bdac65a65bd73b0283a@kf-fixture</segment>
+  <segment bytes="786750" number="64">afa96e7e269957736c632449@kf-fixture</segment>
+  <segment bytes="786943" number="65">4142e2e2620f8a93f8c05ee3@kf-fixture</segment>
+  <segment bytes="82633" number="66">c588ca5aba5975ded820d342@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434167" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[1/1] - &quot;The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF.nzb&quot; yEnc (1/1)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="161994" number="1">9f52c3694e2d8263becebd71@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434149" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[10/33] - &quot;aaf-tz.s02e06.720p.r07&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787019" number="1">e96b6d0a0ced665c8fe8ce24@kf-fixture</segment>
+  <segment bytes="787234" number="2">9d0099b9a29dfea330c537a7@kf-fixture</segment>
+  <segment bytes="786991" number="3">503c58294316648179802a36@kf-fixture</segment>
+  <segment bytes="786907" number="4">bf97a0281943559a06481662@kf-fixture</segment>
+  <segment bytes="787029" number="5">9c62543a206852fed3674611@kf-fixture</segment>
+  <segment bytes="787138" number="6">4d5014f479135353f3941312@kf-fixture</segment>
+  <segment bytes="786961" number="7">cb037261b6ffb0625e185916@kf-fixture</segment>
+  <segment bytes="786958" number="8">0fff80ac455e18a01a33fc97@kf-fixture</segment>
+  <segment bytes="786928" number="9">0327e031af8c60e4f3aacfed@kf-fixture</segment>
+  <segment bytes="787024" number="10">03764ffd2503cbf5a5e3e80e@kf-fixture</segment>
+  <segment bytes="786877" number="11">dbcc94c66bcb9500e4d236d9@kf-fixture</segment>
+  <segment bytes="786947" number="12">b15c614d4ea615647d8a1911@kf-fixture</segment>
+  <segment bytes="786969" number="13">f866aa8e64da56b61e2a10ee@kf-fixture</segment>
+  <segment bytes="786864" number="14">822db5a0a6ad73184deef8d9@kf-fixture</segment>
+  <segment bytes="786917" number="15">3d73909b39fbaea9f5f2a1de@kf-fixture</segment>
+  <segment bytes="787049" number="16">3b6b6ee212d6325914078272@kf-fixture</segment>
+  <segment bytes="786920" number="17">d829aed66e9bc7d3ec65aa3a@kf-fixture</segment>
+  <segment bytes="787122" number="18">a14370ca9448399a79998403@kf-fixture</segment>
+  <segment bytes="786892" number="19">0a1624673c91bc6a40c2024e@kf-fixture</segment>
+  <segment bytes="786997" number="20">596fce61d8d6184328eb2054@kf-fixture</segment>
+  <segment bytes="787000" number="21">24fe21d188d05e51e78fd99b@kf-fixture</segment>
+  <segment bytes="787124" number="22">d0aa8171093afae2438df370@kf-fixture</segment>
+  <segment bytes="786930" number="23">2467eb8d5fe8d01f03cc0199@kf-fixture</segment>
+  <segment bytes="787161" number="24">c78e46bb8d860ff4ba8dd873@kf-fixture</segment>
+  <segment bytes="787034" number="25">0657b9927e68068d9710e18e@kf-fixture</segment>
+  <segment bytes="786885" number="26">bd01cf5d58889b7b249e5a60@kf-fixture</segment>
+  <segment bytes="786930" number="27">9cd1ba46e928a8921e2e406a@kf-fixture</segment>
+  <segment bytes="786958" number="28">fa0c10fde8d713f775aa5755@kf-fixture</segment>
+  <segment bytes="786799" number="29">285e5d739f35ee1203fa096f@kf-fixture</segment>
+  <segment bytes="786845" number="30">2cd556da3637139030a78750@kf-fixture</segment>
+  <segment bytes="786942" number="31">67c5aa41cd3e0ac0401ec6fb@kf-fixture</segment>
+  <segment bytes="787084" number="32">0278eeabb2d3f56d0ed18285@kf-fixture</segment>
+  <segment bytes="786944" number="33">9d3e39532c434631a8f34399@kf-fixture</segment>
+  <segment bytes="786870" number="34">a14aeb645f95f0b5bd96505f@kf-fixture</segment>
+  <segment bytes="786809" number="35">a8b31fcc76753e464fd4ff4f@kf-fixture</segment>
+  <segment bytes="786969" number="36">58616ed68429dc1cc3854094@kf-fixture</segment>
+  <segment bytes="786938" number="37">3a57160bddcb400f458983bb@kf-fixture</segment>
+  <segment bytes="787066" number="38">4be9d80a3ef4fce542b27a26@kf-fixture</segment>
+  <segment bytes="787011" number="39">da92fe8781591ca68e008d17@kf-fixture</segment>
+  <segment bytes="787087" number="40">bd62b89ecdbdfb2e6054d85f@kf-fixture</segment>
+  <segment bytes="787038" number="41">4c7cda2e50116c7714253b4e@kf-fixture</segment>
+  <segment bytes="786921" number="42">cbf6710cfa23476c66cc5a20@kf-fixture</segment>
+  <segment bytes="786893" number="43">2073ec12b1d5987f6be37379@kf-fixture</segment>
+  <segment bytes="787197" number="44">d4e71f66f199b339d7240976@kf-fixture</segment>
+  <segment bytes="786787" number="45">1bb05049aa1e37ee02860acc@kf-fixture</segment>
+  <segment bytes="786946" number="46">97a582007c677df31deed47d@kf-fixture</segment>
+  <segment bytes="787114" number="47">5fc38d604d18e0b4b8d3769c@kf-fixture</segment>
+  <segment bytes="787115" number="48">dcfdcd67800d30d59c82904d@kf-fixture</segment>
+  <segment bytes="787003" number="49">1d63442e77bfd45ae006216f@kf-fixture</segment>
+  <segment bytes="786977" number="50">c71dc0ef8c17b01ba96028e6@kf-fixture</segment>
+  <segment bytes="786880" number="51">e22df91dbe626d90695908ac@kf-fixture</segment>
+  <segment bytes="786979" number="52">577c93831fa4a08d93ad21ba@kf-fixture</segment>
+  <segment bytes="787039" number="53">059096c15288b383a588cfe2@kf-fixture</segment>
+  <segment bytes="786964" number="54">f9e3eb2bf4626782a7021755@kf-fixture</segment>
+  <segment bytes="787016" number="55">fd3ba692b5cf065380fdfe79@kf-fixture</segment>
+  <segment bytes="786939" number="56">e9faf235d7db0176cf68ca90@kf-fixture</segment>
+  <segment bytes="787078" number="57">15a88e3b3c2c594de94e2552@kf-fixture</segment>
+  <segment bytes="786940" number="58">525162307d7c0c3fc15d5d41@kf-fixture</segment>
+  <segment bytes="787111" number="59">b835b56f83af9828a4222b7b@kf-fixture</segment>
+  <segment bytes="786743" number="60">d65285d7927fe0de8883dd73@kf-fixture</segment>
+  <segment bytes="787094" number="61">36281be7d7cf4b0f1927a811@kf-fixture</segment>
+  <segment bytes="787096" number="62">ad18be4b0af39ad0b6a16e19@kf-fixture</segment>
+  <segment bytes="787178" number="63">2aa8475227852282d66db911@kf-fixture</segment>
+  <segment bytes="787134" number="64">1c404c8a960f4ae96bc85589@kf-fixture</segment>
+  <segment bytes="786990" number="65">02cac8ba9873ef15fdfab404@kf-fixture</segment>
+  <segment bytes="82742" number="66">f0453d0e5a669b4215006b3e@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434151" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[11/33] - &quot;aaf-tz.s02e06.720p.r08&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787026" number="1">db5a0ee973939147ed68ead3@kf-fixture</segment>
+  <segment bytes="786996" number="2">c26dd2cb90abaaf45da3cd53@kf-fixture</segment>
+  <segment bytes="787392" number="3">a62f12dedc40732349300073@kf-fixture</segment>
+  <segment bytes="786836" number="4">6c0ccd77904193926bd1d458@kf-fixture</segment>
+  <segment bytes="786923" number="5">6e0e9d4ea3a9c3bb0826d2b5@kf-fixture</segment>
+  <segment bytes="787018" number="6">fc4ac37d425927ffdd22a2c9@kf-fixture</segment>
+  <segment bytes="786920" number="7">36bd0395f0dac3c013ba6a0f@kf-fixture</segment>
+  <segment bytes="787039" number="8">ab492b110296a2a698578650@kf-fixture</segment>
+  <segment bytes="787022" number="9">6c333cb9734b909a7ab14347@kf-fixture</segment>
+  <segment bytes="786946" number="10">1ff0346ab2ffc728e0d86fd9@kf-fixture</segment>
+  <segment bytes="786930" number="11">585eb74233da582b60ed9c83@kf-fixture</segment>
+  <segment bytes="786969" number="12">5dc57a45e61f398bea2f4453@kf-fixture</segment>
+  <segment bytes="787019" number="13">e7b58822951fce9c29d609e5@kf-fixture</segment>
+  <segment bytes="787116" number="14">378b871da2c60b0f74eeaa2a@kf-fixture</segment>
+  <segment bytes="787029" number="15">74746ad8239b84d793af46c2@kf-fixture</segment>
+  <segment bytes="786828" number="16">47c6463ef7c137d5bc44909e@kf-fixture</segment>
+  <segment bytes="787065" number="17">b3523775b3ce425def006217@kf-fixture</segment>
+  <segment bytes="786917" number="18">4a28a34a30d8a3ea5e936a2f@kf-fixture</segment>
+  <segment bytes="787382" number="19">f3e0057efafda08673720384@kf-fixture</segment>
+  <segment bytes="787017" number="20">2aa1d5a05f167f868f5bf0f8@kf-fixture</segment>
+  <segment bytes="787009" number="21">09fc06e757275062a417beda@kf-fixture</segment>
+  <segment bytes="786944" number="22">62900ace19212d52716534cb@kf-fixture</segment>
+  <segment bytes="786983" number="23">90da7c966dac889516ebaa4f@kf-fixture</segment>
+  <segment bytes="787112" number="24">d57e075117901745f256a586@kf-fixture</segment>
+  <segment bytes="786948" number="25">ab69a89cc23117cc6c6598d7@kf-fixture</segment>
+  <segment bytes="787010" number="26">2607306d6e70e7420eab284d@kf-fixture</segment>
+  <segment bytes="786878" number="27">097fbdb3b66af153da17c894@kf-fixture</segment>
+  <segment bytes="786894" number="28">458956eed217c678a025d69b@kf-fixture</segment>
+  <segment bytes="786897" number="29">bbbfb87867174a361c162237@kf-fixture</segment>
+  <segment bytes="786876" number="30">ddb7e35d20a0b3283be90b0a@kf-fixture</segment>
+  <segment bytes="786966" number="31">463ae4cdafb7fc86f51aa7d9@kf-fixture</segment>
+  <segment bytes="786874" number="32">a663b06b1ef2999e21be0bfb@kf-fixture</segment>
+  <segment bytes="786951" number="33">ad8937e1c9b59ade4823fde7@kf-fixture</segment>
+  <segment bytes="787339" number="34">0702a4765fba845e5ce09fa0@kf-fixture</segment>
+  <segment bytes="787150" number="35">2968346a163691d658241d75@kf-fixture</segment>
+  <segment bytes="786981" number="36">cd8eed1e61171d7bd131d0c4@kf-fixture</segment>
+  <segment bytes="787093" number="37">faf48412521532ab6ba42189@kf-fixture</segment>
+  <segment bytes="787127" number="38">b7548ee8efff5c9836972e89@kf-fixture</segment>
+  <segment bytes="787142" number="39">ab84e9e49c08c90ec1a84110@kf-fixture</segment>
+  <segment bytes="787073" number="40">354412dda75e90e4d7f1213b@kf-fixture</segment>
+  <segment bytes="787080" number="41">1b4287c3a4a17f5797bb00e9@kf-fixture</segment>
+  <segment bytes="787430" number="42">6177cfb1f4f889bf91d64092@kf-fixture</segment>
+  <segment bytes="787125" number="43">a2def8dfa04c0830b08c2264@kf-fixture</segment>
+  <segment bytes="786982" number="44">b7c2fa1dbecd96358fc8b8ac@kf-fixture</segment>
+  <segment bytes="786994" number="45">2339406da9ca5fb19501f6b2@kf-fixture</segment>
+  <segment bytes="786988" number="46">d14c648253300b0d6d7c7862@kf-fixture</segment>
+  <segment bytes="786954" number="47">f4d9635bc32a66e8a938abd5@kf-fixture</segment>
+  <segment bytes="786931" number="48">79f298f07c672556c0a4bebf@kf-fixture</segment>
+  <segment bytes="787024" number="49">ab23837cad29d715009138b9@kf-fixture</segment>
+  <segment bytes="787024" number="50">c784cbd4364282ddc6a38114@kf-fixture</segment>
+  <segment bytes="787091" number="51">634305b5e1374761605851bb@kf-fixture</segment>
+  <segment bytes="786948" number="52">9c518e0698df21b665b1ba17@kf-fixture</segment>
+  <segment bytes="787142" number="53">9cdd49024873de1b13f5e8e8@kf-fixture</segment>
+  <segment bytes="787036" number="54">4398a1f3c8b7fc6edae0bc48@kf-fixture</segment>
+  <segment bytes="787072" number="55">28583ad5b6123f630485b614@kf-fixture</segment>
+  <segment bytes="786785" number="56">8c8a24e81df75402af17017b@kf-fixture</segment>
+  <segment bytes="786940" number="57">707530cda993e03930656a1c@kf-fixture</segment>
+  <segment bytes="787008" number="58">9200fc2ce158e6832474c089@kf-fixture</segment>
+  <segment bytes="787153" number="59">de5c20f0d81db4755d01f2f8@kf-fixture</segment>
+  <segment bytes="787047" number="60">4757734d7b33ee976302572b@kf-fixture</segment>
+  <segment bytes="786888" number="61">c0e6040878ae3d3b53439e9b@kf-fixture</segment>
+  <segment bytes="786984" number="62">10de70e22a516773be1d59b3@kf-fixture</segment>
+  <segment bytes="786938" number="63">f6ffc754790b7de33e16b069@kf-fixture</segment>
+  <segment bytes="786846" number="64">a28de954c8ec0fead8430531@kf-fixture</segment>
+  <segment bytes="786917" number="65">7594ff58c75c0b56ee36fbf3@kf-fixture</segment>
+  <segment bytes="82677" number="66">871e3fb97d4a8a9a9c70fddd@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434151" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[12/33] - &quot;aaf-tz.s02e06.720p.r09&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786681" number="1">e8fd9c82a9719709e008c101@kf-fixture</segment>
+  <segment bytes="786827" number="2">1752fb4e913eff87c1ec980d@kf-fixture</segment>
+  <segment bytes="787081" number="3">721f02c058de73832eea9d6e@kf-fixture</segment>
+  <segment bytes="786819" number="4">428833f45720f72c04628712@kf-fixture</segment>
+  <segment bytes="787073" number="5">5560292069655056e0cadf3d@kf-fixture</segment>
+  <segment bytes="786859" number="6">ce47d9a8e702eefa1eb60a67@kf-fixture</segment>
+  <segment bytes="787031" number="7">dd3c0fdea976481f8f7cc073@kf-fixture</segment>
+  <segment bytes="787081" number="8">72ff4999939c116b990b19a6@kf-fixture</segment>
+  <segment bytes="787032" number="9">a96379d048d64f53c3ab5294@kf-fixture</segment>
+  <segment bytes="793845" number="10">2aa6feadce3464b0d3d3e7db@kf-fixture</segment>
+  <segment bytes="786642" number="11">e9cd27e3a8f17df9c76df10b@kf-fixture</segment>
+  <segment bytes="787164" number="12">cd69f7990fb81b601453bf0f@kf-fixture</segment>
+  <segment bytes="787021" number="13">cc22c73f49cbd710c63808c1@kf-fixture</segment>
+  <segment bytes="787095" number="14">f248cecfe66f5a2b8fdcacb0@kf-fixture</segment>
+  <segment bytes="787114" number="15">a9baf74cd04f80717b5000c3@kf-fixture</segment>
+  <segment bytes="787012" number="16">9dfc3ccb9faaffed275db15a@kf-fixture</segment>
+  <segment bytes="787021" number="17">44eff576cec42607fe4a97ba@kf-fixture</segment>
+  <segment bytes="787004" number="18">242e10d73f6f89447022c8fa@kf-fixture</segment>
+  <segment bytes="787003" number="19">78ef2c834a9aa08dbf1b2d4e@kf-fixture</segment>
+  <segment bytes="786944" number="20">bfc7375d63faf245f014e222@kf-fixture</segment>
+  <segment bytes="786970" number="21">8e253e0f6be19fd416b1f33b@kf-fixture</segment>
+  <segment bytes="786990" number="22">a9da66ff224336e6cd952f3c@kf-fixture</segment>
+  <segment bytes="787007" number="23">72b0f0166fa0fa2a2806c415@kf-fixture</segment>
+  <segment bytes="786888" number="24">36d68af455209575895030b3@kf-fixture</segment>
+  <segment bytes="786967" number="25">a787537e5cf8dde8d19533e6@kf-fixture</segment>
+  <segment bytes="786984" number="26">0166be17997981433f801ffe@kf-fixture</segment>
+  <segment bytes="786908" number="27">73dae2f6ed3920f3d885844e@kf-fixture</segment>
+  <segment bytes="787187" number="28">04b178177e7512dc5ae024a4@kf-fixture</segment>
+  <segment bytes="786877" number="29">243d0f24292e6418028586aa@kf-fixture</segment>
+  <segment bytes="787209" number="30">72d11fe68e6357a6e8d80b52@kf-fixture</segment>
+  <segment bytes="787034" number="31">96aa517f275d32fd93af592a@kf-fixture</segment>
+  <segment bytes="786897" number="32">75f841ad8fd9d0150376be23@kf-fixture</segment>
+  <segment bytes="787046" number="33">109348487fff729c79e7f20b@kf-fixture</segment>
+  <segment bytes="786853" number="34">f57b68f5b60e0b956be5ca8f@kf-fixture</segment>
+  <segment bytes="787023" number="35">cbc3699b53e2b2090182e3b2@kf-fixture</segment>
+  <segment bytes="787117" number="36">5f697c3bc50a6d42a3cfe648@kf-fixture</segment>
+  <segment bytes="786935" number="37">5188db404b8c0fa95011b0f8@kf-fixture</segment>
+  <segment bytes="787252" number="38">9f3a2250409eb493d8ddfc3f@kf-fixture</segment>
+  <segment bytes="787112" number="39">10be9d962c43a890b3d05f76@kf-fixture</segment>
+  <segment bytes="787000" number="40">4be9152a3d1891f9c34b2757@kf-fixture</segment>
+  <segment bytes="786895" number="41">d811c95854646c5357656a70@kf-fixture</segment>
+  <segment bytes="786959" number="42">e8a9cec149c01f39e61acc63@kf-fixture</segment>
+  <segment bytes="786922" number="43">d5b32f8a2cc787dc1ec5b325@kf-fixture</segment>
+  <segment bytes="786774" number="44">6c22be1c4718db6da99a36b9@kf-fixture</segment>
+  <segment bytes="787095" number="45">52d353c713bc1a8e849f7ed5@kf-fixture</segment>
+  <segment bytes="786925" number="46">44dafd98bcf59ff2fee67fce@kf-fixture</segment>
+  <segment bytes="786815" number="47">0edbd89c50bbfa05f033ab9b@kf-fixture</segment>
+  <segment bytes="787109" number="48">940219501a64f95bc622c65d@kf-fixture</segment>
+  <segment bytes="786828" number="49">5eb1e1bb2a5eddabc1c1c81a@kf-fixture</segment>
+  <segment bytes="786894" number="50">fce49be7b3329d397ef89a09@kf-fixture</segment>
+  <segment bytes="787490" number="51">66ba4bb3155799fb5e039b22@kf-fixture</segment>
+  <segment bytes="786994" number="52">3440f3138b2d53cda0e1d786@kf-fixture</segment>
+  <segment bytes="786681" number="53">8e06d1e3647a795c4b0149df@kf-fixture</segment>
+  <segment bytes="786874" number="54">17f88370c2506714c5da1dc5@kf-fixture</segment>
+  <segment bytes="786871" number="55">fe1d690e30ae7a854448c2aa@kf-fixture</segment>
+  <segment bytes="787121" number="56">b0b701b0992c1ccdfeb21fa7@kf-fixture</segment>
+  <segment bytes="786999" number="57">8d99e733322de3926323088c@kf-fixture</segment>
+  <segment bytes="786972" number="58">6ce2fde1f5a28d2d991d0b81@kf-fixture</segment>
+  <segment bytes="786952" number="59">4b657f5db98889e46d928d8b@kf-fixture</segment>
+  <segment bytes="787001" number="60">7a063dcee1ce640a041885d6@kf-fixture</segment>
+  <segment bytes="787354" number="61">14fca14f04d7445eb17d14ad@kf-fixture</segment>
+  <segment bytes="787019" number="62">ea100ca62178b30ae5e18b6c@kf-fixture</segment>
+  <segment bytes="787043" number="63">ef0d5ba61439783af753f1bb@kf-fixture</segment>
+  <segment bytes="787027" number="64">0d587bb6b131c6c5d57310bb@kf-fixture</segment>
+  <segment bytes="786915" number="65">f48c37b1e09d66560b86be82@kf-fixture</segment>
+  <segment bytes="82739" number="66">680f8277cc2887ebeef06bba@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434152" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[13/33] - &quot;aaf-tz.s02e06.720p.r10&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787039" number="1">190160f4e71fa332bdefcbe9@kf-fixture</segment>
+  <segment bytes="786884" number="2">a673d6357ff36ced01f3582d@kf-fixture</segment>
+  <segment bytes="786754" number="3">94b49b6c6968bdf672ec7dac@kf-fixture</segment>
+  <segment bytes="787027" number="4">cafe7fa7574a553a0282a491@kf-fixture</segment>
+  <segment bytes="787046" number="5">266797050c359188fe41c1be@kf-fixture</segment>
+  <segment bytes="786950" number="6">645029d631371ed7a5f2eb24@kf-fixture</segment>
+  <segment bytes="787096" number="7">25d0f5b57d3bf27f58b39672@kf-fixture</segment>
+  <segment bytes="786899" number="8">c4c335cc0cc54405e83c297f@kf-fixture</segment>
+  <segment bytes="787025" number="9">6a475c06cf3ab42887a68391@kf-fixture</segment>
+  <segment bytes="786925" number="10">1a656b0d9c7c53215d8a9117@kf-fixture</segment>
+  <segment bytes="786893" number="11">51f02000f7d7f3dbcd096738@kf-fixture</segment>
+  <segment bytes="787017" number="12">04530f1d98faa60bc165aec8@kf-fixture</segment>
+  <segment bytes="786902" number="13">e8612785aa3a19ff946ae72e@kf-fixture</segment>
+  <segment bytes="786914" number="14">a881093ca24c2e5f8a940625@kf-fixture</segment>
+  <segment bytes="786861" number="15">343fafed77813a663c9af6a1@kf-fixture</segment>
+  <segment bytes="787054" number="16">ab1e4aa374dbeb8d4b1d46c4@kf-fixture</segment>
+  <segment bytes="786871" number="17">133e618c7c6c8977bb27a782@kf-fixture</segment>
+  <segment bytes="786829" number="18">aba3ecd9227020d1ca1825a2@kf-fixture</segment>
+  <segment bytes="786853" number="19">a58b7b7a4709647a8f4b4827@kf-fixture</segment>
+  <segment bytes="786914" number="20">99901c3cb4a76a323a54b6e0@kf-fixture</segment>
+  <segment bytes="787077" number="21">ab5368eac482ead80f76b287@kf-fixture</segment>
+  <segment bytes="786988" number="22">07304fbc6d522254058c03a0@kf-fixture</segment>
+  <segment bytes="786998" number="23">707d8791b63cadd9590cd616@kf-fixture</segment>
+  <segment bytes="787115" number="24">68d47437ef3a704da60e6d94@kf-fixture</segment>
+  <segment bytes="786956" number="25">03b7ec1eae46bde3831bab78@kf-fixture</segment>
+  <segment bytes="786817" number="26">9dde2a53e53787498e170610@kf-fixture</segment>
+  <segment bytes="787085" number="27">740d63a330e8a928ace40b50@kf-fixture</segment>
+  <segment bytes="786973" number="28">3064f1b5936431952f2f526d@kf-fixture</segment>
+  <segment bytes="787045" number="29">80d7fa046969bea83f11dc34@kf-fixture</segment>
+  <segment bytes="787050" number="30">70f7055d9f5acfdecb7cd903@kf-fixture</segment>
+  <segment bytes="787031" number="31">531ea7d5e7fc2e207d959ae7@kf-fixture</segment>
+  <segment bytes="787060" number="32">3a4f1442299b4165bb66f7c5@kf-fixture</segment>
+  <segment bytes="786926" number="33">f6aa671a15501bc5ba9f2b07@kf-fixture</segment>
+  <segment bytes="786995" number="34">0a8d73ee656fa63210cbefc0@kf-fixture</segment>
+  <segment bytes="787013" number="35">1ac0ca4b8735ca1c98da31a5@kf-fixture</segment>
+  <segment bytes="786882" number="36">6d25b79801bb4cc7285b9089@kf-fixture</segment>
+  <segment bytes="787038" number="37">53579a65ca5e3439ed7d0226@kf-fixture</segment>
+  <segment bytes="787593" number="38">ab26ae95315772979f29bfdf@kf-fixture</segment>
+  <segment bytes="786861" number="39">0387f4925c67e72caf17cb43@kf-fixture</segment>
+  <segment bytes="786991" number="40">391c57a7c034545b0059a7c1@kf-fixture</segment>
+  <segment bytes="786984" number="41">69c6133233f7b19c6f54513a@kf-fixture</segment>
+  <segment bytes="787085" number="42">bbdfc787dd84743e37219964@kf-fixture</segment>
+  <segment bytes="786987" number="43">110e63f87d730a44983f008c@kf-fixture</segment>
+  <segment bytes="787030" number="44">f9dd9d72c69a546ff164b203@kf-fixture</segment>
+  <segment bytes="786992" number="45">2a8665c9049224852c9754b0@kf-fixture</segment>
+  <segment bytes="787053" number="46">746a8d538d3c2ddefb80bbdf@kf-fixture</segment>
+  <segment bytes="786984" number="47">f751cd99d1f07e47a638c78f@kf-fixture</segment>
+  <segment bytes="787076" number="48">74075632198030286148a0f4@kf-fixture</segment>
+  <segment bytes="786984" number="49">b7f4f1c3d4356287e0d2dbf4@kf-fixture</segment>
+  <segment bytes="786982" number="50">0b649649b16e3af7ec76460f@kf-fixture</segment>
+  <segment bytes="786948" number="51">a1f62a581e14aed5b1738989@kf-fixture</segment>
+  <segment bytes="787052" number="52">d287b4551b0a28712411aac8@kf-fixture</segment>
+  <segment bytes="787097" number="53">d51a47e6c0f9162255ad80d7@kf-fixture</segment>
+  <segment bytes="787041" number="54">7c110694a752e6584dfde308@kf-fixture</segment>
+  <segment bytes="786924" number="55">40147ddc7e567154f98391ac@kf-fixture</segment>
+  <segment bytes="786961" number="56">4b029c11cfa9895151e8a44e@kf-fixture</segment>
+  <segment bytes="787094" number="57">f1964ecdb773723f0b17dd76@kf-fixture</segment>
+  <segment bytes="786986" number="58">bff151e8de2c7555c5ee428d@kf-fixture</segment>
+  <segment bytes="786988" number="59">39574567ff8e06fbddd7e0c5@kf-fixture</segment>
+  <segment bytes="786907" number="60">340fe0561a6f7077fbbecd35@kf-fixture</segment>
+  <segment bytes="787019" number="61">f87a6c146e77b75a4ebddbcc@kf-fixture</segment>
+  <segment bytes="787041" number="62">1a5592d04f4519347e13147c@kf-fixture</segment>
+  <segment bytes="786952" number="63">c1bce81d507365344c324f8a@kf-fixture</segment>
+  <segment bytes="786819" number="64">0c3090a7bdfde35ae76910e2@kf-fixture</segment>
+  <segment bytes="786935" number="65">6b29b4a4e571e4cfe33b73eb@kf-fixture</segment>
+  <segment bytes="82759" number="66">a561a5ad82150a871d575a9d@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434153" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[14/33] - &quot;aaf-tz.s02e06.720p.r11&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787047" number="1">9f9cc56c9cf2b8a03a3767ea@kf-fixture</segment>
+  <segment bytes="787043" number="2">db3e5e0a5894f16cb3ce8f58@kf-fixture</segment>
+  <segment bytes="787064" number="3">30ab7bf2441a3bac5540adfe@kf-fixture</segment>
+  <segment bytes="787052" number="4">9c9b1f5de7c1515dd4c7b39d@kf-fixture</segment>
+  <segment bytes="787184" number="5">2a77bd90bb30e8c645f0ca0c@kf-fixture</segment>
+  <segment bytes="786973" number="6">0bea8f096d8bfe29c7d2e432@kf-fixture</segment>
+  <segment bytes="786992" number="7">51711342bfd24a16012a75fa@kf-fixture</segment>
+  <segment bytes="786957" number="8">004e03ba759f69e2e6f5e5e8@kf-fixture</segment>
+  <segment bytes="787072" number="9">8df4210e3d0db65e6c952420@kf-fixture</segment>
+  <segment bytes="787057" number="10">a1d2801f48e4988db42e9166@kf-fixture</segment>
+  <segment bytes="786828" number="11">bccc37a2b5cb25f30019c8f7@kf-fixture</segment>
+  <segment bytes="787041" number="12">ae675d0435294293e8194cfa@kf-fixture</segment>
+  <segment bytes="787461" number="13">9ba4f041f4fd21361dd99b89@kf-fixture</segment>
+  <segment bytes="786987" number="14">c50c821658f5605ae07ff626@kf-fixture</segment>
+  <segment bytes="787013" number="15">2bc7737ada162a95ba166577@kf-fixture</segment>
+  <segment bytes="793378" number="16">04eb1bcfb7254567607ff54d@kf-fixture</segment>
+  <segment bytes="786977" number="17">f59d3db91257b71bb326bbd2@kf-fixture</segment>
+  <segment bytes="786974" number="18">12c8185590661ce7699d8c85@kf-fixture</segment>
+  <segment bytes="793518" number="19">ef2801d4c4c04a1b7bbb6f29@kf-fixture</segment>
+  <segment bytes="787147" number="20">3bb083d6ee14765e0c418eda@kf-fixture</segment>
+  <segment bytes="787071" number="21">d3546ddc077dd731bf326d8d@kf-fixture</segment>
+  <segment bytes="786919" number="22">cfa6dd4b793f56cc5dcd74f4@kf-fixture</segment>
+  <segment bytes="787107" number="23">4d5e75de8e0b73c4c57ff61b@kf-fixture</segment>
+  <segment bytes="786872" number="24">f014f4636368787a8b456c9c@kf-fixture</segment>
+  <segment bytes="786782" number="25">f0904e22ca17adc144c4aa42@kf-fixture</segment>
+  <segment bytes="793688" number="26">13b4b1cc93747ab2ff0609ee@kf-fixture</segment>
+  <segment bytes="786711" number="27">069e9283f42271b4610f2a46@kf-fixture</segment>
+  <segment bytes="787032" number="28">9b91f63cdb9efdb28c59e45f@kf-fixture</segment>
+  <segment bytes="786943" number="29">a326c21b27a05f152a8b93e6@kf-fixture</segment>
+  <segment bytes="787102" number="30">a1ec128ac194c303948fe0b4@kf-fixture</segment>
+  <segment bytes="787034" number="31">b78797e09e6c90de1dee686c@kf-fixture</segment>
+  <segment bytes="786950" number="32">ed4fbe19f376eedf4836abeb@kf-fixture</segment>
+  <segment bytes="787071" number="33">aeea070a5e27a0f944604c55@kf-fixture</segment>
+  <segment bytes="787224" number="34">89ba42a8c64d108410a4d91f@kf-fixture</segment>
+  <segment bytes="793649" number="35">5374443295c66b4ba2dd159f@kf-fixture</segment>
+  <segment bytes="786955" number="36">911327b941a583fa3e593373@kf-fixture</segment>
+  <segment bytes="786992" number="37">1817891139e8f0a0ddb648f0@kf-fixture</segment>
+  <segment bytes="786882" number="38">c058e08aab9a2e7ff863778b@kf-fixture</segment>
+  <segment bytes="787150" number="39">121396403e6560eda55cc1a4@kf-fixture</segment>
+  <segment bytes="786901" number="40">d4d23e391f8014af4451961d@kf-fixture</segment>
+  <segment bytes="787030" number="41">99d1cd85e45a53494bbc9fef@kf-fixture</segment>
+  <segment bytes="787068" number="42">d586093d92ab911b5262e334@kf-fixture</segment>
+  <segment bytes="786932" number="43">4205dab1c24046e93db53dee@kf-fixture</segment>
+  <segment bytes="787013" number="44">0c7a00614e8e87e98dbb680e@kf-fixture</segment>
+  <segment bytes="793402" number="45">aefac6cd6fb6747bc3655f21@kf-fixture</segment>
+  <segment bytes="786938" number="46">e31cde0d7b916cf73d6b9c2e@kf-fixture</segment>
+  <segment bytes="786927" number="47">966cf7220563f66434465a9c@kf-fixture</segment>
+  <segment bytes="787014" number="48">ef058cc73eef3a070d6110ed@kf-fixture</segment>
+  <segment bytes="787060" number="49">fa7f827a7e605778b2e25913@kf-fixture</segment>
+  <segment bytes="786919" number="50">a7e358dbe020e4beef236268@kf-fixture</segment>
+  <segment bytes="787050" number="51">74f78863153a6edf2e419d40@kf-fixture</segment>
+  <segment bytes="787051" number="52">b8b49039d08c2afccdc03d6c@kf-fixture</segment>
+  <segment bytes="786986" number="53">884b9add31230dc40124f3d0@kf-fixture</segment>
+  <segment bytes="786909" number="54">46f4432486c7ab1a84181142@kf-fixture</segment>
+  <segment bytes="786964" number="55">e5778a965a1812b14fb1c744@kf-fixture</segment>
+  <segment bytes="787057" number="56">91ae6658e8ce3b450dd813fc@kf-fixture</segment>
+  <segment bytes="787470" number="57">803ec7e142f0b01da4ee1119@kf-fixture</segment>
+  <segment bytes="786816" number="58">dd2101d59497c12e6191ef27@kf-fixture</segment>
+  <segment bytes="787064" number="59">17cda64e729bba176cd176f3@kf-fixture</segment>
+  <segment bytes="787234" number="60">06dc0884a3883771f2ae85e6@kf-fixture</segment>
+  <segment bytes="786883" number="61">136915a47ac788c81bd2fc61@kf-fixture</segment>
+  <segment bytes="786937" number="62">505d8fddc837256ded6c261d@kf-fixture</segment>
+  <segment bytes="787091" number="63">18ffaf31873b515af6a2986b@kf-fixture</segment>
+  <segment bytes="786938" number="64">f634e9d2845c3425c70f8f86@kf-fixture</segment>
+  <segment bytes="787037" number="65">abb8021febd51e8eb06c2ad1@kf-fixture</segment>
+  <segment bytes="83127" number="66">f6cee855542196c9c9d3bbc7@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434154" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[15/33] - &quot;aaf-tz.s02e06.720p.r12&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786938" number="1">5e4b4874e3f2b63796a1aa97@kf-fixture</segment>
+  <segment bytes="787034" number="2">89442af4de5307a14d6f9f77@kf-fixture</segment>
+  <segment bytes="786980" number="3">abafb3e639491df3fb2c32a2@kf-fixture</segment>
+  <segment bytes="786949" number="4">be566cca37beb1bec9ecbef4@kf-fixture</segment>
+  <segment bytes="786872" number="5">9e65729ad19eb3c5745a25f3@kf-fixture</segment>
+  <segment bytes="786970" number="6">50f77d9b809386697ee00dda@kf-fixture</segment>
+  <segment bytes="787141" number="7">107479c0d6e44e4bc0e94a89@kf-fixture</segment>
+  <segment bytes="787119" number="8">6d63d443a74e0e4052d20108@kf-fixture</segment>
+  <segment bytes="787130" number="9">7808c41e0ac57c9d88cb9375@kf-fixture</segment>
+  <segment bytes="787005" number="10">3fad2c42dce470ed12a8ceca@kf-fixture</segment>
+  <segment bytes="786860" number="11">aed4d2a4f48020d5738b8127@kf-fixture</segment>
+  <segment bytes="787100" number="12">1c41d4e46332b3081b05d335@kf-fixture</segment>
+  <segment bytes="786745" number="13">37e4cfe84369d71d93a972b7@kf-fixture</segment>
+  <segment bytes="787115" number="14">1168e1378b30914481293634@kf-fixture</segment>
+  <segment bytes="786999" number="15">dc13d63b34de85386b9e00e5@kf-fixture</segment>
+  <segment bytes="786903" number="16">36014d079ad1b9d00c1a6f34@kf-fixture</segment>
+  <segment bytes="786976" number="17">0a2fd68cd12f0763e26ea224@kf-fixture</segment>
+  <segment bytes="787021" number="18">8637a2e46614fa2fdd5b7e79@kf-fixture</segment>
+  <segment bytes="787059" number="19">822f4c8d56b8f74cf1ca323e@kf-fixture</segment>
+  <segment bytes="787034" number="20">3ebd2d1b91d25d04560f102d@kf-fixture</segment>
+  <segment bytes="786902" number="21">eabb69958188a3ef16cdaa30@kf-fixture</segment>
+  <segment bytes="786966" number="22">969173ba503da98f32198cc9@kf-fixture</segment>
+  <segment bytes="787052" number="23">180a62883e331fc2a85b5ce8@kf-fixture</segment>
+  <segment bytes="786919" number="24">a0d66b3aa4cb83e5adb01066@kf-fixture</segment>
+  <segment bytes="786887" number="25">28f8e105f59fa1c0eef4590a@kf-fixture</segment>
+  <segment bytes="786908" number="26">f85fd119084c460ee8360ac2@kf-fixture</segment>
+  <segment bytes="787035" number="27">d691ee455bb4a49436208e57@kf-fixture</segment>
+  <segment bytes="787041" number="28">31fd3d289d4da9a183e42213@kf-fixture</segment>
+  <segment bytes="787003" number="29">d976e94113f5cdce5aa522e2@kf-fixture</segment>
+  <segment bytes="786877" number="30">c630e26120c16f39ca25f663@kf-fixture</segment>
+  <segment bytes="786945" number="31">66930310ffe23764a6683f31@kf-fixture</segment>
+  <segment bytes="787028" number="32">3807f6e1be1c863fdeb76c29@kf-fixture</segment>
+  <segment bytes="786847" number="33">5f6f04bfe75391776e391018@kf-fixture</segment>
+  <segment bytes="787073" number="34">8ea99cdd63001738d095e9fb@kf-fixture</segment>
+  <segment bytes="787009" number="35">23750c17261d4aec1ade9c5b@kf-fixture</segment>
+  <segment bytes="786995" number="36">dc6b78b217a365ce033f3b4b@kf-fixture</segment>
+  <segment bytes="786941" number="37">2af6bded60d643e6e794dee4@kf-fixture</segment>
+  <segment bytes="787043" number="38">ef8703a84b84dc0de2f7b9a4@kf-fixture</segment>
+  <segment bytes="787634" number="39">1300ce0f995939cdc80adcf9@kf-fixture</segment>
+  <segment bytes="787007" number="40">2cf96d4c7dcfcb798c165b87@kf-fixture</segment>
+  <segment bytes="786913" number="41">c7f44823610ae96a90978151@kf-fixture</segment>
+  <segment bytes="786899" number="42">72680a5a11ee73015fef190b@kf-fixture</segment>
+  <segment bytes="786915" number="43">c30668026a89b5176af3ec55@kf-fixture</segment>
+  <segment bytes="786914" number="44">965b526810370ecd1023edd8@kf-fixture</segment>
+  <segment bytes="786965" number="45">d7170e913d45afc7ebbbc51d@kf-fixture</segment>
+  <segment bytes="787148" number="46">bf50e51c1ecf12f404d9cc2c@kf-fixture</segment>
+  <segment bytes="787045" number="47">20df5f5afc577f4006724ac2@kf-fixture</segment>
+  <segment bytes="786937" number="48">f8d34cb4cc570b06ff42c6d4@kf-fixture</segment>
+  <segment bytes="787033" number="49">59df87121d8515f6eca6f711@kf-fixture</segment>
+  <segment bytes="786765" number="50">5af9d6711408c80a188f41c5@kf-fixture</segment>
+  <segment bytes="786940" number="51">e17be8db903d5d0854e555f1@kf-fixture</segment>
+  <segment bytes="786898" number="52">7c492648b24475a4eeebe3c9@kf-fixture</segment>
+  <segment bytes="786867" number="53">8f50b1531ed9b3851547afb7@kf-fixture</segment>
+  <segment bytes="787033" number="54">cb6ec122d4e192de35046594@kf-fixture</segment>
+  <segment bytes="786916" number="55">9a2101ef3d7bd2d38b5a76bc@kf-fixture</segment>
+  <segment bytes="787008" number="56">94d821728ce130906a03326f@kf-fixture</segment>
+  <segment bytes="787051" number="57">d2ecd838e85849a06fe7e092@kf-fixture</segment>
+  <segment bytes="786856" number="58">694900061f07e2361e14903d@kf-fixture</segment>
+  <segment bytes="786954" number="59">644360fde58f1b1c8027d286@kf-fixture</segment>
+  <segment bytes="787190" number="60">8f4a01e5cc77924c2634b1dc@kf-fixture</segment>
+  <segment bytes="786935" number="61">e756a7267825237af9f36a94@kf-fixture</segment>
+  <segment bytes="787554" number="62">6b6ec44d92fc3295ef433683@kf-fixture</segment>
+  <segment bytes="786978" number="63">e582bb6591620f9d1c7a9935@kf-fixture</segment>
+  <segment bytes="786943" number="64">406bfb2857832230b723074a@kf-fixture</segment>
+  <segment bytes="787204" number="65">74abcd903c99502f8ea2e3d0@kf-fixture</segment>
+  <segment bytes="82712" number="66">be786bd5a6fe41a350398618@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434155" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[16/33] - &quot;aaf-tz.s02e06.720p.r13&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786902" number="1">39bd367fe7980f2f043503a0@kf-fixture</segment>
+  <segment bytes="786799" number="2">3e7d6360b8e6ab4022eecc06@kf-fixture</segment>
+  <segment bytes="787091" number="3">e306430413f9c48acf3cfd10@kf-fixture</segment>
+  <segment bytes="786903" number="4">675da07473d024763e9c4565@kf-fixture</segment>
+  <segment bytes="787153" number="5">67684d27a778774521d39490@kf-fixture</segment>
+  <segment bytes="787051" number="6">e41a531e7c6c8bd4d43a4e07@kf-fixture</segment>
+  <segment bytes="786949" number="7">0b5d56a15011f1f2636d2b52@kf-fixture</segment>
+  <segment bytes="786892" number="8">df3a9ee1f0b4bb548daa6d9b@kf-fixture</segment>
+  <segment bytes="786998" number="9">7035d220b8e0e1ec1b9cef6e@kf-fixture</segment>
+  <segment bytes="786831" number="10">19ac3a4e934af561be7eac7a@kf-fixture</segment>
+  <segment bytes="786937" number="11">4c3897c24688044945fcd3b6@kf-fixture</segment>
+  <segment bytes="787042" number="12">a6b5854b71caa8552034d3f2@kf-fixture</segment>
+  <segment bytes="787160" number="13">1e670930bcee24ca6a651ea3@kf-fixture</segment>
+  <segment bytes="786981" number="14">08c7a168b6fe5da8b6e13e41@kf-fixture</segment>
+  <segment bytes="786924" number="15">24dbec357d074beb1848f6da@kf-fixture</segment>
+  <segment bytes="786953" number="16">8b6a660a01058ef53cf24d5a@kf-fixture</segment>
+  <segment bytes="786917" number="17">51fb1e7554e4ee9992922ef3@kf-fixture</segment>
+  <segment bytes="786953" number="18">316874fca68d2617253890a6@kf-fixture</segment>
+  <segment bytes="787057" number="19">218c8806685aeee86713be5c@kf-fixture</segment>
+  <segment bytes="787065" number="20">e544c0f42803b5dd95b4cc66@kf-fixture</segment>
+  <segment bytes="786729" number="21">448c60d8e33c2f57a16b5f0c@kf-fixture</segment>
+  <segment bytes="786941" number="22">c365ac06c123a1f0f3092c8b@kf-fixture</segment>
+  <segment bytes="786945" number="23">5f96396d628fd4e619ff0f49@kf-fixture</segment>
+  <segment bytes="786940" number="24">06362b82daa0c2317a4bd0c2@kf-fixture</segment>
+  <segment bytes="787310" number="25">dcdf78ad882a3b0069b54980@kf-fixture</segment>
+  <segment bytes="787618" number="26">0bf4a59a12fc0b3148121527@kf-fixture</segment>
+  <segment bytes="786968" number="27">d64d038a78a69c403391c143@kf-fixture</segment>
+  <segment bytes="786679" number="28">b9c867ae10bb18b5c71eeb29@kf-fixture</segment>
+  <segment bytes="787091" number="29">5659fccaea4a49ff3212ea78@kf-fixture</segment>
+  <segment bytes="786820" number="30">1d73941a35cfc44c338e0f0e@kf-fixture</segment>
+  <segment bytes="787032" number="31">e44814779b77c7b7f147751e@kf-fixture</segment>
+  <segment bytes="786882" number="32">922b837656ffbd8b3dd6d1b9@kf-fixture</segment>
+  <segment bytes="787022" number="33">685faf24370f782783a95b14@kf-fixture</segment>
+  <segment bytes="787015" number="34">ea172b08467b4036073c98b8@kf-fixture</segment>
+  <segment bytes="786952" number="35">eb4dde4c0973fe3435010719@kf-fixture</segment>
+  <segment bytes="786898" number="36">5672169de6c0946267ed5839@kf-fixture</segment>
+  <segment bytes="787165" number="37">e07ff8a06aa0d4c0ead39d7e@kf-fixture</segment>
+  <segment bytes="786983" number="38">46c4eaf7ce833a4998c36df7@kf-fixture</segment>
+  <segment bytes="787067" number="39">e073e1d94b77ed01dfa60077@kf-fixture</segment>
+  <segment bytes="787080" number="40">a318d008f4a4deedc6319078@kf-fixture</segment>
+  <segment bytes="787075" number="41">55ba560dbf31d2005afee972@kf-fixture</segment>
+  <segment bytes="787091" number="42">563076d744c1dbf3921708e4@kf-fixture</segment>
+  <segment bytes="786954" number="43">6d7f4b0fe2a99216645822e8@kf-fixture</segment>
+  <segment bytes="787055" number="44">1b5ad49cf4896f34f13e9574@kf-fixture</segment>
+  <segment bytes="786854" number="45">550e6ffdf5d1496e7e82a7bd@kf-fixture</segment>
+  <segment bytes="787109" number="46">2b5d753cbdc79825409c6e64@kf-fixture</segment>
+  <segment bytes="787222" number="47">1b81ce43ab3f25c89e980761@kf-fixture</segment>
+  <segment bytes="787027" number="48">63393f90fb307349b18eb495@kf-fixture</segment>
+  <segment bytes="787274" number="49">77fd2656da331861449dfbcb@kf-fixture</segment>
+  <segment bytes="787179" number="50">8a58ad85227ea5cd263ceaa3@kf-fixture</segment>
+  <segment bytes="786961" number="51">11d5c3b7bdc53eb9ecc8ed52@kf-fixture</segment>
+  <segment bytes="787092" number="52">4ea558a45916effa6f8528b8@kf-fixture</segment>
+  <segment bytes="786897" number="53">f98a41d5de1fc08be4887cf1@kf-fixture</segment>
+  <segment bytes="786907" number="54">d75b60f6155e19fec18c6828@kf-fixture</segment>
+  <segment bytes="786994" number="55">db1e596995f6d9ef57039f78@kf-fixture</segment>
+  <segment bytes="786896" number="56">3d08a438c73d6237c734ede5@kf-fixture</segment>
+  <segment bytes="787108" number="57">848a42724d76361c063d3726@kf-fixture</segment>
+  <segment bytes="786895" number="58">f6f97cc744242d78c97255ce@kf-fixture</segment>
+  <segment bytes="787044" number="59">9b6243183a0965e06adf1c1f@kf-fixture</segment>
+  <segment bytes="787036" number="60">df1d5d9a20c095af19bb8e6c@kf-fixture</segment>
+  <segment bytes="787396" number="61">2f6ce5b6072cd59dc4b1ca88@kf-fixture</segment>
+  <segment bytes="786867" number="62">4f6921394aeae1a430f251cd@kf-fixture</segment>
+  <segment bytes="786959" number="63">010fe6542cd50e87c86b1d59@kf-fixture</segment>
+  <segment bytes="787377" number="64">c812f3ca1eb527ea0e92a642@kf-fixture</segment>
+  <segment bytes="787002" number="65">76e80a15ea37a85be24bc462@kf-fixture</segment>
+  <segment bytes="82694" number="66">428b42938432d9ff58d62a92@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434155" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[17/33] - &quot;aaf-tz.s02e06.720p.r14&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786937" number="1">ad86503424b91f567ffb8320@kf-fixture</segment>
+  <segment bytes="786892" number="2">072b30cbb80a3d70e1d06fee@kf-fixture</segment>
+  <segment bytes="786902" number="3">c129c62951bff7c1d3fd83cf@kf-fixture</segment>
+  <segment bytes="787094" number="4">bcb9401914860ad94e822d5f@kf-fixture</segment>
+  <segment bytes="787097" number="5">620677e583437eb346eb5dd2@kf-fixture</segment>
+  <segment bytes="787080" number="6">eb5749eeff570f99af75fdd5@kf-fixture</segment>
+  <segment bytes="787177" number="7">8bc5af989d4214332fcfc147@kf-fixture</segment>
+  <segment bytes="786983" number="8">90ff042ebe3cf3003717f277@kf-fixture</segment>
+  <segment bytes="786992" number="9">58b593b9403502c66bcc85b1@kf-fixture</segment>
+  <segment bytes="786995" number="10">0fbdbf5005877f8bba86a724@kf-fixture</segment>
+  <segment bytes="786902" number="11">d72a31505a34863557086225@kf-fixture</segment>
+  <segment bytes="787120" number="12">afdf2aa8abbebde90335215d@kf-fixture</segment>
+  <segment bytes="787046" number="13">b8e2c7f5124af880e433c829@kf-fixture</segment>
+  <segment bytes="786982" number="14">bf48a69ec30bedef40d7c4b6@kf-fixture</segment>
+  <segment bytes="786735" number="15">cec6375aa37a759485e6fc91@kf-fixture</segment>
+  <segment bytes="786939" number="16">94b70e07bbbe79379c18832f@kf-fixture</segment>
+  <segment bytes="786868" number="17">366694abb4396a58dec52bab@kf-fixture</segment>
+  <segment bytes="786738" number="18">bc8be1db06e16324ad201f54@kf-fixture</segment>
+  <segment bytes="787005" number="19">ca842af044c9ba10b50b4824@kf-fixture</segment>
+  <segment bytes="787005" number="20">2c4367bf232b9bad59eb7938@kf-fixture</segment>
+  <segment bytes="786803" number="21">8781d38a35b03b5e7c707954@kf-fixture</segment>
+  <segment bytes="787031" number="22">f0a5d03c323656ffc4258b04@kf-fixture</segment>
+  <segment bytes="787109" number="23">4194d5c38bc272f80741627b@kf-fixture</segment>
+  <segment bytes="786931" number="24">25d76a754894e803a37ef5e2@kf-fixture</segment>
+  <segment bytes="787045" number="25">572a3b995f04156a9acf461f@kf-fixture</segment>
+  <segment bytes="787092" number="26">ac30ee21e9e63cb42a74df4a@kf-fixture</segment>
+  <segment bytes="786890" number="27">6936f3bcd632600101ef0fb8@kf-fixture</segment>
+  <segment bytes="786968" number="28">f6e3116d3652199fb15e8a61@kf-fixture</segment>
+  <segment bytes="786832" number="29">f16aff6cc51af957a4a9257b@kf-fixture</segment>
+  <segment bytes="786907" number="30">f0ee88d783faa67cd508e004@kf-fixture</segment>
+  <segment bytes="786833" number="31">d09de63e88ab8140de00203b@kf-fixture</segment>
+  <segment bytes="787020" number="32">b929e9943ca538604772ab0f@kf-fixture</segment>
+  <segment bytes="786995" number="33">69f363644d5efa6fc5e0e16a@kf-fixture</segment>
+  <segment bytes="786980" number="34">9edfdfb82d5fe85ca25f1a28@kf-fixture</segment>
+  <segment bytes="786870" number="35">823b919af8a658a6c43eb924@kf-fixture</segment>
+  <segment bytes="786924" number="36">d52e32f9db536c38198d7043@kf-fixture</segment>
+  <segment bytes="787007" number="37">c278455780eab7233ceb6c45@kf-fixture</segment>
+  <segment bytes="786842" number="38">5bd1da6fef64649157b434f1@kf-fixture</segment>
+  <segment bytes="786956" number="39">b006adf0bcf26a643bd3bf3c@kf-fixture</segment>
+  <segment bytes="787066" number="40">6211201c8b23a71bad8a67f3@kf-fixture</segment>
+  <segment bytes="786946" number="41">5e05eab61d26071aa83b2ef6@kf-fixture</segment>
+  <segment bytes="787080" number="42">988034bb64b19180538c876b@kf-fixture</segment>
+  <segment bytes="786921" number="43">a3b7990a1e84e01361ce4e49@kf-fixture</segment>
+  <segment bytes="786724" number="44">1f039b77f04a73c3aeea0483@kf-fixture</segment>
+  <segment bytes="786960" number="45">644011495473cce642811b16@kf-fixture</segment>
+  <segment bytes="787105" number="46">d809c5ba30b1b617770dd4f7@kf-fixture</segment>
+  <segment bytes="787016" number="47">c6a739f8e033617213443719@kf-fixture</segment>
+  <segment bytes="787018" number="48">a6eb60393b666bf5b69899e9@kf-fixture</segment>
+  <segment bytes="787087" number="49">3e951c1d67b90ff5eea94623@kf-fixture</segment>
+  <segment bytes="787126" number="50">8d078481b0b93b6ceca57814@kf-fixture</segment>
+  <segment bytes="787026" number="51">534fa291fdb36258e1f4bb64@kf-fixture</segment>
+  <segment bytes="786856" number="52">7c11268ac9c0f12403d24b47@kf-fixture</segment>
+  <segment bytes="787076" number="53">3f90f912e5ffda65700b2063@kf-fixture</segment>
+  <segment bytes="786992" number="54">7965fc84ea64e9ab7c9d8053@kf-fixture</segment>
+  <segment bytes="787070" number="55">afe1e2de5aa5304bebe36351@kf-fixture</segment>
+  <segment bytes="787150" number="56">914ac08261cdd520eef93688@kf-fixture</segment>
+  <segment bytes="787104" number="57">009c61100fd43499aab298bd@kf-fixture</segment>
+  <segment bytes="787004" number="58">8e102b74e89e5e107f5fc9ef@kf-fixture</segment>
+  <segment bytes="786827" number="59">023c6ac6132554c8c5121338@kf-fixture</segment>
+  <segment bytes="786906" number="60">155334b14d05dea12d7c0470@kf-fixture</segment>
+  <segment bytes="786791" number="61">3fa5cdbaff1009dbbcc4da45@kf-fixture</segment>
+  <segment bytes="786812" number="62">0628f1724f76c74cb3fa928f@kf-fixture</segment>
+  <segment bytes="787186" number="63">346ce3e33230bc12c1d3b5de@kf-fixture</segment>
+  <segment bytes="786886" number="64">7196809c14e6b5b5856613e7@kf-fixture</segment>
+  <segment bytes="786838" number="65">69a672e5c467cc6dbf1b01e0@kf-fixture</segment>
+  <segment bytes="82739" number="66">00eb457ae512b8c25986dc7d@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434157" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[18/33] - &quot;aaf-tz.s02e06.720p.r15&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786967" number="1">dd5ae0cf99e90250c048e4a5@kf-fixture</segment>
+  <segment bytes="786995" number="2">bd4d30ea3c632d97ec47615c@kf-fixture</segment>
+  <segment bytes="787106" number="3">d2389ae8da3d8f8d771efa27@kf-fixture</segment>
+  <segment bytes="786996" number="4">6454209511f8dac9af48e4e5@kf-fixture</segment>
+  <segment bytes="787151" number="5">8809bb0a2294c41e000922e6@kf-fixture</segment>
+  <segment bytes="786921" number="6">4a1026fb52b92ec81ad51ff6@kf-fixture</segment>
+  <segment bytes="786918" number="7">a331c72752e352b0930280b0@kf-fixture</segment>
+  <segment bytes="786915" number="8">9d249995af2c41159627b95e@kf-fixture</segment>
+  <segment bytes="786940" number="9">98486a92354b5b7a0db35430@kf-fixture</segment>
+  <segment bytes="787051" number="10">00c9c72d6b0872a8e10cf250@kf-fixture</segment>
+  <segment bytes="786861" number="11">9ed1b42cfe7cac09ea9300cc@kf-fixture</segment>
+  <segment bytes="787160" number="12">f1972f1fe9ddd0e3b319b0e7@kf-fixture</segment>
+  <segment bytes="786991" number="13">099550c00922593efc52b4c5@kf-fixture</segment>
+  <segment bytes="787138" number="14">cbdf74b789dad093eb4c6775@kf-fixture</segment>
+  <segment bytes="786997" number="15">529dddacb5a9c6948e097c98@kf-fixture</segment>
+  <segment bytes="787023" number="16">34a204aa7445c9193cf9de4a@kf-fixture</segment>
+  <segment bytes="786863" number="17">e62c1683f55c8ae75cbe4763@kf-fixture</segment>
+  <segment bytes="787020" number="18">82c7999709b62a9d9be8b438@kf-fixture</segment>
+  <segment bytes="786910" number="19">b194764047860867ed55b3e5@kf-fixture</segment>
+  <segment bytes="786770" number="20">d053ee5bb149c2bef0ce262f@kf-fixture</segment>
+  <segment bytes="787103" number="21">f4cf7089bc9206646558ea3e@kf-fixture</segment>
+  <segment bytes="787136" number="22">359b373ff36de82db62d4f80@kf-fixture</segment>
+  <segment bytes="787105" number="23">afbf3dbf858c48fda27f3b3e@kf-fixture</segment>
+  <segment bytes="787104" number="24">dff79505cd39a97fcb0a2e37@kf-fixture</segment>
+  <segment bytes="787069" number="25">dce35c1ee75eac1c0aeb8116@kf-fixture</segment>
+  <segment bytes="787185" number="26">a43f426e70a27365921f84ca@kf-fixture</segment>
+  <segment bytes="787019" number="27">659ac31778c624dd517656f8@kf-fixture</segment>
+  <segment bytes="787218" number="28">c1406f0806befe513eda7c65@kf-fixture</segment>
+  <segment bytes="787031" number="29">b48e0f63e5c29e016768ea88@kf-fixture</segment>
+  <segment bytes="787018" number="30">ba141fb4bed7bfac6d3ff530@kf-fixture</segment>
+  <segment bytes="786895" number="31">0bf513030bfc8f6e1a96c0b8@kf-fixture</segment>
+  <segment bytes="786859" number="32">5e565ee0ab8d751c68f01be1@kf-fixture</segment>
+  <segment bytes="786872" number="33">ee447e5e92bef8faeb8dbfe5@kf-fixture</segment>
+  <segment bytes="786938" number="34">48bb8efa2e44f67528b3ba07@kf-fixture</segment>
+  <segment bytes="786959" number="35">c589a5d912a57390a641339e@kf-fixture</segment>
+  <segment bytes="787550" number="36">7dc33e9d6b858892f4c4aa63@kf-fixture</segment>
+  <segment bytes="787008" number="37">7a9f66e7185c087a06be3d27@kf-fixture</segment>
+  <segment bytes="787013" number="38">fc8e00d7fbb9a7aa15647f8f@kf-fixture</segment>
+  <segment bytes="787007" number="39">8e64d48507357b247b26e0c6@kf-fixture</segment>
+  <segment bytes="787015" number="40">bd8696345d68d70c13305d8f@kf-fixture</segment>
+  <segment bytes="786787" number="41">4f7a00cb8e18899705b769bd@kf-fixture</segment>
+  <segment bytes="786730" number="42">06b8dab6384c42db7d4c129b@kf-fixture</segment>
+  <segment bytes="787116" number="43">aa6cafd5ad7f8c43473a0e82@kf-fixture</segment>
+  <segment bytes="786917" number="44">11547e4fbe72c4791d28f9b7@kf-fixture</segment>
+  <segment bytes="793529" number="45">b65b1caeee9fd8e7b613e23c@kf-fixture</segment>
+  <segment bytes="793596" number="46">14e6225fecd8bc6c7841450b@kf-fixture</segment>
+  <segment bytes="786701" number="47">8f86194fa318d885af2e5cda@kf-fixture</segment>
+  <segment bytes="787305" number="48">44e272760f4aa0559344ddd1@kf-fixture</segment>
+  <segment bytes="787079" number="49">4acb09030605e7830deb3856@kf-fixture</segment>
+  <segment bytes="787162" number="50">a243b84a37b08adbd6cea153@kf-fixture</segment>
+  <segment bytes="793626" number="51">f8526d5bfb490ab38decf984@kf-fixture</segment>
+  <segment bytes="787138" number="52">ecb199372eb0dda781f951e2@kf-fixture</segment>
+  <segment bytes="793475" number="53">7a602059d9f2664d03a36445@kf-fixture</segment>
+  <segment bytes="786971" number="54">70f143bcec70757028dc55d6@kf-fixture</segment>
+  <segment bytes="786896" number="55">aa1804619eed1e1957f3aadc@kf-fixture</segment>
+  <segment bytes="787050" number="56">d6f4d8a843f71bf5ad5c5610@kf-fixture</segment>
+  <segment bytes="786986" number="57">2b3f7477217cd443c724557c@kf-fixture</segment>
+  <segment bytes="787194" number="58">3c8f3ce92d4a979987c0c325@kf-fixture</segment>
+  <segment bytes="786915" number="59">40472787006790e741d36a5d@kf-fixture</segment>
+  <segment bytes="786951" number="60">196a5b9b39085c73bd77f852@kf-fixture</segment>
+  <segment bytes="786858" number="61">9a34dcc85e8cfd45996e8572@kf-fixture</segment>
+  <segment bytes="787343" number="62">4a649c94281e5aa8602b5de5@kf-fixture</segment>
+  <segment bytes="787180" number="63">db4e7c81264935d7d6397552@kf-fixture</segment>
+  <segment bytes="786931" number="64">842b3f996bfc44bda06d6001@kf-fixture</segment>
+  <segment bytes="787320" number="65">7d5bb75514b2836a28310a5d@kf-fixture</segment>
+  <segment bytes="83155" number="66">ad26a8dcb0c2ad554a002716@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434157" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[19/33] - &quot;aaf-tz.s02e06.720p.r16&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786978" number="1">2edc34d9ab02f77f659e8406@kf-fixture</segment>
+  <segment bytes="787055" number="2">c72db383adaf2d5e784b4cd6@kf-fixture</segment>
+  <segment bytes="787054" number="3">261d65156fe36178482cc18c@kf-fixture</segment>
+  <segment bytes="786940" number="4">3e9d8747ef2b601c75290e4f@kf-fixture</segment>
+  <segment bytes="787381" number="5">b701e78f46a3d8447b73a06b@kf-fixture</segment>
+  <segment bytes="786965" number="6">bb568fd37107367be5de4467@kf-fixture</segment>
+  <segment bytes="786941" number="7">aa46a4e4d9c08edfce88f8fa@kf-fixture</segment>
+  <segment bytes="787236" number="8">05f7965dc0aee473fdde4da3@kf-fixture</segment>
+  <segment bytes="786989" number="9">3d3b69457f82f6d7e9a648d1@kf-fixture</segment>
+  <segment bytes="787128" number="10">71e4d329ab80d2eb97e9d8f1@kf-fixture</segment>
+  <segment bytes="787023" number="11">25d560c239f10554f86347fc@kf-fixture</segment>
+  <segment bytes="786961" number="12">ccf959e72021e7555394c2e3@kf-fixture</segment>
+  <segment bytes="787156" number="13">7b68952842ec360c2502c380@kf-fixture</segment>
+  <segment bytes="786946" number="14">732e83af18bc1dbd1180017f@kf-fixture</segment>
+  <segment bytes="786879" number="15">fa99c48b507692d6411337ae@kf-fixture</segment>
+  <segment bytes="787158" number="16">8e8ea986c233e3daa799f3f7@kf-fixture</segment>
+  <segment bytes="786973" number="17">31bde755cb3c50ce67a50046@kf-fixture</segment>
+  <segment bytes="787017" number="18">6366eebd769b647c8a0473ea@kf-fixture</segment>
+  <segment bytes="787094" number="19">b16f39d82bfc15eed35db4a3@kf-fixture</segment>
+  <segment bytes="787018" number="20">8bcc138c9fee038f3f302ed1@kf-fixture</segment>
+  <segment bytes="786859" number="21">fb6ae68eea2bfb6d350e0db1@kf-fixture</segment>
+  <segment bytes="787068" number="22">75cd3f3518f23b608362cca2@kf-fixture</segment>
+  <segment bytes="787070" number="23">6446ac1fd2090558ac7644a9@kf-fixture</segment>
+  <segment bytes="787172" number="24">810560e9691dcdf24a55fbec@kf-fixture</segment>
+  <segment bytes="786883" number="25">cd3f93a12a9baa6d6bf51a88@kf-fixture</segment>
+  <segment bytes="786953" number="26">88dacbdfa1c600b6dad32d4f@kf-fixture</segment>
+  <segment bytes="786945" number="27">8e06754f141b5b81960fba02@kf-fixture</segment>
+  <segment bytes="787001" number="28">fb1b7c875cdd8dde10255680@kf-fixture</segment>
+  <segment bytes="787204" number="29">fadc18098e53d4c0c4ad7e3e@kf-fixture</segment>
+  <segment bytes="786907" number="30">2a7c04949541dd3437624b84@kf-fixture</segment>
+  <segment bytes="787243" number="31">d47552d83211ed62985a4484@kf-fixture</segment>
+  <segment bytes="786813" number="32">a12f33e3150540e9ccc31925@kf-fixture</segment>
+  <segment bytes="787020" number="33">cef6ce16d79ebaf3eb2ed311@kf-fixture</segment>
+  <segment bytes="786946" number="34">4ff0e9fffa7de31a7cf30d16@kf-fixture</segment>
+  <segment bytes="786959" number="35">4c01a86a204acf143c4a0587@kf-fixture</segment>
+  <segment bytes="786877" number="36">ea92bf60242edbd6cd0dc8a1@kf-fixture</segment>
+  <segment bytes="786957" number="37">7bde6602e9e7d61dc676589f@kf-fixture</segment>
+  <segment bytes="786957" number="38">f80dd56939705233b7f031cf@kf-fixture</segment>
+  <segment bytes="786941" number="39">0111cd6190d86d5359d6f9e8@kf-fixture</segment>
+  <segment bytes="787030" number="40">9957cd577e1f9674b0db1a8c@kf-fixture</segment>
+  <segment bytes="786878" number="41">2b4d89b8ab9f3d74b2c9b804@kf-fixture</segment>
+  <segment bytes="787059" number="42">e7500b3f0e41739138e9da4a@kf-fixture</segment>
+  <segment bytes="786944" number="43">2ad02d689a380a53a66b7a12@kf-fixture</segment>
+  <segment bytes="786998" number="44">865230ef80efc119cdd7bd16@kf-fixture</segment>
+  <segment bytes="787105" number="45">745ade3be81955410179b38a@kf-fixture</segment>
+  <segment bytes="786995" number="46">3b2908d756b9a4d66e559825@kf-fixture</segment>
+  <segment bytes="787036" number="47">9540bf9d5582427bd21b6eed@kf-fixture</segment>
+  <segment bytes="787045" number="48">b114de1210fe0f2e1bdf6607@kf-fixture</segment>
+  <segment bytes="786776" number="49">879a3adeb55f8b8a761f3383@kf-fixture</segment>
+  <segment bytes="787005" number="50">6dc38826d12a6374f76fe72a@kf-fixture</segment>
+  <segment bytes="787111" number="51">8e0fc895cbf44cf030d52c2f@kf-fixture</segment>
+  <segment bytes="786886" number="52">18cc0511e1aeb4344849260b@kf-fixture</segment>
+  <segment bytes="787099" number="53">0dd887922daa2c4955b6cd7d@kf-fixture</segment>
+  <segment bytes="787037" number="54">f08a2247e6aa36dd7ebaac3b@kf-fixture</segment>
+  <segment bytes="786884" number="55">5fd222fb3328fbe77537e6f4@kf-fixture</segment>
+  <segment bytes="787007" number="56">a201c46f81a204ca2f5dbfd8@kf-fixture</segment>
+  <segment bytes="787170" number="57">a0b1f07be7eab01f8b35251e@kf-fixture</segment>
+  <segment bytes="786971" number="58">d46aa1b9055dc7de8c97e3d1@kf-fixture</segment>
+  <segment bytes="786934" number="59">b1bc475172a49fd4c2a424d8@kf-fixture</segment>
+  <segment bytes="786922" number="60">e18a5bc54ca1e3133e3fad2b@kf-fixture</segment>
+  <segment bytes="787070" number="61">626bbe15e6570c3a6a7c1467@kf-fixture</segment>
+  <segment bytes="786969" number="62">e9f67d77c51da9e8e6d2e0ec@kf-fixture</segment>
+  <segment bytes="786935" number="63">f4476f32fd0908b847aabca1@kf-fixture</segment>
+  <segment bytes="787072" number="64">e48b128cd2428c2596347f47@kf-fixture</segment>
+  <segment bytes="786965" number="65">2fcfe06c3b2aa00598ffd8b3@kf-fixture</segment>
+  <segment bytes="82689" number="66">e33926805fa23fc7f56f2417@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434157" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[20/33] - &quot;aaf-tz.s02e06.720p.r17&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787132" number="1">4acab3a9eee957812e87e832@kf-fixture</segment>
+  <segment bytes="786955" number="2">f5e2990fa776c0af7f51d67f@kf-fixture</segment>
+  <segment bytes="786958" number="3">abf39fa55bc7c2ce8dcb4e79@kf-fixture</segment>
+  <segment bytes="787229" number="4">931c0980b3ac0b83d8191d20@kf-fixture</segment>
+  <segment bytes="786981" number="5">905c70d197de2191c81fc830@kf-fixture</segment>
+  <segment bytes="786752" number="6">346ba1009f776d3fd3f1ec45@kf-fixture</segment>
+  <segment bytes="786943" number="7">919bad885bcd9d0c5267f5d9@kf-fixture</segment>
+  <segment bytes="786853" number="8">c8029b0d1d10591365c6c7c6@kf-fixture</segment>
+  <segment bytes="787078" number="9">f7fc75e5634b11a0c7d8f337@kf-fixture</segment>
+  <segment bytes="786977" number="10">86207ea6b9513c4864067664@kf-fixture</segment>
+  <segment bytes="787068" number="11">f258f49338629a4947bbd11c@kf-fixture</segment>
+  <segment bytes="787074" number="12">646166fbc2973e9f3406b60b@kf-fixture</segment>
+  <segment bytes="786954" number="13">a1668063aafe21a81c855cc8@kf-fixture</segment>
+  <segment bytes="787037" number="14">7cf0dc4fe7c688c2a81d079b@kf-fixture</segment>
+  <segment bytes="787158" number="15">ce34b866b6dd33e089056743@kf-fixture</segment>
+  <segment bytes="786885" number="16">3a750d22466779b62fe9a718@kf-fixture</segment>
+  <segment bytes="787029" number="17">8bed33cc4faeb30c993d5c33@kf-fixture</segment>
+  <segment bytes="786973" number="18">38eb6c400c79f1abf6f31536@kf-fixture</segment>
+  <segment bytes="787081" number="19">c030541436554f922907b4ff@kf-fixture</segment>
+  <segment bytes="787056" number="20">25c469a23ebdf510ec13dcc9@kf-fixture</segment>
+  <segment bytes="787248" number="21">1087b1e47a71b1e09d973912@kf-fixture</segment>
+  <segment bytes="787103" number="22">0fa84486f1af304a292edd57@kf-fixture</segment>
+  <segment bytes="787009" number="23">306695f7f0647518333e2b33@kf-fixture</segment>
+  <segment bytes="786946" number="24">b48b2735c71b653463eeef7e@kf-fixture</segment>
+  <segment bytes="786968" number="25">ab7a1853ba6a46c7abca6437@kf-fixture</segment>
+  <segment bytes="786828" number="26">b4a00c1bedf75b69968a2c38@kf-fixture</segment>
+  <segment bytes="786903" number="27">36fcfa0c1f152172be84a50d@kf-fixture</segment>
+  <segment bytes="787020" number="28">e9beaa434a3f53c00a9875f0@kf-fixture</segment>
+  <segment bytes="786843" number="29">aba2be268ff96eaea2bb3414@kf-fixture</segment>
+  <segment bytes="786959" number="30">04db65b4aa2ca5eb7d04f0f4@kf-fixture</segment>
+  <segment bytes="787072" number="31">8268ba17c7b30e4a56b81805@kf-fixture</segment>
+  <segment bytes="786941" number="32">2d9361f32e2ae69f98453838@kf-fixture</segment>
+  <segment bytes="787179" number="33">7f6a10509a54c34a4b9c09e6@kf-fixture</segment>
+  <segment bytes="786923" number="34">15e35540ffc776340378fef6@kf-fixture</segment>
+  <segment bytes="787091" number="35">2df9639c4e895f31c667e073@kf-fixture</segment>
+  <segment bytes="787087" number="36">923189321e188211b06bd4e5@kf-fixture</segment>
+  <segment bytes="787217" number="37">150d3e2cbcaeef579c838025@kf-fixture</segment>
+  <segment bytes="786945" number="38">63c7f6b9da147b358143fc7b@kf-fixture</segment>
+  <segment bytes="787140" number="39">24fb787701b87ce5145ac883@kf-fixture</segment>
+  <segment bytes="786835" number="40">8984a1b6f96725a56cc46be6@kf-fixture</segment>
+  <segment bytes="787039" number="41">9ff3f92e7afb41945e7ca256@kf-fixture</segment>
+  <segment bytes="786875" number="42">6706b85d9f4f369a76f5b989@kf-fixture</segment>
+  <segment bytes="787153" number="43">7e7886bcf8c39148560bf112@kf-fixture</segment>
+  <segment bytes="786960" number="44">c2db1c0a7e709cd1ef02186e@kf-fixture</segment>
+  <segment bytes="787079" number="45">52dc45c7e2575417438f759e@kf-fixture</segment>
+  <segment bytes="787029" number="46">5fd66be43cb311870fb1a9e0@kf-fixture</segment>
+  <segment bytes="787035" number="47">c9d7a50741fbb00f97384e04@kf-fixture</segment>
+  <segment bytes="786747" number="48">8d3c967eb5aaaee272633161@kf-fixture</segment>
+  <segment bytes="786896" number="49">ea2dff643414927e4cbe875c@kf-fixture</segment>
+  <segment bytes="786995" number="50">cef281f4b8eb9d9b5e0dfa62@kf-fixture</segment>
+  <segment bytes="786800" number="51">ac3a90de2fb25d698e15c595@kf-fixture</segment>
+  <segment bytes="786986" number="52">744ea67ac0589b01f2c40688@kf-fixture</segment>
+  <segment bytes="787226" number="53">cfe64f55af43f0ae96256108@kf-fixture</segment>
+  <segment bytes="787026" number="54">f1c5e95ac9b81f50a1ad17fa@kf-fixture</segment>
+  <segment bytes="787032" number="55">4b730ca1f789ea3116b5151b@kf-fixture</segment>
+  <segment bytes="786995" number="56">8fccc9af84bf680cb87b1c1d@kf-fixture</segment>
+  <segment bytes="786786" number="57">03d0688003da8377f351ddc8@kf-fixture</segment>
+  <segment bytes="787007" number="58">d432536616f95cdfbd46df2b@kf-fixture</segment>
+  <segment bytes="787177" number="59">601864858173bae290043887@kf-fixture</segment>
+  <segment bytes="787068" number="60">ddd5bc72d2d42e1271e9ea98@kf-fixture</segment>
+  <segment bytes="786973" number="61">40e4633dc8d1d1ac191e5dc1@kf-fixture</segment>
+  <segment bytes="786859" number="62">13607d738fe05c565915bfe1@kf-fixture</segment>
+  <segment bytes="786893" number="63">23a38e67dbbd2252458c1824@kf-fixture</segment>
+  <segment bytes="786868" number="64">d51869389ef7a35ad712ca54@kf-fixture</segment>
+  <segment bytes="786879" number="65">2c628fe59ea54f581009ed4b@kf-fixture</segment>
+  <segment bytes="82724" number="66">27df4b415d2f527669d2f26a@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434158" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[21/33] - &quot;aaf-tz.s02e06.720p.r18&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786832" number="1">c74b8d27879ab6f937a033d1@kf-fixture</segment>
+  <segment bytes="787029" number="2">18aa58d19ebf26057f915e69@kf-fixture</segment>
+  <segment bytes="786874" number="3">1f1fa954a87e3c687d523197@kf-fixture</segment>
+  <segment bytes="786741" number="4">740107e5656cdc8d5acc03ec@kf-fixture</segment>
+  <segment bytes="787013" number="5">51b0bee79b2e9ccf4848e132@kf-fixture</segment>
+  <segment bytes="787041" number="6">5b0868add035da65d3abef08@kf-fixture</segment>
+  <segment bytes="787039" number="7">34ece843b04384b3d35a4657@kf-fixture</segment>
+  <segment bytes="786971" number="8">405c5288947d56bcb46b59d9@kf-fixture</segment>
+  <segment bytes="787026" number="9">b6eda3dcb67384a8fdff018a@kf-fixture</segment>
+  <segment bytes="786925" number="10">f86f8029227b0c93400aea19@kf-fixture</segment>
+  <segment bytes="787031" number="11">aa4eb364d84dbd16f11bfa9c@kf-fixture</segment>
+  <segment bytes="787067" number="12">95430a6bae8a005dbf03e08b@kf-fixture</segment>
+  <segment bytes="786896" number="13">7388d57f46ead9c805ab5e0b@kf-fixture</segment>
+  <segment bytes="786910" number="14">098cb6c54ced974eaabbaf2b@kf-fixture</segment>
+  <segment bytes="786982" number="15">1423ca3c9eccea5f6302d9b5@kf-fixture</segment>
+  <segment bytes="787039" number="16">299174a554e6dc6056570921@kf-fixture</segment>
+  <segment bytes="786904" number="17">a29d70bad6c25b8942946c3f@kf-fixture</segment>
+  <segment bytes="786951" number="18">c67abefedff1747d51ecccb5@kf-fixture</segment>
+  <segment bytes="787023" number="19">e79c3844dca706a69c15108f@kf-fixture</segment>
+  <segment bytes="787062" number="20">e4288882a8e8e9989571be1f@kf-fixture</segment>
+  <segment bytes="786876" number="21">35054fa1d4ed9e3a6a9573ef@kf-fixture</segment>
+  <segment bytes="787168" number="22">b5fc3784450eb244d7bcc727@kf-fixture</segment>
+  <segment bytes="787105" number="23">c7084c0f9081a0b7328b92a3@kf-fixture</segment>
+  <segment bytes="786943" number="24">6cf949a322b2fc09e7a070ab@kf-fixture</segment>
+  <segment bytes="787040" number="25">8bd4c3c685c381c12bdf2d12@kf-fixture</segment>
+  <segment bytes="787130" number="26">5aa81a4a824a0790179eb172@kf-fixture</segment>
+  <segment bytes="787020" number="27">75fa64479d1e3a90d3d13a6b@kf-fixture</segment>
+  <segment bytes="786935" number="28">f2ca60474e7191d74a184a1e@kf-fixture</segment>
+  <segment bytes="786877" number="29">07b24529136c22ec96a51571@kf-fixture</segment>
+  <segment bytes="787088" number="30">b78f44d575cde91fe885db09@kf-fixture</segment>
+  <segment bytes="786859" number="31">890f931f6a823a7d53684036@kf-fixture</segment>
+  <segment bytes="786948" number="32">b5943b239e5974da52e7750f@kf-fixture</segment>
+  <segment bytes="786888" number="33">17e45f3884d81f7b7582bd6e@kf-fixture</segment>
+  <segment bytes="786886" number="34">ae1766b9461a4c6ab32fbf4b@kf-fixture</segment>
+  <segment bytes="786899" number="35">1e08a8e8912dd0838b96ec60@kf-fixture</segment>
+  <segment bytes="787009" number="36">fb135f4a54e0eb20296f819c@kf-fixture</segment>
+  <segment bytes="786836" number="37">897e142f0b604c6af54207ad@kf-fixture</segment>
+  <segment bytes="787024" number="38">80215e27ca261c9809c11c39@kf-fixture</segment>
+  <segment bytes="787058" number="39">1a5741832c082cc5b8725d4f@kf-fixture</segment>
+  <segment bytes="787027" number="40">e2dc030d6012219706453327@kf-fixture</segment>
+  <segment bytes="787014" number="41">e6bb34b6520d3d796fa32788@kf-fixture</segment>
+  <segment bytes="786860" number="42">5a987d50e9166da82ac94d44@kf-fixture</segment>
+  <segment bytes="787073" number="43">b5b6e6ec2945eeb181239517@kf-fixture</segment>
+  <segment bytes="786843" number="44">6652cb486fa097135defe828@kf-fixture</segment>
+  <segment bytes="786960" number="45">913c64c793505c50ed9c00dd@kf-fixture</segment>
+  <segment bytes="787017" number="46">06b794ba481f63a3cea10574@kf-fixture</segment>
+  <segment bytes="787010" number="47">f441ba440c009b7c5f2cc658@kf-fixture</segment>
+  <segment bytes="787079" number="48">93d938f4e1dcfd09b401a06e@kf-fixture</segment>
+  <segment bytes="787113" number="49">0bdb24bb9dbdcbbda67efbbf@kf-fixture</segment>
+  <segment bytes="786998" number="50">b552d20c0d6aaa68d2da68b9@kf-fixture</segment>
+  <segment bytes="786804" number="51">7ac8ad1d99185908e2c7a89e@kf-fixture</segment>
+  <segment bytes="786882" number="52">b18a83e4f441c3b024b282a9@kf-fixture</segment>
+  <segment bytes="787018" number="53">71b39c671a22331469752373@kf-fixture</segment>
+  <segment bytes="787001" number="54">00799450eaaf9ab84a3d3c52@kf-fixture</segment>
+  <segment bytes="787006" number="55">f9a2471df648c49d9c6c9004@kf-fixture</segment>
+  <segment bytes="787121" number="56">2031f188f4450a77c2474f85@kf-fixture</segment>
+  <segment bytes="786945" number="57">528e04a5d0b1aef291d5b0bb@kf-fixture</segment>
+  <segment bytes="786823" number="58">2624242791ab1892682179e8@kf-fixture</segment>
+  <segment bytes="787015" number="59">28743880ef83769b58574969@kf-fixture</segment>
+  <segment bytes="786851" number="60">c8b9298086cffb046765b998@kf-fixture</segment>
+  <segment bytes="787100" number="61">ad054be61fb4a3cd12324bdf@kf-fixture</segment>
+  <segment bytes="787135" number="62">9f648c1ab1501e6a60017123@kf-fixture</segment>
+  <segment bytes="786903" number="63">bbfdd514d04c1cc2fd7dafaa@kf-fixture</segment>
+  <segment bytes="787001" number="64">85891d0ae080bd7a2aa4072f@kf-fixture</segment>
+  <segment bytes="786835" number="65">0ba5f1231f2ae868de0aaab0@kf-fixture</segment>
+  <segment bytes="82689" number="66">4b6d197ca471b7a466261eb3@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434160" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[22/33] - &quot;aaf-tz.s02e06.720p.r19&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786956" number="1">8a6cb0cb4c0383fa7c5db828@kf-fixture</segment>
+  <segment bytes="787086" number="2">1abfb00b021308a3796c1581@kf-fixture</segment>
+  <segment bytes="786968" number="3">1b94a666355111a7561d6fd9@kf-fixture</segment>
+  <segment bytes="787153" number="4">8251d09394a55192179f8f9f@kf-fixture</segment>
+  <segment bytes="787031" number="5">a2560f7b981c93af7aa9888e@kf-fixture</segment>
+  <segment bytes="787224" number="6">cf15d21eb5e24edd80e8528e@kf-fixture</segment>
+  <segment bytes="786980" number="7">bcf39872108dbdc9a1b261fc@kf-fixture</segment>
+  <segment bytes="786765" number="8">37464ea6781728938afaf417@kf-fixture</segment>
+  <segment bytes="787058" number="9">585d177cc5a66b3f67eebe91@kf-fixture</segment>
+  <segment bytes="786991" number="10">65eb817f8f11c2b4550a36c5@kf-fixture</segment>
+  <segment bytes="786961" number="11">b0e93bd12ac844283af62e2b@kf-fixture</segment>
+  <segment bytes="787018" number="12">ef115a016b535f2f8917aada@kf-fixture</segment>
+  <segment bytes="787059" number="13">dd4aeca22832c2fdfd54d611@kf-fixture</segment>
+  <segment bytes="786961" number="14">4f87946634b02d197c300b0a@kf-fixture</segment>
+  <segment bytes="786982" number="15">54c6335a2d55d8f179f11e82@kf-fixture</segment>
+  <segment bytes="786972" number="16">64162cf50f8227ad350dadbb@kf-fixture</segment>
+  <segment bytes="787038" number="17">34e6ecfb6702c56d8cacc7e7@kf-fixture</segment>
+  <segment bytes="786971" number="18">561cec8f8cd4847f6e8f0f2f@kf-fixture</segment>
+  <segment bytes="786828" number="19">3b087acb87d19a73cd63248a@kf-fixture</segment>
+  <segment bytes="786902" number="20">c5c41fc6560669ac48ec16ab@kf-fixture</segment>
+  <segment bytes="787056" number="21">801c5fcebbb72b15edb75851@kf-fixture</segment>
+  <segment bytes="786939" number="22">15fbdbccfdb3272a709adbd6@kf-fixture</segment>
+  <segment bytes="787067" number="23">548a3edb3143efd5a71dd33d@kf-fixture</segment>
+  <segment bytes="786936" number="24">f5786de74326ac56a5339469@kf-fixture</segment>
+  <segment bytes="786912" number="25">2f9980056771bea412cea5f4@kf-fixture</segment>
+  <segment bytes="787122" number="26">1ebc987cc105893ef837e04e@kf-fixture</segment>
+  <segment bytes="786972" number="27">937ccde2ef6f0486c0530e52@kf-fixture</segment>
+  <segment bytes="786988" number="28">d78d3a4b961543b7998a02de@kf-fixture</segment>
+  <segment bytes="787147" number="29">59da3aacde8ffed1f86acbbd@kf-fixture</segment>
+  <segment bytes="787150" number="30">fcb9f5eb21bd90b5b1b2c666@kf-fixture</segment>
+  <segment bytes="786981" number="31">f0588634cac446c65642a518@kf-fixture</segment>
+  <segment bytes="786845" number="32">a3ab780b5b2b93bc1c281cd6@kf-fixture</segment>
+  <segment bytes="787031" number="33">7d31217bc836d7fef4d9b6c8@kf-fixture</segment>
+  <segment bytes="786863" number="34">fe13ec346923eb7d381d2553@kf-fixture</segment>
+  <segment bytes="786887" number="35">adf552c6da4db6c816e9adfe@kf-fixture</segment>
+  <segment bytes="786968" number="36">b64478f7522c96ca5bc4ca4e@kf-fixture</segment>
+  <segment bytes="786963" number="37">4b8981ee42b7f71329e0dfe9@kf-fixture</segment>
+  <segment bytes="787163" number="38">5171b6c73f7225301f69d5cb@kf-fixture</segment>
+  <segment bytes="786834" number="39">609cc58bfb03d58fd9ca8573@kf-fixture</segment>
+  <segment bytes="787040" number="40">f1223cd6a57d64f34d7bca6d@kf-fixture</segment>
+  <segment bytes="787238" number="41">b4aeaea5546098a32f3895a1@kf-fixture</segment>
+  <segment bytes="787168" number="42">a740f8ce9ff30b3ecd422d77@kf-fixture</segment>
+  <segment bytes="787108" number="43">db2ee9dff50cd2e5b539b81d@kf-fixture</segment>
+  <segment bytes="786834" number="44">c68c421723b99967888d2a37@kf-fixture</segment>
+  <segment bytes="786838" number="45">f9679913dc9c16234f39e8f0@kf-fixture</segment>
+  <segment bytes="786846" number="46">5b065c113aacbc6201e9693a@kf-fixture</segment>
+  <segment bytes="787209" number="47">83fa7da527b2e358badee2f5@kf-fixture</segment>
+  <segment bytes="787191" number="48">4bba19adde6b7385c143030f@kf-fixture</segment>
+  <segment bytes="787136" number="49">809ccb4299263098693dfb2e@kf-fixture</segment>
+  <segment bytes="786805" number="50">0bd044de81f8c6e3176af080@kf-fixture</segment>
+  <segment bytes="786801" number="51">93205816432d79200117792e@kf-fixture</segment>
+  <segment bytes="786940" number="52">e11d3bfffb856eb7edf2cb3f@kf-fixture</segment>
+  <segment bytes="786924" number="53">6e8ba62c40dba52eefa4214d@kf-fixture</segment>
+  <segment bytes="787586" number="54">5c0fb7f77e0b6211b0791d80@kf-fixture</segment>
+  <segment bytes="786964" number="55">2db45308dcd87cd983eeb96f@kf-fixture</segment>
+  <segment bytes="787002" number="56">195091e9230eb29db00a4dc2@kf-fixture</segment>
+  <segment bytes="786977" number="57">d33f118a6342f32aedb38de2@kf-fixture</segment>
+  <segment bytes="787115" number="58">2e8cb24cb93f7f6c768b06bb@kf-fixture</segment>
+  <segment bytes="787010" number="59">c6c636bae4696d9328c93b8e@kf-fixture</segment>
+  <segment bytes="786882" number="60">563cbb3802db6cccfc26e33f@kf-fixture</segment>
+  <segment bytes="786907" number="61">f0804a943468c98dc5dbe06c@kf-fixture</segment>
+  <segment bytes="787144" number="62">7ee358f0cd837a6a28e9c8d8@kf-fixture</segment>
+  <segment bytes="786903" number="63">d72c838914703c8b20634a78@kf-fixture</segment>
+  <segment bytes="787064" number="64">9155cf485d302d7f5ba709c5@kf-fixture</segment>
+  <segment bytes="787037" number="65">8e88c076b659e86980f1ccfa@kf-fixture</segment>
+  <segment bytes="82737" number="66">977771e0dacf12da654d6576@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434160" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[23/33] - &quot;aaf-tz.s02e06.720p.r20&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786944" number="1">4f4e1407a5a50476a06d34e8@kf-fixture</segment>
+  <segment bytes="786927" number="2">3cfb1673866bee13e93169b4@kf-fixture</segment>
+  <segment bytes="786951" number="3">5846250fd8d7a75ff013ff4a@kf-fixture</segment>
+  <segment bytes="787113" number="4">394736751914dbcead70e09e@kf-fixture</segment>
+  <segment bytes="787035" number="5">7af752d192d98ea12ca5041f@kf-fixture</segment>
+  <segment bytes="787007" number="6">85123faa5a5dd4f67a8cbcde@kf-fixture</segment>
+  <segment bytes="787124" number="7">f0a3c85d7576d59a773b34f5@kf-fixture</segment>
+  <segment bytes="786764" number="8">d38343270e1e277653485f90@kf-fixture</segment>
+  <segment bytes="787035" number="9">61ce45b5d3c0ddea04d06f73@kf-fixture</segment>
+  <segment bytes="786961" number="10">b69cb22265e8f55d786aecdf@kf-fixture</segment>
+  <segment bytes="786944" number="11">836b51f6577efee05e1a9cc8@kf-fixture</segment>
+  <segment bytes="786806" number="12">09a9c7099d185a9ec65cc2df@kf-fixture</segment>
+  <segment bytes="786923" number="13">fd97bca066952ff4c78d09d4@kf-fixture</segment>
+  <segment bytes="786946" number="14">8eb49aa7c481041014a2a0de@kf-fixture</segment>
+  <segment bytes="786973" number="15">1d63bf4b85c0562a567cc89b@kf-fixture</segment>
+  <segment bytes="787082" number="16">4bbf3efcac211a0069a58f31@kf-fixture</segment>
+  <segment bytes="787105" number="17">d309cd48bd14203a288ab7cb@kf-fixture</segment>
+  <segment bytes="786775" number="18">d1cc604fac2c2e5ae8e9904c@kf-fixture</segment>
+  <segment bytes="786913" number="19">30f52af91de5d1fed58fc4e9@kf-fixture</segment>
+  <segment bytes="787085" number="20">5be8b0c9c54fa171c6657e64@kf-fixture</segment>
+  <segment bytes="787039" number="21">f3f8c60ba65ca4a49e155150@kf-fixture</segment>
+  <segment bytes="786883" number="22">9b531cd9d9d2743bc7d0eb4d@kf-fixture</segment>
+  <segment bytes="787189" number="23">b21d15bc24902b33fe548acd@kf-fixture</segment>
+  <segment bytes="786900" number="24">4fd505cb5e77eb57c75ac73d@kf-fixture</segment>
+  <segment bytes="786988" number="25">bdd2f3d1ef9bbe52e4fd4f10@kf-fixture</segment>
+  <segment bytes="786870" number="26">7213244ad5b0e357cc75e875@kf-fixture</segment>
+  <segment bytes="787030" number="27">ebc8e75f663570833874c705@kf-fixture</segment>
+  <segment bytes="787183" number="28">fc63f87c1211c84283d07a59@kf-fixture</segment>
+  <segment bytes="786998" number="29">d3664bccf1b30f63dfe696dc@kf-fixture</segment>
+  <segment bytes="787275" number="30">b3ecad1922e8343eb06541f8@kf-fixture</segment>
+  <segment bytes="786948" number="31">10d4074921a9db5c535e3a8f@kf-fixture</segment>
+  <segment bytes="786943" number="32">18219c1665937d72b1171c7e@kf-fixture</segment>
+  <segment bytes="786920" number="33">027dd074262500630153b2a4@kf-fixture</segment>
+  <segment bytes="786804" number="34">d9b6acb69b7680215b11be19@kf-fixture</segment>
+  <segment bytes="786971" number="35">d5bf096808056616a17427f6@kf-fixture</segment>
+  <segment bytes="786929" number="36">ac43d4925075a758da9e8ce7@kf-fixture</segment>
+  <segment bytes="786893" number="37">fcec821cf4ffe15764546f35@kf-fixture</segment>
+  <segment bytes="786951" number="38">d07d5e9cbfee19ec62df6633@kf-fixture</segment>
+  <segment bytes="787024" number="39">9819e6f1992699fa8031746f@kf-fixture</segment>
+  <segment bytes="787003" number="40">a34afa0ed2fdbec173ddda62@kf-fixture</segment>
+  <segment bytes="787160" number="41">5debbcd8bc76ab60112a56d4@kf-fixture</segment>
+  <segment bytes="786960" number="42">b7dcb98f741596334d160ba4@kf-fixture</segment>
+  <segment bytes="786877" number="43">fa61c1ec1cf5a5b3c9179690@kf-fixture</segment>
+  <segment bytes="786787" number="44">339515b0d79aaf1972a4f69a@kf-fixture</segment>
+  <segment bytes="786895" number="45">f05d2bd0ab1e8d7e3d51e493@kf-fixture</segment>
+  <segment bytes="787198" number="46">163c278a0acbe2085ccce535@kf-fixture</segment>
+  <segment bytes="787080" number="47">60a98cf69523a55626752aad@kf-fixture</segment>
+  <segment bytes="786993" number="48">f6a921cfb4c80dbf266bbec8@kf-fixture</segment>
+  <segment bytes="787129" number="49">029a45b18bf2fd9fbcd8456f@kf-fixture</segment>
+  <segment bytes="786919" number="50">6c7e1612362a1e66793a722f@kf-fixture</segment>
+  <segment bytes="786992" number="51">f695db1854376fc7840aca87@kf-fixture</segment>
+  <segment bytes="787274" number="52">4f0c8c62915c79a3429e3f7b@kf-fixture</segment>
+  <segment bytes="786944" number="53">7050dc4e347dbab0b9c4ced6@kf-fixture</segment>
+  <segment bytes="787206" number="54">c639dd8eeb5293fb7ae0a07a@kf-fixture</segment>
+  <segment bytes="787272" number="55">f5a2a39e2e87116b1227d458@kf-fixture</segment>
+  <segment bytes="786887" number="56">3b75ac5a56202847f54b745a@kf-fixture</segment>
+  <segment bytes="787057" number="57">63400cdca51254428cc765cd@kf-fixture</segment>
+  <segment bytes="787033" number="58">cacbe5d581f904448f6b843f@kf-fixture</segment>
+  <segment bytes="786893" number="59">c406fe1e2cc89e0a2e842494@kf-fixture</segment>
+  <segment bytes="786804" number="60">53eb44879980d9f255ddcf5f@kf-fixture</segment>
+  <segment bytes="787012" number="61">ca23223c0113497e87c7758b@kf-fixture</segment>
+  <segment bytes="787080" number="62">8d5d3a9d3f36948e9ef8142d@kf-fixture</segment>
+  <segment bytes="786991" number="63">b51f3234bd3857e67f25d7dc@kf-fixture</segment>
+  <segment bytes="786919" number="64">afae8a82da48aa8edea2a1df@kf-fixture</segment>
+  <segment bytes="787013" number="65">7f235c942f2cc3795c3080f9@kf-fixture</segment>
+  <segment bytes="82777" number="66">b2cee153a3791c7aea5c5cab@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434161" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[24/33] - &quot;aaf-tz.s02e06.720p.r21&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787030" number="1">efd5aaba960632105b5bdfa9@kf-fixture</segment>
+  <segment bytes="786955" number="2">2893c0758ce0d638d9ae674a@kf-fixture</segment>
+  <segment bytes="786851" number="3">2fb8c762146ce4f680d4ba4c@kf-fixture</segment>
+  <segment bytes="787019" number="4">b8dd1386cf7147e4f765fa9c@kf-fixture</segment>
+  <segment bytes="787225" number="5">86f1ad54b6b172b8fe341c4f@kf-fixture</segment>
+  <segment bytes="786949" number="6">c8e50616500cdded6c367b74@kf-fixture</segment>
+  <segment bytes="786976" number="7">2516fa93961dd54317914fe8@kf-fixture</segment>
+  <segment bytes="787173" number="8">44b46e2da85309457575a122@kf-fixture</segment>
+  <segment bytes="787043" number="9">008f4daa06e39dc22a7bb38b@kf-fixture</segment>
+  <segment bytes="787031" number="10">77dd475e02a54416a5c569e2@kf-fixture</segment>
+  <segment bytes="786988" number="11">efba20be14a2a377128c7027@kf-fixture</segment>
+  <segment bytes="786970" number="12">b07c452c64ae6bcb509f4f5c@kf-fixture</segment>
+  <segment bytes="786977" number="13">4d6ad495d991b97f49022006@kf-fixture</segment>
+  <segment bytes="787013" number="14">59f76b36145cf3d07501e002@kf-fixture</segment>
+  <segment bytes="786709" number="15">b34ce9b54aa9d4cac4483ad5@kf-fixture</segment>
+  <segment bytes="787277" number="16">6e0c7d8e64d645c67903e979@kf-fixture</segment>
+  <segment bytes="787135" number="17">13fdd72abd6f6e75356e4cc6@kf-fixture</segment>
+  <segment bytes="786876" number="18">0a4540bab18354c927853e58@kf-fixture</segment>
+  <segment bytes="786974" number="19">1299e3ffce0235e289668f91@kf-fixture</segment>
+  <segment bytes="787082" number="20">4742ba1c94f085db32d6c758@kf-fixture</segment>
+  <segment bytes="787125" number="21">87b3a834fe3d5b998ee39ead@kf-fixture</segment>
+  <segment bytes="787136" number="22">b48d05ca5c50440cb07205cb@kf-fixture</segment>
+  <segment bytes="787200" number="23">c25b50498ceb673b4f6db5d1@kf-fixture</segment>
+  <segment bytes="787038" number="24">547d2af17ead7959eb88c704@kf-fixture</segment>
+  <segment bytes="787058" number="25">8fbfaa3331055d9db08a0169@kf-fixture</segment>
+  <segment bytes="787076" number="26">a6645bb8333f3fa178d94131@kf-fixture</segment>
+  <segment bytes="786912" number="27">e9838432a574b65fb421ede2@kf-fixture</segment>
+  <segment bytes="787079" number="28">c4f587ce9e4252d62ac66f07@kf-fixture</segment>
+  <segment bytes="787036" number="29">2c68fd3a20453137567f3500@kf-fixture</segment>
+  <segment bytes="787084" number="30">61d6a84b32631b600670b709@kf-fixture</segment>
+  <segment bytes="787100" number="31">c5e0380dc3c3636ece75a2ee@kf-fixture</segment>
+  <segment bytes="786955" number="32">5288d41078207dbad3117850@kf-fixture</segment>
+  <segment bytes="787062" number="33">b9bd7b177af465a9440c31ff@kf-fixture</segment>
+  <segment bytes="787082" number="34">bb9c8028fba5553a3166c403@kf-fixture</segment>
+  <segment bytes="787034" number="35">97ad179ef8f5bd124c3f23a3@kf-fixture</segment>
+  <segment bytes="787016" number="36">3bf05fa214ef07ab16724eb9@kf-fixture</segment>
+  <segment bytes="787069" number="37">c1a695cc02d519c1e1cee463@kf-fixture</segment>
+  <segment bytes="786984" number="38">6c22931eaa12b71a91045f24@kf-fixture</segment>
+  <segment bytes="787014" number="39">5edb7a1064d862c590e4b736@kf-fixture</segment>
+  <segment bytes="786992" number="40">20d8015723b0fe3a0e4e5c8e@kf-fixture</segment>
+  <segment bytes="786962" number="41">661726bec9d64feb628e76db@kf-fixture</segment>
+  <segment bytes="787254" number="42">e80fa0b41e67918cc6b7bb89@kf-fixture</segment>
+  <segment bytes="787145" number="43">cf236fc2abf61d23b031a1f9@kf-fixture</segment>
+  <segment bytes="787001" number="44">959dfb04dd3c6fb764854c7d@kf-fixture</segment>
+  <segment bytes="786895" number="45">9e568171b774e91b9751d02d@kf-fixture</segment>
+  <segment bytes="787134" number="46">abdd09de90608ff443e06528@kf-fixture</segment>
+  <segment bytes="786881" number="47">76ddc5c50dae5004dcd206ae@kf-fixture</segment>
+  <segment bytes="786895" number="48">fa5602750b3b1eca6b128e5c@kf-fixture</segment>
+  <segment bytes="786867" number="49">12b5cb725cad210b7b4ebe96@kf-fixture</segment>
+  <segment bytes="787023" number="50">03c2346ce93c70a99e4964cd@kf-fixture</segment>
+  <segment bytes="787045" number="51">1435c6092b682bf02cbf3faa@kf-fixture</segment>
+  <segment bytes="787075" number="52">080584027248127c87b7badf@kf-fixture</segment>
+  <segment bytes="786696" number="53">644a86b590514abd21e3599f@kf-fixture</segment>
+  <segment bytes="787064" number="54">e856eb8740c956ea50a42718@kf-fixture</segment>
+  <segment bytes="786894" number="55">1a0e26395fd6af34057c9df7@kf-fixture</segment>
+  <segment bytes="786992" number="56">c8364b8ba9b40dd63d0aca50@kf-fixture</segment>
+  <segment bytes="787228" number="57">d7a74fc99112efd07fbc4d69@kf-fixture</segment>
+  <segment bytes="787184" number="58">1b280ebf9ebd96ba2a916c32@kf-fixture</segment>
+  <segment bytes="787240" number="59">57aaac0d0232fdb920c4a8a8@kf-fixture</segment>
+  <segment bytes="787091" number="60">affafb2e273df07d5432521e@kf-fixture</segment>
+  <segment bytes="787454" number="61">639890db5506b7cd78023a30@kf-fixture</segment>
+  <segment bytes="786997" number="62">3efd138d6598f304a7a729fa@kf-fixture</segment>
+  <segment bytes="787060" number="63">40db0a1c8d7a9bb38b9e7134@kf-fixture</segment>
+  <segment bytes="787317" number="64">fa8dc5439b203a36f6ddef0b@kf-fixture</segment>
+  <segment bytes="787241" number="65">508d56c982f21d0e16af4597@kf-fixture</segment>
+  <segment bytes="82692" number="66">9505a977d57324e376354619@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434161" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[25/33] - &quot;aaf-tz.s02e06.720p.r22&quot; yEnc (1/30)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787569" number="1">474d4fd329556ae9074b34f1@kf-fixture</segment>
+  <segment bytes="787029" number="2">cdcd8c09e7ae69d803a08c02@kf-fixture</segment>
+  <segment bytes="786839" number="3">7d3787479f61aad5d38d2e91@kf-fixture</segment>
+  <segment bytes="786976" number="4">d961489b46cda8d411fcf61e@kf-fixture</segment>
+  <segment bytes="786959" number="5">5d249c36deea64a586024d88@kf-fixture</segment>
+  <segment bytes="787030" number="6">1e0567739b40ab7c676b6402@kf-fixture</segment>
+  <segment bytes="786986" number="7">987bbb63e6a2ef3a2406a5ef@kf-fixture</segment>
+  <segment bytes="786887" number="8">4de09bc6041d9cab6918cf84@kf-fixture</segment>
+  <segment bytes="786898" number="9">70fa3452496304589a8ba06b@kf-fixture</segment>
+  <segment bytes="787056" number="10">8f3f519c2d324ceb7945a92b@kf-fixture</segment>
+  <segment bytes="786893" number="11">bfaf86e7f78b30e8f856ecac@kf-fixture</segment>
+  <segment bytes="787012" number="12">e4ecdc243f6144e786dabd9a@kf-fixture</segment>
+  <segment bytes="787167" number="13">b20ef8b48917921f35c04761@kf-fixture</segment>
+  <segment bytes="787142" number="14">335bf746d8649b66a238551b@kf-fixture</segment>
+  <segment bytes="787193" number="15">8abf9582b3a6e9ca09b62324@kf-fixture</segment>
+  <segment bytes="786904" number="16">cf21b2ea7f3881f967813b39@kf-fixture</segment>
+  <segment bytes="787171" number="17">14ac76c78ee1226114b059e5@kf-fixture</segment>
+  <segment bytes="793697" number="18">64a4480d6779447a01c5a9e5@kf-fixture</segment>
+  <segment bytes="786903" number="19">0cea81a25cbc82fd2ab5a728@kf-fixture</segment>
+  <segment bytes="787079" number="20">ec689f1028ce57a2021fc463@kf-fixture</segment>
+  <segment bytes="787110" number="21">c87fe0f0f663925cf5602d7d@kf-fixture</segment>
+  <segment bytes="786976" number="22">652ebd55386c604751e96fe8@kf-fixture</segment>
+  <segment bytes="787682" number="23">67f2a913264248adfcb468d3@kf-fixture</segment>
+  <segment bytes="787231" number="24">c9c8776dbd3bc2f7855160ff@kf-fixture</segment>
+  <segment bytes="793451" number="25">0586705977012eae4fc9e2cf@kf-fixture</segment>
+  <segment bytes="793503" number="26">8da98e440234088abc39b092@kf-fixture</segment>
+  <segment bytes="787088" number="27">50ce3f81cbe551dc45c13f58@kf-fixture</segment>
+  <segment bytes="787003" number="28">e3495b31413a38fa33f5bcdf@kf-fixture</segment>
+  <segment bytes="786830" number="29">d56b067113b0d84e53e7191c@kf-fixture</segment>
+  <segment bytes="58131" number="30">1a17dcab57bd285b4198fd5e@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434162" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[26/33] - &quot;aaf-tz.s02e06.720p.rar&quot; yEnc (1/66)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786648" number="1">b8676232a62530d4115def01@kf-fixture</segment>
+  <segment bytes="787517" number="2">63c92ff688b4949ce585cef0@kf-fixture</segment>
+  <segment bytes="787079" number="3">b1c39ff57caa880359d13127@kf-fixture</segment>
+  <segment bytes="787458" number="4">ddb5961d27ea8c8ed3dadc20@kf-fixture</segment>
+  <segment bytes="787043" number="5">65ce85ac3d27c98c168ff387@kf-fixture</segment>
+  <segment bytes="786982" number="6">96e80b43af57305d1c578208@kf-fixture</segment>
+  <segment bytes="787030" number="7">98fd8f693e343d82ae56cc59@kf-fixture</segment>
+  <segment bytes="787158" number="8">dece6d9a11e992ef1cdad505@kf-fixture</segment>
+  <segment bytes="787507" number="9">1730458e0bbc0e9e73704172@kf-fixture</segment>
+  <segment bytes="787473" number="10">d73757ff759ce90810c346e0@kf-fixture</segment>
+  <segment bytes="787042" number="11">c2129f634b9c95bbaae17f3f@kf-fixture</segment>
+  <segment bytes="787020" number="12">45c53bf0b69a25cd7a999702@kf-fixture</segment>
+  <segment bytes="787501" number="13">70925a8f13590a504bb8fdca@kf-fixture</segment>
+  <segment bytes="787014" number="14">474ee27f1cc02e4404ee51e5@kf-fixture</segment>
+  <segment bytes="786916" number="15">49f185b40574b09ba19bfffe@kf-fixture</segment>
+  <segment bytes="793561" number="16">b757277643db3942a44af21d@kf-fixture</segment>
+  <segment bytes="787181" number="17">309de4e80777a5073e7e7371@kf-fixture</segment>
+  <segment bytes="787054" number="18">58655facbb554caed5b4bbd6@kf-fixture</segment>
+  <segment bytes="787469" number="19">8990384da670a92e5e5ebbcd@kf-fixture</segment>
+  <segment bytes="787014" number="20">4c54e3a0eaf91f91f4ca080f@kf-fixture</segment>
+  <segment bytes="786973" number="21">86b111e6e56c69fc26775f05@kf-fixture</segment>
+  <segment bytes="787160" number="22">87a93c7b716bbe27e5bc0c7d@kf-fixture</segment>
+  <segment bytes="786890" number="23">9cc0fc61e8dd5f8e8d13521a@kf-fixture</segment>
+  <segment bytes="787060" number="24">cd3de15b6f25079693134ed6@kf-fixture</segment>
+  <segment bytes="787154" number="25">816650c6680799d065a60764@kf-fixture</segment>
+  <segment bytes="787478" number="26">b03976dd320b2e5311550d1a@kf-fixture</segment>
+  <segment bytes="787012" number="27">5bf0dee244ff560e36172c1e@kf-fixture</segment>
+  <segment bytes="786957" number="28">56497e30f61872013278b72c@kf-fixture</segment>
+  <segment bytes="786988" number="29">b94dbeea43f0fa283fd579c7@kf-fixture</segment>
+  <segment bytes="787028" number="30">5462e7c0b842544dad28cc64@kf-fixture</segment>
+  <segment bytes="786709" number="31">4e7c2b5bad136f31c5389e1a@kf-fixture</segment>
+  <segment bytes="786927" number="32">3051f9bc4ddf03d3aec00721@kf-fixture</segment>
+  <segment bytes="787024" number="33">6b8a4704a657397c02053d9a@kf-fixture</segment>
+  <segment bytes="786965" number="34">07fff7ab7cc66721487a1f13@kf-fixture</segment>
+  <segment bytes="787023" number="35">38848c6738e72b34cb33c88f@kf-fixture</segment>
+  <segment bytes="786744" number="36">a66d946cf3372152086f48e6@kf-fixture</segment>
+  <segment bytes="787033" number="37">15f705f3c14f75c6ad4eb5e4@kf-fixture</segment>
+  <segment bytes="787098" number="38">1fe2c16c64d9695c4526ef62@kf-fixture</segment>
+  <segment bytes="786972" number="39">d88b112664c3db7de99a0507@kf-fixture</segment>
+  <segment bytes="787004" number="40">b16d85d983724d7591908a10@kf-fixture</segment>
+  <segment bytes="786864" number="41">d326f49d8605f697179e24ff@kf-fixture</segment>
+  <segment bytes="787071" number="42">9d2da3a91f1973476b6f2ebf@kf-fixture</segment>
+  <segment bytes="786932" number="43">925833813edeb79b331de641@kf-fixture</segment>
+  <segment bytes="786880" number="44">611eef505826b99c414a80f6@kf-fixture</segment>
+  <segment bytes="787041" number="45">5965d6ce066d6a176f0b96d2@kf-fixture</segment>
+  <segment bytes="787174" number="46">1afa9b3eea507fc980e8be7f@kf-fixture</segment>
+  <segment bytes="787046" number="47">eb5e2ccbc6659c3fc80bb5a5@kf-fixture</segment>
+  <segment bytes="787021" number="48">8a18f00a85010f9c0a609025@kf-fixture</segment>
+  <segment bytes="786960" number="49">212887477ba2fae81e8ddceb@kf-fixture</segment>
+  <segment bytes="787118" number="50">c308ca647e73e3f5f44b1d7e@kf-fixture</segment>
+  <segment bytes="786980" number="51">15511d892fb4f416290971d6@kf-fixture</segment>
+  <segment bytes="786968" number="52">e35126a9099a4fb9510858d1@kf-fixture</segment>
+  <segment bytes="786768" number="53">43646b604745a261f7bf82c6@kf-fixture</segment>
+  <segment bytes="786722" number="54">8c130ca18a2f4444a6bb301a@kf-fixture</segment>
+  <segment bytes="786957" number="55">f919467882c5b4cba5033e6d@kf-fixture</segment>
+  <segment bytes="786808" number="56">a5b6b6438dba73a57104f4fe@kf-fixture</segment>
+  <segment bytes="786927" number="57">1304e81585fadefd88ca0cdd@kf-fixture</segment>
+  <segment bytes="787034" number="58">b114a95fb00ac53d5031dd72@kf-fixture</segment>
+  <segment bytes="787005" number="59">9863366151cc3ae5f45fb26e@kf-fixture</segment>
+  <segment bytes="787146" number="60">7de417d51bd6b43523b78a6c@kf-fixture</segment>
+  <segment bytes="787069" number="61">5d388c6fdda9aade788756fc@kf-fixture</segment>
+  <segment bytes="786916" number="62">ac270254f4ecb0706601e60b@kf-fixture</segment>
+  <segment bytes="787027" number="63">e96ad35e4a9751eba41ac23b@kf-fixture</segment>
+  <segment bytes="786968" number="64">0cc62d7d8d691978764c70a9@kf-fixture</segment>
+  <segment bytes="787001" number="65">8c64223a3e5718f187e39d47@kf-fixture</segment>
+  <segment bytes="82739" number="66">824e488a6529f301cb31138b@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434162" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[27/33] - &quot;aaf-tz.s02e06.720p.sfv&quot; yEnc (1/1)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="1830" number="1">8bb78b5b2989d49b07534e8e@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434163" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[28/33] - &quot;aaf-tz.s02e06.720p.vol00+01.par2&quot; yEnc (1/4)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787209" number="1">9bbf2614d01f2a08408c1a3f@kf-fixture</segment>
+  <segment bytes="787096" number="2">657387718bfc918f02665307@kf-fixture</segment>
+  <segment bytes="786945" number="3">e79c2868d9d140a0a4d69bb4@kf-fixture</segment>
+  <segment bytes="18410" number="4">0adfe24934ddde0414708c0d@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434163" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[29/33] - &quot;aaf-tz.s02e06.720p.vol01+02.par2&quot; yEnc (1/7)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="786946" number="1">4f8dbca96ab53eb53dc2674a@kf-fixture</segment>
+  <segment bytes="786817" number="2">e113ecf26366f781be194bff@kf-fixture</segment>
+  <segment bytes="786941" number="3">197e0b8bdee2b8c42683e96d@kf-fixture</segment>
+  <segment bytes="786936" number="4">c436756068159a86621443c8@kf-fixture</segment>
+  <segment bytes="787030" number="5">f1e2a82a8101fe499236d706@kf-fixture</segment>
+  <segment bytes="787162" number="6">2986c522b82f12ef244a9850@kf-fixture</segment>
+  <segment bytes="35157" number="7">42938993a849fcf80bae987a@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434163" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[30/33] - &quot;aaf-tz.s02e06.720p.vol03+04.par2&quot; yEnc (1/13)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787029" number="1">98a3c9482b1cfb44226d3d7e@kf-fixture</segment>
+  <segment bytes="786864" number="2">573e64da2fae33cd297d4532@kf-fixture</segment>
+  <segment bytes="786802" number="3">0d80b3d61c55d4174ec40bd7@kf-fixture</segment>
+  <segment bytes="787012" number="4">08a9532477dbe65eb2fae2d4@kf-fixture</segment>
+  <segment bytes="786859" number="5">fbbda90f8286118a3642ad55@kf-fixture</segment>
+  <segment bytes="787053" number="6">910a4fed162ba4cab05dbd6f@kf-fixture</segment>
+  <segment bytes="787059" number="7">0a712f5c8748be1d1d8a1442@kf-fixture</segment>
+  <segment bytes="787051" number="8">abdd3a8995c991951a287062@kf-fixture</segment>
+  <segment bytes="787003" number="9">ff3e16f12b0c157a9f6e5705@kf-fixture</segment>
+  <segment bytes="786939" number="10">4c7124318007f498dac7b784@kf-fixture</segment>
+  <segment bytes="786804" number="11">ef8c1fbb775fd329ccbd3d2f@kf-fixture</segment>
+  <segment bytes="786938" number="12">eb84f835ca8ec1a830dba8c9@kf-fixture</segment>
+  <segment bytes="53091" number="13">5c78960fdc887430aafee56a@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434163" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[31/33] - &quot;aaf-tz.s02e06.720p.vol07+08.par2&quot; yEnc (1/25)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787098" number="1">bc7ab96325c3824feea89756@kf-fixture</segment>
+  <segment bytes="787017" number="2">cc75df4fc9dbfd6f413b4b37@kf-fixture</segment>
+  <segment bytes="787104" number="3">5fdb0b8c9d34ee8c6d4a630e@kf-fixture</segment>
+  <segment bytes="786986" number="4">e40124992466560ce10c0349@kf-fixture</segment>
+  <segment bytes="787053" number="5">f10142258ce99e33e52f86f2@kf-fixture</segment>
+  <segment bytes="787217" number="6">361620757bdfca40dc91b627@kf-fixture</segment>
+  <segment bytes="787155" number="7">b84a763066f66fb87ed15075@kf-fixture</segment>
+  <segment bytes="786926" number="8">c9a3c3263a8183ac4f2374aa@kf-fixture</segment>
+  <segment bytes="786991" number="9">1973d6bca48673f2122eeb76@kf-fixture</segment>
+  <segment bytes="787175" number="10">f7c7f32c7dec6b80e87b125d@kf-fixture</segment>
+  <segment bytes="787164" number="11">ae100707ca42070806543905@kf-fixture</segment>
+  <segment bytes="787074" number="12">b9b759cb244ae066d54feca7@kf-fixture</segment>
+  <segment bytes="787077" number="13">719b39f79ff1f5025357d386@kf-fixture</segment>
+  <segment bytes="786900" number="14">7650419a8db1aaea174c9e37@kf-fixture</segment>
+  <segment bytes="787052" number="15">924339e34777ceaa4e5c5881@kf-fixture</segment>
+  <segment bytes="787038" number="16">231b14b9bf3e8d06dccaf372@kf-fixture</segment>
+  <segment bytes="787068" number="17">89b69d44575e427261536707@kf-fixture</segment>
+  <segment bytes="786804" number="18">a188ef720f1bda86579a05da@kf-fixture</segment>
+  <segment bytes="786951" number="19">96e286d5e25bf685e4621635@kf-fixture</segment>
+  <segment bytes="787170" number="20">33349851b2f20f15d14caa22@kf-fixture</segment>
+  <segment bytes="787032" number="21">c84e5a9fa9176baddc2db9ee@kf-fixture</segment>
+  <segment bytes="786954" number="22">f184b3a8c799ae2702ee6c13@kf-fixture</segment>
+  <segment bytes="787133" number="23">d7a5c97eff7df4ccdd41ce09@kf-fixture</segment>
+  <segment bytes="787104" number="24">7fae19c9d0ca07a333f58cdb@kf-fixture</segment>
+  <segment bytes="69717" number="25">e46d6c39c845f3cda50023ef@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434163" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[32/33] - &quot;aaf-tz.s02e06.720p.vol15+16.par2&quot; yEnc (1/49)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787224" number="1">01aff1f57a7dcf2461026fa6@kf-fixture</segment>
+  <segment bytes="787159" number="2">c8ba32176053cb08db31db2a@kf-fixture</segment>
+  <segment bytes="787078" number="3">6ec41c2829a4a0e101ad8519@kf-fixture</segment>
+  <segment bytes="786989" number="4">b66ce87c8193a935752f7ee4@kf-fixture</segment>
+  <segment bytes="787098" number="5">52182767485a4f83a76abfd7@kf-fixture</segment>
+  <segment bytes="787102" number="6">e155613f3ed8b1a9b013281a@kf-fixture</segment>
+  <segment bytes="787170" number="7">9713e05cc0222852d7d515e7@kf-fixture</segment>
+  <segment bytes="787020" number="8">e1220db92ab1914bfbd10a6a@kf-fixture</segment>
+  <segment bytes="787067" number="9">fc0e30e539a8850d9d6b7878@kf-fixture</segment>
+  <segment bytes="787107" number="10">3df0d99c07f47a2740e593d5@kf-fixture</segment>
+  <segment bytes="787005" number="11">0127f502fd575d3a47fc1b4d@kf-fixture</segment>
+  <segment bytes="787009" number="12">5390c827f3c87da8d18ec71d@kf-fixture</segment>
+  <segment bytes="787035" number="13">d5a3af5f3665d0e4d37c2607@kf-fixture</segment>
+  <segment bytes="786824" number="14">87ee1ba5f11aa0cb591fe5f5@kf-fixture</segment>
+  <segment bytes="787126" number="15">f7b0f0d7b506226450add19b@kf-fixture</segment>
+  <segment bytes="786907" number="16">81a1dd0c42b4494febd16c4e@kf-fixture</segment>
+  <segment bytes="786892" number="17">bd0084d12ef373542df4d0a8@kf-fixture</segment>
+  <segment bytes="786963" number="18">2113973a143452d97664bfa2@kf-fixture</segment>
+  <segment bytes="786938" number="19">2a30bcb41ec4383e7f35aeea@kf-fixture</segment>
+  <segment bytes="787141" number="20">6b754bd13587b958b9a71d26@kf-fixture</segment>
+  <segment bytes="787037" number="21">b94a7094b2c94a9b7921c2ed@kf-fixture</segment>
+  <segment bytes="786983" number="22">f6c738f94e10576def24b10e@kf-fixture</segment>
+  <segment bytes="787028" number="23">ea496a659d0af5827b0160aa@kf-fixture</segment>
+  <segment bytes="787020" number="24">e31e48619740bba9bc28f7d3@kf-fixture</segment>
+  <segment bytes="787007" number="25">b0f4bbb90650f04ebe7d90ee@kf-fixture</segment>
+  <segment bytes="786898" number="26">15e63429eecac2dcdf07ec1a@kf-fixture</segment>
+  <segment bytes="787191" number="27">4a870648a32434b79370d385@kf-fixture</segment>
+  <segment bytes="786932" number="28">b0613caa9881782b19629b78@kf-fixture</segment>
+  <segment bytes="787087" number="29">bac0b281740aa6d97d7ab962@kf-fixture</segment>
+  <segment bytes="787124" number="30">46209d976cbb9386634a5bc9@kf-fixture</segment>
+  <segment bytes="787037" number="31">23727a4fdcafa019c4a7b662@kf-fixture</segment>
+  <segment bytes="787122" number="32">0579d038b925ecf201604fe0@kf-fixture</segment>
+  <segment bytes="787135" number="33">88478ca3e04bef9301b18ac9@kf-fixture</segment>
+  <segment bytes="786876" number="34">b6d2b486ce61f6dca848edc3@kf-fixture</segment>
+  <segment bytes="787012" number="35">86a984c1c8bf0f47c4cc1a4f@kf-fixture</segment>
+  <segment bytes="786978" number="36">c5b644ef0a7cab20e531d035@kf-fixture</segment>
+  <segment bytes="787047" number="37">52cc85f7499d05fbf6fab8ae@kf-fixture</segment>
+  <segment bytes="787021" number="38">a04dae82fd86bc532423c8b2@kf-fixture</segment>
+  <segment bytes="787031" number="39">fe31e81c33e3d5664ff60b7b@kf-fixture</segment>
+  <segment bytes="787054" number="40">0145946b47e9a0f3d2b0ce3c@kf-fixture</segment>
+  <segment bytes="786898" number="41">2bc9bf30008ed07aecc40f35@kf-fixture</segment>
+  <segment bytes="787035" number="42">9c597bf52c415ee9b0fb29e4@kf-fixture</segment>
+  <segment bytes="787028" number="43">3303f332c4a6a6b1cd290cea@kf-fixture</segment>
+  <segment bytes="787122" number="44">6c8b1424becc6f794264d4a2@kf-fixture</segment>
+  <segment bytes="787081" number="45">d82780fcc0a4e717e2cbb160@kf-fixture</segment>
+  <segment bytes="787387" number="46">9d014c76a16fcd36f265baf3@kf-fixture</segment>
+  <segment bytes="786965" number="47">a293e1162bcc6518c0ac3cc8@kf-fixture</segment>
+  <segment bytes="787108" number="48">9867fd9797d03dd95833cbb9@kf-fixture</segment>
+  <segment bytes="87401" number="49">949bafed9b7302703904daa2@kf-fixture</segment>
+ </segments>
+</file>
+<file poster="(scrubbed)" date="1293434164" subject="[46953]-[FULL]-[#a.b.teevee@EFNet]-[ The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF ]-[33/33] - &quot;aaf-tz.s02e06.720p.vol31+21.par2&quot; yEnc (1/64)">
+ <groups>
+  <group>alt.binaries.multimedia</group>
+  <group>alt.binaries.teevee</group>
+ </groups>
+ <segments>
+  <segment bytes="787100" number="1">373510560517c3b60801c070@kf-fixture</segment>
+  <segment bytes="786981" number="2">aaaba7d036e5de7ece417154@kf-fixture</segment>
+  <segment bytes="786943" number="3">b0fd6cea0de7f9a3df706145@kf-fixture</segment>
+  <segment bytes="787221" number="4">a29b1ba683aa3ef30259990e@kf-fixture</segment>
+  <segment bytes="787017" number="5">cd6af71dbdb9c7c8635c2972@kf-fixture</segment>
+  <segment bytes="786948" number="6">b7ea098ebac813e12cd8e0af@kf-fixture</segment>
+  <segment bytes="787183" number="7">a97d478bd8566eb1b06594be@kf-fixture</segment>
+  <segment bytes="786984" number="8">8e5691d21ba2ee3e584e756d@kf-fixture</segment>
+  <segment bytes="787075" number="9">1c79b03fe5ef7ad00378a49b@kf-fixture</segment>
+  <segment bytes="787032" number="10">cb6797460b65934e9810e47e@kf-fixture</segment>
+  <segment bytes="787051" number="11">d93cecd9d782ac6fdd1bcadf@kf-fixture</segment>
+  <segment bytes="786963" number="12">6096ff9852a542e7c210a446@kf-fixture</segment>
+  <segment bytes="787200" number="13">1be5ea8e3093c27fd11f68ac@kf-fixture</segment>
+  <segment bytes="787244" number="14">3e3aa75cee5aa488234d6ef7@kf-fixture</segment>
+  <segment bytes="786922" number="15">272ca9f8e14c8449e1f0ee57@kf-fixture</segment>
+  <segment bytes="787029" number="16">7158cbd3790fcd7d9f41a4be@kf-fixture</segment>
+  <segment bytes="787221" number="17">19b3684376f9d4ad890822c1@kf-fixture</segment>
+  <segment bytes="786886" number="18">c0323c64029effef553e226a@kf-fixture</segment>
+  <segment bytes="786924" number="19">ddbd35fd15fd1805a35fbfe4@kf-fixture</segment>
+  <segment bytes="787045" number="20">7ab540a1f936d05609edd6c3@kf-fixture</segment>
+  <segment bytes="787118" number="21">70a53128df9ca9866a7ddfee@kf-fixture</segment>
+  <segment bytes="787248" number="22">7e2a3f79e9ad714ceda1f192@kf-fixture</segment>
+  <segment bytes="786937" number="23">2712d561f12ec6c289369bd4@kf-fixture</segment>
+  <segment bytes="787151" number="24">0548ff61bc3c13cd1cce6b36@kf-fixture</segment>
+  <segment bytes="787064" number="25">899fbfb421b17ec507f34c72@kf-fixture</segment>
+  <segment bytes="787071" number="26">ada754f4680e675b0c4c64ea@kf-fixture</segment>
+  <segment bytes="786847" number="27">f0c9d48313d809f74fa2b89c@kf-fixture</segment>
+  <segment bytes="787066" number="28">f9dd9cfe8ab1f0f3ca4fb288@kf-fixture</segment>
+  <segment bytes="787186" number="29">ae757e5739d73a500a45fbc6@kf-fixture</segment>
+  <segment bytes="786969" number="30">12651da9b728a659107bfc00@kf-fixture</segment>
+  <segment bytes="786879" number="31">c45a2e7babe248a0f88a97fe@kf-fixture</segment>
+  <segment bytes="786948" number="32">a6ce71d75d22d163a0ee2874@kf-fixture</segment>
+  <segment bytes="787032" number="33">725e361c71d30ebc5404972b@kf-fixture</segment>
+  <segment bytes="787024" number="34">6662ca45d14f8bb3ff718d36@kf-fixture</segment>
+  <segment bytes="787101" number="35">7a1aa3fc7e387d37b482fb0e@kf-fixture</segment>
+  <segment bytes="786946" number="36">8caad90d8cf849426706aed9@kf-fixture</segment>
+  <segment bytes="786858" number="37">dc440cf25ad2d3957f11f493@kf-fixture</segment>
+  <segment bytes="787149" number="38">024afced7f574b435a7b21f2@kf-fixture</segment>
+  <segment bytes="786970" number="39">9e6944bfc4f5bf80865721c4@kf-fixture</segment>
+  <segment bytes="787482" number="40">4f045601690787117d1c4cf0@kf-fixture</segment>
+  <segment bytes="787088" number="41">b8406bf180372afbf9da0a48@kf-fixture</segment>
+  <segment bytes="787034" number="42">b5347399b4ac74c16e05724c@kf-fixture</segment>
+  <segment bytes="786880" number="43">43a7ec7be89d3eb42206ac0f@kf-fixture</segment>
+  <segment bytes="787086" number="44">0d31c2641babf3f92afe6507@kf-fixture</segment>
+  <segment bytes="786862" number="45">f644c59aef57536caabf72e7@kf-fixture</segment>
+  <segment bytes="786961" number="46">8553a709cbef8b3f3bfaf33c@kf-fixture</segment>
+  <segment bytes="787108" number="47">b709a363a861710311c53829@kf-fixture</segment>
+  <segment bytes="786994" number="48">0b0352fcbfe5fe4ddafb62bb@kf-fixture</segment>
+  <segment bytes="787004" number="49">2761cd7c559fae0ad21808b9@kf-fixture</segment>
+  <segment bytes="787018" number="50">36456725621fc7d0089fc1b5@kf-fixture</segment>
+  <segment bytes="787030" number="51">743f743f7cd1ac80119fb74a@kf-fixture</segment>
+  <segment bytes="787063" number="52">2eda599fc5cb86258d0a7b85@kf-fixture</segment>
+  <segment bytes="786937" number="53">ab0ff30fd3f67b7842a2b0d0@kf-fixture</segment>
+  <segment bytes="787107" number="54">25f4def3876ea78c3a0fa0d5@kf-fixture</segment>
+  <segment bytes="787125" number="55">6da09fd479ed304863573d32@kf-fixture</segment>
+  <segment bytes="787063" number="56">e542aa87fb6d2f110a3f30ea@kf-fixture</segment>
+  <segment bytes="786893" number="57">ba7ef797640c8bae887e43d0@kf-fixture</segment>
+  <segment bytes="786955" number="58">749f437b7c40acb4db8d5828@kf-fixture</segment>
+  <segment bytes="787022" number="59">09f3967c71cff49251a153c0@kf-fixture</segment>
+  <segment bytes="787168" number="60">73351996da6d6ef433dcb7d9@kf-fixture</segment>
+  <segment bytes="787185" number="61">731f2cc79fdaff5563b7ed4f@kf-fixture</segment>
+  <segment bytes="786945" number="62">30d7bd6c34dd0fad1d68c04e@kf-fixture</segment>
+  <segment bytes="787068" number="63">00ae508e9423b7bf3a2f0976@kf-fixture</segment>
+  <segment bytes="87816" number="64">5606529ace5e80e130541bbc@kf-fixture</segment>
+ </segments>
+</file>
+<!-- newznab 2021-08-02 19:41:19 -->
+</nzb>

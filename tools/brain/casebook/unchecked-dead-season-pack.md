@@ -13,6 +13,8 @@ confirm:
     answer: yes
   - clue: altmount-fast-fail-refused
     answer: yes
+  - clue: articles-missing
+    answer: yes
 fix: "#190 (PR #210): no Unchecked Source goes to AltMount; #203 (PR #225): the check samples the wanted episode's file; #191 deleted the list-time check"
 seen:
   - check: 2026-11-20T223814Z-baseline-189
@@ -48,7 +50,7 @@ The old list-time check (Smart mode) checked positions 1 to 6, found them all bl
 
 ## How it was proved
 
-By the logs and the grilling on #190 (2026-11-20); after the fix, #218's runs played the title in every round. The confirming test is the recipe in `confirm`: the played Source has no check line of its own, and AltMount refused it at its fast-fail check. Its Clues are built (#283) and tried on real captures: the recipe proves the cause on #189's cold 1 and rules it out on #219's The Witcher. In a build from before the Play-time check (#190), `played-source-unchecked` reads the old check's `Smart mode: no healthy result found after checking` line.
+By the logs and the grilling on #190 (2026-11-20); after the fix, #218's runs played the title in every round. The confirming test is the recipe in `confirm`: the played Source has no check line of its own, and AltMount refused it at its fast-fail check. Its Clues are built (#283) and tried on real captures: the recipe proves the cause on #189's cold 1 and rules it out on #219's The Witcher. Since #284 the recipe also asks the provider whether the pack is really dead (`articles-missing`, a STAT of every article right after the check), so a refusal at AltMount's fast-fail check that was only its own time running out (NNTP_HEALTH_CHECKS gap H) does not prove it. #189's capture was asked on 2026-11-24, four days after the play: the first 10 articles of `part001.rar` answered 430 twice. In a build from before the Play-time check (#190), `played-source-unchecked` reads the old check's `Smart mode: no healthy result found after checking` line.
 
 ## Ruled out
 
@@ -62,3 +64,4 @@ Nothing tested and rejected yet.
 
 - 2026-11-24: converted from the casebook sweep (draft A2).
 - 2026-11-24: its confirming recipe runs (#283): Clues played-source-unchecked, altmount-fast-fail-refused.
+- 2026-11-24: the recipe also needs `articles-missing` (#284), a live Clue: the pack's articles are gone from the provider.
