@@ -349,10 +349,6 @@ def _s(x):
     return f'{x:.2f} s'
 
 
-def _plural(n, word, many=None):
-    return f"{n} {word if n == 1 else many or word + 's'}"
-
-
 def no_verdict_text(check):
     """Why a check has no verdict, in one sentence."""
     status = check.get('status')
@@ -371,8 +367,8 @@ def headline(check, outcomes):
         return no_verdict_text(check)
     fails = [o for o in outcomes if o['outcome'] == FAIL]
     if v == 'pass':
-        return f"Pass: 0 fails in {_plural(len(outcomes), 'title')}."
-    return f"Fail: {len(fails)} of {_plural(len(outcomes), 'title')} failed (" + '; '.join(o['label'] for o in fails) + ').'
+        return f"Pass: 0 fails in {br.plural(len(outcomes), 'title')}."
+    return f"Fail: {len(fails)} of {br.plural(len(outcomes), 'title')} failed (" + '; '.join(o['label'] for o in fails) + ').'
 
 
 def check_said(c):
@@ -420,7 +416,7 @@ def played_line(check):
     cut = sum(1 for v in visits if v.get('cut_by_limit'))
     if len(visits) >= drawn and not cut:
         return []
-    return [f"\nPlayed {len(visits)} of {_plural(drawn, 'title')}" + (f"; {cut} cut by the limit, not judged." if cut else '.')]
+    return [f"\nPlayed {len(visits)} of {br.plural(drawn, 'title')}" + (f"; {cut} cut by the limit, not judged." if cut else '.')]
 
 
 def allowed_word_lines(outcomes):
@@ -459,9 +455,9 @@ def render_report(check, outcomes):
     fell = [o for o in outcomes if o['fallbacks']]
     lines += ['', '## Fallbacks', '']
     if fell:
-        lines.append(f"{_plural(sum(o['fallbacks'] for o in fell), 'fallback')} in {_plural(len(fell), 'title')}; "
+        lines.append(f"{br.plural(sum(o['fallbacks'] for o in fell), 'fallback')} in {br.plural(len(fell), 'title')}; "
                      f"{sum(1 for o in fell if o['video'])} of them ended in video.")
-        lines += [f"- {o['label']}: {_plural(o['fallbacks'], 'fallback')}, {'ended in video' if o['video'] else 'no video'}." for o in fell]
+        lines += [f"- {o['label']}: {br.plural(o['fallbacks'], 'fallback')}, {'ended in video' if o['video'] else 'no video'}." for o in fell]
     else:
         lines.append('Fallbacks not tested this time: no play fell back.')
     nothing = [o for o in outcomes if o['outcome'] == NOTHING]
@@ -473,7 +469,7 @@ def render_report(check, outcomes):
         lines.append('None.')
     times = [o['title_to_video'] for o in outcomes if o['outcome'] == PLAYED and o['title_to_video'] is not None]
     lines += ['', '## Typical title to video', '']
-    lines.append(f"{_s(statistics.median(times))} (median of {_plural(len(times), 'play')} with the right video; the list plus "
+    lines.append(f"{_s(statistics.median(times))} (median of {br.plural(len(times), 'play')} with the right video; the list plus "
                  'the start, the Browse pause left out).' if times else 'None: no play gave the right video.')
     lines += played_line(check)
     lines += ['', '## Allowed words offered', ''] + (allowed_word_lines(outcomes) or ['None.'])

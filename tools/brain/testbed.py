@@ -246,14 +246,6 @@ JSON_CONFIGS = {side: v["json"] for side, v in SETTINGS.items() if "json" in v}
 YAML_CONFIGS = ("altmount-kf",)  # the copies whose config is AltMount's config.yaml
 
 
-def _read_json(path):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
-
-
 def _read_text(path):
     try:
         with open(path) as f:
@@ -289,9 +281,9 @@ def secret_values(test_dir):
         names = []
     for n in names:
         if n.endswith(".json"):
-            out.update(_secret_strings(_read_json(os.path.join(test_dir, n)), every=True))
+            out.update(_secret_strings(br.read_json(os.path.join(test_dir, n)), every=True))
     for rel in JSON_CONFIGS.values():
-        out.update(_secret_strings(_read_json(os.path.join(test_dir, rel))))
+        out.update(_secret_strings(br.read_json(os.path.join(test_dir, rel))))
     for side in YAML_CONFIGS:
         for line in (_read_text(os.path.join(test_dir, side, "config/config.yaml")) or "").splitlines():
             key, sep, value = line.strip().lstrip("- ").partition(":")
@@ -309,7 +301,7 @@ def read_settings(test_dir):
     """Settings of every test copy with secrets removed: {side: {dotted key: value}}."""
     snap = {}
     for side, rel in JSON_CONFIGS.items():
-        data = _read_json(os.path.join(test_dir, rel))
+        data = br.read_json(os.path.join(test_dir, rel))
         snap[side] = br.flatten(data) if data is not None else {"(file missing)": rel}
     for side in YAML_CONFIGS:
         text = _read_text(os.path.join(test_dir, side, "config/config.yaml"))
@@ -347,7 +339,7 @@ def read_indexers(test_dir):
     """
     out = {}
     for side, rel in JSON_CONFIGS.items():
-        data = _read_json(os.path.join(test_dir, rel))
+        data = br.read_json(os.path.join(test_dir, rel))
         if not isinstance(data, dict):
             out[side] = None
             continue

@@ -10,12 +10,12 @@ This counts this machine only. Nothing here talks to an indexer.
 """
 import datetime
 import glob
-import json
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import brainreport as br  # noqa: E402
 import runs  # noqa: E402
 
 LIMITS_FILE = 'limits.json'
@@ -27,14 +27,6 @@ CAVEAT = ('This counts this machine only, and each copy of Usenet Ultimate keeps
           'and its latest hundred downloads, so on a busy day the real use can be higher.')
 COLUMNS = ('Columns: Used = requests counted since the indexer last reset; Limit = the daily limit from your limits file; '
            'Left = Limit minus Used.')
-
-
-def _read_json(path):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
 
 
 def limits_path(cfg):
@@ -61,7 +53,7 @@ def load_limits(path):
     if not os.path.exists(path):
         return None, (f'There is no limits file yet: fill in {path} (an example is in tools/brain/limits.example.json) '
                       'so the daily limits can be checked.')
-    data = _read_json(path)
+    data = br.read_json(path)
     if not isinstance(data, dict) or not isinstance(data.get('indexers'), dict):
         return None, f'The limits file {path} has no "indexers" list: fix it (an example is in tools/brain/limits.example.json).'
     out = {}
@@ -128,7 +120,7 @@ def copy_requests(stats_files):
     """[(slug, kind, when)] from the counter files (config/stats.json) the copies keep."""
     out = []
     for path in stats_files:
-        data = _read_json(path)
+        data = br.read_json(path)
         indexers = data.get('indexers') if isinstance(data, dict) else None
         if not isinstance(indexers, dict):
             continue

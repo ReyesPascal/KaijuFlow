@@ -12,6 +12,12 @@ five numbers (`diagnosis.counts`).
 
 `score` is a pure function of what Diagnosis gathers (diagnosis.after_check); `report_lines` writes it.
 """
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import brainreport as br  # noqa: E402
+
 OVER_TIME = 10  # checks shown in the failures per check
 UNEXPLAINED = 'unexplained'
 
@@ -70,10 +76,6 @@ def score(name, summary, plays, library, earlier, entries, logs):
             'research': research_numbers(logs)}
 
 
-def _plural(n, word):
-    return f"{n} {word}{'' if n == 1 else 's'}"
-
-
 def _names(names):
     return f" ({', '.join(names)})" if names else ''
 
@@ -87,11 +89,11 @@ def report_lines(board):
         clue = f"Clues: the confirming tests ran {c['ran']}: {c['reused']} reused, {len(c['new'])} new since the check " \
                f"{c['since']}{_names(c['new'])}; the library holds {c['library']}, {len(c['joined'])} joined since" \
                f"{_names(c['joined'])}."
-    fix = f"Fixes: {f['proved_fixed']} proved fixed, {_plural(f['comebacks'], 'comeback')} in all; this check: " \
-          f"{_plural(len(f['this_check']), 'comeback')}{_names(f['this_check'])}, {_plural(f['tickets'], 'fix ticket')} filed."
+    fix = f"Fixes: {f['proved_fixed']} proved fixed, {br.plural(f['comebacks'], 'comeback')} in all; this check: " \
+          f"{br.plural(len(f['this_check']), 'comeback')}{_names(f['this_check'])}, {br.plural(f['tickets'], 'fix ticket')} filed."
     research = 'Research: not kept (no Case logs folder).' if r is None else \
-        f"Research: {r['count']} looked up in {_plural(r['logs'], 'Case log')}, {r['used']} used."
+        f"Research: {r['count']} looked up in {br.plural(r['logs'], 'Case log')}, {r['used']} used."
     lines = [clue, fix, research, '', f'Failures per check by cause (the last {OVER_TIME} checks with a failure):', '']
-    lines += [f"- {b['check']}: {_plural(b['failures'], 'failure')}: " + ', '.join(f'{k} {n}' for k, n in b['causes'].items())
+    lines += [f"- {b['check']}: {br.plural(b['failures'], 'failure')}: " + ', '.join(f'{k} {n}' for k, n in b['causes'].items())
               for b in board['by_cause']]
     return lines

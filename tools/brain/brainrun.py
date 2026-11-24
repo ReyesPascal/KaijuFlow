@@ -133,14 +133,6 @@ def finish_after_stop(stopped, command, files):
 
 # --------------------------------------------------------------------------- settings
 
-def _read_json(path):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
-
-
 def _read_text(path):
     try:
         with open(path) as f:
@@ -308,10 +300,10 @@ class RealIO:
     def setting_conflicts(self):
         """Sentences for a key file whose dropped-parameter setting differs from the one the list was recorded with."""
         key = _key_path(self.cfg)
-        return indexer_standin.setting_conflicts(_read_json(key) or {}, self.cfg['store'], self.cfg['listname'])
+        return indexer_standin.setting_conflicts(br.read_json(key) or {}, self.cfg['store'], self.cfg['listname'])
 
     def recording_state(self):
-        return _read_json(os.path.join(self.cfg['store'], self.cfg['listname'], RECORDING_FILE))
+        return br.read_json(os.path.join(self.cfg['store'], self.cfg['listname'], RECORDING_FILE))
 
     def missed_since(self, when):
         """(run folder, missed requests) of the newest run on this recording that started after `when` (the recording's
@@ -361,7 +353,7 @@ class RealIO:
         return preflight(mode, self.cfg, self, seen)
 
     def marker(self):
-        return _read_json(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
+        return br.read_json(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
 
     def start_standin(self, logpath, mode='replay', wait=True):
         script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'indexer_standin.py')
@@ -421,7 +413,7 @@ class RealIO:
             raise RuntimeError(f'{self.backup} exists: an earlier run did not restore the KaijuFlow config; restore it by hand')
         self._compose('stop', 'kaijuflow')
         shutil.copyfile(path, self.backup)
-        patched = one_page_config(_read_json(path))
+        patched = one_page_config(br.read_json(path))
         with open(path, 'w') as f:
             json.dump(patched, f, indent=2)
         return {'kaijuflow-1page': br.flatten(patched)}
@@ -721,7 +713,7 @@ def read_pinned(test_dir):
     folder's .env, and the host of KaijuFlow's `altmountUrl` (its login, if any, left out). `altmount_url` says whether that
     URL is 'set', 'missing', or set but naming 'no host' (no http:// in front, say). `HOST_IP` and `altmount_host` are None
     when there is none."""
-    url = (_read_json(os.path.join(test_dir, 'config', 'config.json')) or {}).get('altmountUrl')
+    url = (br.read_json(os.path.join(test_dir, 'config', 'config.json')) or {}).get('altmountUrl')
     try:
         host = urllib.parse.urlsplit(url).hostname if isinstance(url, str) else None
     except ValueError:
@@ -751,7 +743,7 @@ def shelve_marker(store):
     path = os.path.join(store, 'LIMIT_REACHED.json')
     if not os.path.exists(path):
         return None
-    marker = _read_json(path) or {}
+    marker = br.read_json(path) or {}
     try:
         when = br.parse_ts(marker['time'])
     except (TypeError, KeyError, ValueError):
@@ -814,7 +806,7 @@ def read_key_file(path):
         return 'missing', []
     if mode & 0o077:
         return 'open', []
-    data = _read_json(path)
+    data = br.read_json(path)
     names = data.get('indexers') if isinstance(data, dict) else None
     if not isinstance(names, dict):
         return 'unreadable', []
@@ -2126,8 +2118,8 @@ def main(argv):
         if not a.store or not a.listname:
             ap.error('--store and --list are needed')
     td = a.test_dir
-    users = (_read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
-    titles = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
+    users = (br.read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
+    titles = [tuple(t) for t in br.read_json(a.titles_file)] if a.titles_file else common.TITLES
     listdir = os.path.join(a.store or '', a.listname or '')
     cfg = dict(name=a.name or 'run', runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),

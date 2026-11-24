@@ -135,23 +135,15 @@ def _runs_root(folder):
     return os.path.dirname(run_dir), run_dir
 
 
-def _read_json(path):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
-
-
 def last_good_check(folder):
     """The name and meta.json of the last quick check under the runs root that passed before this play's check."""
     root, run_dir = _runs_root(folder)
-    mine = _read_json(os.path.join(run_dir, 'meta.json')) or {}
-    since = mine.get('started') or (_read_json(os.path.join(folder, 'evidence.json')) or {}).get('t_start') or ''
+    mine = br.read_json(os.path.join(run_dir, 'meta.json')) or {}
+    since = mine.get('started') or (br.read_json(os.path.join(folder, 'evidence.json')) or {}).get('t_start') or ''
     for name in reversed(br.run_folders(root)):
         if name == os.path.basename(run_dir):
             continue
-        meta = _read_json(os.path.join(root, name, 'meta.json')) or {}
+        meta = br.read_json(os.path.join(root, name, 'meta.json')) or {}
         if meta.get('kind') == 'quick check' and meta.get('verdict') == 'pass' and (meta.get('started') or '') < since:
             return name, meta
     return None, None
@@ -209,8 +201,8 @@ def changed_observation(ev):
         theirs('meta.json', 'image', good_am)
     else:
         said.append(f'the same AltMount ({am})')
-    now = _flat(_read_json(os.path.join(ev.folder, 'settings.json')))
-    then = _flat(_read_json(os.path.join(_runs_root(ev.folder)[0], name, 'settings.json')))
+    now = _flat(br.read_json(os.path.join(ev.folder, 'settings.json')))
+    then = _flat(br.read_json(os.path.join(_runs_root(ev.folder)[0], name, 'settings.json')))
     if not now or not then:
         said.append('the settings are not recorded in both')
     else:

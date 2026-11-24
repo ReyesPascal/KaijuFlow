@@ -113,6 +113,25 @@ def parse_ts(s):
     return d.replace(tzinfo=datetime.timezone.utc)
 
 
+def read_json(path):
+    """A JSON file's data, or None when it is missing or not JSON."""
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def write_json(path, data):
+    with open(path, 'w') as f:
+        f.write(json.dumps(data, indent=1, ensure_ascii=False) + '\n')
+
+
+def plural(n, word, many=None):
+    """`1 failure`, `2 failures` (`many`: the word for more than one, when not word + s)."""
+    return f"{n} {word if n == 1 else many or word + 's'}"
+
+
 def iso(d):
     return d.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.') + '%03dZ' % (d.microsecond // 1000)
 
