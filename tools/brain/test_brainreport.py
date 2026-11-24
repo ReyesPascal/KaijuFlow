@@ -1260,3 +1260,49 @@ def video(side, lst, secs, phase='cold'):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def list_lines(vid, t, ms=120, sort=40, groups=3):
+    """A list request's step lines as KaijuFlow writes them (#249), ending at time t."""
+    base = {'ok': True, 't': t, 'ref': vid}
+    return [dict(base, step='list_filter', ms=30, results=10, kept=8), dict(base, step='list_sort', ms=sort),
+            dict(base, step='fallback_group', ms=5, candidates=8, groups=groups), dict(base, step='list_build', ms=20, streams=9),
+            dict(base, step='head_start', ms=1),
+            dict(base, step='list', ms=ms, cache='hit', streams=9, cpu_ms=150, gc_ms=12, gc_n=2, loop_max_ms=8,
+                 loop_p99_ms=4, elu=0.93, heap_mb=210)]
+
+
+class ListWorkTest(unittest.TestCase):
+    """The list's own work (#249): KaijuFlow's list lines are kept by ref, and the report shows them with the CPU readings."""
+
+    def test_list_lines_are_kept_by_ref_inside_the_visit_window(self):
+        visit = {'id': 'tt1', 't_start': '2026-11-10T18:00:00Z', 'tries': []}
+        mine = list_lines('tt1', '2026-11-10T18:00:00.500Z')
+        other = list_lines('tt2', '2026-11-10T18:00:00.600Z')
+        late = list_lines('tt1', '2026-11-10T18:10:00.000Z')
+        kept = br.attribute_steps(visit, mine + other + late, end=br.parse_ts('2026-11-10T18:05:00Z'))
+        self.assertEqual(sorted(s['step'] for s in kept), sorted(br.LIST_STEPS))
+        self.assertTrue(all(s['ref'] == 'tt1' and s['t'].startswith('2026-11-10T18:00:00') for s in kept))
+
+    def test_report_shows_medians_per_round_and_every_warm_list(self):
+        run = runs_fixture()
+        for v in run['visits']:
+            if v['side'] == 'kaijuflow':
+                slow = v['phase'] == 'warm' and v['round'] == 2
+                v['steps'] = list_lines('tt1', '2026-11-10T18:00:01Z', ms=900 if slow else 120, sort=600 if slow else 40)
+                v['list_cpu'] = {'kaijuflow_ms': 160, 'altmount_ms': 75, 'machine_ms': 980}
+        text = br.render_report(run, [])
+        start = text.index("## The list's own work")
+        end = text.find('\n## ', start)
+        section = text[start:end if end > 0 else None]
+        rows = [r for r in section.split('\n') if r.startswith('| KaijuFlow |')]
+        self.assertEqual(len(rows), 4, 'one row per round of the side that wrote list lines')
+        warm2 = next(r for r in rows if '| Warm 2 |' in r)
+        self.assertEqual(warm2.split(' | ')[2:7], ['5000', '900', '30', '600', '20'])
+        self.assertIn('| 0.93 | 210 | 160 | 75 | 980 |', warm2)
+        self.assertIn('Every warm list:', section)
+        self.assertEqual(sum(1 for r in section.split('\n') if r.startswith('| Matrix | KaijuFlow | Warm')), 2)
+        self.assertIn('- **Group write**:', section)
+
+    def test_a_run_without_list_lines_has_no_such_section(self):
+        self.assertNotIn("The list's own work", br.render_report(runs_fixture(), []))

@@ -2001,3 +2001,55 @@ class NeverComparedTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ListCpuTest(unittest.TestCase):
+    """The runner's CPU readings around a list request (#249): each test container's cgroup and the whole machine."""
+
+    def test_cpu_used_between_two_readings_in_ms(self):
+        before = {'kaijuflow_ms': 1_000_000, 'altmount_ms': 5_000_000, 'machine_ms': 70_000}
+        after = {'kaijuflow_ms': 1_250_400, 'altmount_ms': 4_000_000, 'machine_ms': 71_230}
+        self.assertEqual(brainrun.cpu_used(before, after), {'kaijuflow_ms': 250, 'altmount_ms': None, 'machine_ms': 1230},
+                         'a reading that went back (a restart) says nothing')
+        self.assertEqual(brainrun.cpu_used({}, after), {'kaijuflow_ms': None, 'altmount_ms': None, 'machine_ms': None})
+
+    def test_container_cpu_is_read_from_its_cgroup_and_looked_up_again_after_a_reset(self):
+        if True:
+            root = tempdir(self)
+            ids = iter(['aaa', 'bbb'])
+            calls = []
+
+            def run(cmd, **kw):
+                calls.append(cmd)
+                return mock.Mock(returncode=0, stdout=next(ids) + '\n')
+            os.makedirs(os.path.join(root, 'docker-bbb.scope'))
+            with open(os.path.join(root, 'docker-bbb.scope', 'cpu.stat'), 'w') as f:
+                f.write('usage_usec 43176\nuser_usec 29486\n')
+            brainrun._container_ids.pop('kaijuflow-test', None)
+            self.assertEqual(brainrun._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
+            self.assertEqual(len(calls), 2, 'the first id had no cgroup: looked up again')
+            self.assertEqual(brainrun._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
+            self.assertEqual(len(calls), 2, 'the id is kept')
+            brainrun._container_ids.pop('kaijuflow-test', None)
+        with self.assertRaises(ValueError):
+            brainrun._container_cpu_us('some-other-container')
+
+    def test_machine_busy_leaves_out_idle_and_iowait(self):
+        if True:
+            d = tempdir(self)
+            p = os.path.join(d, 'stat')
+            with open(p, 'w') as f:
+                f.write('cpu  100 5 50 1000 40 3 2 0 0 0\ncpu0 1 2 3 4\n')
+            self.assertEqual(brainrun._machine_busy_ms(p), (100 + 5 + 50 + 3 + 2) * 10)
+            self.assertIsNone(brainrun._machine_busy_ms(os.path.join(d, 'none')))
+
+    def test_a_visit_keeps_the_list_cpu_its_http_gave(self):
+        sample = iter([{'kaijuflow_ms': 0, 'altmount_ms': 0, 'machine_ms': 0},
+                       {'kaijuflow_ms': 90_000, 'altmount_ms': 10_000, 'machine_ms': 400}])
+        with mock.patch.object(brainrun, 'cpu_sample', lambda: next(sample)), \
+                mock.patch.object(common, 'get', return_value=(200, {}, b'{"streams": []}', {'ready': 0.2, 'total': 0.3})):
+            io = brainrun.RealIO({'test_dir': '/nonexistent'})
+            with mock.patch.object(brainrun, 'list_base', return_value='http://x'):
+                out = io.visit_http('kaijuflow', 'movie', 'tt1', 1)
+        self.assertEqual(out['list_cpu'], {'kaijuflow_ms': 90, 'altmount_ms': 10, 'machine_ms': 400})
+        self.assertEqual(out['list_s'], 0.3)
