@@ -72,9 +72,10 @@ class FakeIO(Copies):
     LIST_S, START_S, SEEKS_S = 2.0, 1.5, 0.5  # a visit whose top pick plays takes the three together: 4 s
     FAILED_PLAY_S = 10.0                      # a top pick that fails gives up after this long: the visit takes 12 s
 
-    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=(), load=0.4):
+    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=(), load=0.4, machine=None):
         Copies.__init__(self, up)
         self.load = load
+        self.machine = machine or {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance', 'cpu_probe_ms': 950}
         self.calls, self.clock, self.visits = [], datetime.datetime(2026, 11, 10, 18, 0, 0, tzinfo=UTC), 0
         self.limit_at_visit, self._marker, self.commit = limit_at_visit, marker, commit
         self.settings = settings or {'kaijuflow': {'healthChecks.sampleCount': 3, 'altmountApiKey': '***'}}
@@ -103,10 +104,11 @@ class FakeIO(Copies):
         return self.commit
 
     def preflight(self, mode, seen=None):
-        """As the real preflight: a run's preflight hands back the load it judged (`load`)."""
+        """As the real preflight: a run's preflight hands back the load and the machine it judged (`load`, `machine`)."""
         self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
         if mode == 'run' and seen is not None:
             seen['load'] = self.load
+            seen['machine'] = dict(self.machine)
         return list(getattr(self, 'problems', []))
 
     def snapshot(self):
@@ -266,6 +268,11 @@ class RunTest(unittest.TestCase):
         run = brainrun.run_all(make_cfg(self.tmp), io)
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['start_load'], 0.43)
 
+    def test_run_record_keeps_the_machine_the_preflight_judged(self):
+        machine = {'power': 'ac', 'governor': 'performance', 'cpu_probe_ms': 1012}
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(machine=machine))
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['machine'], machine)
+
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
         self.assertEqual({v['side'] for v in run['visits']}, {'kaijuflow'})
@@ -291,6 +298,17 @@ class RunTest(unittest.TestCase):
         self.assertIn('healthChecks.sampleCount: 3 -> 5', idx)
         rep = read(os.path.join(root, os.path.basename(run2['dir']), 'report.md'))
         self.assertIn('healthChecks.sampleCount: 3 -> 5', rep.split('Steps every side shares')[0])
+
+    def test_the_report_opens_with_the_machine_and_holds_it_against_the_previous_runs(self):
+        run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
+        io2 = FakeIO(machine={'power': 'battery', 'governor': 'powersave', 'cpu_probe_ms': 1140})
+        io2.clock += datetime.timedelta(minutes=5)
+        run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
+        head = read(os.path.join(run2['dir'], 'report.md')).split('Steps every side shares')[0]
+        self.assertIn('Machine: on battery, CPU probe 1140 ms (governor powersave).', head)
+        self.assertIn('- Machine: previous run plugged in, CPU probe 950 ms (governor powersave, energy preference performance); '
+                      'this run on battery, CPU probe 1140 ms (governor powersave): the probe 20% slower', head)
+        self.assertNotIn('Machine:', ' '.join(run1['changes']))  # the first run has nothing to hold it against
 
     def test_a_run_is_judged_against_the_previous_run_on_its_recording(self):
         run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())

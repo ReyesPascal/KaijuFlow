@@ -287,6 +287,15 @@ class RealIO:
     def load_average(self):
         return os.getloadavg()[0]
 
+    def power(self):
+        return read_power()
+
+    def cpu_policy(self):
+        return read_cpu_policy()
+
+    def cpu_probe_ms(self):
+        return cpu_probe_ms()
+
     def machine_addresses(self):
         return read_machine_addresses()
 
@@ -529,6 +538,54 @@ def read_dns(name, server, run=None):
     return [a for a in map(_address, out.split()) if a]
 
 
+def _sys_text(path):
+    """The first line of a /sys file, stripped; None when it cannot be read."""
+    try:
+        with open(path) as f:
+            return f.readline().strip()
+    except OSError:
+        return None
+
+
+def read_power(root=None):
+    """'battery' when the machine has a Mains supply (the AC adapter) and none of its Mains supplies is online, else 'ac' (#262).
+    A machine with no Mains supply listed (a desktop) is 'ac'. A Mains supply whose `online` cannot be read counts as not online."""
+    root = root or POWER_SUPPLY_ROOT
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        return 'ac'
+    mains = [n for n in names if _sys_text(os.path.join(root, n, 'type')) == 'Mains']
+    if mains and not any(_sys_text(os.path.join(root, n, 'online')) == '1' for n in mains):
+        return 'battery'
+    return 'ac'
+
+
+def read_cpu_policy(root=None):
+    """The first CPU's frequency policy (#262): {'governor', 'energy_preference'}, each only when it can be read."""
+    root, out = root or CPUFREQ_ROOT, {}
+    for key, name in (('governor', 'scaling_governor'), ('energy_preference', 'energy_performance_preference')):
+        value = _sys_text(os.path.join(root, name))
+        if value:
+            out[key] = value
+    return out
+
+
+def probe_work(rounds):
+    """The CPU probe's work: `rounds` steps of integer arithmetic in one thread, the same every time."""
+    x = 0
+    for i in range(rounds):
+        x = (x * 1103515245 + 12345 + i) & 0xFFFFFFFF
+    return x
+
+
+def cpu_probe_ms(rounds=None, clock=time.perf_counter, work=probe_work):
+    """How long the CPU probe's fixed work took, in whole milliseconds (#262): about 1 s on Brain plugged in; more on a slower CPU."""
+    start = clock()
+    work(rounds or PROBE_ROUNDS)
+    return round((clock() - start) * 1000)
+
+
 def _env_value(path, key):
     """The value of `key` in a compose .env file (KEY=VALUE lines, quotes taken off); None when the file or the key is missing.
     Only that key is kept: the file holds secrets."""
@@ -617,6 +674,11 @@ EXPECTED_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__))
 BUSY_LOAD = 1.0  # the 1-minute load average at or above which the machine is busy
 # An image build by this preflight loads the machine itself: the load check then waits up to this long for it to settle.
 SETTLE_AFTER_BUILD_S, SETTLE_POLL_S = 180, 10
+# A run on battery is slower (#249: the same code's warm lists 20-25% slower): a run or a record starts plugged in (#262).
+POWER_SUPPLY_ROOT = '/sys/class/power_supply'
+CPUFREQ_ROOT = '/sys/devices/system/cpu/cpu0/cpufreq'
+# The CPU probe's fixed work (#262), run by a run's preflight after the load check: about 1 s on Brain, the same every run.
+PROBE_ROUNDS = 12_000_000
 # The router has answered Newshosting's name with a dead 10.x address (2026-11-17): every Usenet read then fails.
 NEWS_HOST, ROUTER, SINKHOLE = 'news.newshosting.com', '192.168.4.1', ipaddress.ip_network('10.0.0.0/8')
 
@@ -802,7 +864,9 @@ def preflight(mode, cfg, io, seen=None):
     """Checks the setup before a record ('record') or a run ('run'). Returns plain sentences, one per problem; [] means go.
 
     Record only: the key file. Run only: the machine is idle and the recording exists. Everything else is checked in both.
-    `seen`, when given, gets the readings the checks judged: 'load' (a run only), so the run keeps the number judged.
+    `seen`, when given, gets the readings the checks judged (a run only): 'load', and 'machine', the power state, the CPU
+    policy and the CPU probe taken after the load check ({'power', 'governor', 'energy_preference', 'cpu_probe_ms'}, #262),
+    so the run keeps what was judged.
     """
     if mode not in ('record', 'run'):
         raise ValueError("preflight mode must be 'record' or 'run'")
@@ -894,6 +958,7 @@ def preflight(mode, cfg, io, seen=None):
                 io.sleep(SETTLE_POLL_S)
                 waited += SETTLE_POLL_S
                 load = io.load_average()
+        probe = io.cpu_probe_ms()  # once the load is judged, so an image build's own load has settled first (#262)
         if seen is not None:
             seen['load'] = load
         if load >= BUSY_LOAD:
@@ -966,21 +1031,32 @@ def preflight(mode, cfg, io, seen=None):
             if missed and missed[1]:
                 problems.append(f"The last run on '{cfg.get('listname')}' ({missed[0]}) missed {missed[1]} requests the recording does not hold, "
                                 f"so a run now would miss them too: top it up with the record command: {top_up}")
+
+    # 11. run and record: the machine is plugged in (#262): on battery the same code listed 20-25% slower (#249)
+    power = io.power()
+    if power == 'battery':
+        problems.append(f'The machine runs on battery (no Mains supply in {POWER_SUPPLY_ROOT} is online), which slows the CPU and a '
+                        'timed run with it: plug it in and run the preflight again.')
+    if mode == 'run' and seen is not None:
+        seen['machine'] = {'power': power, **io.cpu_policy(), 'cpu_probe_ms': probe}
     return problems
 
 
 def preflight_command(mode, cfg, io):
     """Prints the preflight result in plain sentences; exit code 0 when the setup is right, 1 otherwise."""
-    problems = preflight(mode, cfg, io)
+    seen = {}
+    problems = preflight(mode, cfg, io, seen)
     for p in problems:
         print(p)
     if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
         print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
-        idle = f'the machine is idle (1-minute load below {BUSY_LOAD:.2f}), ' if mode == 'run' else ''
-        machine = (f'; {idle}HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
+        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if mode == 'run' else ''
+        machine = (f'; the machine is plugged in{idle}, HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
                    + (' and the recording is complete' if mode == 'run' else ''))
         print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
+        if 'machine' in seen:
+            print(f"CPU probe: {br.probe_text(seen['machine'])}.")
     return 1 if problems else 0
 
 
@@ -1163,7 +1239,8 @@ def run_all(cfg, io):
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off', 'browse pause': br.pause_text(cfg['browse_pause']),
                      'one-page side': 'yes' if 'kaijuflow-1page' in run_sides(cfg) else 'no'},
            'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []},
-           'lists': title_lists(cfg['titles']), 'start_load': start_load}
+           'lists': title_lists(cfg['titles']), 'start_load': start_load,
+           'machine': seen.get('machine')}  # the power state, CPU policy and CPU probe the preflight judged (#262)
     wait = cfg.get('wait', True)
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     try:
@@ -1247,7 +1324,7 @@ def write_run_ending(cfg, io, run, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
-                                    'standin_misses', 'changes', 'previous', 'timing', 'browse_pause_s', 'start_load')}
+                                    'standin_misses', 'changes', 'previous', 'timing', 'browse_pause_s', 'start_load', 'machine')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
         meta['lists'] = run['lists']
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
