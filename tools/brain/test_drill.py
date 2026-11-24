@@ -80,7 +80,7 @@ class ProvedFixedTest(unittest.TestCase):
     def test_it_saves_the_evidence_folder_a_check_saves_even_for_a_play_that_went_fine(self):
         ev = evidence.read(os.path.join(self.folder, evidence.DIR, '01-the-witcher-s01e01'))
         self.assertEqual((ev.meta['kind'], ev.meta['kept_because'], ev.meta['title']), ('drill-down', None, TITLE))
-        self.assertEqual([s['step'] for s in ev.steps], ['play_check', 'played'])
+        self.assertEqual([s['step'] for s in ev.steps], ['indexer_page', 'list', 'search', 'play_check', 'played'])  # every step line of the play
         self.assertEqual(diagnosis.diagnose(ev.folder, diagnosis.load_index(self.book))['failures'], [])
 
     def test_the_suspected_cause_is_marked_proved_fixed_and_record_writes_it_on_the_entry(self):
