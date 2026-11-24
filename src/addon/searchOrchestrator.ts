@@ -13,9 +13,10 @@ import { resolveExternalId } from '../idResolver.js';
 import { ProwlarrSearcher } from '../searchers/prowlarrSearcher.js';
 import { NzbhydraSearcher } from '../searchers/nzbhydraSearcher.js';
 import { EasynewsSearcher } from '../searchers/easynewsSearcher.js';
-import { UsenetIndexer } from '../types.js';
-import { waysOf, foundBy, mergeFound } from './kaijuSearch.js';
-import { withFlowTitle, flowTitleOf } from '../parsers/searchFlow.js';
+import { UsenetIndexer, type IndexerCaps } from '../types.js';
+import { waysOf, idWaysOf, foundBy, mergeFound, logSearchLines, logStrictAlone, type AskedIndexer, type SearchWay } from './kaijuSearch.js';
+import { withFlowTitle, withSearchIndexer, droppedBy, flowTitleOf, markSources } from '../parsers/searchFlow.js';
+import { logStep, devSwitchOn } from '../utils/stepTiming.js';
 
 // When SEARCH_TIMEOUT env is set, force it onto every Newznab indexer for this search cycle.
 // Returns the original reference when no override is active — no allocation cost in the common path.
@@ -59,11 +60,40 @@ export interface SearchContext {
  * Search via the configured index manager (Prowlarr, NZBHydra, or Newznab).
  */
 export function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
-  return withFlowTitle(flowTitleOf(ctx), () => askIndexManager(ctx));
+  const title = flowTitleOf(ctx);
+  const dev = devSwitchOn();
+  return withFlowTitle(title, async () => {
+    const asked: AskedIndexer[] = [];
+    const results = await askIndexManager(ctx, asked);
+    if (dev) logSearchLines(searchLog(ctx), asked, markSources(results, title), droppedBy(), managerName());
+    return results;
+  }, dev);
 }
 
-/** Kaiju Search over the configured index manager, inside the title's Search Flow (`withFlowTitle`). */
-async function askIndexManager(ctx: SearchContext): Promise<any[]> {
+/**
+ * Kaiju Search (#285): the indexers' and EasyNews's search at once, both inside the title's Search Flow. With the dev
+ * switch on, a `search` line when the strict rule alone would have left nothing of what both found.
+ */
+export async function kaijuSearch(ctx: SearchContext): Promise<{ indexer: any[]; easynews: any[] }> {
+  const [indexer, easynews] = await Promise.all([indexManagerSearch(ctx), easynewsSearch(ctx)]);
+  if (devSwitchOn()) logStrictAlone(searchLog(ctx), markSources([...indexer, ...easynews], flowTitleOf(ctx)));
+  return { indexer, easynews };
+}
+
+/** A dev `search` step line for this title (names and numbers only). */
+const searchLog = (ctx: SearchContext) => (fields: Record<string, unknown>) => logStep({ step: 'search', ms: 0, title: ctx.title, ...fields });
+
+/** The index manager a query to several indexers at once went to. */
+const managerName = () => (config.indexManager === 'prowlarr' ? 'Prowlarr' : config.indexManager === 'nzbhydra' ? 'NZBHydra' : 'Newznab');
+
+/** The ID ways an indexer is asked this time: those its caps list that the title has (IMDb needs a tt id). */
+function idsAsked(kind: 'movie' | 'tv', caps: IndexerCaps | undefined, imdbId: string, resolvedIds: Map<string, unknown>): SearchWay[] {
+  return idWaysOf(kind, caps).filter(w => (w === 'imdb' ? imdbId.startsWith('tt') : !!resolvedIds.get(w)));
+}
+
+/** Kaiju Search over the configured index manager, inside the title's Search Flow (`withFlowTitle`). `asked` gets
+ *  every indexer asked and the IDs it was asked by. */
+async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promise<any[]> {
   const kind = ctx.type === 'movie' ? 'movie' as const : 'tv' as const;
   const { type, imdbId, title, year, country, season, episode, episodesInSeason, priorSeasonsEpisodeCount, absoluteEpisodeNumber, tvdbPriorSeasonsCount, additionalTitles, isAnime, titleYear, searchAliases, episodeAired, animeResolvedIds, tvdbIdFromRequest } = ctx;
 
@@ -99,6 +129,7 @@ async function askIndexManager(ctx: SearchContext): Promise<any[]> {
         resolvedIds.set(method, result);
       }));
 
+    for (const i of searchIndexers) asked.push({ source: i.name, ids: idsAsked(kind, i.capabilities, imdbId, resolvedIds) });
     const startTime = Date.now();
     const timeoutEnabled = config.searchTimeoutOverride !== undefined ? true : config.prowlarrTimeoutEnabled;
     const timeoutSeconds = config.searchTimeoutOverride ?? config.prowlarrTimeout;
@@ -167,6 +198,7 @@ async function askIndexManager(ctx: SearchContext): Promise<any[]> {
         resolvedIds.set(method, result);
       }));
 
+    for (const i of searchIndexers) asked.push({ source: i.name, ids: idsAsked(kind, i.capabilities, imdbId, resolvedIds) });
     const startTime = Date.now();
     const nzbhydraTimeoutEnabled = config.searchTimeoutOverride !== undefined ? true : config.nzbhydraTimeoutEnabled;
     const nzbhydraTimeoutSeconds = config.searchTimeoutOverride ?? config.nzbhydraTimeout;
@@ -239,6 +271,8 @@ async function askIndexManager(ctx: SearchContext): Promise<any[]> {
         }
         resolvedIds.set(method, result);
       }));
+
+    for (const i of effectiveIndexers) asked.push({ source: i.name, ids: idsAsked(kind, i.caps, imdbId, resolvedIds) });
 
     // Indexers that timed out during the main search pass. Scoped to this single
     // indexManagerSearch invocation so the text-fallback and alt-title retries can
@@ -636,7 +670,14 @@ async function askIndexManager(ctx: SearchContext): Promise<any[]> {
  * Search EasyNews (runs in parallel with index manager search).
  */
 export function easynewsSearch(ctx: SearchContext): Promise<any[]> {
-  return withFlowTitle(flowTitleOf(ctx), () => askEasynews(ctx));
+  if (!config.easynewsEnabled || !config.easynewsUsername || !config.easynewsPassword) return Promise.resolve([]);
+  const title = flowTitleOf(ctx);
+  const dev = devSwitchOn();
+  return withFlowTitle(title, () => withSearchIndexer('EasyNews', async () => {
+    const results = await askEasynews(ctx);
+    if (dev) logSearchLines(searchLog(ctx), [{ source: 'EasyNews', ids: [] }], markSources(results, title), droppedBy(), 'EasyNews');
+    return results;
+  }), dev);
 }
 
 async function askEasynews(ctx: SearchContext): Promise<any[]> {

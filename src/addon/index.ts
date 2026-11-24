@@ -29,7 +29,7 @@ import { config } from '../config/index.js';
 import { clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { sessionKeyOf, makePlayContext, type PlayContext } from '../play/playContext.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
-import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
+import { kaijuSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
 import { flowTitleOf, markSources } from '../parsers/searchFlow.js';
 import { waysOf } from './kaijuSearch.js';
@@ -406,10 +406,8 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
       type, imdbId, season, episode, animeId, animeResolved, tvdbIdFromRequest,
     });
 
-    const [indexManagerResults, easynewsResults] = await Promise.all([
-      indexManagerSearch(searchCtx),
-      easynewsSearch(searchCtx),
-    ]);
+    // Kaiju Search (#285): every indexer by ID and by name, and EasyNews, at once.
+    const { indexer: indexManagerResults, easynews: easynewsResults } = await kaijuSearch(searchCtx);
     // Tag indexer/easynews results with origin so downstream code can route correctly.
     // (Searchers don't currently emit origin natively; we tag at orchestrator level.)
     const tagOrigin = (r: any, origin: 'indexer' | 'easynews'): any =>

@@ -6,7 +6,7 @@
  * routing, season-pack detection, and text-match filtering.
  */
 
-import { nameKeeps } from './searchFlow.js';
+import { nameKeeps, withSearchIndexer } from './searchFlow.js';
 import axios from 'axios';
 import { UsenetIndexer, NZBSearchResult, DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { config } from '../config/index.js';
@@ -213,7 +213,11 @@ export class UsenetSearcher {
     }
   }
 
-  async searchMovie(imdbId: string, title: string, year?: string, country?: string, externalId?: { idParam: string; idValue: string }, searchMethod?: string, additionalTitles?: string[], titleYear?: string): Promise<NZBSearchResult[]> {
+  async searchMovie(...args: Parameters<UsenetSearcher['askMovie']>): Promise<NZBSearchResult[]> {
+    return withSearchIndexer(this.indexer.name, () => this.askMovie(...args));
+  }
+
+  private async askMovie(imdbId: string, title: string, year?: string, country?: string, externalId?: { idParam: string; idValue: string }, searchMethod?: string, additionalTitles?: string[], titleYear?: string): Promise<NZBSearchResult[]> {
     try {
       const method = searchMethod || 'imdb'; // Kaiju Search (#285) names the way of every query
 
@@ -353,7 +357,11 @@ export class UsenetSearcher {
     }
   }
 
-  async searchTVShow(
+  async searchTVShow(...args: Parameters<UsenetSearcher['askTVShow']>): Promise<NZBSearchResult[]> {
+    return withSearchIndexer(this.indexer.name, () => this.askTVShow(...args));
+  }
+
+  private async askTVShow(
     imdbId: string,
     title: string,
     season: number,
@@ -733,7 +741,11 @@ export class UsenetSearcher {
    * fire concurrently with episode-method searches rather than inline. Returns
    * the union of all matching packs across the three pack-query types.
    */
-  async searchTVShowPacks(
+  async searchTVShowPacks(...args: Parameters<UsenetSearcher['askTVShowPacks']>): Promise<NZBSearchResult[]> {
+    return withSearchIndexer(this.indexer.name, () => this.askTVShowPacks(...args));
+  }
+
+  private async askTVShowPacks(
     title: string,
     season: number,
     episodesInSeason: number | undefined,

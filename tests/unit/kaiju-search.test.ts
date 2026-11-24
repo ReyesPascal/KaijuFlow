@@ -7,7 +7,9 @@ import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { configData } from '../../src/config/index.ts';
-import { indexManagerSearch, type SearchContext } from '../../src/addon/searchOrchestrator.ts';
+import { indexManagerSearch, kaijuSearch, type SearchContext } from '../../src/addon/searchOrchestrator.ts';
+import { parseStepLine } from '../../src/utils/stepTiming.ts';
+import { captureLogs } from './capture-logs.ts';
 
 interface Asked { indexer: string; t: string; ids: Record<string, string>; q?: string }
 
@@ -57,16 +59,17 @@ async function listen(server: http.Server): Promise<string> {
 }
 after(() => servers.forEach(s => s.close()));
 
-const saved = { indexManager: configData.indexManager, indexers: configData.indexers, searchConfig: configData.searchConfig };
+const saved = { indexManager: configData.indexManager, indexers: configData.indexers, searchConfig: configData.searchConfig, devDiagnostics: configData.devDiagnostics };
 after(() => Object.assign(configData, saved));
 beforeEach(() => {
   configData.indexManager = 'newznab';
   configData.searchConfig = { includeSeasonPacks: false, includeMultiSeasonPacks: false, aliasTitleFallback: false };
+  configData.devDiagnostics = false;
 });
 
 const matrix: SearchContext = { type: 'movie', imdbId: 'tt0133093', title: 'The Matrix', year: '1999', isAnime: false, additionalTitles: [] };
 const BOTH = 'The.Matrix.1999.1080p.BluRay.x264-GRP';
-const ID_ONLY = 'TheMatrix.1999.2160p.UHD.Remux-XYZ'; // its name fits neither rule: only the ID finds it, and it stays
+const ID_ONLY = 'TheMatrix.1999.2160p.UHD.Remux-XYZ'; // the strict rule does not fit its name: a maybe only the ID finds
 const NAME_ONLY = 'The.Matrix.1999.720p.WEB-DL.AAC-ABC';
 
 test('every indexer is asked by ID and by name at once; a Source found both ways is listed once, one only an ID finds and one only a name finds both appear', async () => {
@@ -113,4 +116,55 @@ test('a name search keeps a release the strict rule passes though the loose rule
   const results = await indexManagerSearch({ type: 'series', imdbId: 'tt9288030', title: 'Reacher', year: '2022', season: 1, episode: 1, isAnime: false, additionalTitles: [] });
   assert.deepEqual(asked.map(a => [a.t, a.q]), [['search', 'Reacher S01E01']], 'caps that list no ID: asked by name only');
   assert.deepEqual(results.map(r => r.title), [reacher]);
+});
+
+// With the dev switch on (#280), a `search` step line per indexer and way of asking: what it was asked, how many
+// results came back, how many stayed, and each result sure / maybe / dropped with why; and a line whenever the strict
+// rule alone would have left nothing. With it off, none: a release logs what it logs today.
+const searchLines = (logs: string) => logs.split('\n').map(l => parseStepLine(l)).filter((r): r is NonNullable<typeof r> => r?.step === 'search');
+const WRONG = 'The.Matrix.Resurrections.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-FLUX';
+
+test('with the dev switch off, a search writes no search line', async () => {
+  const url = await listen(fakeIndexer('Ninja', ['imdbid'], { imdbid: [BOTH, ID_ONLY] }, [BOTH, NAME_ONLY, WRONG], []));
+  configData.indexers = [{ name: 'Ninja', url, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q', 'imdbid'], tvSearchParams: ['q'] } }];
+  const logs = await captureLogs(() => kaijuSearch(matrix));
+  assert.deepEqual(searchLines(logs), []);
+  assert.doesNotMatch(logs, /"dev":true/);
+});
+
+test('with the dev switch on, a search line per indexer and way of asking, each result sure, maybe or dropped with why', async () => {
+  configData.devDiagnostics = true;
+  const url = await listen(fakeIndexer('Ninja', ['imdbid'], { imdbid: [BOTH, ID_ONLY] }, [BOTH, NAME_ONLY, WRONG], []));
+  configData.indexers = [{ name: 'Ninja', url, apiKey: 'SECRETKEY123', enabled: true, caps: { movieSearchParams: ['q', 'imdbid'], tvSearchParams: ['q'] } }];
+  const logs = await captureLogs(() => kaijuSearch(matrix));
+  const lines = searchLines(logs).map(({ t, ms, ...rest }) => rest);
+  assert.deepEqual(lines, [
+    { step: 'search', source: 'Ninja', ok: true, title: 'The Matrix', dev: true, way: 'id', asked: ['imdb'], count: 2, kept: 2, sure: 1, maybe: 1, results: [
+      { release: BOTH, flow: 'sure', why: 'the name and year fit' },
+      { release: ID_ONLY, flow: 'maybe', why: 'the name "The Matrix" is not in it' },
+    ] },
+    { step: 'search', source: 'Ninja', ok: true, title: 'The Matrix', dev: true, way: 'name', asked: ['name'], count: 3, kept: 2, sure: 2, maybe: 0, results: [
+      { release: BOTH, flow: 'sure', why: 'the name and year fit' },
+      { release: NAME_ONLY, flow: 'sure', why: 'the name and year fit' },
+      { release: WRONG, flow: 'dropped', why: 'the name "The Matrix" is not followed by a year (1999 wanted)' },
+    ] },
+  ]);
+  assert.doesNotMatch(logs.split('\n').filter(l => l.includes('"step":"search"')).join('\n'), /SECRETKEY123|127\.0\.0\.1|apikey/i);
+});
+
+test('with the dev switch on, a line whenever the strict rule alone would have left nothing', async () => {
+  configData.devDiagnostics = true;
+  const joker = 'Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs'; // the shared table's obscure real release: loose only
+  const url = await listen(fakeIndexer('Ninja', [], {}, [joker], []));
+  configData.indexers = [{ name: 'Ninja', url, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q'], tvSearchParams: ['q'] } }];
+  const joke: SearchContext = { type: 'movie', imdbId: 'tt7286456', title: 'Joker', year: '2019', isAnime: false, additionalTitles: [] };
+  const lines = searchLines(await captureLogs(() => kaijuSearch(joke)));
+  assert.deepEqual(lines.filter(l => l.strict_alone).map(({ t, ms, ...rest }) => rest), [
+    { step: 'search', ok: true, title: 'Joker', dev: true, strict_alone: 'nothing', kept: 1, sure: 0, maybe: 1 },
+  ]);
+
+  const url2 = await listen(fakeIndexer('Ninja', ['imdbid'], { imdbid: [BOTH] }, [], []));
+  configData.indexers = [{ name: 'Ninja', url: url2, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q', 'imdbid'], tvSearchParams: ['q'] } }];
+  const sure = searchLines(await captureLogs(() => kaijuSearch(matrix)));
+  assert.deepEqual(sure.filter(l => l.strict_alone), [], 'a sure Source: strict alone leaves it');
 });

@@ -198,11 +198,29 @@ export function searchFlow(release: string, title: FlowTitle): FlowVerdict {
   return { flow: looseMatch(release, title) ? 'maybe' : 'dropped', why: strict.why };
 }
 
-const searching = new AsyncLocalStorage<FlowTitle>();
+/** A title's search as its name filters see it: the title, the indexer being asked (when one is), and with the dev
+ *  switch on the releases each indexer's name filter dropped, with why (`dropped`, keyed by indexer, '' when the
+ *  query went to several at once). */
+interface Searching { title: FlowTitle; indexer?: string; dropped?: Map<string, Map<string, string>> }
 
-/** Run a title's search (Kaiju Search, #285) with its title known to every name filter inside it (`nameKeeps`). */
-export function withFlowTitle<T>(title: FlowTitle, fn: () => T): T {
-  return searching.run(title, fn);
+const searching = new AsyncLocalStorage<Searching>();
+
+/** Run a title's search (Kaiju Search, #285) with its title known to every name filter inside it (`nameKeeps`); with
+ *  `record`, the releases they drop are kept for `droppedBy` (the dev switch's search lines). */
+export function withFlowTitle<T>(title: FlowTitle, fn: () => T, record = false): T {
+  return searching.run({ title, ...(record ? { dropped: new Map() } : {}) }, fn);
+}
+
+/** Run one indexer's queries inside a title's search, so what its name filter drops is put down to it. */
+export function withSearchIndexer<T>(indexer: string, fn: () => T): T {
+  const s = searching.getStore();
+  return s ? searching.run({ ...s, indexer }, fn) : fn();
+}
+
+/** The releases each indexer's name filter dropped in this search, with why ('' for a query to several at once);
+ *  empty unless the search records them. */
+export function droppedBy(): Map<string, Map<string, string>> {
+  return searching.getStore()?.dropped ?? new Map();
 }
 
 /**
@@ -212,8 +230,16 @@ export function withFlowTitle<T>(title: FlowTitle, fn: () => T): T {
  */
 export function nameKeeps(name: string, release: string, year?: string, country?: string, otherNames?: string[], titleYear?: string): boolean {
   if (isTextSearchMatch(name, release, year, country, otherNames, titleYear)) return true;
-  const title = searching.getStore();
-  return title !== undefined && strictMatch(release, title).ok;
+  const s = searching.getStore();
+  if (s === undefined) return false;
+  const strict = strictMatch(release, s.title);
+  if (strict.ok) return true;
+  if (s.dropped) {
+    const key = s.indexer ?? '';
+    if (!s.dropped.has(key)) s.dropped.set(key, new Map());
+    s.dropped.get(key)!.set(release, strict.why);
+  }
+  return false;
 }
 
 /** What the list path knows of a title (its SearchContext), as Search Flow judges releases against it. */

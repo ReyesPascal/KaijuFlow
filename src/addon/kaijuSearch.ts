@@ -59,3 +59,50 @@ export function mergeFound<T extends { link?: string; title?: string; size?: num
   }
   return [...byKey.values()];
 }
+
+// --------------------------------------------------------------------------- the dev switch's search lines (#285)
+
+/** One indexer as a search asked it: its name, and the IDs it was asked by (none when it was asked by name only). */
+export interface AskedIndexer { source: string; ids: SearchWay[] }
+
+type Marked = { title: string; flow: 'sure' | 'maybe'; flowWhy: string; indexerName?: string; foundBy?: FoundBy[] };
+
+const entry = (r: Marked) => ({ release: r.title, flow: r.flow, why: r.flowWhy });
+
+/**
+ * Write a `search` step line per indexer and way of asking (dev switch only; the caller checks it): the way (`id`,
+ * `name`), what it was asked (`asked`: the IDs, or `name`), how many results came back that way (`count`, the kept
+ * ones and those Search Flow dropped), how many stayed (`kept`, `sure`, `maybe`) and each result with its Search Flow
+ * mark and why (`results`, the dropped ones last). `marked` is the search's merged results marked by Search Flow;
+ * `dropped` what each indexer's name filter dropped (`droppedBy`; key '' is a query to several indexers at once, put
+ * on a name line of `several`, the index manager). Names and numbers only: no URL or key.
+ */
+export function logSearchLines(
+  log: (fields: Record<string, unknown>) => void,
+  asked: AskedIndexer[], marked: Marked[], dropped: Map<string, Map<string, string>>, several: string,
+): void {
+  for (const { source, ids } of asked) {
+    const mine = marked.filter(r => r.indexerName === source);
+    if (ids.length > 0) line(log, source, 'id', ids, mine.filter(r => r.foundBy?.includes('id')), new Map());
+    line(log, source, 'name', ['name'], mine.filter(r => r.foundBy?.includes('name') ?? true), dropped.get(source) ?? new Map());
+  }
+  const shared = dropped.get('');
+  if (shared && shared.size > 0) line(log, several, 'name', ['name'], [], shared);
+}
+
+function line(log: (fields: Record<string, unknown>) => void, source: string, way: FoundBy, asked: string[], kept: Marked[], dropped: Map<string, string>): void {
+  const keptNames = new Set(kept.map(r => r.title));
+  const gone = [...dropped].filter(([release]) => !keptNames.has(release)).map(([release, why]) => ({ release, flow: 'dropped', why }));
+  log({
+    source, way, asked, count: kept.length + gone.length, kept: kept.length,
+    sure: kept.filter(r => r.flow === 'sure').length, maybe: kept.filter(r => r.flow === 'maybe').length,
+    results: [...kept.map(entry), ...gone],
+  });
+}
+
+/** Write a `search` line when the strict rule alone would have left nothing: the search kept Sources and none of them
+ *  is sure (dev switch only; the caller checks it). */
+export function logStrictAlone(log: (fields: Record<string, unknown>) => void, marked: Marked[]): void {
+  if (marked.length === 0 || marked.some(r => r.flow === 'sure')) return;
+  log({ strict_alone: 'nothing', kept: marked.length, sure: 0, maybe: marked.length });
+}
