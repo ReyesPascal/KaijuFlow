@@ -131,8 +131,40 @@ The first Source in a side's list for a title. Two top picks are the same Source
 _Avoid_: first result, winner
 
 **Fail**:
-A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. Video after a fallback is played, not a fail. Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
+A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
+
+**Nothing to play**:
+A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail.
+_Avoid_: no results (search may have found Sources that are all dead), fail (when nothing could play)
+
+**Real-use check**:
+A check that plays the way a viewer watches: new titles each time, the live indexers, one cold play per title (fallbacks allowed), watched for a while after the video starts, with browsing, searching and changing one's mind between plays. It is the main measure of KaijuFlow; it is judged on its totals, never title by title.
+_Avoid_: speed test, tuning test (both replay a Recording), soak test
+
+**Quick check**:
+A real-use check of 5 new titles, cold, ended as soon as each video starts: a fast look at how a change does.
+_Avoid_: smoke test, short run (a short run replays a Recording)
+
+**Full check**:
+A real-use check of 20 new titles (half popular, half rare or older, about half TV episodes with some next-episode plays), each watched for a few minutes with a skip into the middle, with a viewer's browsing between plays: the one that shows KaijuFlow really works.
+_Avoid_: long run, soak test
+
+**Drill-down**:
+Playing one failed title again, live, after a fix, to prove the fix: a single title, not a new check.
+_Avoid_: rerun, tuning test
+
+**Check miss**:
+A Source the health check passed that the Backend then refused, or whose video froze: the check was wrong even when a fallback saved the play. It is counted apart, and each one becomes a ticket.
+_Avoid_: fail (when a fallback played), false positive
+
+**Slow play**:
+A play whose video arrives, but more than 60 s after the press, when a viewer would have given up. It is not a fail; it is counted and named apart, as the plays to speed up.
+_Avoid_: fail (video arrived), timeout
+
+**Next-episode play**:
+A play of a TV episode whose Source KaijuFlow already prepared for an earlier episode, as a viewer watching on gets. It is reported apart from fresh plays, since it starts partly warm.
+_Avoid_: warm start (a warm start is the same Source and episode again), binge play
 
 **Previous run**:
 The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its warm title to video, its fallbacks and their extra seconds against the previous run's, which never change the verdict. A run that was stopped or is short is not judged. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
