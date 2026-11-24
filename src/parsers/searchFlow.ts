@@ -1,7 +1,8 @@
 /**
  * Search Flow (GLOSSARY: Search Flow; spec #279, #282): what a title's list keeps and how sure each Source is.
  *
- * - The loose rule, the inherited `isTextSearchMatch`, decides what stays: the searchers drop what it does not fit.
+ * - The loose rule, the inherited `isTextSearchMatch`, decides what stays: the searchers drop what neither it nor the
+ *   strict rule fits (`nameKeeps`, #285), so a release the strict rule passes is never dropped.
  * - The strict rule, ported from the quick check's right-title rule (`tools/brain/quickcheck.py`, `right_title`,
  *   #278), only sorts, never removes: a Source that passes it is **sure**, one only the loose rule keeps is **maybe**.
  *   Results found by ID (which no name rule drops) are marked the same way.
@@ -11,6 +12,7 @@
  * names, `tests/fixtures/release-names/table.tsv`, so they cannot drift: change both or neither.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { isTextSearchMatch } from './titleMatching.js';
 
 /** A title as Search Flow judges a release against it. */
@@ -196,6 +198,24 @@ export function searchFlow(release: string, title: FlowTitle): FlowVerdict {
   return { flow: looseMatch(release, title) ? 'maybe' : 'dropped', why: strict.why };
 }
 
+const searching = new AsyncLocalStorage<FlowTitle>();
+
+/** Run a title's search (Kaiju Search, #285) with its title known to every name filter inside it (`nameKeeps`). */
+export function withFlowTitle<T>(title: FlowTitle, fn: () => T): T {
+  return searching.run(title, fn);
+}
+
+/**
+ * The searchers' name filter: Search Flow's keep. The loose rule with the searcher's own name for the query (its
+ * arguments are `isTextSearchMatch`'s), or the strict rule on the title being searched (`withFlowTitle`), so a
+ * release the strict rule passes is kept even where the loose rule would drop it. Outside a search, the loose rule.
+ */
+export function nameKeeps(name: string, release: string, year?: string, country?: string, otherNames?: string[], titleYear?: string): boolean {
+  if (isTextSearchMatch(name, release, year, country, otherNames, titleYear)) return true;
+  const title = searching.getStore();
+  return title !== undefined && strictMatch(release, title).ok;
+}
+
 /** What the list path knows of a title (its SearchContext), as Search Flow judges releases against it. */
 export function flowTitleOf(ctx: {
   type: string; title: string; year?: string; season?: number; episode?: number; country?: string; titleYear?: string;
@@ -211,7 +231,7 @@ export function flowTitleOf(ctx: {
 
 /**
  * Mark every Source of a title's list sure or maybe, with why (`flow`, `flowWhy`). Every Source in it has stayed: the
- * searchers dropped what the loose rule does not fit, and a result found by ID, which no name rule drops, is marked
+ * searchers dropped what Search Flow drops (`nameKeeps`), and a result found by ID, which no name rule drops, is marked
  * too; one neither rule fits by its name is a maybe that says so. New objects; the list's order is kept.
  */
 export function markSources<T extends { title: string }>(sources: T[], title: FlowTitle): (T & { flow: FlowMark['flow']; flowWhy: string })[] {

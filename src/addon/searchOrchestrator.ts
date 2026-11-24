@@ -15,6 +15,7 @@ import { NzbhydraSearcher } from '../searchers/nzbhydraSearcher.js';
 import { EasynewsSearcher } from '../searchers/easynewsSearcher.js';
 import { UsenetIndexer } from '../types.js';
 import { waysOf, foundBy, mergeFound } from './kaijuSearch.js';
+import { withFlowTitle, flowTitleOf } from '../parsers/searchFlow.js';
 
 // When SEARCH_TIMEOUT env is set, force it onto every Newznab indexer for this search cycle.
 // Returns the original reference when no override is active — no allocation cost in the common path.
@@ -57,7 +58,12 @@ export interface SearchContext {
 /**
  * Search via the configured index manager (Prowlarr, NZBHydra, or Newznab).
  */
-export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
+export function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
+  return withFlowTitle(flowTitleOf(ctx), () => askIndexManager(ctx));
+}
+
+/** Kaiju Search over the configured index manager, inside the title's Search Flow (`withFlowTitle`). */
+async function askIndexManager(ctx: SearchContext): Promise<any[]> {
   const kind = ctx.type === 'movie' ? 'movie' as const : 'tv' as const;
   const { type, imdbId, title, year, country, season, episode, episodesInSeason, priorSeasonsEpisodeCount, absoluteEpisodeNumber, tvdbPriorSeasonsCount, additionalTitles, isAnime, titleYear, searchAliases, episodeAired, animeResolvedIds, tvdbIdFromRequest } = ctx;
 
@@ -629,7 +635,11 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
 /**
  * Search EasyNews (runs in parallel with index manager search).
  */
-export async function easynewsSearch(ctx: SearchContext): Promise<any[]> {
+export function easynewsSearch(ctx: SearchContext): Promise<any[]> {
+  return withFlowTitle(flowTitleOf(ctx), () => askEasynews(ctx));
+}
+
+async function askEasynews(ctx: SearchContext): Promise<any[]> {
   if (!config.easynewsEnabled || !config.easynewsUsername || !config.easynewsPassword) {
     return [];
   }

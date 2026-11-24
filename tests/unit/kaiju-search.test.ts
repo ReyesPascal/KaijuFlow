@@ -101,3 +101,16 @@ test('the ID search asks with every ID the indexer supports; an indexer whose ca
     `Both: ${BOTH}`, `Both: ${NAME_ONLY}`, `Plain: ${BOTH}`, `Plain: ${NAME_ONLY}`,
   ], 'found by two IDs, listed once per indexer');
 });
+
+// Search Flow decides what a name search keeps (#282 decision 4, done here): the loose rule keeps, and a release the
+// strict rule passes is kept even where the loose rule would drop it. Real release names from the shared table.
+test('a name search keeps a release the strict rule passes though the loose rule drops it; a wrong title is still dropped', async () => {
+  const asked: Asked[] = [];
+  const reacher = 'REACHER.TV.S01E01.Welcome.to.Margrave.1080p.AMZN.WEB-DL.DDP5.1.H.265-NINJACENTRAL'; // strict pass, loose drop
+  const wrong = 'Jack.Reacher.Never.Go.Back.2016.1080p.BluRay.x264-SPARKS';
+  const url = await listen(fakeIndexer('Ninja', [], {}, [reacher, wrong], asked));
+  configData.indexers = [{ name: 'Ninja', url, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q'], tvSearchParams: ['q'] } }];
+  const results = await indexManagerSearch({ type: 'series', imdbId: 'tt9288030', title: 'Reacher', year: '2022', season: 1, episode: 1, isAnime: false, additionalTitles: [] });
+  assert.deepEqual(asked.map(a => [a.t, a.q]), [['search', 'Reacher S01E01']], 'caps that list no ID: asked by name only');
+  assert.deepEqual(results.map(r => r.title), [reacher]);
+});

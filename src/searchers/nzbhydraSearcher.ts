@@ -9,12 +9,13 @@
  * makes one NZBHydra API call per unique method, and merges results.
  */
 
+import { nameKeeps } from '../parsers/searchFlow.js';
 import { waysOf, foundBy } from '../addon/kaijuSearch.js';
 import axios from 'axios';
 import type { SyncedIndexer, NZBSearchResult } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { parseNewznabXmlWithMeta } from '../parsers/newznabClient.js';
-import { isTextSearchMatch, stripDiacritics, tagSeasonPack, runSeriesPackQueries, buildSeriesPackPaginationAdditionalPages, buildSeasonPackPaginationAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
+import { stripDiacritics, tagSeasonPack, runSeriesPackQueries, buildSeriesPackPaginationAdditionalPages, buildSeasonPackPaginationAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
 import { slog, withSubBuffer } from '../parsers/searchLogger.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
@@ -151,7 +152,7 @@ export class NzbhydraSearcher {
               apikey: this.apiKey, extended: '1', t: 'search', q, cat: '2000', indexers: allNames.join(','),
             };
             const r = await this.doSearch(params);
-            const f = r.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+            const f = r.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
             if (r.length !== f.length) slog(`   🎯 Alias "${alias}" filter: ${r.length} → ${f.length}`);
             return f;
           });
@@ -184,10 +185,10 @@ export class NzbhydraSearcher {
         apikey: this.apiKey, extended: '1', t: 'search', q, cat: '2000', indexers: indexerNames.join(','),
       };
       const results = await this.doSearch(params);
-      const filtered = results.filter(r => isTextSearchMatch(filterTitle, r.title, year, country, additionalFilterTitles, titleYear));
+      const filtered = results.filter(r => nameKeeps(filterTitle, r.title, year, country, additionalFilterTitles, titleYear));
       if (results.length !== filtered.length) {
         slog(`   🎯 Title filter: ${results.length} → ${filtered.length}`);
-        results.filter(r => !isTextSearchMatch(filterTitle, r.title, year, country, additionalFilterTitles, titleYear))
+        results.filter(r => !nameKeeps(filterTitle, r.title, year, country, additionalFilterTitles, titleYear))
           .forEach(r => slog(`      ✂️  ${r.title}`));
       }
       return filtered;
@@ -375,7 +376,7 @@ export class NzbhydraSearcher {
                 return normExpected.length > 0 && extractedNorm.startsWith(normExpected);
               });
             } else {
-              f = dateFiltered.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+              f = dateFiltered.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
             }
             if (dateFiltered.length !== f.length) slog(`   🎯 Alias "${alias}" filter: ${dateFiltered.length} → ${f.length}`);
             return f;
@@ -429,10 +430,10 @@ export class NzbhydraSearcher {
           apikey: this.apiKey, extended: '1', t: 'search', q: epQuery, cat: '5000', indexers: epIndexersCsv,
         };
         const r = await this.doSearch(params);
-        const f = r.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const f = r.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         if (r.length !== f.length) {
           slog(`   🎯 [NZBHydra] Title filter: ${r.length} → ${f.length}`);
-          r.filter(x => !isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear))
+          r.filter(x => !nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear))
             .forEach(x => slog(`      ✂️  ${x.title}`));
         }
         return f;
@@ -447,7 +448,7 @@ export class NzbhydraSearcher {
           apikey: this.apiKey, extended: '1', t: 'search', q: packQuery, cat: '5000', indexers: packIndexersCsv,
         };
         const packResults = await this.doSearch(params, spOverride);
-        const titleMatched = packResults.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const titleMatched = packResults.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         const packs = tagSeasonPack(titleMatched, season, episodesInSeason);
         if (packResults.length !== packs.length) {
           slog(`   📦 [NZBHydra] Season pack filter: ${packResults.length} → ${packs.length}`);
@@ -466,7 +467,7 @@ export class NzbhydraSearcher {
           apikey: this.apiKey, extended: '1', t: 'search', q: fanoutQuery, cat: '5000', indexers: packIndexersCsv,
         };
         const fanoutResults = await this.doSearch(params, fanoutOverride);
-        const fanoutMatched = fanoutResults.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const fanoutMatched = fanoutResults.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         const fanoutPacks = tagSeasonPack(fanoutMatched, season, episodesInSeason);
         if (fanoutResults.length !== fanoutPacks.length) {
           slog(`   📦 [NZBHydra] Multi-season fanout filter: ${fanoutResults.length} → ${fanoutPacks.length}`);
@@ -486,7 +487,7 @@ export class NzbhydraSearcher {
           return this.doSearch(params, seriesOverride);
         },
         title: queryTitle, season, episodesInSeason,
-        isTitleMatch: (rt) => isTextSearchMatch(filterTitle, rt, year, country, additionalFilterTitles, titleYear),
+        isTitleMatch: (rt) => nameKeeps(filterTitle, rt, year, country, additionalFilterTitles, titleYear),
         searchConfig: config.searchConfig,
         logPrefix: 'NZBHydra',
       })));
@@ -535,7 +536,7 @@ export class NzbhydraSearcher {
         return seasonTokens.length === 0 || seasonTokens.includes(season);
       };
       const filtered = results.filter(r =>
-        isTextSearchMatch(filterTitle, stripAbsEp(r.title), year, country, undefined, titleYear)
+        nameKeeps(filterTitle, stripAbsEp(r.title), year, country, undefined, titleYear)
         && seasonOk(r.title)
       );
       if (results.length !== filtered.length) {
