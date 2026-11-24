@@ -195,3 +195,36 @@ export function searchFlow(release: string, title: FlowTitle): FlowVerdict {
   if (strict.ok) return { flow: 'sure', why: strict.fits! };
   return { flow: looseMatch(release, title) ? 'maybe' : 'dropped', why: strict.why };
 }
+
+/** What the list path knows of a title (its SearchContext), as Search Flow judges releases against it. */
+export function flowTitleOf(ctx: {
+  type: string; title: string; year?: string; season?: number; episode?: number; country?: string; titleYear?: string;
+  additionalTitles?: string[]; searchAliases?: string[]; episodeAired?: string;
+}): FlowTitle {
+  const otherNames = [...new Set([...(ctx.additionalTitles ?? []), ...(ctx.searchAliases ?? [])].filter(n => n && n !== ctx.title))];
+  return {
+    type: ctx.type === 'series' ? 'series' : 'movie',
+    name: ctx.title, otherNames, year: ctx.year, season: ctx.season, episode: ctx.episode, aired: ctx.episodeAired,
+    country: ctx.country, titleYear: ctx.titleYear,
+  };
+}
+
+/**
+ * Mark every Source of a title's list sure or maybe, with why (`flow`, `flowWhy`). Every Source in it has stayed: the
+ * searchers dropped what the loose rule does not fit, and a result found by ID, which no name rule drops, is marked
+ * too; one neither rule fits by its name is a maybe that says so. New objects; the list's order is kept.
+ */
+export function markSources<T extends { title: string }>(sources: T[], title: FlowTitle): (T & { flow: FlowMark['flow']; flowWhy: string })[] {
+  return sources.map(source => {
+    const v = searchFlow(source.title, title);
+    return v.flow === 'dropped'
+      ? { ...source, flow: 'maybe' as const, flowWhy: `${v.why}; the loose rule does not fit it either` }
+      : { ...source, flow: v.flow, flowWhy: v.why };
+  });
+}
+
+/** Best's Walk order: the sure Sources first, then the maybe ones, each in list order. A Source with no mark (a list
+ *  from before Search Flow) counts as sure, so an old list keeps its order. */
+export function sureFirst<T extends { flow?: FlowMark['flow'] }>(sources: T[]): T[] {
+  return [...sources.filter(s => s.flow !== 'maybe'), ...sources.filter(s => s.flow === 'maybe')];
+}

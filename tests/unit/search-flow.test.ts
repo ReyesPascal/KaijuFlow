@@ -6,7 +6,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { strictMatch, looseMatch, searchFlow, type FlowTitle } from '../../src/parsers/searchFlow.ts';
+import http from 'node:http';
+import { strictMatch, looseMatch, searchFlow, markSources, sureFirst, flowTitleOf, type FlowTitle } from '../../src/parsers/searchFlow.ts';
+import { UsenetSearcher } from '../../src/parsers/usenetSearcher.ts';
+import { deduplicateAndPreFilter, applyUserFilters } from '../../src/addon/resultProcessor.ts';
 
 interface Row { release: string; type: string; label: string; date: string; other: string; right: string; strict: string; loose: string }
 
@@ -74,5 +77,59 @@ test('over the whole table no release the strict rule passes is dropped, and eve
     const { flow } = searchFlow(r.release, titleOf(r));
     if (r.strict === 'pass') assert.equal(flow, 'sure', r.release);
     if (r.right === 'yes' && r.loose === 'keep') assert.notEqual(flow, 'dropped', r.release);
+  }
+});
+
+// --------------------------------------------------------------------------- a title's list
+
+/** A Newznab indexer answering a name search (q) and an ID search (imdbid) with its own release names. */
+async function fakeIndexer(byName: string[], byId: string[]) {
+  const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const item = (t: string) => `<item><title>${xml(t)}</title><link>http://idx.invalid/nzb/${encodeURIComponent(t)}</link>` +
+    `<pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate><newznab:attr name="size" value="${4 * 1024 ** 3}"/></item>`;
+  const server = http.createServer((req, res) => {
+    const u = new URL(req.url ?? '', 'http://x');
+    const items = u.searchParams.get('imdbid') ? byId : u.searchParams.get('q') ? byName : [];
+    res.writeHead(200, { 'Content-Type': 'application/xml' });
+    res.end(`<?xml version="1.0"?><rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel>` +
+      `<newznab:response offset="0" total="${items.length}"/>${items.map(item).join('')}</channel></rss>`);
+  });
+  await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+  return { url: `http://127.0.0.1:${(server.address() as { port: number }).port}/api`, close: () => server.close() };
+}
+
+test('a list from an indexer asked by name and by ID keeps every loose match, marks each sure or maybe with why, and Best tries sure first', async () => {
+  // Release names of Joker (2019) from the store's recordings, and two of other films an answer may hold.
+  const geneMige = 'Joker 2019 1080p BluRay x264-GeneMige';
+  const nlSubs = 'Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs'; // the obscure one: the year after the video tags
+  const cobolJob = 'Inception.The.Cobol.Job.2010.1080p.BDRip.x264.AC3-ViSiON';
+  const amzn = 'Joker (2019) 1080p AMZN.WEB-DL DDP5.1 H264 NL Sub';
+  const tigole = 'Joker (2019) (1080p BluRay x265 10bit Tigole)';
+  const realStory = 'Oppenheimer The Real Story-2023-1080p WEBRip-LAMA';
+  const indexer = await fakeIndexer([nlSubs, geneMige, cobolJob], [tigole, amzn, geneMige, realStory]);
+  try {
+    const searcher = new UsenetSearcher({ name: 'FakeIdx', url: indexer.url, apiKey: 'k', enabled: true });
+    const ctx = { type: 'movie', title: 'Joker', year: '2019' };
+    const found = [
+      ...await searcher.searchMovie('tt7286456', ctx.title, ctx.year, undefined, undefined, 'text'),
+      ...await searcher.searchMovie('tt7286456', ctx.title, ctx.year, undefined, undefined, 'imdb'),
+    ];
+    // The list path's steps: dedup, Search Flow's marks, the user's filters and sort.
+    const pre = deduplicateAndPreFilter(found);
+    const list = applyUserFilters(markSources(pre.results, flowTitleOf(ctx)), 'movie', Date.now(), undefined, pre.deprioritizedPacks, { quiet: true });
+    assert.deepEqual(new Map(list.map(s => [s.title, [s.flow, s.flowWhy]])), new Map([
+      [nlSubs, ['maybe', 'the name "Joker" is not followed by a year (2019 wanted)']],
+      [geneMige, ['sure', 'the name and year fit']],
+      [tigole, ['sure', 'the name and year fit']], // found by ID
+      [amzn, ['sure', 'the name and year fit']],
+      [realStory, ['maybe', 'the name "Joker" is not in it; the loose rule does not fit it either']], // found by ID
+    ]));
+    assert.equal(list.length, 5, 'the Source found both ways is listed once; the other film of the name answer is dropped');
+    const best = sureFirst(list).map(s => s.title);
+    assert.deepEqual(best.slice(0, 3).sort(), [amzn, geneMige, tigole].sort());
+    assert.deepEqual(best.slice(3), list.map(s => s.title).filter(t => t === nlSubs || t === realStory), 'then the maybes, in list order');
+    assert.deepEqual(best.slice(0, 3), list.map(s => s.title).filter(t => best.slice(0, 3).includes(t)), 'the sure ones in list order');
+  } finally {
+    indexer.close();
   }
 });
