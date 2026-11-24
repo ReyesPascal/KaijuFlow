@@ -1,0 +1,76 @@
+{
+ "format": 1,
+ "check": "2026-11-24T122253Z-quick-check",
+ "kind": "quick check",
+ "title": [
+  "series",
+  "tt0247102:4:4",
+  "Girlfriends S04E04",
+  "rare-episode",
+  "2003-10-06"
+ ],
+ "label": "Girlfriends S04E04",
+ "id": "tt0247102:4:4",
+ "kept_because": "fail",
+ "outcome": {
+  "label": "Girlfriends S04E04",
+  "id": "tt0247102:4:4",
+  "kind": "rare-episode",
+  "sources": 3,
+  "release": null,
+  "video": true,
+  "checked": [
+   {
+    "release": "Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor",
+    "ok": true,
+    "status": "verified_stored"
+   },
+   {
+    "release": "Girlfriends.2000.S04.NTSC.3xDVD9.DD.5.1-RAiNY",
+    "ok": false,
+    "status": "blocked"
+   },
+   {
+    "release": "Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor",
+    "ok": true,
+    "status": "verified_stored"
+   }
+  ],
+  "fallbacks": 0,
+  "check_misses": [],
+  "start_s": 0.01,
+  "title_to_video": 5.1,
+  "slow": false,
+  "allowed_word": null,
+  "outcome": "fail",
+  "why": "video came, but KaijuFlow's log names no release played, so the right title cannot be told"
+ },
+ "t_start": "2026-11-24T12:23:45.634Z",
+ "t_end": "2026-11-24T12:23:55.731Z",
+ "commit": "198e843599a3c69a8639f87ecbac5f1fa82903e7",
+ "head": "00f46f34cee6b312d1fd663cf3cd489fb74fee52",
+ "dirty": false,
+ "altmount": {
+  "image": "ghcr.io/kipsilabs/altmount:v0.4.0",
+  "id": "sha256:2cf1660dcd19a453608a5111edb9dcbe3f7071c4f2d8b018bc3c685f9e89bcf3"
+ },
+ "dev_switch": {
+  "setting": true,
+  "step_lines": 30,
+  "of": 30
+ },
+ "failed_sources": [
+  {
+   "release": "Girlfriends.2000.S04.NTSC.3xDVD9.DD.5.1-RAiNY",
+   "failed": "check",
+   "status": "blocked",
+   "nzb": "nzbs/Girlfriends.2000.S04.NTSC.3xDVD9.DD.5.1-RAiNY.nzb"
+  }
+ ],
+ "altmount_nzbs": [],
+ "answers": {
+  "list": "answers",
+  "kept": 16,
+  "not_stored": []
+ }
+}
