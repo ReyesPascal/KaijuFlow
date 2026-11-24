@@ -68,7 +68,7 @@ The Source is a Scrambled RAR set. Unscramble could not read the first articles 
 
 ## How it was proved
 
-The chain (read-error, original uploaded, AltMount refusal) is proved by the logs of every case, step by step. The confirming test is the recipe in `confirm`: the `unscramble` step for the played release ended `read-error`, the original NZB was uploaded after it, and AltMount's log for that Source says volumes were missing. Its Clues are not built yet, so a look-alike failure is only *suspected* until they are.
+The chain (read-error, original uploaded, AltMount refusal) is proved by the logs of every case, step by step. The confirming test is the recipe in `confirm`: the `unscramble` step for the played release ended `read-error`, the original NZB was uploaded after it, and AltMount's log for that Source says volumes were missing. Its Clues are built (#283) and tried on real captures: the recipe proves the cause on #219's The Witcher (cold 1) and rules it out on #189's The Twilight Zone (a look-alike: the same `all files failed validation`, refused at the fast-fail check).
 
 ## Ruled out
 
@@ -83,3 +83,4 @@ The chain (read-error, original uploaded, AltMount refusal) is proved by the log
 
 - 2026-11-24: converted from the casebook sweep (draft A1). Read-errors also show in the archived 2026-11-13 baseline (Inception's second pick, 197 parts; Dune, 190 parts); what those plays did next was not traced, so they are not in `seen`.
 - 2026-11-24: a `check miss` sign added (#283): the Source passed its Play-time check before AltMount refused it, so Diagnosis fingerprints the failure as a check miss when the play still ended in video (a fallback that hides a check miss, README "Not signs").
+- 2026-11-24: its confirming recipe runs (#283): Clues unscramble-read-error, original-uploaded-after-unscramble, altmount-missing-volumes.

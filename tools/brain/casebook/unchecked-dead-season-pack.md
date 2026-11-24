@@ -48,7 +48,7 @@ The old list-time check (Smart mode) checked positions 1 to 6, found them all bl
 
 ## How it was proved
 
-By the logs and the grilling on #190 (2026-11-20); after the fix, #218's runs played the title in every round. The confirming test is the recipe in `confirm`: the played Source has no check line of its own, and AltMount refused it at its fast-fail check. Its Clues are not built yet.
+By the logs and the grilling on #190 (2026-11-20); after the fix, #218's runs played the title in every round. The confirming test is the recipe in `confirm`: the played Source has no check line of its own, and AltMount refused it at its fast-fail check. Its Clues are built (#283) and tried on real captures: the recipe proves the cause on #189's cold 1 and rules it out on #219's The Witcher. In a build from before the Play-time check (#190), `played-source-unchecked` reads the old check's `Smart mode: no healthy result found after checking` line.
 
 ## Ruled out
 
@@ -61,3 +61,4 @@ Nothing tested and rejected yet.
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft A2).
+- 2026-11-24: its confirming recipe runs (#283): Clues played-source-unchecked, altmount-fast-fail-refused.
