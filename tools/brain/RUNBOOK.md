@@ -15,6 +15,7 @@ Works for `record` too (a play that does not play reads `does not play`). Never 
 **Rules.** This is the one place the rules are stated; other files point here, and [docs/rules.md](docs/rules.md) holds the detail.
 
 - Every timed run, and every other Brain check, needs the owner's go. A standing go written on a spec counts for the runs it names, and only those: spec #183's "Building it", phase 2 (2026-11-20 grilling), covers the official baseline #218, the grouped run #219 and its halving runs, never a `record` or a top-up.
+- Real-use checks (spec #268, ADR 0010): a quick check (`brainrun.py check --quick`) and a drill-down have a standing go (owner, 2026-11-24): run them without asking, the allowance check and the cap rule still applying. A full check needs the owner's go each time. A check asks the live indexer, so it spends real requests ([rules.md](docs/rules.md#real-use-checks-270-spec-268-adr-0010)).
 - A test touches only the test copies. This machine has no live stacks (Usenet Ultimate, NzbDAV, AltMount); if they are rebuilt, no test ever touches them.
 - A run measures one setup, KaijuFlow with its AltMount copy (`kaijuflow-test`, `altmount-kf-test`), with untouched indexer answers. The baseline (#189) played one try per title: Ultimate Fallback was off for AltMount until #190. Since #190 KaijuFlow's fallback is the Play-time check, and a round plays the Best entry on top of its list ([rules.md](docs/rules.md#what-a-run-is-185)). The Usenet Ultimate, NzbDAV and AltMount direct test copies are no part of a run: they stay stopped and are kept, never deleted, configs included. Since #187 `testbed.py` and `compose.test.yaml` no longer know them; stopping one that is still up is a live step and needs the owner's go: `docker stop uu-test nzbdav-test altmount-addon-test`.
 - Only NinjaCentral is used, on every side: DrunkenSlug is switched off in the test copies but left in place; delete nothing. The default key file `~/kaijuflow-test/indexers.json` holds NinjaCentral only, so never pass `--key-file`.
@@ -29,6 +30,15 @@ Works for `record` too (a play that does not play reads `does not play`). Never 
 `<store>` is the folder of recordings, `<list>` the title list's name, `<name>` a label for the folder.
 
 **How far is it, and where did the time go.** While a record or a run goes, `tail -1` of its log says how far it is: every line of a play or of a reset starts with the UTC time and the plays done out of those planned, for example `05:46:35 [61/160] kaijuflow cold 2 Inception: ...` (the proof at the end of a record counts again from 1 and says `proof`). Afterwards the last section of `report.md`, "Where the time went", says how long the run took and on what.
+
+## A quick check
+
+```
+timeout 1h python3 -I tools/brain/brainrun.py check --quick --rebuild-image > check.log 2>&1; echo "EXIT $?" >> check.log
+grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' check.log
+```
+
+About 10 minutes: the preflight for a check (key file, idle, plugged in, allowance), 5 new titles drawn, one reset, then one press of Best per title on the live indexer. `EXIT 0` pass, `4` fail, `2` the cap rule stopped it (no verdict), `130` stopped, `1` a setup problem. Read the folder's `report.md`, file its ticket texts (one per fail and check miss), then back up with `tools/brain/backup.sh`.
 
 ## The recipe
 
