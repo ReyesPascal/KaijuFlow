@@ -744,6 +744,7 @@ def main(argv):
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the agent works in the repo
 ROUTINE = 'tools/brain/docs/diagnosing-agent.md'
+TOOK_MS = '20000'  # how long a started agent has to take its prompt (herdr agent wait --timeout)
 
 
 def prompt(cases, ids, run_dir):
@@ -766,9 +767,6 @@ def start_agent(cases, ids, run_dir, run=subprocess.run, popen=subprocess.Popen,
     if env.get('HERDR_ENV') == '1':
         def herdr(*args):
             r = run(['herdr', *args], capture_output=True, text=True, timeout=60, check=False)
-            if r.returncode != 0 and 'agent_prompt_stalled' in (r.stdout or '') + (r.stderr or ''):
-                run(['herdr', 'agent', 'send-keys', name, 'enter'], capture_output=True, text=True, timeout=60, check=False)
-                return {}  # the prompt sat in the input box: Enter sends it (as kf-next does)
             if r.returncode != 0:
                 raise OSError(f"herdr {' '.join(args[:2])} failed: {(r.stderr or r.stdout or '').strip()[:200]}")
             return _json(r)
@@ -784,7 +782,17 @@ def start_agent(cases, ids, run_dir, run=subprocess.run, popen=subprocess.Popen,
             raise OSError('herdr has no pane in the agents tab')
         new = herdr('pane', 'split', pane, '--direction', 'down', '--cwd', cwd)['pane']['pane_id']
         herdr('agent', 'start', name, '--kind', 'claude', '--pane', new, '--', '--dangerously-skip-permissions')
-        herdr('agent', 'prompt', name, text, '--wait', '--timeout', '20000')
+        herdr('agent', 'prompt', name, text)  # no --wait: that waits out the agent's whole turn
+
+        def took():  # the agent took the prompt: it is working on it (or asks, or is done already)
+            r = run(['herdr', 'agent', 'wait', name, '--until', 'working', '--until', 'blocked', '--until', 'done',
+                     '--timeout', TOOK_MS], capture_output=True, text=True, timeout=60, check=False)
+            return r.returncode == 0
+        if not took():  # the prompt sat in the input box: Enter sends it (as kf-next does)
+            herdr('agent', 'send-keys', name, 'enter')
+            if not took():
+                raise OSError(f'herdr agent {name} did not take the prompt (not working {int(TOOK_MS) // 1000} s after '
+                              'it, nor after Enter)')
         return f'herdr agent {name} in pane {new}'
     os.makedirs(cases, exist_ok=True)
     out = os.path.join(cases, name + '.log')

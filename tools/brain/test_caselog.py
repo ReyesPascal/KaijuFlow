@@ -442,13 +442,51 @@ PANES = ('{"id":"cli:pane:list","result":{"panes":[{"agent":"claude","agent_stat
 SPLIT = '{"id":"cli:pane:split","result":{"pane":{"pane_id":"w5:p12","tab_id":"w5:t3"}}}'
 
 
+# `agent wait` on Brain, 2026-11-24: an agent in the state asked for (its agent_info, on stdout), and one that was not
+# in it before the timeout (exit 1, the error on stderr). `agent prompt --wait` waits the same way, by default for the
+# turn's end (idle, done or blocked).
+TIMEOUT = '{"error":{"code":"timeout","message":"timed out waiting for agent status"},"id":"cli:agent:wait"}'
+STALLED = ('{"error":{"code":"agent_prompt_stalled","message":"agent did not start working after the prompt"},'
+           '"id":"cli:agent:prompt"}')
+
+
+def agent_info(name, status):
+    return ('{"id":"cli:agent:wait","result":{"agent":{"agent":"claude","agent_status":"%s","interactive_ready":true,'
+            '"name":"%s","pane_id":"w5:p12","tab_id":"w5:t3","workspace_id":"w5"},"type":"agent_info"}}' % (status, name))
+
+
 class FakeHerdr:
-    """herdr as the launcher meets it: answers its list and split commands, and the prompt as started."""
-    def __init__(self, tabs=TABS):
-        self.calls, self.tabs = [], tabs
+    """herdr as the launcher meets it: its list and split answers, and an agent with a state. A started agent is idle; a
+    prompt makes it working (or, `stall`, the prompt sits in its input box until Enter). `--wait` without `--until` waits
+    for the turn's end, which a diagnosing agent's turn never reaches within the timeout; `wait --until` answers at once
+    when the agent is in one of those states, else times out."""
+    def __init__(self, tabs=TABS, stall=False, never_works=False):
+        self.calls, self.tabs, self.stall, self.never_works, self.status = [], tabs, stall, never_works, None
 
     def __call__(self, cmd, capture_output=True, text=True, timeout=None, check=False):
         self.calls.append(cmd)
+        if cmd[1:3] == ['agent', 'start']:
+            self.status = 'idle'
+        elif cmd[1:3] == ['agent', 'prompt']:
+            if self.status is None:
+                return mock.Mock(returncode=1, stdout='', stderr='{"error":{"code":"agent_not_found"}}')
+            if not self.stall and not self.never_works:
+                self.status = 'working'
+            if '--wait' in cmd:
+                until = [cmd[i + 1] for i, a in enumerate(cmd) if a == '--until'] or ['idle', 'done', 'blocked']
+                if self.stall:
+                    return mock.Mock(returncode=1, stdout='', stderr=STALLED)
+                if self.status not in until:  # the turn goes on past the timeout
+                    return mock.Mock(returncode=1, stdout='', stderr=TIMEOUT.replace('agent:wait', 'agent:prompt'))
+            return mock.Mock(returncode=0, stdout='{"id":"cli:agent:prompt","result":{}}', stderr='')
+        elif cmd[1:3] == ['agent', 'send-keys']:
+            if self.stall and not self.never_works:
+                self.status, self.stall = 'working', False
+        elif cmd[1:3] == ['agent', 'wait']:
+            until = [cmd[i + 1] for i, a in enumerate(cmd) if a == '--until'] or ['idle', 'done', 'blocked']
+            if self.status not in until:
+                return mock.Mock(returncode=1, stdout='', stderr=TIMEOUT)
+            return mock.Mock(returncode=0, stdout=agent_info(cmd[3], self.status), stderr='')
         out = {('tab', 'list'): self.tabs, ('pane', 'list'): PANES, ('pane', 'split'): SPLIT,
                ('tab', 'create'): '{"id":"cli:tab:create","result":{}}'}.get(tuple(cmd[1:3]), '{"result":{}}')
         if cmd[1:3] == ['tab', 'create']:
@@ -469,6 +507,25 @@ class LauncherTest(unittest.TestCase):
         self.assertIn('fail-indexer-page-e5f2211b', prompt[4])
         self.assertIn('tools/brain/docs/diagnosing-agent.md', prompt[4])
         self.assertIn('--cases /n/cases', prompt[4])
+        self.assertEqual(herdr.status, 'working')
+
+    def test_a_started_agent_that_takes_the_prompt_is_started_though_its_turn_goes_on(self):
+        herdr = FakeHerdr()
+        said = caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
+        self.assertEqual(said, 'herdr agent diag-1124 in pane w5:p12')
+        self.assertEqual([c for c in herdr.calls if c[1:3] == ['agent', 'send-keys']], [])
+
+    def test_a_prompt_that_sat_in_the_input_box_is_sent_with_enter(self):
+        herdr = FakeHerdr(stall=True)
+        said = caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
+        self.assertEqual(said, 'herdr agent diag-1124 in pane w5:p12')
+        self.assertIn(['herdr', 'agent', 'send-keys', 'diag-1124', 'enter'], herdr.calls)
+        self.assertEqual(herdr.status, 'working')
+
+    def test_an_agent_that_never_takes_the_prompt_could_not_start(self):
+        herdr = FakeHerdr(stall=True, never_works=True)
+        with self.assertRaisesRegex(OSError, 'did not take the prompt'):
+            caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
 
     def test_the_routine_the_prompt_names_is_there_and_names_every_write(self):
         with open(os.path.join(caselog.REPO, caselog.ROUTINE)) as f:
