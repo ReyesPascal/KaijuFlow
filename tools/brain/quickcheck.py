@@ -444,7 +444,9 @@ def render_report(check, outcomes):
     Totals only: no title by title, no comparison with an earlier check."""
     lines = [f"# {check_name(check)} {check['started']}", '', headline(check, outcomes), '']
     if verdict(check, outcomes) is None and not outcomes:
-        return '\n'.join(lines)
+        if check.get('kind') == drill.KIND:
+            lines += drill.report_lines(check.get('drill'), check.get('drill_error'))
+        return '\n'.join(lines) + '\n'
     fails = [o for o in outcomes if o['outcome'] == FAIL]
     if fails:
         lines += ['## Fails', ''] + [f"- {o['label']}: {o['why']}." for o in fails] + ['']

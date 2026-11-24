@@ -199,5 +199,5 @@ def report_lines(drill, error=None):
             lines.append(f"- {m['entry']}: not marked{' ' + m['would'] if m.get('would') else ''}: {m['why']}.")
         else:
             lines.append(f"- {m['entry']}: {m['result']}: {m['why']}.")
-    lines += ['', f"`python3 -I tools/brain/diagnosis.py record <this folder>` writes the marks on the entries; commit them."]
+    lines += ['', "`python3 -I tools/brain/diagnosis.py record <this folder>` writes the marks on the entries; commit them."]
     return lines
