@@ -1381,7 +1381,7 @@ export const keepAliveScenarios = [
       const { id, sources } = offerMovie(w, [{ tag: 'window' }]);
       w.backend.slowImports('window', 59000);
       try {
-        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 90, async () => {
+        await withSettings(w, { whenToResolve: 'on-tile-selection', priorityMoviesTimeoutSeconds: 90 }, () => withPrepareTimeout(w, 90, async () => {
           const streams = await w.list('movie', id);
           const url = streams.find(s => !isBest(s)).url;
           const r = await askOnce(url, 70000);
