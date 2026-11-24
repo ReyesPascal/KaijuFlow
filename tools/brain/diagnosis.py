@@ -401,3 +401,130 @@ def report_section(summary, error=None):
             source = f"{f['release']}: " if f.get('release') else ''
             lines.append(f"- {p.get('label') or p['evidence']}: {source}{f['says']}.")
     return lines
+
+
+# --------------------------------------------------------------------------- recording on the Casebook
+
+def _value(v):
+    v = str(v)
+    return json.dumps(v, ensure_ascii=False) if not v or v != v.strip() or casebook.PLAIN_BAD.search(v) else v
+
+
+def _seen_lines(item):
+    keys = [k for k in ('check', 'title', 'play', 'date', 'rules') if k in item]
+    return [f'  - {keys[0]}: {_value(item[keys[0]])}'] + [f'    {k}: {_value(item[k])}' for k in keys[1:]]
+
+
+def _ruled_out_line(when, check, label, play, lead):
+    said = '; '.join(f"{c['clue']} answered {c['answer']} (wanted {c['wanted']})" for c in lead['clues']
+                     if c['answer'] != c['wanted'])
+    return (f"- {when}, {check}, {label} ({play}): matched `{lead['sign']}` (rules {lead['sign_rules']}), but its "
+            f"confirming test said no: {said}. (Diagnosis, #283)")
+
+
+def _add_to_entry(path, seen=(), ruled=()):
+    with open(path) as f:
+        lines = f.read().split('\n')
+    end = lines.index('---', 1)
+    if seen:
+        if lines[end - 1].strip() == 'seen: []':
+            lines[end - 1] = 'seen:'
+        lines[end:end] = [line for item in seen for line in _seen_lines(item)]
+    if ruled:
+        at = lines.index('## Ruled out')
+        nxt = next(i for i in range(at + 1, len(lines)) if lines[i].startswith('## '))
+        body = [line for line in lines[at + 1:nxt] if line.strip()]
+        if body == ['Nothing tested and rejected yet.']:
+            body = []
+        lines[at + 1:nxt] = [''] + body + list(ruled) + ['']
+    with open(path, 'w') as f:
+        f.write('\n'.join(lines))
+
+
+def record(run_dir, folder=casebook.FOLDER):
+    """Puts a diagnosed check on the Casebook: every proved lead's occurrence in its entry's `seen` (with the rules
+    version), every ruled-out lead in its entry's Ruled out, then the index written again. An occurrence or line already
+    there is not added twice. Returns {entry id: {'seen': n, 'ruled_out': n}}. The check's own run leaves the Casebook
+    alone (the repository stays clean for the next check's preflight): run this, then commit the entries."""
+    entries, problems = casebook.load(folder)
+    if problems:
+        raise casebook.FormatError('\n'.join(problems))
+    texts = {}
+    for i, e in entries.items():
+        with open(os.path.join(folder, e['file'])) as f:
+            texts[i] = f.read()
+    add = {}
+    for ev_folder in evidence_folders(run_dir):
+        d = _read_json(os.path.join(ev_folder, STORED))
+        if not d:
+            continue
+        meta = evidence.read(ev_folder).meta
+        when = (meta.get('t_start') or '')[:10]
+        play = os.path.relpath(ev_folder, run_dir)
+        check, label = meta.get('check'), meta.get('label')
+        for f in d['failures']:
+            for lead in f['leads']:
+                if lead['id'] not in entries:
+                    continue
+                slot = add.setdefault(lead['id'], {'seen': [], 'ruled_out': []})
+                if lead['result'] == 'proved':
+                    item = {'check': check, 'title': label, 'play': play, 'date': when, 'rules': d['rules']}
+                    have = [{k: s.get(k) for k in ('check', 'title', 'play')} for s in entries[lead['id']]['seen']]
+                    if {k: item[k] for k in ('check', 'title', 'play')} not in have + [
+                            {k: s[k] for k in ('check', 'title', 'play')} for s in slot['seen']]:
+                        slot['seen'].append(item)
+                elif lead['result'] == 'ruled out':
+                    line = _ruled_out_line(when, check, label, play, lead)
+                    if line not in texts[lead['id']] and line not in slot['ruled_out']:
+                        slot['ruled_out'].append(line)
+    out = {}
+    for i, slot in sorted(add.items()):
+        if slot['seen'] or slot['ruled_out']:
+            _add_to_entry(os.path.join(folder, entries[i]['file']), slot['seen'], slot['ruled_out'])
+            out[i] = {'seen': len(slot['seen']), 'ruled_out': len(slot['ruled_out'])}
+    casebook.write_index(folder)
+    return out
+
+
+# --------------------------------------------------------------------------- the command
+
+def _say(play):
+    name = os.path.basename(play['path'])
+    if play.get('error'):
+        return [f"{name}: its evidence folder could not be read: {play['error']}"]
+    return [f"{name}: {play.get('label')}: " + (f"{f['release']}: " if f.get('release') else '') + f['says']
+            for f in play['failures']]
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] not in ('diagnose', 'record', 'refingerprint') or \
+            len(argv) > 3 or (argv[1] != 'refingerprint' and len(argv) != 3):
+        print(__doc__.strip().split('\n\n')[1], file=sys.stderr)
+        return 2
+    if argv[1] == 'refingerprint':
+        root = argv[2] if len(argv) == 3 else os.path.expanduser('~/kaijuflow-notes/brain-runs')
+        changed = refingerprint(root)
+        print(f"{_plural(len(changed), 'stored failure')} fingerprinted again with rules version {load_rules()['version']}")
+        return 0
+    folder = argv[2]
+    if argv[1] == 'record':
+        for i, n in record(folder).items():
+            print(f"{i}: {_plural(n['seen'], 'occurrence')} added, {_plural(n['ruled_out'], 'ruled-out line')} added")
+        print('Casebook index written again: commit the entries and the index.')
+        return 0
+    if os.path.exists(os.path.join(folder, 'evidence.json')):
+        for line in _say(dict(diagnose_stored(folder), path=folder)):
+            print(line)
+        return 0
+    summary = diagnose_check(folder)
+    for p, row in zip(evidence_folders(folder), summary['plays']):
+        for line in _say(dict(row, path=p)):
+            print(line)
+    c = summary['counts']
+    print(f"{_plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
+          f"{c['unexplained']} unexplained")
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

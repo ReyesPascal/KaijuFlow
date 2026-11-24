@@ -170,9 +170,13 @@ def check_fields(fields, name):
     if not isinstance(fields['seen'], list):
         raise FormatError(f'{name}: seen must list occurrences')
     for item in fields['seen']:
-        mapping(item, f'{name}: seen', ('check', 'title', 'play', 'date'), ('play',))
+        mapping(item, f'{name}: seen', ('check', 'title', 'play', 'date', 'rules'), ('play', 'rules'))
         if not isinstance(item['date'], str) or not DATE.match(item['date']):
             raise FormatError(f'{name}: seen date {item["date"]!r} must be YYYY-MM-DD')
+        if 'rules' in item:
+            if not re.match(r'^[1-9][0-9]*$', item['rules']):
+                raise FormatError(f'{name}: seen rules must be the masking rules version, a whole number from 1')
+            item['rules'] = int(item['rules'])
 
 
 def check_sign(sign, name):

@@ -3,6 +3,8 @@ answer: found (a cause, proved by its Clues), suspected (a look-alike with no co
 The evidence folders are real plays cut from run folders (fixtures/2026-11-24-diagnosis/README.md).
     python3 -I -m unittest discover -s tools/brain -p 'test_diagnosis.py'
 """
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -165,6 +167,60 @@ class StoredFailuresTest(unittest.TestCase):
                 self.assertIn('"code":"<code>"', f['fingerprint'])
                 self.assertNotIn('INTERNAL_SERVER_ERROR', f['fingerprint'])
         self.assertEqual(diagnosis.refingerprint(root, diagnosis.load_rules(path)), [])  # the same version: nothing to do
+
+
+def casebook_copy(case):
+    folder = os.path.join(tempdir(case), 'casebook')
+    shutil.copytree(casebook.FOLDER, folder)
+    return folder
+
+
+class RecordTest(unittest.TestCase):
+    def test_a_proved_cause_gets_the_occurrence_and_a_failed_recipe_goes_into_ruled_out(self):
+        root, run_dir = stored_check(self)
+        diagnosis.diagnose_check(run_dir)
+        book = casebook_copy(self)
+
+        diagnosis.record(run_dir, book)
+
+        entries, problems = casebook.load(book)
+        self.assertEqual(casebook.problems(book), [])  # still the format, and the index was written again
+        self.assertEqual(entries['unscramble-read-error']['seen'][-1], {
+            'check': '2026-11-23T190950Z-grouped-219', 'title': 'The Witcher S01E01', 'play': 'evidence/01-219-witcher-read-error',
+            'date': '2026-11-23', 'rules': 1})
+        self.assertEqual(entries['unchecked-dead-season-pack']['seen'][-1]['play'], 'evidence/02-189-twilight-dead-pack')
+        _, sections = casebook.read_entry(os.path.join(book, 'unscramble-read-error.md'))
+        ruled = sections['Ruled out'].splitlines()[-1]
+        self.assertTrue(ruled.startswith('- 2026-11-20, 2026-11-20T223814Z-baseline-189, The Twilight Zone S02E06 '
+                                         '(evidence/02-189-twilight-dead-pack): matched'), ruled)
+        self.assertIn('unscramble-read-error answered no (wanted yes)', ruled)
+        _, sections = casebook.read_entry(os.path.join(book, 'unchecked-dead-season-pack.md'))
+        self.assertEqual(sections['Ruled out'], 'Nothing tested and rejected yet.')  # proved here, ruled out nowhere
+
+        diagnosis.record(run_dir, book)  # recording again adds nothing
+        self.assertEqual(casebook.load(book)[0], entries)
+
+
+class CommandTest(unittest.TestCase):
+    def test_the_diagnose_command_says_one_line_per_failure_and_stores_the_answers(self):
+        root, run_dir = stored_check(self, plays=(TWO_REFUSALS, INDEXER_DOWN))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = diagnosis.main(['diagnosis.py', 'diagnose', run_dir])
+        self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue().splitlines(), [
+            f'01-218-witcher-two-refusals: The Witcher S01E01: {HHWEB}: {answers(READ_ERROR)[0]["says"]}',
+            f'01-218-witcher-two-refusals: The Witcher S01E01: {SIC}: suspected: no-extension-file-passed (no confirming test)',
+            '02-265-inception-indexer-down: Inception: new: no Casebook entry matches',
+            '3 failures: 1 new, 2 matched, 1 proved, 2 unexplained'])
+        self.assertEqual(len(json.loads(read(run_dir, diagnosis.STORED))['plays']), 2)
+
+    def test_one_evidence_folder_can_be_diagnosed_alone(self):
+        root, run_dir = stored_check(self, plays=(INDEXER_DOWN,))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = diagnosis.main(['diagnosis.py', 'diagnose', os.path.join(run_dir, evidence.DIR, '01-265-inception-indexer-down')])
+        self.assertEqual((code, out.getvalue()), (0, '01-265-inception-indexer-down: Inception: new: no Casebook entry matches\n'))
 
 
 class AfterACheckTest(unittest.TestCase):
