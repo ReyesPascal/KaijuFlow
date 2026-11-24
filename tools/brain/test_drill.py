@@ -11,15 +11,17 @@ import io
 import json
 import os
 import unittest
+from unittest import mock
 
 import brainrun
 import casebook
 import diagnosis
 import evidence
 from test_diagnosis import HHWEB, READ_ERROR, casebook_copy, stored_check
-from test_evidence import WITCHER, FailedPlayWorld
+from test_evidence import WITCHER, FailedPlayWorld, run_failed_check
 from test_quickcheck import CheckWorld, check_cfg, read
-from test_settings import tempdir
+from test_fixing import set_field
+from test_settings import make_copies, tempdir
 
 EARLIER = '2026-11-24T070000Z-quick-check'  # the check that proved the cause on the Witcher (stored_check's name)
 # the title as the earlier evidence folder names it (the captured run kept no draw, so no date)
@@ -191,6 +193,75 @@ class NotMarkedTest(unittest.TestCase):
         before = read(self.book, 'unscramble-read-error.md')
         diagnosis.record(folder, self.book)
         self.assertEqual(read(self.book, 'unscramble-read-error.md'), before)
+
+
+
+class FromTheFixTicketTest(unittest.TestCase):
+    def test_the_command_a_filed_fix_ticket_names_proves_the_fix_and_record_writes_its_status_and_history(self):
+        book = casebook_copy(self)
+        set_field(book, 'unscramble-read-error', 'status', 'open')
+        # a quick check proves the cause on the Witcher and files its fix ticket (#288), and record puts it on the entry
+        _, _, check, world = run_failed_check(self, cfg={'casebook': book})
+        root = os.path.dirname(check)
+        self.assertIn(('file ticket', 'Fix: Unscramble could not read a Scrambled RAR set, so the scrambled original went '
+                                      'up and AltMount refused it (Casebook unscramble-read-error)'), world.calls)
+        ticket = read(check, 'fix-tickets', 'unscramble-read-error.md')
+        [command] = [line.strip() for line in ticket.splitlines() if 'brainrun.py drill' in line]
+        self.assertEqual(command, 'python3 -I tools/brain/brainrun.py drill --title tt5180504 --episode S01E01')
+        diagnosis.record(check, book)
+        self.assertEqual(entry(book, 'unscramble-read-error')[0]['status'], 'fix in progress')
+
+        # the fix merged, the ticket's own command plays the title again, in this world
+        drilled = CheckWorld(drawn=[WITCHER])
+        argv = command.split()[3:] + ['--test-dir', make_copies(self), '--runs-root', root, '--casebook', book,
+                                      '--cases', os.path.join(tempdir(self), 'cases'), '--tickets-dry-run']
+        out = io.StringIO()
+        with mock.patch.object(brainrun, 'RealIO', lambda cfg: drilled), contextlib.redirect_stdout(out):
+            code = brainrun.main(argv)
+        self.assertEqual(code, 0, out.getvalue())
+        folder = os.path.join(root, '2026-11-25T100000Z-drill-down')
+        [mark] = json.loads(read(folder, diagnosis.STORED))['drill']['marks']
+        self.assertEqual((mark['entry'], mark['before'], mark['result'], mark['from']),
+                         ('unscramble-read-error', 'fix in progress', 'proved fixed',
+                          [f'{os.path.basename(check)}/evidence/01-the-witcher-s01e01']))
+
+        diagnosis.record(folder, book)
+
+        fields, sections = entry(book, 'unscramble-read-error')
+        self.assertEqual(fields['status'], 'proved fixed')
+        self.assertTrue(fields['fix'].startswith('#401 (fix ticket filed by Diagnosis)'), fields['fix'])
+        history = sections['History']
+        self.assertLess(history.index('fix ticket #401 filed by Diagnosis'), history.index('proved fixed by the Drill-down'))
+        self.assertEqual(casebook.problems(book), [])
+
+
+class CommandTest(unittest.TestCase):
+    def parsed(self, argv):
+        seen = {}
+        with mock.patch.object(brainrun, 'drill_command', side_effect=lambda cfg, world: seen.update(cfg) or 0):
+            brainrun.main(['drill', '--test-dir', make_copies(self), '--runs-root', tempdir(self)] + argv)
+        return seen
+
+    def bad(self, argv):
+        err = io.StringIO()
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(err):
+            self.parsed(argv)
+        return err.getvalue()
+
+    def test_drill_takes_the_title_its_episode_and_the_entries_to_mark(self):
+        cfg = self.parsed(['--title', 'tt5180504', '--episode', 'S01E01', '--entry', 'a-cause', '--entry', 'b-cause'])
+        self.assertEqual((cfg['name'], cfg['drill_title'], cfg['drill_episode'], cfg['drill_entries'], cfg['check_titles']),
+                         ('drill-down', 'tt5180504', 'S01E01', ['a-cause', 'b-cause'], 1))
+        self.assertEqual(cfg['indexers'], ['drunkenslug', 'ninjacentral'])  # the key file's, as a quick check's
+        self.assertEqual(self.parsed(['--title', 'tt0133093'])['drill_episode'], None)
+
+    def test_a_title_or_episode_written_otherwise_is_refused(self):
+        self.assertIn('--title is needed', self.bad([]))
+        self.assertIn('--title must be an IMDb id', self.bad(['--title', '5180504']))
+        self.assertIn('--episode must be written S01E02', self.bad(['--title', 'tt5180504', '--episode', '1x01']))
+
+    def test_full_waits_for_the_full_checks_watch(self):
+        self.assertIn("the full check's watch (#271)", self.bad(['--title', 'tt5180504', '--full']))
 
 
 if __name__ == '__main__':

@@ -905,6 +905,13 @@ class CheckPreflightTest(unittest.TestCase):
         self.assertEqual(code, 1, text)
         self.assertIn('ninjacentral has 149 downloads left today, and the check may need 150', text)
 
+    def test_a_drill_down_asks_for_one_titles_allowance(self):
+        self.used(450 - 30)  # 30 downloads left: one title may need 30, five 150
+        code, text = run_command('check', dict(self.cfg, check_titles=1), FakeWorld(self.cfg))
+        self.assertEqual(code, 0, text)
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        self.assertIn('ninjacentral has 30 downloads left today, and the check may need 150', text)
+
     def test_a_missing_limits_file_or_entry_refuses_a_check(self):
         self.limits({'ninjacentral': (2000, 450)})
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))

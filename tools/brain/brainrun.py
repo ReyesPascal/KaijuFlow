@@ -1169,7 +1169,7 @@ def preflight(mode, cfg, io, seen=None):
     # 12. (check only, #270) every switched-on indexer has what the check may ask of it left in its daily allowance
     if mode == 'check':
         left, problem = io.allowance_left()
-        want = quickcheck.need(sum(quickcheck.QUICK_KINDS.values()))
+        want = quickcheck.need(cfg.get('check_titles') or sum(quickcheck.QUICK_KINDS.values()))
         if problem:
             problems.append(problem)  # the limits file is missing or wrong: the sentence says what to fill in
         else:
@@ -1990,7 +1990,7 @@ RECORD_EXIT_CODES = """exit codes of the record command:
 def build_parser():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0], formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=RECORD_EXIT_CODES)
-    ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight', 'check', 'usage'])
+    ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight', 'check', 'drill', 'usage'])
     ap.add_argument('--run', dest='run_dir', help='check only: the run folder to check; exits non-zero when it cannot serve as a baseline')
     ap.add_argument('--no-wait', action='store_true', help='run only: replay indexer answers at once instead of waiting the recorded indexer time')
     ap.add_argument('--for', dest='mode', choices=['run', 'record', 'check'], default='run',
@@ -2009,10 +2009,16 @@ def build_parser():
     ap.add_argument('--rounds', type=int, help='run only: 1 plays cold 1 and warm 1 only, 2 (the default) the full plan (a short run)')
     ap.add_argument('--quick', action='store_true', help='check: the quick check, 5 new titles played live (#270); run: shorthand for '
                     '--sides kaijuflow --rounds 1 (a short run; does not imply --no-wait)')
+    ap.add_argument('--title', dest='drill_title', help='drill only: the IMDb id of the failed title to play again (#272)')
+    ap.add_argument('--episode', help='drill only: the episode of a show, written S01E02')
+    ap.add_argument('--entry', action='append', default=[],
+                    help='drill only: a Casebook entry to mark besides the ones proved on the title before (repeatable)')
+    ap.add_argument('--full', action='store_true', help="drill only: watch the play as the full check does (#271)")
+    ap.add_argument('--casebook', help="check --quick and drill: the Casebook folder Diagnosis reads (default the repo's)")
     ap.add_argument('--cases', default=caselog.CASES,
-                    help='check --quick only: the Case logs of failures with no proved cause (default %(default)s, #287)')
+                    help='check --quick and drill: the Case logs of failures with no proved cause (default %(default)s, #287)')
     ap.add_argument('--tickets-dry-run', action='store_true',
-                    help='check --quick only: write the fix tickets of proved KaijuFlow causes into the check folder, file none (#288)')
+                    help='check --quick and drill: write the fix tickets of proved KaijuFlow causes into the check folder, file none (#288)')
     ap.add_argument('--ledger', help='check --quick only: the titles already played (default <runs root>/titles-played.json)')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
@@ -2089,7 +2095,17 @@ def main(argv):
         return runcheck.check_command(a.run_dir)
     if a.cmd == 'check' and a.run_dir:
         ap.error('--run is for checking a run folder; a quick check (--quick) plays new titles and takes no --run')
-    if a.cmd not in ('preflight', 'usage', 'check') or (a.cmd == 'preflight' and a.mode == 'run'):
+    if a.cmd == 'drill':
+        if not a.drill_title:
+            ap.error('--title is needed: the IMDb id of the title to drill down on')
+        if a.full:
+            ap.error("--full watches the play as the full check does, and the full check's watch (#271) is not built yet; "
+                     'it wires --full in here')
+        try:
+            drill.title_id(a.drill_title, a.episode)
+        except ValueError as e:
+            ap.error(str(e))
+    if a.cmd not in ('preflight', 'usage', 'check', 'drill') or (a.cmd == 'preflight' and a.mode == 'run'):
         if not a.store or not a.listname:
             ap.error('--store and --list are needed')
     td = a.test_dir
@@ -2103,10 +2119,14 @@ def main(argv):
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
-    if a.cmd == 'check' or (a.cmd == 'preflight' and a.mode == 'check'):
+    if a.cmd in ('check', 'drill') or (a.cmd == 'preflight' and a.mode == 'check'):
         cfg.update(name=a.name or 'quick-check', indexers=read_key_file(_key_path(cfg))[1], cases=a.cases,
-                   tickets_dry_run=a.tickets_dry_run,
+                   tickets_dry_run=a.tickets_dry_run, casebook=a.casebook,
                    ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'))
+    if a.cmd == 'drill':  # one title, not drawn: the preflight's allowance is one title's (#272)
+        cfg.update(name=a.name or 'drill-down', drill_title=a.drill_title, drill_episode=a.episode, drill_entries=a.entry,
+                   check_titles=1)
+        return drill_command(cfg, RealIO(cfg))
     started = time.time()
     if a.cmd == 'check':
         return quick_check_command(cfg, RealIO(cfg))
