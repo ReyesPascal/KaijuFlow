@@ -173,3 +173,22 @@ def played_source_unchecked(evidence, failure):
 @clue('altmount-fast-fail-refused', 'Did AltMount refuse the Source at its fast-fail segment check?')
 def altmount_fast_fail_refused(evidence, failure):
     return _altmount_said(evidence, failure, r'fast-fail segment check failed', 'its fast-fail segment check failed')
+
+
+@clue('check-passed-source', 'Did the health check pass the Source before AltMount refused it?')
+def check_passed_source(evidence, failure):
+    release = failure.get('release')
+    own = _check_lines(evidence, release)
+    if own:
+        return (YES if any(s.get('ok') for s in own) else NO), [step_text(s) for s in own]
+    if any(s.get('step') == 'play_check' for s in evidence.steps):
+        return NO, [f'no play_check line for {release}: it was not checked']
+    none = _old_check_found_none(evidence)
+    if none:
+        return NO, [none]
+    return CANT, ['this build writes no play_check lines, and its list-time check does not say which Sources it passed']
+
+
+@clue('altmount-extension-refused', "Did AltMount refuse the Source's file for its extension?")
+def altmount_extension_refused(evidence, failure):
+    return _altmount_said(evidence, failure, r'does not match allowed extensions', 'the file does not match allowed extensions')

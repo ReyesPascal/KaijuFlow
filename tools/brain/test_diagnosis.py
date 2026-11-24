@@ -6,7 +6,10 @@ The evidence folders are real plays cut from run folders (fixtures/2026-11-24-di
 import os
 import unittest
 
+import casebook
+import clues
 import diagnosis
+import evidence
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CAPTURES = os.path.join(HERE, 'fixtures', '2026-11-24-diagnosis')
@@ -60,6 +63,60 @@ class SuspectedAndNewTest(unittest.TestCase):
         self.assertEqual(f['fingerprint'], 'fail | indexer_page not ok | the list held no Source, and <indexer> did not '
                                            'answer its search (page <n>)')
         self.assertEqual((f['verdict'], f['leads'], f['says']), ('new', [], 'new: no Casebook entry matches'))
+
+
+# Every Clue, on two real captures: (Clue, capture with the cause present, its failed Source, the same absent).
+CLUE_CAPTURES = [
+    ('unscramble-read-error', READ_ERROR, HHWEB, DEAD_PACK, TWILIGHT),
+    ('original-uploaded-after-unscramble', READ_ERROR, HHWEB, DEAD_PACK, TWILIGHT),
+    ('altmount-missing-volumes', READ_ERROR, HHWEB, DEAD_PACK, TWILIGHT),
+    ('played-source-unchecked', DEAD_PACK, TWILIGHT, READ_ERROR, HHWEB),
+    ('altmount-fast-fail-refused', DEAD_PACK, TWILIGHT, READ_ERROR, HHWEB),
+    ('check-passed-source', TWO_REFUSALS, SIC, DEAD_PACK, TWILIGHT),
+    ('altmount-extension-refused', TWO_REFUSALS, SIC, TWO_REFUSALS, HHWEB),
+]
+# Every confirming recipe that runs (all its Clues built), the same way.
+RECIPE_CAPTURES = [
+    ('unscramble-read-error', READ_ERROR, HHWEB, DEAD_PACK, TWILIGHT),
+    ('unchecked-dead-season-pack', DEAD_PACK, TWILIGHT, READ_ERROR, HHWEB),
+]
+
+
+def failure_of(folder, release):
+    ev = evidence.read(folder)
+    return ev, next(f for f in diagnosis.failures(ev) if f['release'] == release)
+
+
+class CluesOnRealCapturesTest(unittest.TestCase):
+    def test_every_clue_says_yes_with_the_cause_present_and_no_with_it_absent(self):
+        for name, yes_folder, yes_release, no_folder, no_release in CLUE_CAPTURES:
+            for folder, release, want in ((yes_folder, yes_release, 'yes'), (no_folder, no_release, 'no')):
+                with self.subTest(clue=name, capture=os.path.basename(folder), want=want):
+                    got = clues.run(name, *failure_of(folder, release))
+                    self.assertEqual(got['answer'], want, got['facts'])
+                    self.assertTrue(got['facts'])
+                    ev = evidence.read(folder)
+                    seen = ev.kf_lines + ev.am_lines
+                    for f in got['facts']:  # a fact quoting a log line is that line, as the evidence holds it
+                        if f.startswith('20') and ' ' in f:
+                            self.assertTrue(any(line.startswith(f.rstrip('…')) for line in seen), f)
+
+    def test_every_clue_in_the_library_is_tried_on_two_captures(self):
+        self.assertEqual(sorted(clues.CLUES), sorted(c[0] for c in CLUE_CAPTURES))
+
+    def test_every_recipe_that_runs_proves_its_cause_present_and_rules_it_out_absent(self):
+        entries = {e['id']: e for e in diagnosis.load_index()}
+        for cause, yes_folder, yes_release, no_folder, no_release in RECIPE_CAPTURES:
+            lead = dict(entries[cause], sign='*', sign_rules=1)
+            for folder, release, want in ((yes_folder, yes_release, 'proved'), (no_folder, no_release, 'ruled out')):
+                with self.subTest(recipe=cause, capture=os.path.basename(folder)):
+                    ev, f = failure_of(folder, release)
+                    self.assertEqual(diagnosis.prove(lead, ev, f, clues.CLUES)['result'], want)
+
+    def test_every_recipe_that_runs_is_tried_on_two_captures(self):
+        runs = sorted(e['id'] for e in diagnosis.load_index()
+                      if e['confirm'] != casebook.NO_EVIDENCE and all(c['clue'] in clues.CLUES for c in e['confirm']))
+        self.assertEqual(runs, sorted(r[0] for r in RECIPE_CAPTURES))
 
 
 if __name__ == '__main__':
