@@ -52,6 +52,7 @@ import allowance  # noqa: E402
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
 import draw  # noqa: E402
+import evidence  # noqa: E402
 import indexer_standin  # noqa: E402
 import pool  # noqa: E402
 import quickcheck  # noqa: E402
@@ -447,6 +448,35 @@ class RealIO:
         path = os.path.join(self.cfg['test_dir'], CHECK_STORE_DIR, os.path.basename(run_dir))
         os.makedirs(path)
         self.cfg['store'], self.cfg['listname'] = path, CHECK_LIST
+
+    def check_answers(self):
+        """The folder of the check's stored answers (the stand-in's list in the check's own store), or None outside a check."""
+        store = self.cfg.get('store') or ''
+        if os.path.basename(os.path.dirname(store)) != CHECK_STORE_DIR:
+            return None
+        return os.path.join(store, self.cfg['listname'])
+
+    def altmount_file(self, path):
+        """The bytes of one of AltMount's failed NZBs, named by its container path (`/config/.nzbs/failed/<category>/<name>.nzb`,
+        as its "Moved failed NZB" line names it), read from its test copy's config folder; None for any other path or a file
+        that is gone (the one narrow exception to the guard, #280)."""
+        rel = os.path.normpath(path)
+        parts = rel.split(os.sep)
+        if parts[:4] != ['', 'config', '.nzbs', 'failed'] or len(parts) < 5 or not rel.endswith('.nzb') or '..' in parts:
+            return None
+        full = os.path.join(self.cfg['test_dir'], 'altmount-kf', rel.lstrip(os.sep))
+        root = os.path.realpath(os.path.join(self.cfg['test_dir'], 'altmount-kf', 'config', '.nzbs', 'failed'))
+        if not os.path.realpath(full).startswith(root + os.sep):
+            return None
+        try:
+            with open(full, 'rb') as f:
+                return f.read()
+        except OSError:
+            return None
+
+    def secret_values(self):
+        """The test copies' secret values (key files, logins, keys), for scrubbing what a check keeps; never shown."""
+        return testbed.secret_values(self.cfg['test_dir'])
 
     def close_check_store(self):
         store = self.cfg.get('store') or ''
@@ -1435,9 +1465,11 @@ def check_visit_answer(got, play, pause_s=0, sleep=time.sleep):
     return out
 
 
-def collect_check_visit(cfg, io, title, logbuf):
+def collect_check_visit(cfg, io, title, logbuf, plays=None, secrets=()):
     """One title of a check: its list, the Browse pause, one press of Best; then KaijuFlow's play step lines for it
-    (quickcheck.visit_steps), its AltMount imports and any "limit reached" line in either log."""
+    (quickcheck.visit_steps), its AltMount imports and any "limit reached" line in either log. Both containers' lines go
+    to `logbuf` scrubbed (evidence.scrub, with the test copies' `secrets`) and, unscrubbed, to `plays` for the evidence
+    folder of a play that fails (write_check_ending)."""
     kind, vid, label = title[:3]
     t0 = io.now()
     http = io.check_visit(kind, vid, cfg['browse_pause'])
@@ -1445,7 +1477,9 @@ def collect_check_visit(cfg, io, title, logbuf):
     since = br.iso(t0 - datetime.timedelta(seconds=1))
     kf_text, be_text = io.logs(KF_CONTAINER, since), io.logs(ALTMOUNT_CONTAINER, since)
     for c, text in ((KF_CONTAINER, kf_text), (ALTMOUNT_CONTAINER, be_text)):
-        logbuf.setdefault(c, []).append(f'--- {label} {br.iso(t0)}\n{br.scrub_text(text)}')
+        logbuf.setdefault(c, []).append(f'--- {label} {br.iso(t0)}\n{evidence.scrub(text, secrets)}')
+    if plays is not None:
+        plays.append({'kf_text': kf_text, 'be_text': be_text})
     lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
     return {'title': list(title), 'label': label, 'id': vid, 't_start': br.iso(t0), 't_end': br.iso(t1), **http,
             'steps': quickcheck.visit_steps(br.parse_step_lines(kf_text), vid, since),
@@ -1473,8 +1507,10 @@ def quick_check_all(cfg, io):
              'head': None, 'dirty': None, 'start_load': round(seen['load'], 2) if 'load' in seen else None,
              'machine': seen.get('machine'), 'stage': 'the draw', 'playing': None}
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
+    check['plays'] = []  # both containers' lines per visit, for the evidence folders (never in raw.json)
     try:
         try:
+            secrets = io.secret_values()
             check['settings'] = io.snapshot()
             check['head'], check['dirty'] = io.git_info()
             check['commit'] = io.image_label()
@@ -1489,7 +1525,7 @@ def quick_check_all(cfg, io):
             check['stage'] = 'the plays'
             for title in check['titles']:
                 check['playing'] = {'side': 'kaijuflow', 'phase': 'cold', 'round': None, 'title': title[2]}  # stop_note's shape
-                v = collect_check_visit(cfg, io, title, logbuf)
+                v = collect_check_visit(cfg, io, title, logbuf, check['plays'], secrets)
                 check['visits'].append(v)
                 check['playing'] = None
                 play = v['play'] or {}
@@ -1517,7 +1553,6 @@ def quick_check_all(cfg, io):
                                          'where': 'indexer stand-in LIMIT_REACHED.json, after the last title'}
             finally:
                 io.stop_all()
-                io.close_check_store()
     except (draw.Refused, pool.TmdbError) as e:  # the draw could not be made: its one sentence, no traceback
         check['status'], check['error'] = 'failed', str(e)
     except Exception as e:  # noqa: BLE001
@@ -1526,7 +1561,10 @@ def quick_check_all(cfg, io):
     try:
         write_check_ending(cfg, io, check, started, logbuf)
     finally:
-        restore_signals()
+        try:
+            io.close_check_store()  # after the ending: the evidence folders keep a failed play's answers first
+        finally:
+            restore_signals()
     if failure:
         raise failure
     return check
@@ -1548,6 +1586,7 @@ def write_check_ending(cfg, io, check, started, logbuf):
         except Exception:  # noqa: BLE001  (TMDB down: judge says the other names could not be read)
             return None
     check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t)) for v in quickcheck.judged(check)]
+    save_evidence(io, check)
     check['verdict'] = quickcheck.verdict(check, check['outcomes'])
     check['headline'] = quickcheck.headline(check, check['outcomes'])
     _write(os.path.join(run_dir, 'report.md'), quickcheck.render_report(check, check['outcomes']))
@@ -1561,6 +1600,24 @@ def write_check_ending(cfg, io, check, started, logbuf):
     br.append_index_row(os.path.join(cfg['runs_root'], 'INDEX.md'), {
         'date': check['started'], 'name': cfg['name'], 'result': result, 'changed': [], 'headline': check['headline'],
         'folder': check['folder']})
+
+
+def save_evidence(io, check):
+    """An evidence folder (evidence.save) for every judged play that failed or fell back, its path in the play's outcome
+    as `evidence`; a play that went fine gets none. A folder that cannot be written is said in `evidence_error` and the
+    check's ending goes on."""
+    visits, plays = check.get('visits') or [], check.get('plays') or []
+    judged = [(i, v) for i, v in enumerate(visits) if not v.get('cut_by_limit')]
+    for (i, v), outcome in zip(judged, check.get('outcomes') or []):
+        if not evidence.kept_because(outcome) or i >= len(plays):
+            continue
+        nxt = visits[i + 1]['t_start'] if i + 1 < len(visits) else br.iso(br.parse_ts(v['t_end']) + datetime.timedelta(seconds=GRACE_S))
+        play = {'check': check['folder'], 'kind': check['kind'], 'visit': v, 'outcome': outcome, **plays[i],
+                'settings': check.get('settings') or {}, 'until': nxt, **{k: check.get(k) for k in ('commit', 'head', 'dirty')}}
+        try:
+            outcome['evidence'] = evidence.save(check['dir'], i + 1, play, io)
+        except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
+            outcome['evidence_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
 
 
 # --------------------------------------------------------------------------- the record command (spec #72, ticket #75)
