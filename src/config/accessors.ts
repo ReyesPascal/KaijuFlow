@@ -380,7 +380,6 @@ export const config: Config = {
     const archiveInspection = true;
     const rawSample = envInt('ULTIMATE_FALLBACK_SAMPLE_COUNT') ?? ur?.sampleCount ?? 3;
     const sampleCount: 3 | 7 = rawSample === 7 ? 7 : 3;
-    const maxAttempts = Math.max(0, Math.min(20, envInt('ULTIMATE_FALLBACK_MAX_ATTEMPTS') ?? ur?.maxAttempts ?? 0));
     const priorityMoviesTimeoutSeconds = Math.max(0, Math.min(90, envInt('ULTIMATE_FALLBACK_PRIORITY_MOVIES_TIMEOUT') ?? ur?.priorityMoviesTimeoutSeconds ?? UF_TIMEOUT_DEFAULTS.priority.movies));
     const priorityTvTimeoutSeconds = Math.max(0, Math.min(90, envInt('ULTIMATE_FALLBACK_PRIORITY_TV_TIMEOUT') ?? ur?.priorityTvTimeoutSeconds ?? UF_TIMEOUT_DEFAULTS.priority.tv));
     const prioritySeasonPackTimeoutSeconds = Math.max(0, Math.min(90, envInt('ULTIMATE_FALLBACK_PRIORITY_SEASON_PACK_TIMEOUT') ?? ur?.prioritySeasonPackTimeoutSeconds ?? UF_TIMEOUT_DEFAULTS.priority.seasonPack));
@@ -395,7 +394,6 @@ export const config: Config = {
       preferenceMode,
       archiveInspection,
       sampleCount,
-      maxAttempts,
       priorityMoviesTimeoutSeconds,
       priorityTvTimeoutSeconds,
       prioritySeasonPackTimeoutSeconds,

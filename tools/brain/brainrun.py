@@ -50,6 +50,7 @@ import brainreport as br  # noqa: E402
 import common  # noqa: E402
 import indexer_standin  # noqa: E402
 import runcheck  # noqa: E402
+import runs  # noqa: E402
 import testbed  # noqa: E402
 from common import DEFAULT_TEST_DIR  # noqa: E402
 
@@ -281,20 +282,7 @@ class RealIO:
         """(run folder, missed requests) of the newest run on this recording that started after `when` (the recording's
         last record, as RECORDING.json says), or None when there is none or the runs root is not known. #229. A grab of a release
         the visit never played does not count (#235), when the run folder's raw.json shows the visits."""
-        root = self.cfg.get('runs_root')
-        if not root or not when:
-            return None
-        for d in reversed(br.run_folders(root)):
-            meta = _read_json(os.path.join(root, d, 'meta.json'))
-            if not meta or meta.get('recording') != self.cfg['listname'] or 'standin_misses' not in meta:
-                continue
-            if (meta.get('started') or '') <= when:
-                return None
-            raw = _read_json(os.path.join(root, d, 'raw.json'))
-            if raw and isinstance(raw.get('visits'), list):  # the misses that count, as check counts them (#235)
-                return d, sum(len(br.counted_misses(v)) for v in raw['visits'])
-            return d, meta.get('standin_misses') or 0
-        return None
+        return runs.missed_since(self.cfg.get('runs_root'), self.cfg['listname'], when)
 
     def load_average(self):
         return os.getloadavg()[0]
@@ -971,7 +959,8 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
     for c, text in ((kf_c, kf_text), (be_c, be_text)):
         logbuf.setdefault(c, []).append(f'--- {side} {phase} {rnd} {label} {br.iso(t0)}\n{br.scrub_text(text)}')
     # provisional; finalize_steps() re-attributes once the whole run is read (late lines, next visit of the side)
-    played = br.played_source(kf_text)
+    play = br.read_play(kf_text, {'id': vid, 't_start': br.iso(t0)})
+    played = play['played_source']
     steps = br.attribute_steps({'id': vid, 't_start': br.iso(t0), 'tries': http.get('tries', []), 'played_source': played},
                                br.parse_step_lines(kf_text))
     imports = [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi]
@@ -983,7 +972,7 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
             'seeks': http.get('seeks', {}), 'note': http.get('note'), 'tries': http.get('tries', []),
             'browse_pause_s': http.get('browse_pause_s', 0),
             'steps': steps, 'imports': imports, 'limit': limit, 'played_source': played,
-            'cause': '' if ok else br.failure_cause(kf_text), **({'list': title[3]} if len(title) > 3 else {})}
+            'cause': '' if ok else play['cause'], **({'list': title[3]} if len(title) > 3 else {})}
 
 
 def finalize_steps(io, visits):
@@ -1180,20 +1169,22 @@ def write_run_ending(cfg, io, run, started, logbuf):
         run['standin_misses'] = sum(1 for line in _read_text(sl).splitlines() if line.startswith('MISS '))
     for c, parts in logbuf.items():
         _write(os.path.join(logs_dir, c + '.log'), '\n'.join(parts) + '\n')
-    prev = br.previous_run(root, exclude=os.path.basename(run_dir), usable=(lambda d: runcheck.check_run(d)[0]) if run['short'] else None)
-    nulls = br.null_runs_between(root, prev['started'], exclude=os.path.basename(run_dir)) if prev and prev.get('started') else None
-    if prev and run['short']:  # a short run is held against the last baseline, as far as it played
-        run['changes'] = [f"Short run: compared with the last baseline, {prev['folder']}, limited to {run['short']}."] + \
+    prev = runs.previous(run)  # the one Previous run, as CHECK.txt and the page take it (#241)
+    run['previous'] = prev['folder'] if prev else None
+    nulls = runs.nulls_between(run, prev)
+    if prev and run['short']:  # a short run is held against its previous run, as far as it played
+        run['changes'] = [f"Short run: compared with the previous run, {prev['folder']}, limited to {run['short']}."] + \
             br.diff_runs(br.limit_to_played(prev, run), run, nulls)
     else:
         run['changes'] = br.diff_runs(prev, run, nulls)
+    shown = ([runs.against(prev) + '.'] if prev else []) + run['changes']  # the report and the INDEX.md row name the run
     if run['status'] == 'ok':
-        report, result, headline = br.render_report(run, run['changes']), 'ok', br.headline(run)
+        report, result, headline = br.render_report(run, shown), 'ok', br.headline(run)
     elif run['status'] == 'null':
         report, result = br.render_null_report(run), 'NULL'
         headline = f"NULL: {run['null']['indexer']} limit reached at {run['null']['time']}; no numbers"
     elif run['status'] == 'stopped':
-        report, result, headline = br.render_stopped_report(run, run['changes']), 'stopped', br.stopped_text(run['stopped'])
+        report, result, headline = br.render_stopped_report(run, shown), 'stopped', br.stopped_text(run['stopped'])
     else:
         report, result, headline = f"This run failed before it finished: {run['error']}\n", 'failed', f"failed: {run['error']}"
     if run['short']:
@@ -1203,12 +1194,12 @@ def write_run_ending(cfg, io, run, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
-                                    'standin_misses', 'changes', 'timing', 'browse_pause_s', 'start_load')}
+                                    'standin_misses', 'changes', 'previous', 'timing', 'browse_pause_s', 'start_load')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
         meta['lists'] = run['lists']
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
-        'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': run['changes'],
+        'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': shown,
         'headline': headline, 'folder': os.path.basename(run_dir)})
 
 

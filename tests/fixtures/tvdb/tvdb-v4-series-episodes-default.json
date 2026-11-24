@@ -1,0 +1,193 @@
+{
+  "status": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "series": {
+        "id": 71256,
+        "name": "The Daily Show",
+        "slug": "the-daily-show",
+        "image": "https://artworks.thetvdb.com/banners/v4/series/71256/posters/65cc5fcb2b20e.jpg",
+        "nameTranslations": [
+          "dan",
+          "deu",
+          "eng",
+          "spa",
+          "zho",
+          "ara"
+        ],
+        "overviewTranslations": [
+          "deu",
+          "eng",
+          "spa",
+          "ara"
+        ],
+        "aliases": [
+          {
+            "language": "eng",
+            "name": "The Daily Show with Trevor Noah"
+          },
+          {
+            "language": "eng",
+            "name": "The Daily Show with Craig Kilborn"
+          },
+          {
+            "language": "eng",
+            "name": "The Daily Show with Jon Stewart"
+          }
+        ],
+        "firstAired": "1996-07-22",
+        "lastAired": "2026-12-10",
+        "nextAired": "2026-11-30",
+        "score": 38888,
+        "status": {
+          "id": 1,
+          "name": "Continuing",
+          "recordType": "series",
+          "keepUpdated": true
+        },
+        "originalCountry": "usa",
+        "originalLanguage": "eng",
+        "defaultSeasonType": 1,
+        "isOrderRandomized": false,
+        "lastUpdated": "2026-11-23 03:18:53",
+        "averageRuntime": 27,
+        "episodes": null,
+        "overview": "The Daily Show's intrepid news team dives into the biggest headlines of the day, providing fearless coverage, expert analysis, and no-nonsense commentary.",
+        "year": "1996"
+      },
+      "episodes": [
+        {
+          "id": 4655109,
+          "seriesId": 71256,
+          "name": "Guide to Home Video",
+          "aired": "1998-03-05",
+          "runtime": 25,
+          "nameTranslations": [
+            "eng"
+          ],
+          "overview": null,
+          "overviewTranslations": [],
+          "image": null,
+          "imageType": null,
+          "isMovie": 0,
+          "seasons": null,
+          "number": 1,
+          "absoluteNumber": 0,
+          "seasonNumber": 0,
+          "lastUpdated": "2019-11-13 13:25:44",
+          "finaleType": null,
+          "airsBeforeSeason": 3,
+          "airsBeforeEpisode": 31,
+          "year": "1998"
+        },
+        {
+          "id": 5904682,
+          "seriesId": 71256,
+          "name": "Interview Special - Billy Crystal",
+          "aired": "1999-03-11",
+          "runtime": 25,
+          "nameTranslations": [
+            "eng"
+          ],
+          "overview": "http://observer.com/1999/03/billy-crystal-noodges-his-way-to-daily-show-special/\r\n\r\n30 minute special that aired at 10:30 before the Hootie And The Blowfish episode",
+          "overviewTranslations": [
+            "eng"
+          ],
+          "image": null,
+          "imageType": null,
+          "isMovie": 0,
+          "seasons": null,
+          "number": 2,
+          "absoluteNumber": 0,
+          "seasonNumber": 0,
+          "lastUpdated": "2019-11-13 13:25:44",
+          "finaleType": null,
+          "airsBeforeSeason": 4,
+          "airsBeforeEpisode": 32,
+          "year": "1999"
+        },
+        {
+          "id": 1029071,
+          "seriesId": 71256,
+          "name": "Greatest Millenium Special",
+          "aired": "1999-12-15",
+          "runtime": 25,
+          "nameTranslations": [
+            "eng"
+          ],
+          "overview": null,
+          "overviewTranslations": [],
+          "image": null,
+          "imageType": null,
+          "isMovie": 0,
+          "seasons": null,
+          "number": 3,
+          "absoluteNumber": 0,
+          "seasonNumber": 0,
+          "lastUpdated": "2019-11-13 13:25:44",
+          "finaleType": null,
+          "airsBeforeSeason": 4,
+          "airsBeforeEpisode": 157,
+          "year": "1999"
+        },
+        {
+          "id": 5244017,
+          "seriesId": 71256,
+          "name": "Indecision 2000, Choose and Lose",
+          "aired": "2000-11-08",
+          "runtime": 25,
+          "nameTranslations": [
+            "eng"
+          ],
+          "overview": null,
+          "overviewTranslations": [],
+          "image": null,
+          "imageType": null,
+          "isMovie": 0,
+          "seasons": null,
+          "number": 4,
+          "absoluteNumber": 0,
+          "seasonNumber": 0,
+          "lastUpdated": "2019-11-13 13:25:44",
+          "finaleType": null,
+          "year": "2000"
+        },
+        {
+          "id": 430589,
+          "seriesId": 71256,
+          "name": "Steve Carell Salutes Steve Carell",
+          "aired": "2001-05-21",
+          "runtime": 25,
+          "nameTranslations": [
+            "eng"
+          ],
+          "overview": "Steve Carell looks back at many of his best segments as a Daily Show correspondent.",
+          "overviewTranslations": [
+            "eng"
+          ],
+          "image": "https://artworks.thetvdb.com/banners/episodes/71256/430589.jpg",
+          "imageType": 12,
+          "isMovie": 0,
+          "seasons": null,
+          "number": 5,
+          "absoluteNumber": 0,
+          "seasonNumber": 0,
+          "lastUpdated": "2019-11-13 13:25:44",
+          "finaleType": null,
+          "airsBeforeSeason": 6,
+          "airsBeforeEpisode": 63,
+          "year": "2001"
+        }
+      ]
+    },
+    "links": {
+      "prev": null,
+      "self": "https://api4.thetvdb.com/v4/series/71256/episodes/default?page=0",
+      "next": "https://api4.thetvdb.com/v4/series/71256/episodes/default?page=1",
+      "total_items": 4742,
+      "page_size": 500
+    }
+  },
+  "note": "page 0 of series 71256; 500 episodes on the page, first 5 kept"
+}

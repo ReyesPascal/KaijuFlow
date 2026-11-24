@@ -51,7 +51,7 @@ try {
   const base=await listen(app);
   const {requestContext}=await load('requestContext');
   const {buildStreams}=await load('addon/streamBuilder');
-  const built=requestContext.run({baseUrl:base,pathPrefix:'/stremio',manifestKey:'synthetic-manifest'},()=>buildStreams({allResults:filtered,healthResults:new Map(),type:'movie',now:Date.now()}));
+  const built=requestContext.run({baseUrl:base,pathPrefix:'/stremio',manifestKey:'synthetic-manifest'},()=>buildStreams({allResults:filtered,healthResults:new Map(),play:{sessionKey:'',type:'movie'},now:Date.now()}));
   assert.equal(built.streams.length,1);
   const tile=built.streams[0];const url=new URL(tile.url);
   assert.equal(url.origin,base);assert.match(url.pathname,/\/stremio\/synthetic-manifest\/play\/stream\//);

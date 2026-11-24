@@ -20,6 +20,7 @@ import brainrun
 import common
 import indexer_standin
 import runcheck
+import runs
 import test_indexer_standin as fakes
 import test_preflight
 from test_settings import tempdir
@@ -31,6 +32,11 @@ UTC = datetime.timezone.utc
 def read(path):
     with open(path) as f:
         return f.read()
+
+
+def previous_in(root, recording='l'):
+    """The Previous run of a run on `recording` that comes after every folder in the runs root."""
+    return runs.previous({'dir': os.path.join(root, 'zzzz-later'), 'recording': recording})
 
 
 def refused_get():
@@ -77,6 +83,7 @@ class FakeIO(Copies):
         self.working = 0
         self.standin_log = []
         self.lines_per_visit = {}  # visit number -> lines the stand-in writes during that visit
+        self.play_steps = []  # the played / play_failed step lines KaijuFlow writes in every visit (#242), as dicts
         self.max_working = 0
 
     def takes(self, seconds):
@@ -193,6 +200,7 @@ class FakeIO(Copies):
             ts = self.clock.strftime('%Y-%m-%dT%H:%M:%S.000Z')
             text = (f'{t} [KF-STEP] {{"step":"nzb_fetch","source":"S","ms":100,"ok":true,"t":"{ts}","title":"R"}}\n'
                     f'{t} apikey=' + SECRET + ' fetching\n')
+            text += ''.join(f'{t} [KF-STEP] {json.dumps(dict(ms=0, t=ts, **s))}\n' for s in self.play_steps)
         if self.limit_at_visit and self.visits == self.limit_at_visit and container != 'kaijuflow-test':
             text += f'{t} DrunkenSlug: API limit reached. Retry in 30 minutes\n'
         return text
@@ -313,7 +321,7 @@ class RunTest(unittest.TestCase):
     def test_null_run_is_not_the_previous_run(self):
         brainrun.run_all(make_cfg(self.tmp, name='ok1'), FakeIO())
         brainrun.run_all(make_cfg(self.tmp, name='bad'), FakeIO(limit_at_visit=1))
-        prev = br.previous_run(os.path.join(self.tmp, 'runs'), exclude='zzz')
+        prev = previous_in(os.path.join(self.tmp, 'runs'))
         self.assertEqual(prev['status'], 'ok')
 
     def test_standin_marker_aborts_run(self):
@@ -365,7 +373,7 @@ class RunTest(unittest.TestCase):
             brainrun.run_all(make_cfg(self.tmp), io)
         self.assertEqual([c[0] for c in io.calls][-2:], ['standin-stop', 'stop-all'])
         self.assertIn('failed', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
-        self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
+        self.assertIsNone(previous_in(os.path.join(self.tmp, 'runs')))
 
 
 def printed(fn, *args):
@@ -917,7 +925,7 @@ class InterruptedRunTest(unittest.TestCase):
 
     def test_a_stopped_run_is_not_the_previous_run(self):
         self.stopped_run(2)
-        self.assertIsNone(br.previous_run(os.path.join(self.tmp, 'runs')))
+        self.assertIsNone(previous_in(os.path.join(self.tmp, 'runs')))
 
     def test_check_says_a_stopped_run_is_not_usable_as_a_baseline(self):
         io, run = self.stopped_run(2)
@@ -1105,6 +1113,33 @@ class MissMatchingTest(unittest.TestCase):
         run = brainrun.run_all(make_cfg(tmp), io)
         self.assertEqual(br.classify_failure(run['visits'][1]), 'failure_video')
         self.assertEqual(run['visits'][1]['misses'], ['drunkenslug api t=search&offset=100'])
+
+
+class PlayStepLinesTest(unittest.TestCase):
+    """collect_visit fills raw.json's played_source and cause from KaijuFlow's played and play_failed step lines (#242)."""
+    FAILED = {'step': 'play_failed', 'source': 'S', 'ok': False, 'title': 'Rel.Top.2160p',
+              'reason': 'First byte failed (status 400); the Source is kept'}
+
+    def raw_visit(self, io):
+        run = brainrun.run_all(make_cfg(tempdir(self)), io)
+        return json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits'][0]
+
+    def test_a_failed_play_names_its_top_pick_and_why(self):
+        io = FakeIO(fail_http_for='kaijuflow')
+        io.play_steps = [self.FAILED]
+        v = self.raw_visit(io)
+        self.assertEqual((v['ok'], v['played_source'], v['cause']),
+                         (False, 'Rel.Top.2160p', 'First byte failed (status 400); the Source is kept'))
+
+    def test_a_fallback_names_the_failed_top_pick_and_keeps_no_cause(self):
+        io = FakeIO()
+        io.play_steps = [self.FAILED, {'step': 'played', 'source': 'S', 'ok': True, 'title': 'Rel.Next.1080p'}]
+        v = self.raw_visit(io)
+        self.assertEqual((v['ok'], v['played_source'], v['cause']), (True, 'Rel.Top.2160p', ''))
+
+    def test_without_play_lines_nothing_is_guessed(self):
+        v = self.raw_visit(FakeIO(fail_http_for='kaijuflow'))
+        self.assertEqual((v['played_source'], v['cause']), (None, ''))
 
 
 class SmokeTest(unittest.TestCase):
@@ -1361,7 +1396,7 @@ class RecordTest(unittest.TestCase):
         self.assertTrue(os.path.basename(d).endswith('-trial-record'))
         self.assertTrue(os.path.exists(os.path.join(d, 'logs', 'standin.log')))
         self.assertFalse(os.path.exists(os.path.join(d, 'report.md')))
-        self.assertIsNone(br.previous_run(root))  # a record is never the previous run of a diff
+        self.assertIsNone(previous_in(root))  # a record is never the previous run of a diff
         self.assertIn('RECORD fake', read(os.path.join(d, 'logs', 'standin.log')))
         self.assertEqual(json.load(open(os.path.join(d, 'meta.json')))['status'], 'recorded')
 
@@ -1842,25 +1877,30 @@ class ShortRunTest(SignalGuard):
         self.assertEqual(self.meta(run)['short'], 'KaijuFlow, 2 rounds, 2 titles')
         self.assertFalse(runcheck.check_run(run['dir'])[0])
 
-    def test_a_short_run_is_compared_with_the_last_baseline_limited_to_what_it_played(self):
+    def test_a_short_run_is_compared_with_its_previous_run_limited_to_what_it_played(self):
         brainrun.run_all(make_cfg(self.tmp, name='base'), CleanIO(commit='c1'))
         base = sorted(d for d in os.listdir(os.path.join(self.tmp, 'runs')) if d != 'INDEX.md')[0]
         short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO(commit='c2'))
         changes = short['changes']
-        self.assertEqual(changes[0], f'Short run: compared with the last baseline, {base}, limited to KaijuFlow, 1 round, 2 titles.')
+        self.assertEqual(changes[0], f'Short run: compared with the previous run, {base}, limited to KaijuFlow, 1 round, 2 titles.')
         self.assertIn('KaijuFlow code: c1 -> c2', changes)
         self.assertFalse([c for c in changes if 'removed' in c], changes)  # the sides it did not play are not "removed"
         # a short run is never the baseline of the next one, nor the previous run of a full one
         short2 = brainrun.run_all(make_cfg(self.tmp, name='quick2', sides=['kaijuflow'], rounds=1), CleanIO(commit='c3'))
-        self.assertIn(f'compared with the last baseline, {base},', short2['changes'][0])
+        self.assertIn(f'compared with the previous run, {base},', short2['changes'][0])
         self.assertIn('KaijuFlow code: c1 -> c3', short2['changes'])
         full = brainrun.run_all(make_cfg(self.tmp, name='full'), CleanIO(commit='c4'))
         self.assertIn('KaijuFlow code: c1 -> c4', full['changes'])
 
-    def test_a_run_that_cannot_be_a_baseline_is_not_the_one_a_short_run_is_compared_with(self):
-        brainrun.run_all(make_cfg(self.tmp, name='missed'), FakeIO(commit='c1'))  # its stand-in logged a miss
-        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
-        self.assertEqual(short['changes'], ['No earlier run to compare with: this is the first one.'])
+    def test_a_short_run_is_compared_with_the_previous_run_check_names_even_one_that_missed_requests(self):
+        """#241: one Previous run. A short run's "What changed" is against the run its CHECK.txt names, so a finished run
+        that missed requests (not usable as a baseline) is still the one it is compared with."""
+        missed = brainrun.run_all(make_cfg(self.tmp, name='missed'), FakeIO(commit='c1'))  # its stand-in logged a miss
+        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO(commit='c2'))
+        folder = os.path.basename(missed['dir'])
+        self.assertTrue(short['changes'][0].startswith(f'Short run: compared with the previous run, {folder},'), short['changes'])
+        self.assertIn('KaijuFlow code: c1 -> c2', short['changes'])
+        self.assertIn(f'Against the previous run on the same recording (l): {folder}.', runcheck.check_run(short['dir'])[1])
 
     def bad(self, argv):
         err = io_module.StringIO()
@@ -1905,7 +1945,7 @@ class ArchiveTest(unittest.TestCase):
         run = brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO(commit='c2'))
         self.assertEqual(run['changes'], ['No earlier run to compare with: this is the first one.'])
         self.assertIn('No earlier run to compare with: this is the first one.', read(os.path.join(run['dir'], 'report.md')))
-        self.assertIsNone(br.previous_run(self.root, exclude=os.path.basename(run['dir'])))
+        self.assertIsNone(runs.previous(run))
         # the next run is compared with that first one, not with anything archived
         nxt = brainrun.run_all(make_cfg(self.tmp, name='tuning'), CleanIO(commit='c3'))
         self.assertIn('KaijuFlow code: c2 -> c3', nxt['changes'])

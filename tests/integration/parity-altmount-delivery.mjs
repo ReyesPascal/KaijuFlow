@@ -76,6 +76,27 @@ try {
     assert.equal(backend.submitsFor('direct'), 1);
   });
 
+  // The Delivery method as it is now serves every request of a play (#248): the player's next request (a seek or
+  // probe, answered by the Stremio dedup without a new prepare) goes out with the method set since its first.
+  await check('next-request-uses-the-delivery-method-as-it-is-now', async () => {
+    configData.playDeliveryMethod = 'proxy';
+    const media = mediaFor('now'), title = 'KaijuFlow.Delivery.now.2026.1080p.WEB-DL.H264';
+    const url = tileUrl(backend.addMovie('now', title, media), title);
+    const first = await get(url);
+    assert.equal(first.status, 200, 'proxy plays inline');
+    assertBytes(Buffer.from(await first.arrayBuffer()), media);
+    configData.playDeliveryMethod = 'direct';
+    const second = await get(url);
+    assert.equal(second.status, 302, 'the next request goes direct, the method set now');
+    await second.arrayBuffer();
+    assert.match(second.headers.get('location'), /\/api\/files\/stream\?/, 'it points at AltMount\'s file route');
+    assert.equal(backend.submitsFor('now'), 1, 'the next request makes no new import');
+    configData.playDeliveryMethod = 'pipe';
+    const third = await get(url, 'bytes=10-29');
+    assert.equal(third.status, 206, 'and back to KaijuFlow\'s own delivery once the method is pipe');
+    assertBytes(Buffer.from(await third.arrayBuffer()), media.subarray(10, 30));
+  });
+
   await check('proxy-default-for-unset-method', async () => {
     configData.playDeliveryMethod = 'proxy';
     const media = mediaFor('dflt'), title = 'KaijuFlow.Delivery.dflt.2026.1080p.WEB-DL.H264';

@@ -342,7 +342,6 @@ export interface UltimateFallbackConfig {
   preferenceMode: 'priority' | 'speed';  // Picks the wait times below; Best hands over the first healthy Source in list order whatever it says (#190)
   archiveInspection: boolean;
   sampleCount: 3 | 7;
-  maxAttempts: number;                 // How many Sources a failed list entry walks through (0 = all, 1-20 = cap, default 0). Best has no cap (#190).
   // Per-mode Backend prepare wait times (0-90s, 0 = wait forever). Active set picked by preferenceMode at runtime.
   priorityMoviesTimeoutSeconds: number;
   priorityTvTimeoutSeconds: number;

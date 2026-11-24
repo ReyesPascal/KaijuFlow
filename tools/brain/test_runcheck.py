@@ -4,13 +4,13 @@
 """
 import contextlib
 import io
-import json
 import os
 import shutil
 import tempfile
 import unittest
 
 import runcheck
+from run_fixtures import edit, fixture, run_folder
 
 
 @contextlib.contextmanager
@@ -22,22 +22,11 @@ def tempdir():
         shutil.rmtree(d, True)
 
 
-FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-usable')
+FIXTURE = fixture('run-usable')
 
 
 def copy_run(tmp):
-    dest = os.path.join(tmp, 'run')
-    shutil.copytree(FIXTURE, dest)
-    return dest
-
-
-def edit(run, name, fn):
-    path = os.path.join(run, name)
-    with open(path) as f:
-        data = json.load(f)
-    fn(data)
-    with open(path, 'w') as f:
-        json.dump(data, f)
+    return run_folder(tmp, 'run', like=FIXTURE)
 
 
 def run_check(run, store=False):
@@ -226,17 +215,15 @@ def runs_pair(tmp, edit_this=None, edit_prev=None):
     root = os.path.join(tmp, 'runs')
     folders = []
     for name, fn in (('2026-01-01T000000Z-before', edit_prev), ('2026-01-02T000000Z-after', edit_this)):
-        dest = os.path.join(root, name)
-        shutil.copytree(FIXTURE, dest)
-        edit(dest, 'meta.json', lambda m: m.update(recording='l', lists={'Alpha': 'easy', 'Beta': 'hard'}))
-
-        def tag(raw, fn=fn):
-            for v in raw['visits']:
+        def tag(visits, fn=fn):
+            for v in visits:
                 v['list'] = 'easy' if v['title'] == 'Alpha' else 'hard'
-            if fn:
+            if fn:  # fn edits raw.json, as edit() hands it over
+                raw = {'visits': visits}
                 fn(raw)
-        edit(dest, 'raw.json', tag)
-        folders.append(dest)
+                visits[:] = raw['visits']
+        folders.append(run_folder(root, name, {'recording': 'l', 'lists': {'Alpha': 'easy', 'Beta': 'hard'}}, like=FIXTURE,
+                                  edit_visits=tag))
     return folders[1]
 
 
@@ -400,10 +387,8 @@ class PreviousRunTests(unittest.TestCase):
         with tempdir() as tmp:
             run = runs_pair(tmp, edit_this=lambda raw: kf(raw, 'cold', 'Alpha').update(start_s=0.5))
             root = os.path.dirname(run)
-            between = os.path.join(root, '2026-01-01T120000Z-between')
-            shutil.copytree(run, between)
-            edit(between, 'meta.json', lambda m: m.update(never_compared=True, label='Test 1'))
-            shutil.copytree(run, os.path.join(root, 'archive', '2026-01-01T180000Z-archived'))
+            run_folder(root, '2026-01-01T120000Z-between', {'never_compared': True, 'label': 'Test 1'}, like=run)
+            run_folder(os.path.join(root, 'archive'), '2026-01-01T180000Z-archived', like=run)
             _, out = run_check(run)
         self.assertEqual(judged_lines(out)[0], 'Against the previous run on the same recording (l): 2026-01-01T000000Z-before.')
 

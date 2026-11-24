@@ -1,4 +1,4 @@
-# Handoff: where KaijuFlow stands (2026-11-23, #239 built; review round 2 closing; the owner ran low on usage)
+# Handoff: where KaijuFlow stands (2026-11-23, the deepening spec #239 grilled and ticketed; its build next)
 
 This is the one state note. Replace it; do not append. Older versions are in git history.
 Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
@@ -9,22 +9,17 @@ Terms: [GLOSSARY.md](../../../GLOSSARY.md). Decisions: [docs/adr](../../adr/).
 KaijuFlow with AltMount as its one Backend, as fast and lean as possible; KaijuFlow does the health check, archives AltMount can stream allowed; no more speed tests against Usenet Ultimate or AltMount direct (owner, 2026-11-20; spec #183, the map). Owner's words: "I just want altmount to be the fast backend and want KF to do the healthcheck, even if its RARS, find a way to make them work together as fast as possible forget speed testing against the rest"; "i want it to be as fast and lean as possible". ADR 0009 replaces ADR 0008.
 
 ## Next command
-**The owner types**, in a fresh herdr pane once usage is back:
+What the next session starts with (`docs/agents/resume.md`). The ending session starts it itself with `~/.local/bin/kf-next` when a plan gives the go ("Fresh session"); the owner types only what a plan does not cover.
 
-    start
+**State (2026-11-23):** #239's build and both review rounds are done. Round 2's fix jobs 2, 3, 4 and 5 are merged into `deepen-239` (tip `98b3c29`; Job 1 was dropped: planted bugs). Build, unit, both type-checks, `check:brain` and integration pass on the tip. PR #252 is ready, CI green. Records: `~/kaijuflow-notes/reviews/239/round-2/fix-status.md`.
 
-## #239 build: where it stopped (2026-11-23, ~17:00)
-- **Built:** all 10 tickets merged into `deepen-239` (draft PR #252, CI green at bd2d695), plus round 1's review fix-up (9 commits, Opus high; merged at bd2d695). #255 filed for later (a clicked entry's walk-on).
-- **Round 2 review** (owner's design, all on #239's comments: six Fable agents, a lead, a scope-watcher with the final word): its fix plan is `~/kaijuflow-notes/reviews/239/round-2/fix-plan.md`; done when `round-2/COMPLETE` exists. Debate log `round-2/debate.log`, rulings `round-2/rulings.md`.
-- **Sealed measurement:** `~/.local/share/kf-review-239-sealed/plan.md`. Round 2 reviewed `review-target-239` (local), which holds three planted bugs (walk.ts:211 `>`, ultimateFallback.ts:446 signal, playTimeCheck.ts:62 guard). Their fixes are NOT applied to `deepen-239` (it never had them). Codex controls' results are in the same folder: verify its four real findings against the fix plan and add any the plan lacks.
-- **Restart here (owner, 2026-11-23: "do it in a way it can just use up all the usage and be restarted"):** `~/kaijuflow-notes/reviews/239/round-2/fix-status.md` holds every fix job and its state; do the first row not `merged` or `dropped`, and update it and push kaijuflow-notes after each change. The owner may just type "start".
-- **Next steps, in order:** (1) if `COMPLETE` is missing, read the debate and let r2watch finish, or close the round; (2) the fix round: Opus high agents (owner, 2026-11-23: no Fable in the restart), as many jobs as the plan has (up to 5 at once), each in its own files, on `deepen-239`, plants dropped; merge one by one with build, unit, both type-checks, check:brain and `npm run test:integration`; (3) mark PR #252 ready once green; (4) `kf-alert "type /retro"`; the owner types `/mattpocock-skills:retro the #239 build: follow ~/kaijuflow-notes/reviews/239/retro-brief.md` (add round 2's and the fix agents' log paths to that brief first); (5) the review report as an Artifact (`reviews/239/report-design.md`, reviews only, plus the whole-app code comparison main vs final deepen-239); (6) #249, then #250, under the owner's standing go for live tests.
-- **Clean-up when done:** worktrees under `.claude/worktrees/` (r2-*, review-target-239, review-fixup-239, the ticket ones), herdr panes in the `agents` and `debate` tabs.
+**The owner types**, when usage is back, in a fresh herdr pane on Opus 5.5 at high effort (owner, 2026-11-23: "i do retro when i get usage back in a new session opus 5.5 high"; set it with `/model` first). A regular retro of the spec, no brief (owner, 2026-11-23: "i dont want to keep the brief anymore just regular retro of the spec"). The skill runs only when typed:
 
-## Deepening spec #239 (grilled 2026-11-23, owner: "yes to all")
-- **Tickets** (`python3 -I tools/brain/frontier.py 239`): play path #228 (Walk module, replace once, 30 grabs) → #243 (grabs by ADR 0004 kind), #244 (Walk ends on the next list request) → #246 (play context) → #247 (Source memory) → #248 (delivery, keep-alive); #245 (Unscramble cap and read-error retry) after #228. Tools: #240 (stand-in 503 for a miss), #241 (runs module, one Previous run) → #242 (step lines). Then #249 (warm-list diagnosis, replay) and #250 (closing grouped run against #219's run; not kept → split Walk changes | the rest, then halve).
-- **Facts found in the grilling:** #228's walk runs away *before* the play, while a fallback prepares (a failed grab pulls twice); the walk's grab forgets a 404; #219's new fallbacks were Unscramble read-errors (then an upload AltMount rejects), not AltMount; the warm-list path does no new work (the same step got slower: whole process, not proven); old runs are read from `raw.json`, so step lines don't break them. Detail in #239 and the tickets.
-- **Written:** GLOSSARY (**Walk** new; Best entry, Head start, Unscramble, Delivery method), ADR 0004 "The walk's grabs", ADR 0005 amended 2026-11-23.
+    /mattpocock-skills:retro the #239 build
+
+After the retro: #249 (replay), then #250 (grouped run), each on an idle machine under the owner's standing go for live tests (Owner's decisions). PR #252 merges on the owner's word.
+
+**Clean-up when the build is done:** the worktrees under `.claude/worktrees/` (r2-*, review-target-239, review-fixup-239, the ticket ones).
 
 **Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (voice "azelma", repeats until the notification is closed) at every stop-and-ask. Questions: AskUserQuestion plus `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered.
 
@@ -64,7 +59,7 @@ Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings 
 - 2026-11-20 (spec #183, all "yes"): the health-check pass list (ADR 0009); no fails first, then fastest cold title to video; fallback on (from #190); one fixed recording replayed every run; comparison code deleted; NzbDAV removed; other test copies stopped and kept; tuning may cut any part of the path.
 - 2026-11-20 (evening): tests on Wi-Fi; one grouped run, no noise band, every run idle; merge plan PRs on green without asking.
 - 2026-11-23: top up `kf-189` and re-run the baseline; build the retro fixes ("do everything"); `prwatch.py` ("make sure it knows when things are ready to merge"); hand off to a fresh session at stopping points with no typing ("i dont want to have to type or hit enter"); the six deepening candidates plus #228 become one new spec after #219. Grilling of the deepening spec (#239): "yes to all" on every question (Walk rules, Unscramble retry, one Previous run, closing grouped run); seams and tickets "yes"; agents always shown in herdr.
-- 2026-11-23 (#239's build): standing go for any live tests ("you have my go for any live tests"), a top-up told in one line; build decisions on #239's comments.
+- 2026-11-23 (#239's build): standing go for any live tests ("you have my go for any live tests"): #249's replay, #250's grouped run and its halving runs, a top-up told in one line; build decisions on #239's comments.
 - Standard filter rules (#109), secrets outside both repos (#114, `tools/brain/backup.sh`): see git history of this note.
 
 ## Gotchas

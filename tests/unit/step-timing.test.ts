@@ -2,7 +2,7 @@
 // Run: npm run test:unit
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { logStep, timeStep, timeIndexerPage, withStepRef, parseStepLine, STEP_NAMES } from '../../src/utils/stepTiming.ts';
+import { logStep, timeStep, timeIndexerPage, withStepRef, parseStepLine, STEP_NAMES, logPlayFailed } from '../../src/utils/stepTiming.ts';
 import { captureLogs } from './capture-logs.ts';
 
 const stepLines = (logs: string) => logs.split('\n').filter(l => l.includes('[KF-STEP]'));
@@ -54,9 +54,17 @@ test('lines never carry an API key or a URL query', async () => {
   assert.doesNotMatch(logs, /apikey|https?:\/\//i);
 });
 
-test('parseStepLine ignores other log lines, and the step names are the seven agreed ones (health_batch went with the list-time check, #191)', () => {
+test('parseStepLine ignores other log lines, and the step names are the agreed ones (health_batch went with the list-time check, #191; the play\'s two events came with #242)', () => {
   assert.equal(parseStepLine('Searching x'), null);
-  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte']);
+  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed']);
+});
+
+test('a play_failed line gives the reason without an address or a file path (#242)', async () => {
+  const err = new Error('NZB fetch failed for https://indexer.example/api?t=get&id=1&apikey=abc123 after 2 tries: /movies/Film.2160p/Film.mkv');
+  const logs = await captureLogs(async () => { logPlayFailed('Film.2160p-GRP', 'Idx', err); });
+  const rec = parseStepLine(stepLines(logs)[0])!;
+  assert.deepEqual([rec.step, rec.ok, rec.title, rec.source, rec.reason], ['play_failed', false, 'Film.2160p-GRP', 'Idx', 'NZB fetch failed for <url> after 2 tries']);
+  assert.doesNotMatch(logs, /apikey|https?:\/\/|\/movies\//i);
 });
 
 test('timeIndexerPage writes an indexer_page line with source and page, and passes the result through', async () => {

@@ -123,19 +123,34 @@ export async function useFakeNews(configData, config) {
  * answers 430). `delayMs` slows every BODY reply; `slow(prefix, ms)` slows every
  * reply for ids starting with prefix. Records `reads` (message ids whose bodies
  * were asked for), `stats` (ids asked for with STAT), `asks` ({ id, asked,
- * answered } times in ms, per BODY or STAT) and the `peak` number of open
- * connections.
+ * answered, closed } times in ms, per BODY or STAT; `closed`: when the asking
+ * connection closed before the answer went out), `drops` ({ id, at } of BODY
+ * asks answered by closing the connection, see `drop`), `connections`
+ * ({ opened, closed, held, asked } per connection: `held`, its greeting held
+ * back, see `hold`; `asked`, how many BODY or STAT asks it sent) and the
+ * `peak` number of open connections.
  */
 export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) {
-  const state = { reads: [], stats: [], asks: [], open: 0, peak: 0 };
+  const state = { reads: [], stats: [], asks: [], drops: [], connections: [], open: 0, peak: 0 };
   const slowed = new Map(); // id prefix -> ms
+  const dropped = new Map(); // id prefix -> BODY asks left to drop
+  let toHold = 0; // connections left whose greeting is held back
   const sockets = new Set();
   const server = net.createServer(sock => {
     state.open++; state.peak = Math.max(state.peak, state.open);
     sockets.add(sock);
+    const conn = { opened: Date.now(), closed: undefined, held: toHold > 0, asked: 0 };
+    state.connections.push(conn);
     let counted = true;
-    const gone = () => { if (counted) { counted = false; state.open--; } sockets.delete(sock); };
+    const mine = []; // this connection's asks
+    const gone = () => {
+      if (counted) { counted = false; state.open--; conn.closed = Date.now(); }
+      sockets.delete(sock);
+      for (const a of mine) if (a.answered === null && a.closed === undefined) a.closed = Date.now();
+    };
     sock.on('end', gone); sock.on('close', gone); sock.on('error', () => {});
+    // A news server stalled under load: the connection is open, its greeting never comes.
+    if (conn.held) { toHold--; return; }
     sock.write('200 fake news ready\r\n');
     let buf = '';
     sock.on('data', d => {
@@ -149,9 +164,20 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
         else if (line.startsWith('BODY') || line.startsWith('STAT')) {
           const id = line.slice(line.indexOf('<') + 1, line.lastIndexOf('>'));
           const isBody = line.startsWith('BODY');
+          // A dropped connection, as a news server under load closes one mid-read.
+          const drop = isBody ? [...dropped.keys()].find(prefix => id.startsWith(prefix)) : undefined;
+          if (drop !== undefined) {
+            const left = dropped.get(drop) - 1;
+            if (left > 0) dropped.set(drop, left); else dropped.delete(drop);
+            state.drops.push({ id, at: Date.now() });
+            sock.destroy();
+            return;
+          }
+          conn.asked++;
           if (isBody) state.reads.push(id); else state.stats.push(id);
           const ask = { id, asked: Date.now(), answered: null };
           state.asks.push(ask);
+          mine.push(ask);
           const reply = () => {
             ask.answered = Date.now();
             if (sock.destroyed) return;
@@ -176,6 +202,10 @@ export async function startFakeNntp({ articles = new Map(), delayMs = 0 } = {}) 
     articles,
     /** Answer every BODY and STAT for ids starting with `prefix` after `ms` (0 = no extra wait). */
     slow(prefix, ms) { if (ms > 0) slowed.set(prefix, ms); else slowed.delete(prefix); },
+    /** Hold back the greeting of the next `times` connections (0 = hold none): each stays open and silent until KaijuFlow closes it. */
+    hold(times) { toHold = times; },
+    /** Close the connection, unanswered, on the next `times` BODY asks for ids starting with `prefix` (0 = stop dropping). */
+    drop(prefix, times = Infinity) { if (times > 0) dropped.set(prefix, times); else dropped.delete(prefix); },
     /**
      * A KaijuFlow health-check provider pointing at this server.
      * @param {string} [name]
