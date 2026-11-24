@@ -11,6 +11,7 @@ fails is ruled out for this failure. The fingerprint (kind | where it failed | t
 rules in masking-rules.json; every answer records the rules' version, and a new version fingerprints every stored
 failure again. Formats: tools/brain/docs/formats.md, "Diagnosis".
 """
+import datetime
 import json
 import os
 import re
@@ -367,12 +368,48 @@ def refingerprint(root, rules=None, entries=None, library=None):
 
 # --------------------------------------------------------------------------- after a check, and its report
 
-def after_check(run_dir, runs_root, entries=None, library=None, rules=None):
-    """What a check runs by itself at its end when a play left an evidence folder: every stored failure under the runs
-    root fingerprinted again if the masking rules changed, then this check's plays diagnosed. The summary, or None when
-    the check left no evidence folder."""
+def live_clues(run_dir, open_usenet, now=None):
+    """The live read-only Clues (clues.LIVE), asked once for every failed Source of the check whose NZB its evidence
+    folder kept, over one connection (`open_usenet()`, opened only when there is something to ask and closed at the
+    end); each folder's answers go into its live.json. Returns how many Sources were asked about."""
+    jobs = []
+    for folder in evidence_folders(run_dir):
+        ev = evidence.read(folder)
+        mine = [f for f in failures(ev) if f['release'] and ev.nzb(f['release']) is not None]
+        if mine:
+            jobs.append((folder, ev, mine))
+    if not jobs:
+        return 0
+    when = br.iso(now or datetime.datetime.now(datetime.timezone.utc))
+    try:
+        usenet = open_usenet()
+    except Exception as e:  # noqa: BLE001  (no provider login: the Clues that need it say they could not tell)
+        for folder, _, _ in jobs:
+            _write_json(os.path.join(folder, evidence.LIVE), {'t': when, 'error': br.scrub_text(f'{type(e).__name__}: {e}')})
+        return 0
+    asked = 0
+    try:
+        for folder, ev, mine in jobs:
+            answers = {}
+            for f in mine:
+                asked += 1
+                for name in sorted(clues.LIVE):
+                    r = clues.run_live(name, ev, f, usenet)
+                    answers.setdefault(name, {})[f['release']] = {'answer': r['answer'], 'facts': r['facts']}
+            _write_json(os.path.join(folder, evidence.LIVE), {'t': when, 'clues': answers})
+    finally:
+        usenet.close()
+    return asked
+
+
+def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None):
+    """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
+    `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
+    rules changed, then this check's plays diagnosed. The summary, or None when the check left no evidence folder."""
     if not evidence_folders(run_dir):
         return None
+    if usenet is not None:
+        live_clues(run_dir, usenet)
     rules = load_rules() if rules is None else rules
     entries = load_index() if entries is None else entries
     refingerprint(runs_root, rules, entries, library)

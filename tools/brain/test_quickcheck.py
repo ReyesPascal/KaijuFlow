@@ -492,6 +492,9 @@ class CheckWorld:
     def takes(self, s):
         self.clock += datetime.timedelta(seconds=s)
 
+    def usenet(self):  # this world has no news server: the live Clues' connection is refused (#284)
+        raise OSError('no news server in this world')
+
     def now(self):
         return self.clock
 
