@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import threading
 import unittest
 from unittest import mock
@@ -112,6 +113,42 @@ class NewMaskingRulesTest(unittest.TestCase):
         self.assertEqual(log['rules'], 2)
         self.assertEqual([e['rules'] for e in log['earlier']], [1])
         self.assertEqual(summary['cases'], [{'id': cid, 'status': 'open', 'occurrences': 2, 'new': False}])
+
+
+def rules_v2():
+    rules = diagnosis.load_rules()
+    return dict(rules, version=2, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}]
+                + rules['masks'])
+
+
+class NewMaskingRulesAndCaseLogsTest(unittest.TestCase):
+    def setUp(self):
+        _, self.run_dir, self.cases, _ = after(self, (TWO_REFUSALS,))
+        [self.id] = logs(self.cases)
+
+    def test_case_repeat_under_new_rules_fingerprints_the_log_again_first(self):
+        _, again = stored_check(self, name='2026-11-25T090000Z-drill-down', plays=(TWO_REFUSALS,))
+        with mock.patch.object(diagnosis, 'load_rules', return_value=rules_v2()):
+            code, out = case_cmd(self.cases, 'repeat', self.id, os.path.join(again, 'evidence', '01-218-witcher-two-refusals'))
+        self.assertEqual((code, out.strip()), (0, f'{self.id}: occurrence 2 added (repeat)'))
+        log = logs(self.cases)[self.id]
+        self.assertEqual((log['rules'], [e['rules'] for e in log['earlier']]), (2, [1]))
+
+    def test_a_log_whose_first_evidence_folder_is_gone_or_unreadable_is_fingerprinted_from_the_next(self):
+        _, later, _, _ = after(self, (TWO_REFUSALS,), cases=self.cases)  # occurrence 2, another check's folder
+        self.assertEqual(len(logs(self.cases)[self.id]['occurrences']), 2)
+        first = os.path.join(self.run_dir, 'evidence', '01-218-witcher-two-refusals')
+        with open(os.path.join(first, 'evidence.json')) as f:
+            meta = json.load(f)
+        put_json(os.path.join(first, 'evidence.json'), dict(meta, format=99))  # evidence.FormatUnknown
+
+        self.assertEqual(caselog.refingerprint(self.cases, rules_v2()), [self.id])
+        self.assertIn('"code":"<code>"', logs(self.cases)[self.id]['fingerprint'])
+
+        shutil.rmtree(first)  # archived: gone
+        rules = dict(rules_v2(), version=3)
+        self.assertEqual(caselog.refingerprint(self.cases, rules), [self.id])
+        self.assertEqual(logs(self.cases)[self.id]['rules'], 3)
 
 
 class NeverRepeatsAClueTest(unittest.TestCase):
@@ -296,6 +333,22 @@ AM_LOG = 'logs/altmount-kf-test.log'
 SIC_REFUSED = 'level=WARN msg="File does not match allowed extensions" filename=' + SIC
 SIC_CHECKED = f'"title": "{SIC}", "status": "verified"'
 RECIPE = [{'clue': 'check-passed-source', 'answer': 'yes'}, {'clue': 'altmount-extension-refused', 'answer': 'yes'}]
+_SIC = [{'occurrence': 1, 'file': AM_LOG, 'text': SIC_REFUSED}]
+HYPOTHESES = ({'says': 'AltMount refuses the file for its name, which ends in no video extension, although the health '
+                       'check passed it', 'refuted_if': 'AltMount took the file', 'quotes': _SIC},
+              {'says': "the Source's articles are gone", 'refuted_if': 'the health check passed it', 'quotes': _SIC})
+REFUTE_2 = {'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'its check verified it',
+            'quotes': [{'occurrence': 1, 'file': 'steps.jsonl', 'text': SIC_CHECKED}]}
+
+
+def drilled(case, name):
+    """The evidence folder a Drill-down of #218's Witcher left (a copy of the capture, its kind a Drill-down's)."""
+    _, run_dir = stored_check(case, name=name, plays=(TWO_REFUSALS,))
+    folder = os.path.join(run_dir, 'evidence', '01-218-witcher-two-refusals')
+    with open(os.path.join(folder, 'evidence.json')) as f:
+        meta = json.load(f)
+    put_json(os.path.join(folder, 'evidence.json'), dict(meta, kind=drill.KIND))
+    return folder
 
 
 class SolvedTest(CaseWrites):
@@ -304,14 +357,9 @@ class SolvedTest(CaseWrites):
     def setUp(self):
         self.root, self.run_dir, self.cases, _ = after(self, (TWO_REFUSALS,))
         [self.id] = logs(self.cases)
-        sic = [{'occurrence': 1, 'file': AM_LOG, 'text': SIC_REFUSED}]
-        for h in ({'says': 'AltMount refuses the file for its name, which ends in no video extension, although the '
-                           'health check passed it', 'refuted_if': 'AltMount took the file', 'quotes': sic},
-                  {'says': "the Source's articles are gone", 'refuted_if': 'the health check passed it',
-                   'quotes': sic}):
+        for h in HYPOTHESES:
             self.assertEqual(self.add(dict(h, write='hypothesis'))[0], 0)
-        self.assertEqual(self.add({'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'its check verified it',
-                                   'quotes': [{'occurrence': 1, 'file': 'steps.jsonl', 'text': SIC_CHECKED}]})[0], 0)
+        self.assertEqual(self.add(REFUTE_2)[0], 0)
 
     def conclude(self, **kw):
         write = dict({'write': 'conclude', 'hypothesis': 1, 'title': 'AltMount refused a file the check passed, for '
@@ -355,13 +403,10 @@ class SolvedTest(CaseWrites):
     def test_a_drill_down_that_repeats_the_failure_joins_as_a_repeat_and_proves_the_case(self):
         self.hold()
         self.conclude()
-        root, drilled = stored_check(self, name='2026-11-25T090000Z-drill-down', plays=(TWO_REFUSALS,))
-        folder = os.path.join(drilled, 'evidence', '01-218-witcher-two-refusals')
-        with open(os.path.join(folder, 'evidence.json')) as f:
-            meta = json.load(f)
-        put_json(os.path.join(folder, 'evidence.json'), dict(meta, kind=drill.KIND))  # as a Drill-down keeps it
+        folder = drilled(self, '2026-11-25T090000Z-drill-down')
+        run_dir = os.path.dirname(os.path.dirname(folder))
 
-        summary = diagnosis.after_check(drilled, root, cases=self.cases)
+        summary = diagnosis.after_check(run_dir, os.path.dirname(run_dir), cases=self.cases)
 
         log = logs(self.cases)[self.id]
         self.assertEqual([o['how'] for o in log['occurrences']], ['check', 'repeat'])
@@ -369,6 +414,21 @@ class SolvedTest(CaseWrites):
         self.assertEqual(summary['cases'], [{'id': self.id, 'status': 'proved', 'occurrences': 2, 'new': False}])
         code, out = case_cmd(self.cases, 'repeat', self.id, folder)
         self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 2 already (repeat)'))
+
+    def test_a_case_log_a_drill_down_opened_is_proved_by_a_later_drill_down(self):
+        cases = os.path.join(tempdir(self), 'cases')
+        run_dir = os.path.dirname(os.path.dirname(drilled(self, '2026-11-25T090000Z-drill-down')))
+        diagnosis.after_check(run_dir, os.path.dirname(run_dir), cases=cases)
+        [cid] = logs(cases)
+        self.assertEqual([o['how'] for o in logs(cases)[cid]['occurrences']], ['check'])  # the first sighting
+        self.id, self.cases = cid, cases
+        for h in HYPOTHESES:
+            self.assertEqual(self.add(dict(h, write='hypothesis'))[0], 0)
+        self.assertEqual(self.add(REFUTE_2)[0], 0)
+        self.hold()
+        self.assertIn('probable', self.conclude()[1])
+        again = drilled(self, '2026-11-26T090000Z-drill-down')
+        self.assertEqual(case_cmd(cases, 'repeat', cid, again), (0, f'{cid}: occurrence 2 added (repeat); now proved\n'))
 
     def test_a_solved_case_written_up_as_an_entry_passes_the_casebook_format_and_index_test(self):
         self.hold()

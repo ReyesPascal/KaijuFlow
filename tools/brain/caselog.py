@@ -283,10 +283,11 @@ def _note(log, kind, item, by, t=None):
     return item
 
 
-def _how(ev):
-    """`repeat` for the evidence folder of a play repeated at will (a Drill-down's, #272), else `check`."""
+def _how(ev, log):
+    """`repeat` for the evidence folder of a play repeated at will (a Drill-down's, #272) that joins a log already
+    seen; else `check` (a Drill-down that opens a log is its first sighting: it repeated nothing yet)."""
     import drill  # noqa: PLC0415  (drill imports diagnosis, which imports this module)
-    return 'repeat' if ev.meta.get('kind') == drill.KIND else 'check'
+    return 'repeat' if ev.meta.get('kind') == drill.KIND and log['occurrences'] else 'check'
 
 
 def _join(log, case_dir, folder, ev, failure, rules, library=None, diagnosed=None, how=None):
@@ -296,7 +297,7 @@ def _join(log, case_dir, folder, ev, failure, rules, library=None, diagnosed=Non
     folder's check was (_how). The line it says."""
     meta = ev.meta
     n = len(log['occurrences']) + 1
-    how = how or _how(ev)
+    how = how or _how(ev, log)
     log['occurrences'].append({'n': n, 'evidence': os.path.relpath(folder, case_dir), 'check': meta.get('check'),
                                'label': meta.get('label'), 'release': failure['release'],
                                'date': (meta.get('t_start') or '')[:10], 'rules': rules, 'how': how})
@@ -369,28 +370,35 @@ def _rules_of(log):
     return log.get('rules') or (log['occurrences'][0]['rules'] if log['occurrences'] else None)
 
 
-def refingerprint(cases, rules):
-    """Fingerprints again every Case log made with another masking version (story 25), from its first occurrence's
-    evidence, so the same failure under the new rules joins it; the old fingerprint goes into `earlier`. Returns the ids
-    it changed. A log whose evidence folder cannot be read keeps its fingerprint."""
+def _refingerprint_log(case_dir, log, rules):
+    """Fingerprints one Case log again with `rules`, from the first of its occurrences whose evidence folder can be read
+    (one may be archived, or in an older evidence format); the old fingerprint goes into `earlier`. Whether it could."""
     import diagnosis  # noqa: PLC0415
+    for occ in log['occurrences']:
+        try:
+            ev = evidence.read(evidence_folder(case_dir, occ))
+        except (OSError, ValueError, evidence.FormatUnknown):
+            continue
+        f = next((f for f in diagnosis.failures(ev) if f['release'] == occ['release']), None)
+        if f is None:
+            continue
+        log.setdefault('earlier', []).append({'rules': _rules_of(log), 'fingerprint': log['fingerprint']})
+        log['fingerprint'], log['rules'] = diagnosis.fingerprint(f, ev, rules), rules['version']
+        return True
+    return False
+
+
+def refingerprint(cases, rules):
+    """Fingerprints again every Case log made with another masking version (story 25), so the same failure under the
+    new rules joins it (_refingerprint_log). Returns the ids it changed; a log none of whose evidence folders can be
+    read keeps its fingerprint."""
     changed = []
     for cid in logs(cases):
         d = os.path.join(cases, cid)
         with locked(d):
             log = load(d)
-            if not log['occurrences'] or _rules_of(log) == rules['version']:
+            if _rules_of(log) == rules['version'] or not _refingerprint_log(d, log, rules):
                 continue
-            occ = log['occurrences'][0]
-            try:
-                ev = evidence.read(evidence_folder(d, occ))
-            except (OSError, ValueError):
-                continue
-            f = next((f for f in diagnosis.failures(ev) if f['release'] == occ['release']), None)
-            if f is None:
-                continue
-            log.setdefault('earlier', []).append({'rules': _rules_of(log), 'fingerprint': log['fingerprint']})
-            log['fingerprint'], log['rules'] = diagnosis.fingerprint(f, ev, rules), rules['version']
             save(d, log)
             changed.append(cid)
     return changed
@@ -650,6 +658,8 @@ def _repeat(d, cid, folder, library):
         raise Refused(f"that evidence folder is occurrence {had['n']} already ({had['how']})")
     ev = evidence.read(folder)
     rules = diagnosis.load_rules()
+    if _rules_of(log) != rules['version']:  # new masking rules since the log was made: its fingerprint first (story 25)
+        _refingerprint_log(d, log, rules)
     found = [dict(f, fingerprint=diagnosis.fingerprint(f, ev, rules)) for f in diagnosis.failures(ev)]
     mine = next((f for f in found if f['fingerprint'] == log['fingerprint']), None)
     if mine is None:
