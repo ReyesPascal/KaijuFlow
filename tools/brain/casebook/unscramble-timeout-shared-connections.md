@@ -7,6 +7,8 @@ whose: KaijuFlow
 status: fixed awaiting proof
 match:
   - rules: 1
+    sign: "check miss | import_wait not ok | *all files failed validation*"
+  - rules: 1
     sign: "fail | import_wait not ok | *all files failed validation*"
 confirm:
   - clue: unscramble-timeout
@@ -59,3 +61,4 @@ Nothing tested and rejected yet.
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft A3).
+- 2026-11-24: a `check miss` sign added (#283): the Source passed its Play-time check before AltMount refused it, so Diagnosis fingerprints the failure as a check miss when the play still ended in video (a fallback that hides a check miss, README "Not signs").

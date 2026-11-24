@@ -52,6 +52,7 @@ import allowance  # noqa: E402
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
 import draw  # noqa: E402
+import diagnosis  # noqa: E402
 import evidence  # noqa: E402
 import indexer_standin  # noqa: E402
 import pool  # noqa: E402
@@ -1587,6 +1588,11 @@ def write_check_ending(cfg, io, check, started, logbuf):
             return None
     check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t)) for v in quickcheck.judged(check)]
     save_evidence(io, check)
+    try:  # Diagnosis runs by itself on a check with a failure (#283); its report section says if it could not
+        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'])
+    except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
+        check['diagnosis'] = None
+        check['diagnosis_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
     check['verdict'] = quickcheck.verdict(check, check['outcomes'])
     check['headline'] = quickcheck.headline(check, check['outcomes'])
     _write(os.path.join(run_dir, 'report.md'), quickcheck.render_report(check, check['outcomes']))

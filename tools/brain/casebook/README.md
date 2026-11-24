@@ -6,7 +6,7 @@ One file per known cause of a play going wrong (spec #279, #281): what the viewe
 - `index.json`: what programs need from every entry, **generated** from the files, never edited by hand.
 - `../casebook.py`: `python3 -I tools/brain/casebook.py index` rewrites the index; `python3 -I tools/brain/casebook.py check` lists every problem (exit 1 when there is one). `npm run check:brain` runs the check (`test_casebook.py`): it fails when an entry breaks the format, when the index and the files disagree, or when an entry claims proved without a confirming test that runs.
 
-After changing, adding or removing an entry, run the index command and commit the index with it.
+After changing, adding or removing an entry, run the index command and commit the index with it. `python3 -I tools/brain/diagnosis.py record <check folder>` adds a diagnosed check's proved occurrences and ruled-out leads to the entries and writes the index itself.
 
 ## The format
 
@@ -56,7 +56,7 @@ The fields, all ten, in this order:
 | `match` | The signs Diagnosis looks a failure up by, each with `rules` (the masking rules' version it is written against) and `sign`, a fingerprint pattern `<kind> \| <step> ok\|not ok \| <reason>`: the kind, the last step line and whether it was ok, and the `play_failed` reason with its variable parts masked. `*` stands for anything (a whole part, or inside the reason). A match only orders the leads. |
 | `confirm` | The confirming test: a recipe of Clues, each a `clue` name with the `answer` (`yes` or `no`) that proves the cause on this failure's own evidence. Until a Clue is built the recipe names the Clue it will need. An old cause whose evidence is gone says `none (no evidence kept)`. |
 | `fix` | The ticket and PR, the workaround for a cause that isn't KaijuFlow's, or `none yet`. |
-| `seen` | Every occurrence: `check` (the run or check folder, or what is left of it), `title`, `play` (which press, optional), `date` (`YYYY-MM-DD`). The index counts them and gives the first and last date. |
+| `seen` | Every occurrence: `check` (the run or check folder, or what is left of it), `title`, `play` (which press, or the evidence folder Diagnosis proved it in; optional), `date` (`YYYY-MM-DD`), `rules` (the masking rules' version Diagnosis matched it with; optional, absent on the converted ones). The index counts them and gives the first and last date. Diagnosis adds an occurrence only when the entry's confirming test passed on that failure (`diagnosis.py record`, [formats](../docs/formats.md#diagnosis)). |
 
 Values are plain text, or a JSON string in double quotes when they hold a `#`, a `: `, or start with a sign YAML reads otherwise (`"`, `[`, `-`, `*` and the like); the check names the line that needs quotes. The front matter is a small subset of YAML: `field: value`, and lists under `field:` whose items are a value (`  - value`) or `key: value` pairs (`  - key: value`, then `    key: value`).
 

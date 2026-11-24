@@ -218,3 +218,49 @@ def _source_nzb(out, kept, release):
             if (slug, key) in kept:
                 return _read_bytes(os.path.join(d, key + '.body'))
     return None
+
+
+# --------------------------------------------------------------------------- reading a saved folder (Diagnosis, #283)
+
+class FormatUnknown(Exception):
+    pass
+
+
+class Saved:
+    """One evidence folder as Diagnosis and the Clues read it: `meta` (evidence.json), `steps` (steps.jsonl), `kf_lines`
+    and `am_lines` (both containers' log lines), `settings`, and `nzb(release)` (the bytes of a failed Source's NZB, or
+    None)."""
+
+    def __init__(self, folder):
+        self.folder = folder
+        with open(os.path.join(folder, 'evidence.json')) as f:
+            self.meta = json.load(f)
+        if self.meta.get('format') != FORMAT:
+            raise FormatUnknown(f"{folder}: evidence format {self.meta.get('format')!r}, this reader knows {FORMAT}")
+        with open(os.path.join(folder, 'steps.jsonl')) as f:
+            self.steps = [json.loads(line) for line in f if line.strip()]
+        self.kf_lines = self._lines('kaijuflow-test.log')
+        self.am_lines = self._lines('altmount-kf-test.log')
+        try:
+            with open(os.path.join(folder, 'settings.json')) as f:
+                self.settings = json.load(f)
+        except (OSError, ValueError):
+            self.settings = {}
+
+    def _lines(self, name):
+        try:
+            with open(os.path.join(self.folder, 'logs', name), errors='replace') as f:
+                return f.read().splitlines()
+        except OSError:
+            return []
+
+    def nzb(self, release):
+        for s in self.meta.get('failed_sources') or []:
+            if s.get('release') == release and s.get('nzb'):
+                return _read_bytes(os.path.join(self.folder, s['nzb']))
+        return None
+
+
+def read(folder):
+    """The evidence folder at `folder` (Saved); FormatUnknown for a format this reader does not know."""
+    return Saved(folder)

@@ -1,0 +1,37 @@
+2026-11-24T06:00:46.380797276Z 
+2026-11-24T06:00:46.380819353Z 
+2026-11-24T06:00:46.380828854Z ╔══════════════════════════════════════════════════════════════════════
+2026-11-24T06:00:46.380831680Z ║  🔍 Searching for movie tt1375666 [newznab]
+2026-11-24T06:00:46.380864202Z ╚══════════════════════════════════════════════════════════════════════
+2026-11-24T06:00:46.380873737Z 
+2026-11-24T06:00:46.380880941Z ═══ Title Resolution ══════════════════════════════════════════
+2026-11-24T06:00:46.586184961Z 🎯 Resolved tt1375666 → "Inception" (2010, United Kingdom, United States) [Adventure, Sci-Fi, Thriller] [148min]
+2026-11-24T06:00:46.586218965Z 📌 Title: "Inception" (2010) [United Kingdom, United States]
+2026-11-24T06:00:46.874002335Z 🎯 TMDB title resolved: tt1375666 → "Inception"
+2026-11-24T06:00:46.960547735Z 🎯 TMDB runtime: tt1375666 → 148min
+2026-11-24T06:00:46.961538429Z 
+2026-11-24T06:00:46.961548442Z ═══ Search Setup ══════════════════════════════════════════════
+2026-11-24T06:00:46.961551327Z 📋 Newznab search methods: text across 1 indexer(s)
+2026-11-24T06:00:46.961553248Z    NinjaCentral: text
+2026-11-24T06:00:46.966057554Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":3,"ok":false,"t":"2026-11-24T06:00:46.965Z","ref":"tt1375666","page":1}
+2026-11-24T06:00:46.966691358Z 
+2026-11-24T06:00:46.966713963Z ═══ NinjaCentral ════════════════════════════════════════════════
+2026-11-24T06:00:46.966716708Z   ┌─ movie text search 
+2026-11-24T06:00:46.966718579Z   │ 🔍 Movie text search for: Inception 2010
+2026-11-24T06:00:46.966720443Z   │ 🔍 Searching NinjaCentral: http://host.docker.internal:1340/ninjacentral/api [timeout=15s]
+2026-11-24T06:00:46.966722373Z   │    Query: "Inception 2010", Category: 2000
+2026-11-24T06:00:46.966724314Z   └─
+2026-11-24T06:00:46.966725819Z 
+2026-11-24T06:00:46.966727362Z 
+2026-11-24T06:00:46.966733413Z ═══ Results Processing ════════════════════════════════════════
+2026-11-24T06:00:46.966735877Z 📊 Found 0 total results (indexer: 0, easynews: 0)
+2026-11-24T06:00:46.969105511Z 📊 Returning 0 streams after filtering
+2026-11-24T06:00:46.969125032Z [KF-STEP] {"step":"list_filter","ms":2,"ok":true,"t":"2026-11-24T06:00:46.968Z","ref":"tt1375666","results":0,"kept":0}
+2026-11-24T06:00:46.969128599Z [KF-STEP] {"step":"list_sort","ms":0,"ok":true,"t":"2026-11-24T06:00:46.969Z","ref":"tt1375666"}
+2026-11-24T06:00:46.969923526Z [KF-STEP] {"step":"list_build","ms":1,"ok":true,"t":"2026-11-24T06:00:46.969Z","ref":"tt1375666","streams":0}
+2026-11-24T06:00:46.970224736Z [KF-STEP] {"step":"head_start","ms":0,"ok":true,"t":"2026-11-24T06:00:46.970Z","ref":"tt1375666"}
+2026-11-24T06:00:46.971382473Z [KF-STEP] {"step":"list","ms":591,"ok":true,"t":"2026-11-24T06:00:46.971Z","ref":"tt1375666","cache":"miss","streams":0,"cpu_ms":54,"gc_ms":0,"gc_n":0,"loop_max_ms":2,"loop_p99_ms":2,"elu":0.13,"heap_mb":267}
+2026-11-24T06:00:46.966101913Z ❌ Search error for NinjaCentral:
+2026-11-24T06:00:46.966105433Z    Status: 503
+2026-11-24T06:00:46.966107208Z    Data: not recorded
+

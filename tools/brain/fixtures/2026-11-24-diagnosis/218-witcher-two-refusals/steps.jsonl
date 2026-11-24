@@ -1,0 +1,23 @@
+{"step": "unscramble", "source": "NinjaCentral", "ms": 946, "ok": true, "t": "2026-11-23T18:35:38.347Z", "title": "Squid Game S01E01 Red Light Green Light 2160p NF WEB-DL DDP5 1 Atmos HDR HEVC-XEBEC", "wait_ms": 0, "result": "not-rar5", "parts": 44}
+{"step": "import_wait", "source": "NinjaCentral", "ms": 1231, "ok": true, "t": "2026-11-23T18:35:39.579Z", "title": "Squid Game S01E01 Red Light Green Light 2160p NF WEB-DL DDP5 1 Atmos HDR HEVC-XEBEC", "includes_upload": true, "job": "24"}
+{"step": "first_byte", "source": "NinjaCentral", "ms": 5, "ok": true, "t": "2026-11-23T18:35:39.584Z", "title": "Squid Game S01E01 Red Light Green Light 2160p NF WEB-DL DDP5 1 Atmos HDR HEVC-XEBEC", "job": "24"}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 471, "ok": true, "t": "2026-11-23T18:35:40.482Z", "ref": "tt5180504:1:1", "page": 1}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 518, "ok": true, "t": "2026-11-23T18:35:40.528Z", "ref": "tt5180504:1:1", "page": 1}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 324, "ok": true, "t": "2026-11-23T18:35:40.869Z", "ref": "tt5180504:1:1", "page": 2}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 416, "ok": true, "t": "2026-11-23T18:35:40.928Z", "ref": "tt5180504:1:1", "page": 2}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 434, "ok": true, "t": "2026-11-23T18:35:41.373Z", "ref": "tt5180504:1:1", "page": 3}
+{"step": "play_check", "source": "NinjaCentral", "ms": 648, "ok": true, "t": "2026-11-23T18:35:48.320Z", "title": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB", "status": "verified_stored"}
+{"step": "nzb_fetch", "source": "NinjaCentral", "ms": 1, "ok": true, "t": "2026-11-23T18:35:48.321Z", "title": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB"}
+{"step": "play_check", "source": "NinjaCentral", "ms": 930, "ok": false, "t": "2026-11-23T18:35:48.542Z", "title": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-CRYBABIES", "status": "blocked"}
+{"step": "play_check", "source": "NinjaCentral", "ms": 6104, "ok": true, "t": "2026-11-23T18:35:53.655Z", "title": "The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB", "status": "verified_stored"}
+{"step": "unscramble", "source": "NinjaCentral", "ms": 6633, "ok": true, "t": "2026-11-23T18:35:54.954Z", "title": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB", "wait_ms": 0, "result": "read-error", "parts": 74}
+{"step": "import_wait", "source": "NinjaCentral", "ms": 2832, "ok": false, "t": "2026-11-23T18:35:57.788Z", "title": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB", "includes_upload": true}
+{"step": "nzb_fetch", "source": "NinjaCentral", "ms": 1, "ok": true, "t": "2026-11-23T18:35:57.799Z", "title": "The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB"}
+{"step": "play_check", "source": "NinjaCentral", "ms": 3929, "ok": false, "t": "2026-11-23T18:35:58.149Z", "title": "The Witcher - S01E01 - The End's Beginning WEBDL-2160p", "status": "blocked"}
+{"step": "unscramble", "source": "NinjaCentral", "ms": 1184, "ok": true, "t": "2026-11-23T18:35:58.984Z", "title": "The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB", "wait_ms": 0, "result": "not-rar5", "parts": 54}
+{"step": "play_check", "source": "NinjaCentral", "ms": 291, "ok": true, "t": "2026-11-23T18:35:59.566Z", "title": "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested", "status": "verified"}
+{"step": "import_wait", "source": "NinjaCentral", "ms": 2020, "ok": true, "t": "2026-11-23T18:36:01.006Z", "title": "The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB", "includes_upload": true, "job": "26"}
+{"step": "first_byte", "source": "NinjaCentral", "ms": 5, "ok": true, "t": "2026-11-23T18:36:01.012Z", "title": "The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB", "job": "26"}
+{"step": "nzb_fetch", "source": "NinjaCentral", "ms": 0, "ok": true, "t": "2026-11-23T18:36:01.013Z", "title": "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested"}
+{"step": "unscramble", "source": "NinjaCentral", "ms": 0, "ok": true, "t": "2026-11-23T18:36:01.013Z", "title": "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested", "wait_ms": 0, "result": "not-scrambled", "parts": 0}
+{"step": "import_wait", "source": "NinjaCentral", "ms": 3370, "ok": false, "t": "2026-11-23T18:36:04.384Z", "title": "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested", "includes_upload": true}

@@ -44,7 +44,7 @@ The refusal is proved by both logs. Why the check passed it is suspected only, f
 
 ## Ruled out
 
-Nothing tested and rejected yet.
+- 2026-11-24 (#283): *the NZB's file has no extension*, as the NZB gives it. The recorded NZB of this release (recording `kf-189`, `ninjacentral/84604e3baa8c….body`) holds 9 files; its video is `3YuT.mkv` (1872 segments, named in the subject's quotes), the others `The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested.vol-01.par2` and the like. AltMount's refusal names the file `The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested`, with no extension, so that name came from elsewhere (the subject's release name, or the PAR2 set's file names; not checked). The Clue `nzb-file-without-extension` is not built: on this NZB it would answer no, so the cause needs another look (a Case log, #285) before its recipe can prove it.
 
 ## Fix
 
@@ -53,3 +53,4 @@ None yet; no ticket names it. The backup prepare that reached it was removed by 
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft A12); it was new in that sweep. It is not counted in that run's fallbacks.
+- 2026-11-24: the recorded NZB checked by hand (#283): its video file is `3YuT.mkv`; see Ruled out. Its Clues check-passed-source and altmount-extension-refused are built; nzb-file-without-extension is not, so a look-alike is *suspected*.
