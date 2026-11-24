@@ -136,11 +136,7 @@
     "ultimateFallback.enabled": true,
     "ultimateFallback.candidateCount": 3,
     "ultimateFallback.preferenceMode": "priority",
-    "ultimateFallback.whenToResolve": "on-results",
-    "indexers[*].movieSearchMethod": ["text"],
-    "indexers[*].tvSearchMethod": ["text"],
-    "indexers[*].animeMovieSearchMethod": ["text"],
-    "indexers[*].animeTvSearchMethod": ["text"]
+    "ultimateFallback.whenToResolve": "on-results"
    }
   },
   {

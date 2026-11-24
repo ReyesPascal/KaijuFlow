@@ -221,6 +221,28 @@ class WhichPlaysTest(unittest.TestCase):
         self.assertEqual(m['dev_switch'], {'setting': True, 'step_lines': 0, 'of': 17})
 
 
+class SearchLinesTest(unittest.TestCase):
+    """Kaiju Search's dev lines (#285): with the dev switch on, KaijuFlow's `search` lines of a failed play are in its
+    evidence folder. The lines are KaijuFlow's own (fixtures/2026-11-24-search-lines/), put at the failed play's time."""
+
+    def test_with_the_dev_switch_on_the_search_lines_are_in_the_evidence(self):
+        lines = read(HERE, 'fixtures', '2026-11-24-search-lines', 'kaijuflow-search.log').splitlines()
+        world = FailedPlayWorld(settings={'kaijuflow': {'devDiagnostics': True}})
+        kf = world.captured[brainrun.KF_CONTAINER]
+        at = next(i for i, line in enumerate(kf) if '"step":"indexer_page"' in line) + 3  # after the search's pages
+        kf[at:at] = [f'2026-11-23T19:12:14.2{n}0000000Z {line}' for n, line in enumerate(lines)]
+        cfg = check_cfg(self)
+        world.case = self
+        run_check(cfg, world)
+        ev = os.path.join(cfg['runs_root'], CHECK, 'evidence', '01-the-witcher-s01e01')
+        steps = [json.loads(line) for line in read(ev, 'steps.jsonl').splitlines()]
+        search = [s for s in steps if s['step'] == 'search']
+        self.assertEqual([(s['source'], s['way'], s['asked'], s['count'], s['kept']) for s in search],
+                         [('NinjaCentral', 'id', ['imdb'], 2, 2), ('NinjaCentral', 'name', ['name'], 2, 2)])
+        self.assertEqual({(r['release'], r['flow']) for s in search for r in s['results']}, {(PLAYWEB, 'sure'), (HHWEB, 'sure')})
+        self.assertEqual(json.loads(read(ev, 'evidence.json'))['dev_switch'], {'setting': True, 'step_lines': 2, 'of': 19})
+
+
 class RealPartsTest(unittest.TestCase):
     """The parts of RealIO the evidence step reads with, on fixture test copies."""
 
