@@ -241,7 +241,8 @@ class GitHub:
 
     def find(self, text):
         """The number (`#123`) of an open ticket whose title holds `text`, or None."""
-        found = json.loads(self._gh('issue', 'list', '--state', 'open', '--search', f'"{text}" in:title',
+        phrase = text.strip('()')  # GitHub's search drops the brackets; the title is matched on the whole text below
+        found = json.loads(self._gh('issue', 'list', '--state', 'open', '--search', f'"{phrase}" in:title',
                                     '--json', 'number,title', '--limit', '100') or '[]')
         return next((f"#{i['number']}" for i in found if text in i['title']), None)
 

@@ -333,7 +333,8 @@ class GitHubTrackerTest(unittest.TestCase):
                                                              {'number': 8, 'title': 'Fix: b (Casebook y)'}]))])
         self.assertEqual(t.find('(Casebook y)'), '#8')
         self.assertEqual(t.find('(Casebook z)'), None)
-        self.assertIn('--state', calls[0])
+        self.assertEqual(calls[0][calls[0].index('--search') + 1], '"Casebook y" in:title')
+        self.assertEqual(calls[0][calls[0].index('--state') + 1], 'open')
 
     def test_a_refused_call_raises_with_what_gh_said(self):
         t, _ = self.gh([(['issue', 'create'], ('', 1, 'HTTP 401: Bad credentials'))])
