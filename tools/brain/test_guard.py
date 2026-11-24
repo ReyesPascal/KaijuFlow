@@ -167,6 +167,42 @@ class SecretCommandTest(GuardCase):
         self.assertIsNotNone(self.bash('echo $(cat ~/kaijuflow-test/indexers.json)'))
 
 
+class FailedNzbTest(GuardCase):
+    """The one narrow exception (#280): AltMount's failed NZBs, the files a failed import leaves in its test copy's
+    `config/.nzbs/failed/<category>/` (the path its "Moved failed NZB to failed directory" line names), can be read by the
+    evidence step and a diagnosis; its config, the rest of its config folder and the key files still can't."""
+
+    NZB = 'altmount-kf/config/.nzbs/failed/kaijuflow/The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB.nzb'
+
+    def test_altmounts_failed_nzbs_can_be_read(self):
+        for cmd in (f'cat ~/kaijuflow-test/{self.NZB}', f'head -c 400 {self.td}/{self.NZB}', f'grep -c segment "$TEST_DIR/{self.NZB}"',
+                    'python3 -I tools/brain/rarorder.py ~/kaijuflow-test/' + self.NZB, 'ls ~/kaijuflow-test/altmount-kf/config/.nzbs/failed',
+                    'ls ~/kaijuflow-test/altmount-kf/config/.nzbs/failed/kaijuflow'):
+            self.assertIsNone(self.bash(cmd), cmd)
+        for tool, field in (('Read', 'file_path'), ('Grep', 'path')):
+            self.assertIsNone(guard.refusal(tool, {field: f'{self.td}/{self.NZB}', 'pattern': 'x'}), tool)
+
+    def test_its_config_the_rest_of_its_folder_and_the_key_files_still_cannot(self):
+        failed = f'{self.td}/altmount-kf/config/.nzbs/failed'
+        for cmd in ('cat ~/kaijuflow-test/altmount-kf/config/config.yaml', f'cat {failed}/../../config.yaml',
+                    f'cat {failed}/kaijuflow/x.nzb ~/kaijuflow-test/indexers.json', f'grep -r key {failed}', f'cat {failed}/kaijuflow/notes.txt',
+                    f'cat {failed}/*', 'ls ~/kaijuflow-test/altmount-kf/config', 'cat ~/kaijuflow-test/altmount-kf/config/.nzbs/x.nzb',
+                    'cat ~/kaijuflow-test/config/.nzbs/failed/kaijuflow/x.nzb', 'cat ~/kaijuflow-test/indexers.json'):
+            self.assertIn('read-settings', self.bash(cmd) or '', cmd)
+        for tool, field, value in (('Read', 'file_path', f'{failed}/../../config.yaml'), ('Grep', 'path', failed),
+                                   ('Read', 'file_path', f'{failed}/kaijuflow/notes.txt'), ('Grep', 'glob', f'{failed}/**/*.yaml')):
+            self.assertIn('read-settings', guard.refusal(tool, {field: value, 'pattern': 'x'}) or '', (tool, value))
+
+    def test_a_failed_nzb_that_is_a_link_to_a_secret_is_refused(self):
+        failed = os.path.join(self.td, 'altmount-kf', 'config', '.nzbs', 'failed', 'kaijuflow')
+        os.makedirs(failed)
+        with open(os.path.join(self.td, 'altmount-kf', 'config', 'config.yaml'), 'w') as f:
+            f.write('api_key: x\n')
+        os.symlink(os.path.join(self.td, 'altmount-kf', 'config', 'config.yaml'), os.path.join(failed, 'sneaky.nzb'))
+        self.assertIn('read-settings', guard.refusal('Read', {'file_path': os.path.join(failed, 'sneaky.nzb')}) or '')
+        self.assertIn('read-settings', self.bash(f'cat {failed}/sneaky.nzb') or '')
+
+
 class ToolInputTest(GuardCase):
     def test_refuses_read_and_grep_on_key_files_and_config_folders(self):
         td = self.td
