@@ -13,7 +13,9 @@
 
 import { Router } from 'express';
 import axios from 'axios';
-import type { Config, SyncedIndexer } from '../types.js';
+import type { Config, IndexerCaps, SyncedIndexer } from '../types.js';
+import { capsOfReply } from '../parsers/newznabClient.js';
+import { CAPS_VERSION } from '../config/capsMigration.js';
 import { matchIndexerLogo } from '../utils/indexerHelpers.js';
 
 interface IntegrationDeps {
@@ -69,9 +71,11 @@ export function createIntegrationRoutes(deps: IntegrationDeps): Router {
           'Season': 'season', 'Ep': 'ep', 'ImdbTitle': 'imdbtitle', 'ImdbYear': 'imdbyear',
           'Genre': 'genre', 'Year': 'year', 'RId': 'rid',
         };
-        const movieSearchParams = (caps?.movieSearchParams || []).map((p: string) => paramMap[p] || p.toLowerCase());
-        const tvSearchParams = (caps?.tvSearchParams || []).map((p: string) => paramMap[p] || p.toLowerCase());
-        const capabilities = { movieSearchParams, tvSearchParams };
+        // No caps in Prowlarr's answer: unknown (the IMDb fallback), not "no ID" (kaijuSearch.idWaysOf)
+        const toParams = (ps: string[] | undefined) => ps?.map((p: string) => paramMap[p] || p.toLowerCase());
+        const capabilities = caps
+          ? { version: CAPS_VERSION, movieSearchParams: toParams(caps.movieSearchParams), tvSearchParams: toParams(caps.tvSearchParams) }
+          : prev?.capabilities;
 
         return {
           id: i.id.toString(),
@@ -187,16 +191,10 @@ export function createIntegrationRoutes(deps: IntegrationDeps): Router {
       }
 
       // 3. Parse aggregate capabilities from caps response
-      let aggregateCaps: { movieSearchParams: string[]; tvSearchParams: string[] } | undefined;
+      let aggregateCaps: IndexerCaps | undefined; // no <searching> block: unknown, so Kaiju Search asks by IMDb
       try {
         const { parseStringPromise } = await import('xml2js');
-        const parsed = await parseStringPromise(capsData);
-        const searching = parsed?.caps?.searching?.[0];
-        const extractParams = (el: any) => (el?.$?.supportedParams || '').split(',').filter(Boolean);
-        aggregateCaps = {
-          movieSearchParams: extractParams(searching?.['movie-search']?.[0]),
-          tvSearchParams: extractParams(searching?.['tv-search']?.[0]),
-        };
+        aggregateCaps = capsOfReply(await parseStringPromise(capsData));
       } catch (err: any) {
         console.warn(`NZBHydra sync: failed to parse caps (${err.message})`);
       }

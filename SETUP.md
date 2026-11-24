@@ -44,10 +44,9 @@ Open the **Index Manager** card. At the top, pick your **Manager Type**:
    - **Indexer Name** (any label you like)
    - **Newznab URL**
    - **API Key**
-2. Click **Caps Discovery** so the addon auto-detects what the indexer supports.
-3. Set the **Movie Search Method** and **TV Search Method** (IMDB / TMDB / TVDB / TVmaze, or Ultimate Text Search). Ultimate Text Search is the default.
-4. Perform a **Test Search** and confirm results load without errors.
-5. Repeat for any additional indexers.
+2. Click **Caps Discovery** so the addon learns which IDs the indexer can be searched by. Kaiju Search asks every indexer by those IDs (IMDb when its caps were never discovered) and by name at once; there is nothing to set.
+3. Perform a **Test Search** and confirm results load without errors.
+4. Repeat for any additional indexers.
 
 In the shared **Search Settings** above, add your **TMDB API Key** and **TVDB API Key**, use the **Test** buttons to validate the keys. These noticeably improve search results.
 
@@ -130,7 +129,6 @@ These are not required to stream, but they meaningfully improve performance, rel
 
 Beyond the indexer(s) you added in [Step 2](#step-2-set-up-your-indexers):
 
-- **Search methods**: use only **Ultimate Text Search**.
 - **Ultimate Library (UL)**: enable it, then **disable Apply to Movies**.
   - Enable **Run on cache hit**.
   - Enable **both delete tiles**.

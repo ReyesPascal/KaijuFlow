@@ -133,27 +133,3 @@ class Usenet:
                 pass
             self._conn.s.close()
             self._conn = None
-
-
-class Recorder:
-    """A Usenet that keeps every answer it gets, for a fixture of recorded NNTP answers: `answers` is {'stat': {mid:
-    [code, ...] in the order asked}, 'body': {mid: [checked body, ...]}} (a body's check, never its bytes)."""
-
-    def __init__(self, usenet):
-        self.usenet, self.answers = usenet, {'stat': {}, 'body': {}}
-        self.connections = 0
-
-    def stat(self, mids):
-        codes = self.usenet.stat(mids)
-        for m, c in zip(mids, codes):
-            self.answers['stat'].setdefault(m, []).append(c)
-        return codes
-
-    def body(self, mid):
-        got = self.usenet.body(mid)
-        self.answers['body'].setdefault(mid, []).append(got)
-        return got
-
-    def close(self):
-        self.usenet.close()
-        self.connections = self.usenet.connections

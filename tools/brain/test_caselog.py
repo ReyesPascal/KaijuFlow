@@ -8,6 +8,9 @@ import contextlib
 import io
 import json
 import os
+import re
+import shutil
+import threading
 import unittest
 from unittest import mock
 
@@ -15,6 +18,7 @@ import casebook
 import caselog
 import clues
 import diagnosis
+import drill
 from test_diagnosis import DEAD_PACK, INDEXER_DOWN, READ_ERROR, SIC, TWO_REFUSALS, casebook_copy, stored_check
 from test_evidence import run_failed_check
 from test_quickcheck import read
@@ -91,6 +95,74 @@ class OpensACaseLogTest(unittest.TestCase):
         again = diagnosis.after_check(later, os.path.dirname(later), cases=cases)  # the same check once more: no new occurrence
         self.assertEqual(len(logs(cases)[log['id']]['occurrences']), 2)
         self.assertEqual(again['cases'][0]['occurrences'], 2)
+
+
+class NewMaskingRulesTest(unittest.TestCase):
+    def test_a_new_masking_version_fingerprints_the_case_logs_again_so_the_same_failure_joins_its_log(self):
+        root, run_dir, cases, _ = after(self, (TWO_REFUSALS,))
+        [(cid, log)] = logs(cases).items()
+        rules = rules_v2()
+        v = rules['version'] - 1
+
+        _, later, _, summary = after(self, (TWO_REFUSALS,), cases=cases, rules=rules)
+
+        [(again, log)] = logs(cases).items()  # one log still, under its first id
+        self.assertEqual(again, cid)
+        self.assertEqual([o['n'] for o in log['occurrences']], [1, 2])
+        self.assertIn('"code":"<code>"', log['fingerprint'])
+        self.assertEqual(log['rules'], v + 1)
+        self.assertEqual([e['rules'] for e in log['earlier']], [v])
+        self.assertEqual(summary['cases'], [{'id': cid, 'status': 'open', 'occurrences': 2, 'new': False}])
+
+
+def rules_v2():
+    """The masking rules of a next version: error codes masked too."""
+    rules = diagnosis.load_rules()
+    return dict(rules, version=rules['version'] + 1, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}]
+                + rules['masks'])
+
+
+class NewMaskingRulesAndCaseLogsTest(unittest.TestCase):
+    def setUp(self):
+        _, self.run_dir, self.cases, _ = after(self, (TWO_REFUSALS,))
+        [self.id] = logs(self.cases)
+
+    def test_case_repeat_under_new_rules_fingerprints_the_log_again_first(self):
+        _, again = stored_check(self, name='2026-11-25T090000Z-drill-down', plays=(TWO_REFUSALS,))
+        with mock.patch.object(diagnosis, 'load_rules', return_value=rules_v2()):
+            code, out = case_cmd(self.cases, 'repeat', self.id, os.path.join(again, 'evidence', '01-218-witcher-two-refusals'))
+        self.assertEqual((code, out.strip()), (0, f'{self.id}: occurrence 2 added (repeat)'))
+        log = logs(self.cases)[self.id]
+        v = diagnosis.load_rules()['version']
+        self.assertEqual((log['rules'], [e['rules'] for e in log['earlier']]), (v + 1, [v]))
+
+    def test_a_log_whose_first_evidence_folder_is_gone_or_unreadable_is_fingerprinted_from_the_next(self):
+        _, later, _, _ = after(self, (TWO_REFUSALS,), cases=self.cases)  # occurrence 2, another check's folder
+        self.assertEqual(len(logs(self.cases)[self.id]['occurrences']), 2)
+        first = os.path.join(self.run_dir, 'evidence', '01-218-witcher-two-refusals')
+        with open(os.path.join(first, 'evidence.json')) as f:
+            meta = json.load(f)
+        put_json(os.path.join(first, 'evidence.json'), dict(meta, format=99))  # evidence.FormatUnknown
+
+        self.assertEqual(caselog.refingerprint(self.cases, rules_v2()), [self.id])
+        self.assertIn('"code":"<code>"', logs(self.cases)[self.id]['fingerprint'])
+
+        shutil.rmtree(first)  # archived: gone
+        rules = dict(rules_v2(), version=rules_v2()['version'] + 1)
+        self.assertEqual(caselog.refingerprint(self.cases, rules), [self.id])
+        self.assertEqual(logs(self.cases)[self.id]['rules'], rules['version'])
+
+
+class NoFailureTest(unittest.TestCase):
+    def test_a_check_with_no_failure_says_the_open_case_logs_too(self):
+        root, run_dir, cases, _ = after(self, (INDEXER_DOWN,))  # one Case log left open
+        quiet = os.path.join(root, '2026-11-25T070000Z-quick-check')
+        os.makedirs(quiet)
+        summary = diagnosis.after_check(quiet, root, cases=cases)
+        lines = diagnosis.report_section(summary)
+        self.assertEqual(lines[:3], ['## Diagnosis', '', 'None: no play failed or fell back; open Case logs: 1.'])
+        self.assertTrue(any(line.startswith('Clues: ') for line in lines))
+        self.assertFalse(os.path.exists(os.path.join(quiet, diagnosis.STORED)))
 
 
 class NeverRepeatsAClueTest(unittest.TestCase):
@@ -210,6 +282,26 @@ class ClaimsCheckedTest(CaseWrites):
                          (1, 'refused: this Case log has no hypothesis 2\n'))
 
 
+class OneWriterAtATimeTest(CaseWrites):
+    def test_a_write_waits_for_another_writer_of_the_same_log_and_neither_is_lost(self):
+        d = os.path.join(self.cases, self.id)
+        said = []
+        write = {'write': 'research', 'question': 'Was the indexer down?', 'source': 'https://example.org/status',
+                 'found': 'it was down that morning'}
+        with caselog.locked(d):  # another writer (a second agent, or a check joining the log) holds it
+            log = caselog.load(d)
+            other = threading.Thread(target=lambda: said.append(self.add(write)))
+            other.start()
+            other.join(0.3)
+            self.assertTrue(other.is_alive())  # it waits
+            log['tickets'].append({'n': 1, 'ref': '#1', 'fact': 'x', 'by': 'agent', 't': 'now'})
+            caselog.save(d, log)
+        other.join(5)
+        self.assertEqual(said, [(0, f'{self.id}: research 1 written\n')])
+        log = caselog.load(d)
+        self.assertEqual((len(log['tickets']), len(log['research'])), (1, 1))
+
+
 class NeverGivesUpTest(CaseWrites):
     Q = [{'occurrence': 1, 'file': KF_LOG, 'text': STATUS_503}]
 
@@ -255,6 +347,22 @@ AM_LOG = 'logs/altmount-kf-test.log'
 SIC_REFUSED = 'level=WARN msg="File does not match allowed extensions" filename=' + SIC
 SIC_CHECKED = f'"title": "{SIC}", "status": "verified"'
 RECIPE = [{'clue': 'check-passed-source', 'answer': 'yes'}, {'clue': 'altmount-extension-refused', 'answer': 'yes'}]
+_SIC = [{'occurrence': 1, 'file': AM_LOG, 'text': SIC_REFUSED}]
+HYPOTHESES = ({'says': 'AltMount refuses the file for its name, which ends in no video extension, although the health '
+                       'check passed it', 'refuted_if': 'AltMount took the file', 'quotes': _SIC},
+              {'says': "the Source's articles are gone", 'refuted_if': 'the health check passed it', 'quotes': _SIC})
+REFUTE_2 = {'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'its check verified it',
+            'quotes': [{'occurrence': 1, 'file': 'steps.jsonl', 'text': SIC_CHECKED}]}
+
+
+def drilled(case, name):
+    """The evidence folder a Drill-down of #218's Witcher left (a copy of the capture, its kind a Drill-down's)."""
+    _, run_dir = stored_check(case, name=name, plays=(TWO_REFUSALS,))
+    folder = os.path.join(run_dir, 'evidence', '01-218-witcher-two-refusals')
+    with open(os.path.join(folder, 'evidence.json')) as f:
+        meta = json.load(f)
+    put_json(os.path.join(folder, 'evidence.json'), dict(meta, kind=drill.KIND))
+    return folder
 
 
 class SolvedTest(CaseWrites):
@@ -263,14 +371,9 @@ class SolvedTest(CaseWrites):
     def setUp(self):
         self.root, self.run_dir, self.cases, _ = after(self, (TWO_REFUSALS,))
         [self.id] = logs(self.cases)
-        sic = [{'occurrence': 1, 'file': AM_LOG, 'text': SIC_REFUSED}]
-        for h in ({'says': 'AltMount refuses the file for its name, which ends in no video extension, although the '
-                           'health check passed it', 'refuted_if': 'AltMount took the file', 'quotes': sic},
-                  {'says': "the Source's articles are gone", 'refuted_if': 'the health check passed it',
-                   'quotes': sic}):
+        for h in HYPOTHESES:
             self.assertEqual(self.add(dict(h, write='hypothesis'))[0], 0)
-        self.assertEqual(self.add({'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'its check verified it',
-                                   'quotes': [{'occurrence': 1, 'file': 'steps.jsonl', 'text': SIC_CHECKED}]})[0], 0)
+        self.assertEqual(self.add(REFUTE_2)[0], 0)
 
     def conclude(self, **kw):
         write = dict({'write': 'conclude', 'hypothesis': 1, 'title': 'AltMount refused a file the check passed, for '
@@ -306,10 +409,40 @@ class SolvedTest(CaseWrites):
         log = logs(self.cases)[self.id]
         self.assertEqual((log['status'], log['conclusion']['passed_on']), ('proved', [1, 2]))
         code, out = case_cmd(self.cases, 'repeat', self.id, os.path.join(self.run_dir, 'evidence', '01-218-witcher-two-refusals'))
-        self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 1 already'))
+        self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 1 already (check)'))
         code, out = case_cmd(self.cases, 'repeat', self.id, INDEXER_DOWN)
         self.assertEqual(code, 1)
         self.assertTrue(out.startswith("refused: no failure in that evidence folder has this Case log's fingerprint"), out)
+
+    def test_a_drill_down_that_repeats_the_failure_joins_as_a_repeat_and_proves_the_case(self):
+        self.hold()
+        self.conclude()
+        folder = drilled(self, '2026-11-25T090000Z-drill-down')
+        run_dir = os.path.dirname(os.path.dirname(folder))
+
+        summary = diagnosis.after_check(run_dir, os.path.dirname(run_dir), cases=self.cases)
+
+        log = logs(self.cases)[self.id]
+        self.assertEqual([o['how'] for o in log['occurrences']], ['check', 'repeat'])
+        self.assertEqual((log['status'], log['conclusion']['passed_on']), ('proved', [1, 2]))
+        self.assertEqual(summary['cases'], [{'id': self.id, 'status': 'proved', 'occurrences': 2, 'new': False}])
+        code, out = case_cmd(self.cases, 'repeat', self.id, folder)
+        self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 2 already (repeat)'))
+
+    def test_a_case_log_a_drill_down_opened_is_proved_by_a_later_drill_down(self):
+        cases = os.path.join(tempdir(self), 'cases')
+        run_dir = os.path.dirname(os.path.dirname(drilled(self, '2026-11-25T090000Z-drill-down')))
+        diagnosis.after_check(run_dir, os.path.dirname(run_dir), cases=cases)
+        [cid] = logs(cases)
+        self.assertEqual([o['how'] for o in logs(cases)[cid]['occurrences']], ['check'])  # the first sighting
+        self.id, self.cases = cid, cases
+        for h in HYPOTHESES:
+            self.assertEqual(self.add(dict(h, write='hypothesis'))[0], 0)
+        self.assertEqual(self.add(REFUTE_2)[0], 0)
+        self.hold()
+        self.assertIn('probable', self.conclude()[1])
+        again = drilled(self, '2026-11-26T090000Z-drill-down')
+        self.assertEqual(case_cmd(cases, 'repeat', cid, again), (0, f'{cid}: occurrence 2 added (repeat); now proved\n'))
 
     def test_a_solved_case_written_up_as_an_entry_passes_the_casebook_format_and_index_test(self):
         self.hold()
@@ -325,7 +458,8 @@ class SolvedTest(CaseWrites):
         self.assertEqual((e['kind'], e['step'], e['whose'], e['status'], e['confirm']),
                          ('check miss', 'import_wait', 'AltMount', 'open', RECIPE))
         self.assertEqual(e['seen'], [{'check': '2026-11-23T183239Z-baseline-218', 'title': 'The Witcher S01E01',
-                                      'play': 'evidence/01-218-witcher-two-refusals', 'date': '2026-11-23', 'rules': 1}])
+                                      'play': 'evidence/01-218-witcher-two-refusals', 'date': '2026-11-23',
+                                      'rules': diagnosis.load_rules()['version']}])
         _, sections = casebook.read_entry(os.path.join(book, 'altmount-extension-refused-file.md'))
         self.assertIn("the Source's articles are gone", sections['Ruled out'])
         self.assertIn('Probable, not proved', sections['How it was proved'])
@@ -430,8 +564,7 @@ class AgentStartsByItselfTest(unittest.TestCase):
         self.assertEqual(summary['agent'], {'started': None, 'error': 'OSError: herdr is not running', 'cases': [cid]})
 
 
-# What herdr answered on Brain, 2026-11-24 (tab list, pane list cut to its fields), and pane split's answer as kf-next
-# reads it.
+# What herdr answered on Brain, 2026-11-24 (tab list, pane list cut to its fields).
 TABS = ('{"id":"cli:tab:list","result":{"tabs":[{"agent_status":"done","focused":false,"label":"1","number":1,'
         '"pane_count":1,"tab_id":"w5:t1","workspace_id":"w5"},{"agent_status":"working","focused":true,"label":"agents",'
         '"number":3,"pane_count":5,"tab_id":"w5:t3","workspace_id":"w5"}],"type":"tab_list"}}')
@@ -439,19 +572,73 @@ PANES = ('{"id":"cli:pane:list","result":{"panes":[{"agent":"claude","agent_stat
          'KaijuFlow","focused":false,"pane_id":"w5:p0","tab_id":"w5:t1","workspace_id":"w5"},{"agent":"claude",'
          '"agent_status":"idle","cwd":"/home/brain/code/KaijuFlow","focused":true,"pane_id":"w5:pV","tab_id":"w5:t3",'
          '"workspace_id":"w5"}]}}')
-SPLIT = '{"id":"cli:pane:split","result":{"pane":{"pane_id":"w5:p12","tab_id":"w5:t3"}}}'
+# What herdr answered on Brain, 2026-11-24, to the rest (fixtures/2026-11-24-herdr/README.md): a claude agent started
+# in a new pane, prompted without --wait, waited on, sent Enter; and the errors of a wait that timed out, of an agent
+# that exited (Claude Code refused a folder it does not trust), of a name not found or taken.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-24-herdr', 'answers.json')) as f:
+    HERDR = json.load(f)
+CAPTURED_NAMES = ('kfcap-1124b', 'kfcap-nosuch', 'kfcap-1124')  # longest first
+
+
+def herdr_answer(what, name=None, pane='w5:p12', status=None):
+    a = HERDR[what]
+    out, err = a['stdout'], a['stderr']
+    for captured in CAPTURED_NAMES:
+        out, err = out.replace(captured, name or captured), err.replace(captured, name or captured)
+    out = out.replace('w5:p1M', pane)
+    if status:
+        out = re.sub(r'"agent_status":"\w+"', f'"agent_status":"{status}"', out, count=1)
+    return mock.Mock(returncode=a['code'], stdout=out, stderr=err)
 
 
 class FakeHerdr:
-    """herdr as the launcher meets it: answers its list and split commands, and the prompt as started."""
-    def __init__(self, tabs=TABS):
-        self.calls, self.tabs = [], tabs
+    """herdr as the launcher meets it, every answer one it gave on Brain: its list and split answers, and an agent with
+    a state. A started agent is idle; a prompt makes it working, unless it sits in the input box until Enter (`stall`)
+    or the agent exits (`exits`: Claude Code refused the folder). `--wait` without `--until` waits for the turn's end,
+    which a diagnosing agent's turn never reaches within the timeout; `wait --until` answers when the agent is in one of
+    those states, else times out."""
+    def __init__(self, tabs=TABS, stall=False, never_works=False, exits=False):
+        self.calls, self.tabs, self.stall, self.never_works, self.exits = [], tabs, stall, never_works, exits
+        self.status, self.names = None, set()
 
     def __call__(self, cmd, capture_output=True, text=True, timeout=None, check=False):
         self.calls.append(cmd)
-        out = {('tab', 'list'): self.tabs, ('pane', 'list'): PANES, ('pane', 'split'): SPLIT,
-               ('tab', 'create'): '{"id":"cli:tab:create","result":{}}'}.get(tuple(cmd[1:3]), '{"result":{}}')
-        if cmd[1:3] == ['tab', 'create']:
+        what = tuple(cmd[1:3])
+        if what == ('agent', 'start'):
+            if cmd[3] in self.names:
+                return herdr_answer('agent start, the name is taken', cmd[3])
+            self.names.add(cmd[3])
+            self.status = 'idle'
+            return herdr_answer('agent start', cmd[3])
+        if what == ('agent', 'prompt'):
+            if cmd[3] not in self.names:
+                return herdr_answer('agent prompt, no such agent', cmd[3])
+            if self.exits:
+                self.status = 'gone'
+            elif not self.stall and not self.never_works:
+                self.status = 'working'
+            if '--wait' in cmd and self.status != 'idle':  # the turn goes on past the timeout
+                t = herdr_answer('agent wait, timeout', cmd[3])
+                return mock.Mock(returncode=1, stdout='', stderr=t.stderr.replace('agent:wait', 'agent:prompt'))
+            return herdr_answer('agent prompt', cmd[3])
+        if what == ('agent', 'send-keys'):
+            if self.status == 'gone':
+                return herdr_answer('agent send-keys, the agent exited', cmd[3])
+            if self.stall and not self.never_works:
+                self.status, self.stall = 'working', False
+            return herdr_answer('agent send-keys', cmd[3])
+        if what == ('agent', 'wait'):
+            if self.status == 'gone':
+                return herdr_answer('agent wait, the agent exited', cmd[3])
+            until = [cmd[i + 1] for i, a in enumerate(cmd) if a == '--until'] or ['idle', 'done', 'blocked']
+            if self.status not in until:
+                return herdr_answer('agent wait, timeout', cmd[3])
+            return herdr_answer('agent wait, working', cmd[3], status=self.status)
+        if what == ('pane', 'split'):
+            return herdr_answer('pane split')
+        out = {('tab', 'list'): self.tabs, ('pane', 'list'): PANES,
+               ('tab', 'create'): '{"id":"cli:tab:create","result":{}}'}.get(what, '{"result":{}}')
+        if what == ('tab', 'create'):
             self.tabs = TABS
         return mock.Mock(returncode=0, stdout=out, stderr='')
 
@@ -469,6 +656,30 @@ class LauncherTest(unittest.TestCase):
         self.assertIn('fail-indexer-page-e5f2211b', prompt[4])
         self.assertIn('tools/brain/docs/diagnosing-agent.md', prompt[4])
         self.assertIn('--cases /n/cases', prompt[4])
+        self.assertEqual(herdr.status, 'working')
+
+    def test_a_started_agent_that_takes_the_prompt_is_started_though_its_turn_goes_on(self):
+        herdr = FakeHerdr()
+        said = caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
+        self.assertEqual(said, 'herdr agent diag-1124 in pane w5:p12')
+        self.assertEqual([c for c in herdr.calls if c[1:3] == ['agent', 'send-keys']], [])
+
+    def test_a_prompt_that_sat_in_the_input_box_is_sent_with_enter(self):
+        herdr = FakeHerdr(stall=True)
+        said = caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
+        self.assertEqual(said, 'herdr agent diag-1124 in pane w5:p12')
+        self.assertIn(['herdr', 'agent', 'send-keys', 'diag-1124', 'enter'], herdr.calls)
+        self.assertEqual(herdr.status, 'working')
+
+    def test_an_agent_that_never_takes_the_prompt_could_not_start(self):
+        herdr = FakeHerdr(stall=True, never_works=True)
+        with self.assertRaisesRegex(OSError, 'did not take the prompt'):
+            caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
+
+    def test_an_agent_that_exits_after_its_prompt_could_not_start(self):
+        herdr = FakeHerdr(exits=True)  # Claude Code asked whether to trust the folder; the prompt's Enter said no
+        with self.assertRaisesRegex(OSError, 'agent_not_ready'):
+            caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
 
     def test_the_routine_the_prompt_names_is_there_and_names_every_write(self):
         with open(os.path.join(caselog.REPO, caselog.ROUTINE)) as f:

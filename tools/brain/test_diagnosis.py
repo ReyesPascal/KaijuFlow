@@ -55,6 +55,17 @@ class FoundTest(unittest.TestCase):
         self.assertEqual(said['unscramble-read-error'], 'no')
 
 
+class LibraryTest(unittest.TestCase):
+    def test_a_lead_is_proved_by_the_clues_of_the_library_diagnosis_is_given(self):
+        [f] = answers(INDEXER_DOWN)
+        entry = {'id': 'indexer-down', 'match': [{'rules': 1, 'sign': f['fingerprint']}], 'occurrences': 0,
+                 'status': 'open', 'whose': 'indexer', 'confirm': [{'clue': 'only-here', 'answer': 'yes'}]}
+        library = dict(clues.CLUES, **{'only-here': clues.Clue('only-here', 'Only in this library?',
+                                                                lambda ev, failure: (clues.YES, ['it is here']))})
+        [f] = diagnosis.diagnose(INDEXER_DOWN, entries=[entry], library=library)['failures']
+        self.assertEqual((f['verdict'], f['cause'], f['proved_by']), ('found', 'indexer-down', ['only-here']))
+
+
 class FingerprintTest(unittest.TestCase):
     def test_one_cause_seen_in_two_runs_has_one_fingerprint_and_its_details_are_masked(self):
         [in_219], [in_218, sic] = answers(READ_ERROR), answers(TWO_REFUSALS)
@@ -67,6 +78,70 @@ class FingerprintTest(unittest.TestCase):
                                                       "file '<release>' does not match allowed extensions (allowed: [.mkv .mp4 "),
                         sic['fingerprint'])
         self.assertNotIn(SIC, sic['fingerprint'])
+
+
+def variant(case, folder, outcome, keep=None, failed_sources=False):
+    """A copy of a captured play told as another outcome: evidence.json's `outcome` updated, no failed Source (unless
+    `failed_sources`: its own kept), and only the step lines up to and with the first `keep` names (all when None)."""
+    copy = os.path.join(tempdir(case), os.path.basename(folder))
+    shutil.copytree(folder, copy)
+    with open(os.path.join(copy, 'evidence.json')) as f:
+        meta = json.load(f)
+    meta['outcome'] = dict(meta['outcome'], **outcome)
+    meta['kept_because'] = evidence.kept_because(meta['outcome'])
+    if not failed_sources:
+        meta['failed_sources'] = []
+    with open(os.path.join(copy, 'evidence.json'), 'w') as f:
+        json.dump(meta, f)
+    if keep is not None:
+        with open(os.path.join(copy, 'steps.jsonl')) as f:
+            lines = f.readlines()
+        at = next(i for i, line in enumerate(lines) if json.loads(line)['step'] == keep)
+        with open(os.path.join(copy, 'steps.jsonl'), 'w') as f:
+            f.writelines(lines[:at + 1])
+    return copy
+
+
+def signs_of(kind):
+    return {e['id'] for e in diagnosis.load_index() for m in e['match'] if m['sign'].startswith(kind + ' | ')}
+
+
+class EverySignCanMatchTest(unittest.TestCase):
+    def test_a_slow_play_is_where_its_played_source_ended_and_where_its_time_went(self):
+        # #218's Witcher told as a slow play: the Walk goes on after the played Source (playWEB) sent its first byte
+        folder = variant(self, TWO_REFUSALS, {'outcome': 'played', 'why': '', 'slow': True, 'start_s': 75.0})
+        [f] = diagnosis.diagnose(folder)['failures']
+        self.assertEqual((f['kind'], f['where'], f['reason']), ('slow play', 'first_byte ok', 'most time in play_check'))
+        self.assertEqual({t['id'] for t in f['leads']},
+                         {'busy-machine', 'first-title-after-reset-swings', 'health-check-before-list', 'laptop-on-battery',
+                          'warm-lists-slow-2026-11-13', 'head-start-ran-on', 'eeaao-slow-start'})
+
+    def test_every_slow_play_sign_can_be_given(self):
+        steps = ('nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'play_check')
+        reachable = {f'slow play | first_byte ok | most time in {s}' for s in steps}
+        for e in diagnosis.load_index():
+            for m in e['match']:
+                if m['sign'].startswith('slow play | '):
+                    with self.subTest(entry=e['id']):
+                        self.assertTrue(any(diagnosis.sign_fits(m['sign'], fp) for fp in reachable), m['sign'])
+
+    def test_nothing_to_play_with_the_dev_switch_on_is_where_the_search_failed(self):
+        folder = variant(self, LOG_CUT, {'outcome': 'nothing to play', 'why': 'the list was empty', 'sources': 0},
+                         keep='list')
+        [f] = diagnosis.diagnose(folder)['failures']
+        self.assertEqual((f['kind'], f['where']), ('nothing to play', 'indexer_page ok'))  # the search lines come after
+        self.assertEqual({t['id'] for t in f['leads']}, signs_of('nothing to play'))
+
+
+class WrongTitleTest(unittest.TestCase):
+    def test_a_wrong_title_play_with_refused_sources_is_a_failure_of_its_own_beside_theirs(self):
+        why = 'the wrong title played: The Witcher S01E02 instead of S01E01'
+        folder = variant(self, TWO_REFUSALS, {'outcome': 'fail', 'why': why}, failed_sources=True)
+        fs = diagnosis.diagnose(folder)['failures']
+        self.assertEqual([(f['release'], f['kind']) for f in fs], [(HHWEB, 'check miss'), (SIC, 'check miss'),
+                                                                   (None, 'wrong title')])
+        self.assertEqual(fs[0]['verdict'], 'found')  # a refused Source's own cause is still found
+        self.assertEqual((fs[2]['where'], fs[2]['reason']), ('import_wait not ok', why))  # its last step line
 
 
 class SuspectedAndNewTest(unittest.TestCase):
@@ -166,9 +241,10 @@ class StoredFailuresTest(unittest.TestCase):
         root, run_dir = stored_check(self)
         diagnosis.diagnose_check(run_dir)
         before = stored(run_dir)
-        self.assertEqual({d['rules'] for d in before.values()}, {1})
         rules = diagnosis.load_rules()
-        rules = dict(rules, version=2, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}] + rules['masks'])
+        v = rules['version']
+        self.assertEqual({d['rules'] for d in before.values()}, {v})
+        rules = dict(rules, version=v + 1, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}] + rules['masks'])
         path = os.path.join(tempdir(self), 'masking-rules.json')
         with open(path, 'w') as f:
             json.dump(rules, f)
@@ -178,9 +254,9 @@ class StoredFailuresTest(unittest.TestCase):
         after = stored(run_dir)
         self.assertEqual(sorted(changed), sorted(os.path.join(run_dir, evidence.DIR, n) for n in after))
         for name, d in after.items():
-            self.assertEqual(d['rules'], 2)
+            self.assertEqual(d['rules'], v + 1)
             old = [f['fingerprint'] for f in before[name]['failures']]
-            self.assertEqual(d['earlier'], [{'rules': 1, 'fingerprints': old}])
+            self.assertEqual(d['earlier'], [{'rules': v, 'fingerprints': old}])
             for f in d['failures']:
                 self.assertIn('"code":"<code>"', f['fingerprint'])
                 self.assertNotIn('INTERNAL_SERVER_ERROR', f['fingerprint'])
@@ -205,7 +281,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(casebook.problems(book), [])  # still the format, and the index was written again
         self.assertEqual(entries['unscramble-read-error']['seen'][-1], {
             'check': '2026-11-23T190950Z-grouped-219', 'title': 'The Witcher S01E01', 'play': 'evidence/01-219-witcher-read-error',
-            'date': '2026-11-23', 'rules': 1})
+            'date': '2026-11-23', 'rules': diagnosis.load_rules()['version']})
         self.assertEqual(entries['unchecked-dead-season-pack']['seen'][-1]['play'], 'evidence/02-189-twilight-dead-pack')
         _, sections = casebook.read_entry(os.path.join(book, 'unscramble-read-error.md'))
         ruled = sections['Ruled out'].splitlines()[-1]
@@ -233,6 +309,21 @@ class CommandTest(unittest.TestCase):
             '3 failures: 1 new, 2 matched, 1 proved, 2 unexplained'])
         self.assertEqual(len(json.loads(read(run_dir, diagnosis.STORED))['plays']), 2)
 
+    def test_diagnosing_a_check_again_keeps_the_rest_of_its_summary(self):
+        root, run_dir = stored_check(self, plays=(INDEXER_DOWN,))
+        diagnosis.diagnose_check(run_dir)
+        path = os.path.join(run_dir, diagnosis.STORED)
+        summary = json.loads(read(run_dir, diagnosis.STORED))
+        kept = {'fixes': [{'entry': 'x', 'ticket': '#1'}], 'drill': {'entry': 'x', 'repeated': True},
+                'cases': [{'id': 'c', 'status': 'open', 'occurrences': 1, 'new': True}], 'scoreboard': {'n': 1}}
+        with open(path, 'w') as f:
+            json.dump(dict(summary, **kept), f)
+        with contextlib.redirect_stdout(io.StringIO()):
+            diagnosis.main(['diagnosis.py', 'diagnose', run_dir])
+        again = json.loads(read(run_dir, diagnosis.STORED))
+        self.assertEqual({k: again.get(k) for k in kept}, kept)
+        self.assertEqual(again['plays'], summary['plays'])
+
     def test_one_evidence_folder_can_be_diagnosed_alone(self):
         root, run_dir = stored_check(self, plays=(INDEXER_DOWN,))
         out = io.StringIO()
@@ -259,7 +350,10 @@ class AfterACheckTest(unittest.TestCase):
         code, out = run_check(cfg, CheckWorld())
         folder = os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check')
         self.assertFalse(os.path.exists(os.path.join(folder, diagnosis.STORED)))
-        self.assertIn('## Diagnosis\n\nNone: no play failed or fell back.\n', read(folder, 'report.md'))
+        report = read(folder, 'report.md')
+        self.assertIn('## Diagnosis\n\nNone: no play failed or fell back; open Case logs: 0.\n\nClues: the confirming tests ran 0', report)
+        self.assertIn('Fixes: ', report)  # the scoreboard after every check (spec #279)
+        self.assertIn('Failures per check by cause (the last 10 checks with a failure):', report)
 
 
 if __name__ == '__main__':

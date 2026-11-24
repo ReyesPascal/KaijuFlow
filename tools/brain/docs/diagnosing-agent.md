@@ -36,7 +36,7 @@ When no Clue splits what is left, do one of these, then `pause` with it as `next
 
 ## 7. Conclude
 
-When one hypothesis holds and every other is refuted, `conclude`: the cause in one sentence (`title`), what the viewer saw (`saw`), the cause (`cause`), whose it is (`whose`), the step where the play first went wrong (`step`), and the recipe of Clues that proves it (`recipe`). The recipe is run on every occurrence and must pass on this failure's own evidence. The case is **probable** until it is repeated at will; a Drill-down or a Stand-in replay of the title that fails the same way is added with `case repeat <id> <its evidence folder>` and makes it **proved**.
+When one hypothesis holds and every other is refuted, `conclude`: the cause in one sentence (`title`), what the viewer saw (`saw`), the cause (`cause`), whose it is (`whose`), the step where the play first went wrong (`step`), and the recipe of Clues that proves it (`recipe`). The recipe is run on every occurrence and must pass on this failure's own evidence. The case is **probable** until it is repeated at will. A Drill-down of the title that fails the same way joins the Case log by itself, as a repeat, and its check makes the case **proved** (`case show` says so); a Stand-in replay of the title is added with `case repeat <id> <its evidence folder>`, which does the same. `case repeat` refuses a folder that is an occurrence already.
 
 ## 8. Write it up
 

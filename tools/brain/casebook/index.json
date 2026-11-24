@@ -11,8 +11,8 @@
       "status": "open",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | import_wait ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in import_wait*"
         }
       ],
       "confirm": [
@@ -75,8 +75,8 @@
       "status": "fixed awaiting proof",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | list ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -122,8 +122,8 @@
       "status": "open",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | first_byte ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in play_check*"
         }
       ],
       "confirm": [
@@ -150,8 +150,8 @@
       "status": "open",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | list ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -217,8 +217,8 @@
       "status": "fixed awaiting proof",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | play_check ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in play_check*"
         },
         {
           "rules": 1,
@@ -245,8 +245,8 @@
       "status": "fixed awaiting proof",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | list ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -292,8 +292,8 @@
       "status": "fixed awaiting proof",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | list ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -316,8 +316,8 @@
       "status": "open",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | import_wait ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in import_wait*"
         }
       ],
       "confirm": [
@@ -508,8 +508,8 @@
       "status": "fixed awaiting proof",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | import_wait ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in import_wait*"
         }
       ],
       "confirm": [
@@ -564,8 +564,8 @@
       "status": "fixed awaiting proof",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | unscramble ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in unscramble*"
         }
       ],
       "confirm": [
@@ -696,8 +696,8 @@
       "status": "fixed awaiting proof",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | nzb_fetch not ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in nzb_fetch*"
         },
         {
           "rules": 1,
@@ -724,8 +724,8 @@
       "status": "open",
       "match": [
         {
-          "rules": 1,
-          "sign": "slow play | list ok | *"
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [

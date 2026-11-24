@@ -52,8 +52,9 @@ export interface UsenetIndexer {
 
 // Discovered indexer capabilities from Newznab ?t=caps endpoint
 export interface IndexerCaps {
-  movieSearchParams: string[];   // e.g. ['q', 'imdbid', 'tmdbid']
-  tvSearchParams: string[];      // e.g. ['q', 'tvdbid', 'imdbid', 'season', 'ep']
+  version?: number;              // CAPS_VERSION once read by the reader that tells unknown from not available (capsMigration.ts)
+  movieSearchParams?: string[];  // e.g. ['q', 'imdbid', 'tmdbid']; [] when not available; undefined when unknown
+  tvSearchParams?: string[];     // e.g. ['q', 'tvdbid', 'imdbid', 'season', 'ep']; the same
 }
 
 // Zyclops health-check proxy configuration (per-indexer, Newznab mode only)
@@ -148,7 +149,7 @@ export interface Config {
   proxyMode?: 'disabled' | 'http';  // Proxy mode for indexer requests
   proxyUrl?: string;           // HTTP proxy URL (e.g. http://localhost:8888)
   proxyIndexers?: Record<string, boolean>;  // Per-indexer proxy toggle
-  searchConfig?: SearchConfig; // Search method and ID service configuration
+  searchConfig?: SearchConfig; // Search settings (packs, name fallbacks) and ID service configuration
   includeSeasonPacks?: boolean; // Legacy: include season packs in episode results
   cardOrder?: string[];        // Dashboard card order
   userAgents?: UserAgentConfig; // Custom user-agents for different request types

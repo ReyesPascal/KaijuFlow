@@ -216,7 +216,7 @@ export function EditIndexerModal({
             </div>
             {editForm.caps && (
               <p className="text-xs text-green-400/70">
-                Capabilities: Movie [{editForm.caps.movieSearchParams.join(', ')}] TV [{editForm.caps.tvSearchParams.join(', ')}]
+                Capabilities: Movie [{editForm.caps.movieSearchParams?.join(', ') ?? 'unknown'}] TV [{editForm.caps.tvSearchParams?.join(', ') ?? 'unknown'}]
               </p>
             )}
             <KaijuSearchWays caps={editForm.caps} />

@@ -1,0 +1,57 @@
+{
+ "pane split": {
+  "code": 0,
+  "stdout": "{\"id\":\"cli:pane:split\",\"result\":{\"pane\":{\"agent_status\":\"unknown\",\"cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"focused\":false,\"foreground_cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"pane_id\":\"w5:p1M\",\"revision\":0,\"scroll\":{\"max_offset_from_bottom\":0,\"offset_from_bottom\":0,\"viewport_rows\":2},\"tab_id\":\"w5:t3\",\"terminal_id\":\"term_661058f73c5235c\",\"workspace_id\":\"w5\"},\"type\":\"pane_info\"}}\n",
+  "stderr": ""
+ },
+ "agent start": {
+  "code": 0,
+  "stdout": "{\"id\":\"cli:agent:start\",\"result\":{\"agent\":{\"agent\":\"claude\",\"agent_session\":{\"agent\":\"claude\",\"kind\":\"id\",\"source\":\"herdr:claude\",\"value\":\"7251e534-197b-4040-907e-d20d6cdb0f00\"},\"agent_status\":\"idle\",\"cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"focused\":false,\"foreground_cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"interactive_ready\":true,\"name\":\"kfcap-1124b\",\"pane_id\":\"w5:p1M\",\"revision\":2,\"state_change_seq\":1132,\"tab_id\":\"w5:t3\",\"terminal_id\":\"term_661058f73c5235c\",\"terminal_title\":\"✳ Claude Code\",\"terminal_title_stripped\":\"Claude Code\",\"workspace_id\":\"w5\"},\"argv\":[\"claude\"],\"type\":\"agent_started\"}}\n",
+  "stderr": ""
+ },
+ "agent prompt": {
+  "code": 0,
+  "stdout": "{\"id\":\"cli:agent:prompt\",\"result\":{\"agent\":{\"agent\":\"claude\",\"agent_session\":{\"agent\":\"claude\",\"kind\":\"id\",\"source\":\"herdr:claude\",\"value\":\"7251e534-197b-4040-907e-d20d6cdb0f00\"},\"agent_status\":\"idle\",\"cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"focused\":false,\"foreground_cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"interactive_ready\":true,\"name\":\"kfcap-1124b\",\"pane_id\":\"w5:p1M\",\"revision\":2,\"state_change_seq\":1132,\"tab_id\":\"w5:t3\",\"terminal_id\":\"term_661058f73c5235c\",\"terminal_title\":\"✳ Claude Code\",\"terminal_title_stripped\":\"Claude Code\",\"workspace_id\":\"w5\"},\"type\":\"agent_prompted\"}}\n",
+  "stderr": ""
+ },
+ "agent wait, working": {
+  "code": 0,
+  "stdout": "{\"id\":\"cli:agent:wait\",\"result\":{\"agent\":{\"agent\":\"claude\",\"agent_session\":{\"agent\":\"claude\",\"kind\":\"id\",\"source\":\"herdr:claude\",\"value\":\"7251e534-197b-4040-907e-d20d6cdb0f00\"},\"agent_status\":\"working\",\"cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"focused\":false,\"foreground_cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"interactive_ready\":true,\"name\":\"kfcap-1124b\",\"pane_id\":\"w5:p1M\",\"revision\":2,\"state_change_seq\":1133,\"tab_id\":\"w5:t3\",\"terminal_id\":\"term_661058f73c5235c\",\"terminal_title\":\"◐ Claude Code\",\"terminal_title_stripped\":\"Claude Code\",\"workspace_id\":\"w5\"},\"type\":\"agent_info\"}}\n",
+  "stderr": ""
+ },
+ "agent wait, done": {
+  "code": 0,
+  "stdout": "{\"id\":\"cli:agent:wait\",\"result\":{\"agent\":{\"agent\":\"claude\",\"agent_session\":{\"agent\":\"claude\",\"kind\":\"id\",\"source\":\"herdr:claude\",\"value\":\"7251e534-197b-4040-907e-d20d6cdb0f00\"},\"agent_status\":\"done\",\"completion_seq\":1134,\"cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"focused\":false,\"foreground_cwd\":\"/home/brain/code/KaijuFlow/.claude/worktrees/review-fix-279\",\"interactive_ready\":true,\"name\":\"kfcap-1124b\",\"pane_id\":\"w5:p1M\",\"revision\":3,\"state_change_seq\":1134,\"tab_id\":\"w5:t3\",\"terminal_id\":\"term_661058f73c5235c\",\"terminal_title\":\"✳ Single word reply\",\"terminal_title_stripped\":\"Single word reply\",\"workspace_id\":\"w5\"},\"type\":\"agent_info\"}}\n",
+  "stderr": ""
+ },
+ "agent send-keys": {
+  "code": 0,
+  "stdout": "{\"id\":\"cli:agent:send-keys\",\"result\":{\"type\":\"ok\"}}\n",
+  "stderr": ""
+ },
+ "agent wait, timeout": {
+  "code": 1,
+  "stdout": "",
+  "stderr": "{\"error\":{\"code\":\"timeout\",\"message\":\"timed out waiting for agent status\"},\"id\":\"cli:agent:wait\"}\n"
+ },
+ "agent wait, the agent exited": {
+  "code": 1,
+  "stdout": "",
+  "stderr": "{\"error\":{\"code\":\"agent_not_running\",\"message\":\"agent is no longer running in the target pane\"},\"id\":\"cli:agent:wait\"}\n"
+ },
+ "agent send-keys, the agent exited": {
+  "code": 1,
+  "stdout": "",
+  "stderr": "{\"error\":{\"code\":\"agent_not_ready\",\"message\":\"agent kfcap-1124 is not an active named agent\"},\"id\":\"cli:agent:send-keys\"}\n"
+ },
+ "agent prompt, no such agent": {
+  "code": 1,
+  "stdout": "",
+  "stderr": "{\"error\":{\"code\":\"agent_not_found\",\"message\":\"agent target kfcap-nosuch not found\"},\"id\":\"cli:agent:prompt\"}\n"
+ },
+ "agent start, the name is taken": {
+  "code": 1,
+  "stdout": "",
+  "stderr": "{\"error\":{\"code\":\"agent_name_taken\",\"message\":\"agent name kfcap-1124 is already used; candidates: terminal_id=term_661058e47b6545b pane_id=w5:p1K workspace_id=w5 tab_id=w5:t3 cwd=/tmp status=Idle\"},\"id\":\"cli:agent:start\"}\n"
+ }
+}

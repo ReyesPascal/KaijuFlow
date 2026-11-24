@@ -2,7 +2,7 @@
 
     python3 -I tools/brain/diagnosis.py diagnose <check folder | evidence folder>   diagnose and write diagnosis.json
     python3 -I tools/brain/diagnosis.py record <check folder>     put its proved occurrences and ruled-out leads on the Casebook
-    python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure with the current rules
+    python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure and Case log with the current rules
     python3 -I tools/brain/diagnosis.py fix <check folder> [--casebook DIR] [--dry-run]   its proved causes' fixes (#288)
     python3 -I tools/brain/diagnosis.py case <list|show|run|add|repeat|entry> ...   work a Case log (#287; case --help)
 
@@ -32,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RULES = os.path.join(HERE, 'masking-rules.json')
 LIST_OWN = ('list_filter', 'list_sort', 'fallback_group', 'list_build', 'head_start', 'list')
 EVENTS = ('played', 'play_failed')
+SEARCH_LINES = ('search',)  # Kaiju Search's evidence lines (dev switch only, #285): no step, so never where it failed
 FAILED_LINE = re.compile(r'❌ (?:Failed: (?P<a>.*)|Stream failed \[\d+/\d+\] .*?: (?P<b>AltMount .*|.*))$')
 NEAR_S = 2  # a KaijuFlow failure line belongs to the failed step it is this near to (builds before play_failed)
 
@@ -83,8 +84,9 @@ def _reason(ev, release, step):
 
 def failures(ev):
     """The failures of one play: one per Source that failed for it (AltMount refused it, or it failed after its check),
-    in the order they failed, or one for the play itself when no Source failed (nothing to play, a fail before any
-    Source, a slow play). Each: release, kind, step (the failing step line or None), where, reason."""
+    in the order they failed, and one for the play itself when no Source failed (nothing to play, a fail before any
+    Source, a slow play) or when the wrong title played (story 71: its refused Sources are their own failures, check
+    misses or fallbacks, as video came). Each: release, kind, step (the failing step line or None), where, reason."""
     o = ev.meta.get('outcome') or {}
     if not ev.meta.get('kept_because'):
         return []  # a play that went fine (a Drill-down keeps its folder too, #272) has no failure
@@ -100,16 +102,37 @@ def failures(ev):
             continue  # a Source its Play-time check stopped is the check working, not a failure
         release = f['release']
         step = _failing_step(ev, release)
-        kind = play_kind or ('check miss' if _checked(ev, release) else 'fallback')
+        kind = play_kind if play_kind in ('fail', 'nothing to play') else \
+            ('check miss' if _checked(ev, release) else 'fallback')
         out.append({'release': release, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none',
                     'reason': _reason(ev, release, step)})
-    if out:
+    if out and play_kind != 'wrong title':
         return out
-    steps = [s for s in ev.steps if s.get('step') not in LIST_OWN + EVENTS]
+    steps = [s for s in ev.steps if s.get('step') not in LIST_OWN + EVENTS + SEARCH_LINES]  # the last step line
     step = steps[-1] if steps else None
     kind = play_kind or ('slow play' if o.get('slow') else ev.meta.get('kept_because') or 'fail')
-    return [{'release': None, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none',
-             'reason': o.get('why') or '' if play_kind else ''}]
+    reason = o.get('why') or '' if play_kind else ''
+    if kind == 'slow play':
+        step, reason = _slow(ev, steps) or (step, reason)
+    return out + [{'release': None, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none', 'reason': reason}]
+
+
+def _played(ev):
+    """The release whose video played: its `played` line's (#242), else the one whose `first_byte` was ok last."""
+    title = next((s.get('title') for s in ev.steps if s.get('step') == 'played' and s.get('title')), None)
+    return title or next((s.get('title') for s in reversed(ev.steps) if s.get('step') == 'first_byte' and s.get('ok')), None)
+
+
+def _slow(ev, steps):
+    """(step, reason) of a slow play: the played Source's last step line (the Walk can go on after it), and the step
+    of it that took the most time, `most time in <step>`; None when no Source is known to have played."""
+    played = _played(ev)
+    mine = [s for s in steps if played and s.get('title') == played]
+    if not mine:
+        return None
+    longest = max((s for s in mine if s.get('step') in clues.PREPARE + ('play_check',)), key=lambda s: s.get('ms') or 0,
+                  default=None)
+    return mine[-1], f"most time in {longest['step']}" if longest else ''
 
 
 def _never_a_sign(ev):
@@ -208,7 +231,7 @@ def prove(lead, ev, failure, library):
         return dict(lead, result='no confirming test', why='Clues not built yet: ' + ', '.join(missing), clues=[])
     ran = []
     for item in confirm:
-        r = clues.run(item['clue'], ev, failure)
+        r = clues.run(item['clue'], ev, failure, library)
         ran.append(dict(r, wanted=item['answer']))
     if any(r['answer'] != r['wanted'] and r['answer'] in (clues.YES, clues.NO) for r in ran):
         result = 'ruled out'
@@ -261,19 +284,6 @@ def diagnose(folder, entries=None, library=None, rules=None):
 STORED = 'diagnosis.json'  # in each evidence folder (that play's answers) and in the check's folder (the summary)
 
 
-def _write_json(path, data):
-    with open(path, 'w') as f:
-        f.write(json.dumps(data, indent=1, ensure_ascii=False) + '\n')
-
-
-def _read_json(path):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
-
-
 def evidence_folders(run_dir):
     d = os.path.join(run_dir, evidence.DIR)
     try:
@@ -285,13 +295,13 @@ def evidence_folders(run_dir):
 
 def store(folder, result, earlier=()):
     """Writes one play's answers into its evidence folder, with the fingerprints of earlier rule versions."""
-    _write_json(os.path.join(folder, STORED), dict(result, earlier=list(earlier)))
+    br.write_json(os.path.join(folder, STORED), dict(result, earlier=list(earlier)))
 
 
 def diagnose_stored(folder, entries=None, library=None, rules=None):
     """Diagnoses one stored evidence folder and writes its diagnosis.json; an earlier answer made with other rules goes
     into `earlier` (its version and fingerprints)."""
-    old = _read_json(os.path.join(folder, STORED))
+    old = br.read_json(os.path.join(folder, STORED))
     result = diagnose(folder, entries, library, rules)
     earlier = list((old or {}).get('earlier') or [])
     if old and old.get('rules') != result['rules']:
@@ -322,7 +332,7 @@ def summarize(run_dir, plays, rules, library=None, kept=None):
             row['error'] = p['error']
         row['failures'] = [{k: f.get(k) for k in keep} for f in p.get('failures') or []]
         out['plays'].append(row)
-    _write_json(os.path.join(run_dir, STORED), out)
+    br.write_json(os.path.join(run_dir, STORED), out)
     return out
 
 
@@ -361,7 +371,7 @@ def refingerprint(root, rules=None, entries=None, library=None):
     for run_dir in stored_checks(root):
         mine = []
         for folder in evidence_folders(run_dir):
-            old = _read_json(os.path.join(folder, STORED))
+            old = br.read_json(os.path.join(folder, STORED))
             if old is not None and old.get('rules') != rules['version']:
                 mine.append(folder)
         if mine:
@@ -370,10 +380,10 @@ def refingerprint(root, rules=None, entries=None, library=None):
             changed += mine
             plays = []
             for folder in evidence_folders(run_dir):
-                d = _read_json(os.path.join(folder, STORED))
+                d = br.read_json(os.path.join(folder, STORED))
                 if d is not None:
                     plays.append(dict(d, path=folder))
-            old = _read_json(os.path.join(run_dir, STORED)) or {}
+            old = br.read_json(os.path.join(run_dir, STORED)) or {}
             summarize(run_dir, plays, rules, kept={k: v for k, v in old.items() if k not in ('rules', 'counts', 'plays')})
     return changed
 
@@ -397,7 +407,7 @@ def live_clues(run_dir, open_usenet, now=None):
         usenet = open_usenet()
     except Exception as e:  # noqa: BLE001  (no provider login: the Clues that need it say they could not tell)
         for folder, _, _ in jobs:
-            _write_json(os.path.join(folder, evidence.LIVE), {'t': when, 'error': br.scrub_text(f'{type(e).__name__}: {e}')})
+            br.write_json(os.path.join(folder, evidence.LIVE), {'t': when, 'error': br.scrub_text(f'{type(e).__name__}: {e}')})
         return 0
     asked = 0
     try:
@@ -408,7 +418,7 @@ def live_clues(run_dir, open_usenet, now=None):
                 for name in sorted(clues.LIVE):
                     r = clues.run_live(name, ev, f, usenet)
                     answers.setdefault(name, {})[f['release']] = {'answer': r['answer'], 'facts': r['facts']}
-            _write_json(os.path.join(folder, evidence.LIVE), {'t': when, 'clues': answers})
+            br.write_json(os.path.join(folder, evidence.LIVE), {'t': when, 'clues': answers})
     finally:
         usenet.close()
     return asked
@@ -420,7 +430,7 @@ def open_cases(run_dir, cases, library=None):
     'occurrences', 'new'}], one per Case log, in the order the failures came."""
     out = {}
     for folder in evidence_folders(run_dir):
-        d = _read_json(os.path.join(folder, STORED))
+        d = br.read_json(os.path.join(folder, STORED))
         if not d:
             continue
         ev = evidence.read(folder)
@@ -447,7 +457,7 @@ def _start_agent(summary, run_dir, cases, agent, alert):
     summary['agent'] = {'started': started, 'error': error, 'cases': waiting}
     n = sum(1 for p in summary['plays'] for f in p['failures'] if f['verdict'] != 'found')
     logs = f"Case log{'s' if len(waiting) > 1 else ''} {', '.join(waiting)}"
-    line = f"Diagnosis: {_plural(n, 'failure')} in {os.path.basename(os.path.normpath(run_dir))} " \
+    line = f"Diagnosis: {br.plural(n, 'failure')} in {os.path.basename(os.path.normpath(run_dir))} " \
            f"{'has' if n == 1 else 'have'} no proved cause; "
     line += f'the diagnosing agent is on {logs} ({started}).' if error is None else \
         f"the diagnosing agent could not start ({error}): {logs} wait{'s' if len(waiting) == 1 else ''} for it."
@@ -462,7 +472,7 @@ def stored_plays(run_dir):
     """Every diagnosed evidence folder of a check: {'path', 'evidence' (relative to the run folder), 'meta', 'diagnosis'}."""
     out = []
     for folder in evidence_folders(run_dir):
-        d = _read_json(os.path.join(folder, STORED))
+        d = br.read_json(os.path.join(folder, STORED))
         if d is not None:
             out.append({'path': folder, 'evidence': os.path.relpath(folder, run_dir), 'meta': evidence.read(folder).meta,
                         'diagnosis': d})
@@ -473,19 +483,24 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
                 alert=None, book=None, tracker=None):
     """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
     `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
-    rules changed, then this check's plays diagnosed against the Casebook in `book` (default the repo's), every proved
+    rules changed (the Case logs under `cases` too), then this check's plays diagnosed against the Casebook in `book` (default the repo's), every proved
     cause's fix (fixing.after_check: a KaijuFlow cause's ticket, filed through `tracker` unless it is None, a dry run),
     and every failure with no proved cause put in its Case log under `cases`; when one of those logs is open,
     `agent(cases, ids, run_dir)` starts the diagnosing agent on them and `alert(line)` tells the owner in one line. The
-    summary, or None when the check left no evidence folder."""
+    summary; a check that left no evidence folder gets only its scoreboard (spec #279: after every check), and no
+    diagnosis.json."""
     if not evidence_folders(run_dir):
-        return None
+        book = casebook.FOLDER if book is None else book
+        return {'scoreboard': score(run_dir, runs_root, {}, library, book, cases),
+                'open_cases': None if cases is None else caselog.count_open(cases)}
     if usenet is not None:
         live_clues(run_dir, usenet)
     book = casebook.FOLDER if book is None else book
     rules = load_rules() if rules is None else rules
     entries = load_index(book) if entries is None else entries
     refingerprint(runs_root, rules, entries, library)
+    if cases is not None:
+        caselog.refingerprint(cases, rules)
     summary = diagnose_check(run_dir, entries, library, rules)
     summary['fixes'] = fixing.after_check(run_dir, stored_plays(run_dir), book, tracker)
     if cases is not None:
@@ -493,7 +508,7 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
         summary['open_cases'] = caselog.count_open(cases)
         _start_agent(summary, run_dir, cases, agent, alert)
     summary['scoreboard'] = score(run_dir, runs_root, summary, library, book, cases)
-    _write_json(os.path.join(run_dir, STORED), summary)
+    br.write_json(os.path.join(run_dir, STORED), summary)
     return summary
 
 
@@ -503,7 +518,7 @@ def score(run_dir, runs_root, summary, library, book, cases):
     earlier = []
     for d in stored_checks(runs_root):
         other = os.path.basename(os.path.normpath(d))
-        s = _read_json(os.path.join(d, STORED)) if other < name else None
+        s = br.read_json(os.path.join(d, STORED)) if other < name else None
         if s is not None:
             earlier.append((other, s))
     earlier.sort(key=lambda e: e[0])
@@ -511,20 +526,18 @@ def score(run_dir, runs_root, summary, library, book, cases):
                             casebook.load(book)[0], None if cases is None else caselog.logs(cases))
 
 
-def _plural(n, word):
-    return f"{n} {word}{'' if n == 1 else 's'}"
-
-
 def report_section(summary, error=None):
     """The check report's Diagnosis section (story 57): the numbers, then one line per failure."""
     lines = ['## Diagnosis', '']
     if error:
         return lines + [f'Diagnosis could not run: {error}.']
-    if not summary:
-        return lines + ['None: no play failed or fell back.']
+    if not summary or 'counts' not in summary:
+        open_ = (summary or {}).get('open_cases')
+        lines.append('None: no play failed or fell back' + ('.' if open_ is None else f'; open Case logs: {open_}.'))
+        return lines + ([''] + scoreboard.report_lines(summary['scoreboard']) if (summary or {}).get('scoreboard') else [])
     c = summary['counts']
     open_ = summary.get('open_cases')
-    lines.append(f"{_plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
+    lines.append(f"{br.plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
                  f"{c['unexplained']} unexplained; open Case logs: {'not kept' if open_ is None else open_}.")
     lines.append('')
     for p in summary['plays']:
@@ -539,7 +552,7 @@ def report_section(summary, error=None):
         lines.append('')
         for k in summary['cases']:
             lines.append(f"- Case log `{k['id']}`: {'opened' if k['new'] else 'one more occurrence'} "
-                         f"({_plural(k['occurrences'], 'occurrence')}, {k['status']}).")
+                         f"({br.plural(k['occurrences'], 'occurrence')}, {k['status']}).")
     a = summary.get('agent')
     if a:
         lines += ['', f"The diagnosing agent started: {a['started']}." if a['error'] is None else
@@ -599,7 +612,7 @@ def record(run_dir, folder=casebook.FOLDER):
             texts[i] = f.read()
     add = {}
     for ev_folder in evidence_folders(run_dir):
-        d = _read_json(os.path.join(ev_folder, STORED))
+        d = br.read_json(os.path.join(ev_folder, STORED))
         if not d:
             continue
         meta = evidence.read(ev_folder).meta
@@ -626,7 +639,7 @@ def record(run_dir, folder=casebook.FOLDER):
         if slot['seen'] or slot['ruled_out']:
             _add_to_entry(os.path.join(folder, entries[i]['file']), slot['seen'], slot['ruled_out'])
             out[i] = {'seen': len(slot['seen']), 'ruled_out': len(slot['ruled_out'])}
-    summary = _read_json(os.path.join(run_dir, STORED)) or {}
+    summary = br.read_json(os.path.join(run_dir, STORED)) or {}
     # a Drill-down's marks first (#272): a comeback it reopened is then not reopened again by its fix
     for i, changed in fixing.record_drill(summary.get('drill'), folder).items():
         out.setdefault(i, {'seen': 0, 'ruled_out': 0})['drill'] = changed
@@ -646,15 +659,23 @@ def _say(play):
             for f in play['failures']]
 
 
+def diagnose_again(run_dir, entries=None):
+    """A check diagnosed again by hand (`diagnose`, `fix`): its plays' answers new, the rest of its summary (fixes, the
+    Drill-down's marks, Case logs, scoreboard, ...) kept and written back. The summary."""
+    old = br.read_json(os.path.join(run_dir, STORED)) or {}
+    summary = dict(old, **diagnose_check(run_dir, entries))
+    br.write_json(os.path.join(run_dir, STORED), summary)
+    return summary
+
+
 def fix(run_dir, book=None, tracker=None):
     """`diagnosis.py fix`: the check diagnosed again against the Casebook in `book` (one that has the cause now: a Case
     log written up as an entry) and its fixes made as after the check (fixing.after_check); the rest of the check's
     summary is kept. Returns the fixes."""
     book = casebook.FOLDER if book is None else book
-    old = _read_json(os.path.join(run_dir, STORED)) or {}
-    summary = diagnose_check(run_dir, load_index(book))
-    summary = dict(old, **summary, fixes=fixing.after_check(run_dir, stored_plays(run_dir), book, tracker))
-    _write_json(os.path.join(run_dir, STORED), summary)
+    summary = diagnose_again(run_dir, load_index(book))
+    summary['fixes'] = fixing.after_check(run_dir, stored_plays(run_dir), book, tracker)
+    br.write_json(os.path.join(run_dir, STORED), summary)
     return summary['fixes']
 
 
@@ -679,13 +700,16 @@ def main(argv):
         return 2
     if argv[1] == 'refingerprint':
         root = argv[2] if len(argv) == 3 else os.path.expanduser('~/kaijuflow-notes/brain-runs')
-        changed = refingerprint(root)
-        print(f"{_plural(len(changed), 'stored failure')} fingerprinted again with rules version {load_rules()['version']}")
+        rules = load_rules()
+        changed = refingerprint(root, rules)
+        logs = caselog.refingerprint(caselog.CASES, rules)
+        print(f"{br.plural(len(changed), 'stored failure')} and {br.plural(len(logs), 'Case log')} fingerprinted again with "
+              f"rules version {rules['version']}")
         return 0
     folder = argv[2]
     if argv[1] == 'record':
         for i, n in record(folder).items():
-            print(f"{i}: {_plural(n['seen'], 'occurrence')} added, {_plural(n['ruled_out'], 'ruled-out line')} added"
+            print(f"{i}: {br.plural(n['seen'], 'occurrence')} added, {br.plural(n['ruled_out'], 'ruled-out line')} added"
                   + ''.join(f"; {what}: {', '.join(n[k])}" for k, what in (('drill', 'Drill-down'), ('fixes', 'fixes'))
                             if n.get(k)))
         print('Casebook index written again: commit the entries and the index.')
@@ -694,12 +718,12 @@ def main(argv):
         for line in _say(dict(diagnose_stored(folder), path=folder)):
             print(line)
         return 0
-    summary = diagnose_check(folder)
+    summary = diagnose_again(folder)
     for p, row in zip(evidence_folders(folder), summary['plays']):
         for line in _say(dict(row, path=p)):
             print(line)
     c = summary['counts']
-    print(f"{_plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
+    print(f"{br.plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
           f"{c['unexplained']} unexplained")
     return 0
 

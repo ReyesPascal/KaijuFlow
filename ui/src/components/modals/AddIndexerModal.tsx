@@ -201,7 +201,7 @@ export function AddIndexerModal({
               )}
               {newIndexer.caps && (
                 <p className="text-xs text-green-400/70">
-                  Capabilities discovered: Movie [{newIndexer.caps.movieSearchParams.join(', ')}] TV [{newIndexer.caps.tvSearchParams.join(', ')}]
+                  Capabilities discovered: Movie [{newIndexer.caps.movieSearchParams?.join(', ') ?? 'unknown'}] TV [{newIndexer.caps.tvSearchParams?.join(', ') ?? 'unknown'}]
                 </p>
               )}
               <KaijuSearchWays caps={newIndexer.caps} />

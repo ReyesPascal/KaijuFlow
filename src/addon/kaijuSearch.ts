@@ -4,7 +4,8 @@
  *
  * - **By ID**: with every ID the indexer's caps list for the kind of title (a film: IMDb, TMDB, TVDB; a show: IMDb,
  *   TVDB, TVmaze), one query per ID. An indexer whose caps are unknown (never fetched) is asked by IMDb, the ID every
- *   Newznab indexer has answered by default.
+ *   Newznab indexer has answered by default; one whose caps list no ID for the kind is asked by name only (caps marked
+ *   read, `src/config/capsMigration.ts`: an empty list saved before then meant unknown, so it is still asked by IMDb).
  * - **By name**: the title's name and its other names (the searchers' name queries, packs and fallbacks).
  *
  * There is no setting: the per-indexer search methods were removed (an old config loses them,
@@ -13,6 +14,7 @@
 
 import type { IndexerCaps } from '../types.js';
 import { indexerContentKey } from './dedup.js';
+import { asRead } from '../config/capsMigration.js';
 
 /** A way of asking an indexer: by one of its IDs, or by name (`text`, the searchers' own word for it). */
 export type SearchWay = 'imdb' | 'tmdb' | 'tvdb' | 'tvmaze' | 'text';
@@ -24,10 +26,12 @@ const ID_PARAMS: Record<'movie' | 'tv', [string, SearchWay][]> = {
   tv: [['imdbid', 'imdb'], ['tvdbid', 'tvdb'], ['tvmazeid', 'tvmaze']],
 };
 
-/** The ID ways an indexer is asked for a kind of title, from its caps (IMDb when its caps are unknown). */
-export function idWaysOf(kind: 'movie' | 'tv', caps: IndexerCaps | undefined): SearchWay[] {
+/** The ID ways an indexer is asked for a kind of title, from its caps: IMDb when its caps are unknown (never fetched);
+ *  none when they were fetched and list no ID for the kind (`available="no"`): it said it cannot search by ID. */
+export function idWaysOf(kind: 'movie' | 'tv', saved: IndexerCaps | undefined): SearchWay[] {
+  const caps = asRead(saved); // caps saved before they were marked read: an empty list meant unknown
   const params = (kind === 'movie' ? caps?.movieSearchParams : caps?.tvSearchParams)?.map(p => p.toLowerCase());
-  if (!params || params.length === 0) return ['imdb'];
+  if (!params) return ['imdb'];
   return ID_PARAMS[kind].filter(([param]) => params.includes(param)).map(([, way]) => way);
 }
 

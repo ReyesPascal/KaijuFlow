@@ -6,8 +6,8 @@ step: nzb_fetch
 whose: KaijuFlow
 status: fixed awaiting proof
 match:
-  - rules: 1
-    sign: "slow play | nzb_fetch not ok | *"
+  - rules: 2
+    sign: "slow play | first_byte ok | *most time in nzb_fetch*"
   - rules: 1
     sign: "fallback | nzb_fetch not ok | *"
 confirm:
@@ -54,3 +54,5 @@ Nothing tested and rejected yet.
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft B2).
+- 2026-11-24: its slow-play sign names the last step line, `first_byte ok` (was `slow play | nzb_fetch not ok | *`, which no fingerprint gives: a slow play's video came, so its last step line is `first_byte`; where the time went is the confirming test's to tell; review of #279).
+- 2026-11-24: its slow-play sign is `slow play | first_byte ok | *most time in nzb_fetch*` (rules 2): the step of the played Source that took the most time, `nzb_fetch`, as rules 2's fingerprint gives it (review of #279, round 2).

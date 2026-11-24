@@ -5,8 +5,8 @@
  * NZBHydra aggregates internally — we send one request with optional
  * indexer name filters and get back standard Newznab RSS XML.
  *
- * Groups enabled synced indexers by their preferred search method,
- * makes one NZBHydra API call per unique method, and merges results.
+ * Kaiju Search (GLOSSARY, #285): groups enabled synced indexers by each way they are asked (the IDs their
+ * capabilities list, and by name), makes one NZBHydra API call per way, and merges results.
  */
 
 import { nameKeeps } from '../parsers/searchFlow.js';
@@ -124,7 +124,7 @@ export class NzbhydraSearcher {
     if (allResults.length === 0 && additionalTitles?.length && !this.timedOut && !skipSequentialAlt) {
       const allNames = allTextNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alt-title retry`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alt-title retry`);
       }
       if (allNames.length > 0) {
         for (const altTitle of additionalTitles) {
@@ -141,7 +141,7 @@ export class NzbhydraSearcher {
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.aliasTitleFallback !== false && searchAliases?.length) {
       const allNames = allTextNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alias-title fallback`);
       }
       if (allNames.length > 0) {
         const aliasPromises = searchAliases.map((alias) => {
@@ -259,7 +259,7 @@ export class NzbhydraSearcher {
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true && !!additionalTitles?.length;
     const animeFanoutEnabled = !!isAnime && !!additionalTitles?.length && !parallelAltEnabled;
     const includeMultiSeasonPacks = config.searchConfig?.includeMultiSeasonPacks ?? true;
-    // Mirrors the gates inside runTitleSearchTV: SxxExx text query needs a text-method indexer,
+    // Mirrors the gates inside runTitleSearchTV: SxxExx text query needs an indexer asked by name,
     // pack work needs at least one pack feature enabled (and episodesInSeason for season packs).
     const hasAnyTextWork = textMethodNames.length > 0
       || (packIndexerNames.length > 0 && (
@@ -267,7 +267,7 @@ export class NzbhydraSearcher {
         || (!!config.searchConfig?.includeSeasonPacks && !!episodesInSeason)
       ));
 
-    // epIndexerNames = text-method only (canonical SxxExx text query);
+    // epIndexerNames = asked by name only (canonical SxxExx text query);
     // packIndexerNames = text + ID-method (pack queries are text-by-nature
     // regardless of an indexer's primary method).
     const canonicalTextPromise = hasAnyTextWork && title
@@ -317,10 +317,10 @@ export class NzbhydraSearcher {
     }
 
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.absoluteEpisodeFallback !== false) {
-      // Absolute-episode is a text-shaped query; restrict to text-method indexers (mirrors movie-path alias fallback).
+      // Absolute-episode is a text-shaped query; restrict to indexers asked by name (mirrors movie-path alias fallback).
       const allNames = textMethodNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping absolute-episode fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping absolute-episode fallback`);
       }
       if (allNames.length > 0) {
         const titlesToRetry = (parallelAltEnabled || animeFanoutEnabled) && additionalTitles?.length
@@ -333,10 +333,10 @@ export class NzbhydraSearcher {
     }
 
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.aliasTitleFallback !== false && searchAliases?.length) {
-      // Alias query is text-shaped; restrict to text-method indexers.
+      // Alias query is text-shaped; restrict to indexers asked by name.
       const allNames = textMethodNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alias-title fallback`);
       }
       if (allNames.length > 0) {
         const useDateScheme = typeof episodeAired === 'string' && /^\d{4}-\d{2}-\d{2}/.test(episodeAired);

@@ -1,6 +1,6 @@
 {
  "about": "The masking rules of Diagnosis's fingerprint (#283, spec #279; tools/brain/docs/formats.md, 'Fingerprint'). Raise version on any change: every stored failure is then fingerprinted again (diagnosis.py refingerprint), and every occurrence records the version it was matched with.",
- "version": 1,
+ "version": 2,
  "never_a_sign": {
   "about": "What differs between occurrences of one cause, so it is never part of a fingerprint: each value the evidence names is replaced by its placeholder before the masks run, longest first.",
   "title": "<title>",

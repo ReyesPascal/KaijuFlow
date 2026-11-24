@@ -25,6 +25,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import brainreport as br  # noqa: E402
 import casebook  # noqa: E402
 import clues  # noqa: E402
 import diagnosis  # noqa: E402
@@ -60,7 +61,7 @@ def earlier(runs_root, vid):
                 meta = evidence.read(folder).meta
             except (OSError, ValueError, evidence.FormatUnknown):
                 continue
-            said = diagnosis._read_json(os.path.join(folder, diagnosis.STORED))
+            said = br.read_json(os.path.join(folder, diagnosis.STORED))
             title = meta.get('title') or []
             if said is not None and len(title) > 1 and title[1] == vid:
                 out.append({'evidence': os.path.relpath(folder, runs_root), 'meta': meta, 'diagnosis': said,
@@ -135,7 +136,7 @@ def mark(run_dir, suspected, book=None, library=None):
     folder = folders[0]
     ev = evidence.read(folder)
     rel = os.path.relpath(folder, run_dir)
-    said = (diagnosis._read_json(os.path.join(folder, diagnosis.STORED)) or {}).get('failures') or []
+    said = (br.read_json(os.path.join(folder, diagnosis.STORED)) or {}).get('failures') or []
     out.update(evidence=rel, date=(ev.meta.get('t_start') or '')[:10], label=ev.meta.get('label'))
     entries, _ = casebook.load(book)
     index = {e['id']: e for e in diagnosis.load_index(book)}
@@ -176,9 +177,9 @@ def mark(run_dir, suspected, book=None, library=None):
 
 def _keep(run_dir, out):
     path = os.path.join(run_dir, diagnosis.STORED)
-    summary = diagnosis._read_json(path) or {}
+    summary = br.read_json(path) or {}
     summary['drill'] = out
-    diagnosis._write_json(path, summary)
+    br.write_json(path, summary)
     return out
 
 

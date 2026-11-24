@@ -7,7 +7,9 @@ every Clue in the library run once on the failure); then the diagnosing agent wo
 (tools/brain/docs/diagnosing-agent.md), every claim it writes checked against the evidence it quotes. A Clue already
 run on an occurrence is never run on it again. Formats: tools/brain/docs/formats.md, "Case log".
 """
+import contextlib
 import datetime
+import fcntl
 import hashlib
 import json
 import os
@@ -52,6 +54,19 @@ def load(case_dir):
     if log.get('format') != FORMAT:
         raise Refused(f"{case_dir}: Case log format {log.get('format')!r}, this reader knows {FORMAT}")
     return log
+
+
+@contextlib.contextmanager
+def locked(case_dir):
+    """One writer of a Case log at a time (two agents, or a check joining it while an agent works it): every load,
+    change and save of a log runs inside its lock, so no write is lost."""
+    os.makedirs(case_dir, exist_ok=True)
+    with open(os.path.join(case_dir, '.lock'), 'w') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def save(case_dir, log):
@@ -120,23 +135,15 @@ def _runs_root(folder):
     return os.path.dirname(run_dir), run_dir
 
 
-def _read_json(path):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
-
-
 def last_good_check(folder):
     """The name and meta.json of the last quick check under the runs root that passed before this play's check."""
     root, run_dir = _runs_root(folder)
-    mine = _read_json(os.path.join(run_dir, 'meta.json')) or {}
-    since = mine.get('started') or (_read_json(os.path.join(folder, 'evidence.json')) or {}).get('t_start') or ''
+    mine = br.read_json(os.path.join(run_dir, 'meta.json')) or {}
+    since = mine.get('started') or (br.read_json(os.path.join(folder, 'evidence.json')) or {}).get('t_start') or ''
     for name in reversed(br.run_folders(root)):
         if name == os.path.basename(run_dir):
             continue
-        meta = _read_json(os.path.join(root, name, 'meta.json')) or {}
+        meta = br.read_json(os.path.join(root, name, 'meta.json')) or {}
         if meta.get('kind') == 'quick check' and meta.get('verdict') == 'pass' and (meta.get('started') or '') < since:
             return name, meta
     return None, None
@@ -194,8 +201,8 @@ def changed_observation(ev):
         theirs('meta.json', 'image', good_am)
     else:
         said.append(f'the same AltMount ({am})')
-    now = _flat(_read_json(os.path.join(ev.folder, 'settings.json')))
-    then = _flat(_read_json(os.path.join(_runs_root(ev.folder)[0], name, 'settings.json')))
+    now = _flat(br.read_json(os.path.join(ev.folder, 'settings.json')))
+    then = _flat(br.read_json(os.path.join(_runs_root(ev.folder)[0], name, 'settings.json')))
     if not now or not then:
         said.append('the settings are not recorded in both')
     else:
@@ -261,8 +268,9 @@ def _failure_of(ev, occ):
     raise Refused(f"the evidence folder of occurrence {occ['n']} has no failure for {occ['release'] or 'the play'}")
 
 
-def _new_log(failure, cid, when):
-    return {'format': FORMAT, 'id': cid, 'fingerprint': failure['fingerprint'], 'kind': failure['kind'],
+def _new_log(failure, cid, when, rules):
+    return {'format': FORMAT, 'id': cid, 'fingerprint': failure['fingerprint'], 'rules': rules, 'earlier': [],
+            'kind': failure['kind'],
             'where': failure['where'], 'reason': failure['reason'], 'status': OPEN, 'opened': when,
             'occurrences': [], 'observations': [], 'hypotheses': [], 'clue_runs': [], 'attempts': [], 'research': [],
             'tickets': [], 'asks': [], 'conclusion': None, 'entry': None}
@@ -275,36 +283,70 @@ def _note(log, kind, item, by, t=None):
     return item
 
 
-def open_or_join(cases, folder, ev, failure, diagnosed, library=None):
-    """Opens the Case log of one unproved failure, or adds this occurrence to the one with its fingerprint, and writes
-    the code's attempt for it. Returns (id, whether the log is new, whether the occurrence is new)."""
-    cid = case_id(failure)
-    case_dir = os.path.join(cases, cid)
-    new = not os.path.exists(os.path.join(case_dir, CASE))
-    t = _now()
-    log = _new_log(failure, cid, t) if new else load(case_dir)
-    where = os.path.relpath(folder, case_dir)
-    if any(os.path.normpath(os.path.join(case_dir, o['evidence'])) == os.path.normpath(folder) and
-           o['release'] == failure['release'] for o in log['occurrences']):
-        return cid, False, False
+def _how(ev, log):
+    """`repeat` for the evidence folder of a play repeated at will (a Drill-down's, #272) that joins a log already
+    seen; else `check` (a Drill-down that opens a log is its first sighting: it repeated nothing yet)."""
+    import drill  # noqa: PLC0415  (drill imports diagnosis, which imports this module)
+    return 'repeat' if ev.meta.get('kind') == drill.KIND and log['occurrences'] else 'check'
+
+
+def _join(log, case_dir, folder, ev, failure, rules, library=None, diagnosed=None, how=None):
+    """Adds one occurrence (the evidence folder's failure) to the log and writes the code's attempt for it: its path,
+    what changed since the last good check and the leads Diagnosis tried (`diagnosed`), the library run once. With a
+    conclusion, its recipe runs on the new occurrence and the status follows. `how` defaults to what the evidence
+    folder's check was (_how). The line it says."""
     meta = ev.meta
     n = len(log['occurrences']) + 1
-    log['occurrences'].append({'n': n, 'evidence': where, 'check': meta.get('check'), 'label': meta.get('label'),
-                               'release': failure['release'], 'date': (meta.get('t_start') or '')[:10],
-                               'rules': diagnosed.get('rules'), 'how': 'check'})
-    for obs in (path_observation(ev, failure), changed_observation(ev)):
+    how = how or _how(ev, log)
+    log['occurrences'].append({'n': n, 'evidence': os.path.relpath(folder, case_dir), 'check': meta.get('check'),
+                               'label': meta.get('label'), 'release': failure['release'],
+                               'date': (meta.get('t_start') or '')[:10], 'rules': rules, 'how': how})
+    t = _now()
+    for obs in (path_observation(ev, failure),) + ((changed_observation(ev),) if diagnosed is not None else ()):
         for q in obs['quotes']:
             q['occurrence'] = n
         _note(log, 'observations', {'occurrence': n, **obs}, 'code', t)
-    for lead in diagnosed.get('leads') or []:
+    for lead in (diagnosed or {}).get('leads') or []:
         _note(log, 'observations', {'occurrence': n, 'says': _lead_text(lead),
                                     'quotes': [{'occurrence': n, 'clue': c['clue'], 'text': c['facts'][0]}
                                                for c in lead.get('clues') or [] if c.get('facts')]}, 'code', t)
     names = sorted(clues.CLUES if library is None else library)
-    done = [c for lead in diagnosed.get('leads') or [] for c in lead.get('clues') or []]
+    done = [c for lead in (diagnosed or {}).get('leads') or [] for c in lead.get('clues') or []]
     ran, skipped = run_clues(log, case_dir, n, names, library, 'code', done)
     _note(log, 'attempts', {'occurrence': n, 'ran': ran, 'skipped': skipped, 'next': None}, 'code', t)
-    save(case_dir, log)
+    line = f'occurrence {n} added ({how})'
+    c = log['conclusion']
+    if c:
+        c['passed_on'], against = _recipe_passes(log, case_dir, c['recipe'], library)
+        if against:  # the new occurrence says the concluded cause was not it: the case is open again
+            c['against'] = [{'occurrence': k, 'why': why} for k, why in against]
+            log['status'] = OPEN
+            line += f'; the recipe says no on it ({against[0][1]}): open again'
+        else:
+            c['result'] = log['status'] = _result(log, c['passed_on'])
+            line += f"; now {c['result']}"
+    return line
+
+
+def _occurrence_of(log, case_dir, folder, release=None, any_release=True):
+    return next((o for o in log['occurrences'] if evidence_folder(case_dir, o) == os.path.normpath(folder)
+                 and (any_release or o['release'] == release)), None)
+
+
+def open_or_join(cases, folder, ev, failure, diagnosed, library=None):
+    """Opens the Case log of one unproved failure, or adds this occurrence to the one with its fingerprint (as a
+    `repeat` when a Drill-down played it again), and writes the code's attempt for it. Returns (id, whether the log is
+    new, whether the occurrence is new)."""
+    cid = next((i for i, log in logs(cases).items() if log['fingerprint'] == failure['fingerprint']), None) \
+        or case_id(failure)  # a log fingerprinted again under new rules keeps its first id
+    case_dir = os.path.join(cases, cid)
+    with locked(case_dir):
+        new = not os.path.exists(os.path.join(case_dir, CASE))
+        log = _new_log(failure, cid, _now(), diagnosed.get('rules')) if new else load(case_dir)
+        if _occurrence_of(log, case_dir, folder, failure['release'], any_release=False):
+            return cid, False, False
+        _join(log, case_dir, folder, ev, failure, diagnosed.get('rules'), library, diagnosed)
+        save(case_dir, log)
     return cid, new, True
 
 
@@ -324,6 +366,44 @@ def logs(cases):
     return {n: load(os.path.join(cases, n)) for n in names if os.path.exists(os.path.join(cases, n, CASE))}
 
 
+def _rules_of(log):
+    return log.get('rules') or (log['occurrences'][0]['rules'] if log['occurrences'] else None)
+
+
+def _refingerprint_log(case_dir, log, rules):
+    """Fingerprints one Case log again with `rules`, from the first of its occurrences whose evidence folder can be read
+    (one may be archived, or in an older evidence format); the old fingerprint goes into `earlier`. Whether it could."""
+    import diagnosis  # noqa: PLC0415
+    for occ in log['occurrences']:
+        try:
+            ev = evidence.read(evidence_folder(case_dir, occ))
+        except (OSError, ValueError, evidence.FormatUnknown):
+            continue
+        f = next((f for f in diagnosis.failures(ev) if f['release'] == occ['release']), None)
+        if f is None:
+            continue
+        log.setdefault('earlier', []).append({'rules': _rules_of(log), 'fingerprint': log['fingerprint']})
+        log['fingerprint'], log['rules'] = diagnosis.fingerprint(f, ev, rules), rules['version']
+        return True
+    return False
+
+
+def refingerprint(cases, rules):
+    """Fingerprints again every Case log made with another masking version (story 25), so the same failure under the
+    new rules joins it (_refingerprint_log). Returns the ids it changed; a log none of whose evidence folders can be
+    read keeps its fingerprint."""
+    changed = []
+    for cid in logs(cases):
+        d = os.path.join(cases, cid)
+        with locked(d):
+            log = load(d)
+            if _rules_of(log) == rules['version'] or not _refingerprint_log(d, log, rules):
+                continue
+            save(d, log)
+            changed.append(cid)
+    return changed
+
+
 def count_open(cases):
     return sum(1 for log in logs(cases).values() if not log.get('entry'))
 
@@ -340,6 +420,11 @@ def case_dir_of(cases, cid):
 def run_command(cases, cid, names, occurrence=None, library=None):
     """`case run`: the named Clues on every occurrence (or one), each only where it has not run; the lines it says."""
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _run_command(d, cid, names, occurrence, library)
+
+
+def _run_command(d, cid, names, occurrence, library):
     log = load(d)
     occs = [o for o in log['occurrences'] if occurrence is None or o['n'] == occurrence]
     if not occs:
@@ -426,6 +511,11 @@ def add(cases, cid, write):
     """`case add`: one write of the agent's into the Case log, refused (and nothing written) unless it holds. Returns
     the line it says."""
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _add(d, cid, write)
+
+
+def _add(d, cid, write):
     log = load(d)
     kind = write.get('write') if isinstance(write, dict) else None
     if kind not in WRITES:
@@ -554,42 +644,28 @@ def conclude(log, case_dir, write, library=None):
 def repeat(cases, cid, folder, library=None):
     """`case repeat`: the evidence folder of a Drill-down or a replay that repeated the failure at will, added as an
     occurrence; with a conclusion, its recipe runs on it and the status follows."""
-    import diagnosis  # noqa: PLC0415
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _repeat(d, cid, folder, library)
+
+
+def _repeat(d, cid, folder, library):
+    import diagnosis  # noqa: PLC0415
     log = load(d)
     folder = os.path.normpath(os.path.abspath(folder))
-    if any(evidence_folder(d, o) == folder for o in log['occurrences']):
-        n = next(o['n'] for o in log['occurrences'] if evidence_folder(d, o) == folder)
-        raise Refused(f'that evidence folder is occurrence {n} already')
+    had = _occurrence_of(log, d, folder)
+    if had:
+        raise Refused(f"that evidence folder is occurrence {had['n']} already ({had['how']})")
     ev = evidence.read(folder)
     rules = diagnosis.load_rules()
+    if _rules_of(log) != rules['version']:  # new masking rules since the log was made: its fingerprint first (story 25)
+        _refingerprint_log(d, log, rules)
     found = [dict(f, fingerprint=diagnosis.fingerprint(f, ev, rules)) for f in diagnosis.failures(ev)]
     mine = next((f for f in found if f['fingerprint'] == log['fingerprint']), None)
     if mine is None:
         raise Refused("no failure in that evidence folder has this Case log's fingerprint: "
                       + '; '.join(f['fingerprint'] for f in found))
-    meta = ev.meta
-    n = len(log['occurrences']) + 1
-    log['occurrences'].append({'n': n, 'evidence': os.path.relpath(folder, d), 'check': meta.get('check'),
-                               'label': meta.get('label'), 'release': mine['release'],
-                               'date': (meta.get('t_start') or '')[:10], 'rules': rules['version'], 'how': 'repeat'})
-    obs = path_observation(ev, mine)
-    for q in obs['quotes']:
-        q['occurrence'] = n
-    _note(log, 'observations', {'occurrence': n, **obs}, 'code')
-    ran, skipped = run_clues(log, d, n, sorted(clues.CLUES if library is None else library), library, 'code')
-    _note(log, 'attempts', {'occurrence': n, 'ran': ran, 'skipped': skipped, 'next': None}, 'code')
-    line = f'occurrence {n} added (repeat)'
-    c = log['conclusion']
-    if c:
-        c['passed_on'], against = _recipe_passes(log, d, c['recipe'], library)
-        if against:  # the repeat says the concluded cause was not it: the case is open again
-            c['against'] = [{'occurrence': n, 'why': why} for n, why in against]
-            log['status'] = OPEN
-            line += f'; the recipe says no on it ({against[0][1]}): open again'
-        else:
-            c['result'] = log['status'] = _result(log, c['passed_on'])
-            line += f"; now {c['result']}"
+    line = _join(log, d, folder, ev, mine, rules['version'], library, how='repeat')
     save(d, log)
     return f'{cid}: {line}'
 
@@ -662,6 +738,12 @@ def write_entry(cases, cid, entry_id, folder=None):
     import casebook  # noqa: PLC0415
     folder = casebook.FOLDER if folder is None else folder
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _write_entry(d, cid, entry_id, folder)
+
+
+def _write_entry(d, cid, entry_id, folder):
+    import casebook  # noqa: PLC0415
     log = load(d)
     if not log.get('conclusion'):
         raise Refused(f"{cid} is not concluded yet ({log['status']})")
@@ -744,6 +826,7 @@ def main(argv):
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the agent works in the repo
 ROUTINE = 'tools/brain/docs/diagnosing-agent.md'
+TOOK_MS = '20000'  # how long a started agent has to take its prompt (herdr agent wait --timeout)
 
 
 def prompt(cases, ids, run_dir):
@@ -766,9 +849,6 @@ def start_agent(cases, ids, run_dir, run=subprocess.run, popen=subprocess.Popen,
     if env.get('HERDR_ENV') == '1':
         def herdr(*args):
             r = run(['herdr', *args], capture_output=True, text=True, timeout=60, check=False)
-            if r.returncode != 0 and 'agent_prompt_stalled' in (r.stdout or '') + (r.stderr or ''):
-                run(['herdr', 'agent', 'send-keys', name, 'enter'], capture_output=True, text=True, timeout=60, check=False)
-                return {}  # the prompt sat in the input box: Enter sends it (as kf-next does)
             if r.returncode != 0:
                 raise OSError(f"herdr {' '.join(args[:2])} failed: {(r.stderr or r.stdout or '').strip()[:200]}")
             return _json(r)
@@ -784,7 +864,17 @@ def start_agent(cases, ids, run_dir, run=subprocess.run, popen=subprocess.Popen,
             raise OSError('herdr has no pane in the agents tab')
         new = herdr('pane', 'split', pane, '--direction', 'down', '--cwd', cwd)['pane']['pane_id']
         herdr('agent', 'start', name, '--kind', 'claude', '--pane', new, '--', '--dangerously-skip-permissions')
-        herdr('agent', 'prompt', name, text, '--wait', '--timeout', '20000')
+        herdr('agent', 'prompt', name, text)  # no --wait: that waits out the agent's whole turn
+
+        def took():  # the agent took the prompt: it is working on it (or asks, or is done already)
+            r = run(['herdr', 'agent', 'wait', name, '--until', 'working', '--until', 'blocked', '--until', 'done',
+                     '--timeout', TOOK_MS], capture_output=True, text=True, timeout=60, check=False)
+            return r.returncode == 0
+        if not took():  # the prompt sat in the input box: Enter sends it (as kf-next does)
+            herdr('agent', 'send-keys', name, 'enter')
+            if not took():
+                raise OSError(f'herdr agent {name} did not take the prompt (not working {int(TOOK_MS) // 1000} s after '
+                              'it, nor after Enter)')
         return f'herdr agent {name} in pane {new}'
     os.makedirs(cases, exist_ok=True)
     out = os.path.join(cases, name + '.log')
