@@ -421,7 +421,7 @@ try {
     assert.equal(prowlarr.json?.indexers?.[0]?.id,'23');
     assert.equal(prowlarr.json?.indexers?.[0]?.enabledForSearch,false);
     assert.equal('movieSearchMethod' in (prowlarr.json?.indexers?.[0] ?? {}),false); // no search method (#285)
-    assert.deepEqual(prowlarr.json?.indexers?.[0]?.capabilities,{movieSearchParams:['imdbid','q'],tvSearchParams:['tvdbid','q']});
+    assert.deepEqual(prowlarr.json?.indexers?.[0]?.capabilities,{version:2,movieSearchParams:['imdbid','q'],tvSearchParams:['tvdbid','q']}); // read caps carry CAPS_VERSION (#285, review of #279)
     assert.equal((await request(s.port,'/api/synced-indexers/23',
       jsonReq('PUT',{enabledForSearch:true,id:'override'},jwt))).json?.id,'23');
     const hydra=await request(s.port,'/api/nzbhydra/sync',
