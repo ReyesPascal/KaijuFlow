@@ -14,6 +14,7 @@ import { ProwlarrSearcher } from '../searchers/prowlarrSearcher.js';
 import { NzbhydraSearcher } from '../searchers/nzbhydraSearcher.js';
 import { EasynewsSearcher } from '../searchers/easynewsSearcher.js';
 import { UsenetIndexer } from '../types.js';
+import { waysOf, foundBy, mergeFound } from './kaijuSearch.js';
 
 // When SEARCH_TIMEOUT env is set, force it onto every Newznab indexer for this search cycle.
 // Returns the original reference when no override is active — no allocation cost in the common path.
@@ -57,6 +58,7 @@ export interface SearchContext {
  * Search via the configured index manager (Prowlarr, NZBHydra, or Newznab).
  */
 export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
+  const kind = ctx.type === 'movie' ? 'movie' as const : 'tv' as const;
   const { type, imdbId, title, year, country, season, episode, episodesInSeason, priorSeasonsEpisodeCount, absoluteEpisodeNumber, tvdbPriorSeasonsCount, additionalTitles, isAnime, titleYear, searchAliases, episodeAired, animeResolvedIds, tvdbIdFromRequest } = ctx;
 
   if (config.indexManager === 'prowlarr' && config.prowlarrUrl && config.prowlarrApiKey) {
@@ -67,31 +69,14 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
       return [];
     }
 
-    // Per-indexer anime method swap: when anime detected, use anime-specific methods
-    let searchIndexers = enabledSynced;
-    if (isAnime) {
-      console.log(`🎌 Anime detected — using per-indexer anime search methods`);
-      searchIndexers = enabledSynced.map(i => ({
-        ...i,
-        movieSearchMethod: i.animeMovieSearchMethod ?? ['text'],
-        tvSearchMethod: i.animeTvSearchMethod ?? ['text'],
-      }));
-    }
-
-    // Collect unique search methods needed
+    // Kaiju Search (#285): every synced indexer is asked by the IDs its capabilities list, and by name.
+    const searchIndexers = enabledSynced;
     const neededMethods = new Set<string>();
-    for (const indexer of searchIndexers) {
-      const methods = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      const methodArr = Array.isArray(methods) ? methods : [methods];
-      for (const m of methodArr) neededMethods.add(m);
-    }
+    for (const indexer of searchIndexers) for (const m of waysOf(kind, indexer.capabilities)) neededMethods.add(m);
     console.log('');
     console.log('═══ Search Setup ' + '═'.repeat(46));
-    console.log(`📋 Prowlarr search methods: ${[...neededMethods].join(', ')} across ${searchIndexers.length} indexer(s)`);
-    for (const indexer of searchIndexers) {
-      const m = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      console.log(`   ${indexer.name}: ${(Array.isArray(m) ? m : [m]).join(', ')}`);
-    }
+    console.log(`📋 Kaiju Search (Prowlarr): ${[...neededMethods].join(', ')} across ${searchIndexers.length} indexer(s)`);
+    for (const indexer of searchIndexers) console.log(`   ${indexer.name}: ${waysOf(kind, indexer.capabilities).join(', ')}`);
 
     // Resolve external IDs needed by indexers — seed from anime database if available
     const resolvedIds = new Map<string, { idParam: string; idValue: string } | null>();
@@ -126,6 +111,7 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
         return [];
       });
       flushBuffer(lines, 'Prowlarr');
+      const merged = mergeFound(results);
 
       const responseTime = Date.now() - startTime;
       const indexerCounts = new Map<string, number>();
@@ -135,7 +121,7 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
       for (const [name, count] of indexerCounts) {
         trackQuery(name, true, responseTime, count);
       }
-      return results;
+      return merged;
     } catch (error) {
       const responseTime = Date.now() - startTime;
       trackQuery('Prowlarr', false, responseTime, 0, error instanceof Error ? error.message : 'Unknown error');
@@ -151,30 +137,14 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
       return [];
     }
 
-    // Per-indexer anime method swap
-    let searchIndexers = enabledSynced;
-    if (isAnime) {
-      console.log(`🎌 Anime detected — using per-indexer anime search methods`);
-      searchIndexers = enabledSynced.map(i => ({
-        ...i,
-        movieSearchMethod: i.animeMovieSearchMethod ?? ['text'],
-        tvSearchMethod: i.animeTvSearchMethod ?? ['text'],
-      }));
-    }
-
+    // Kaiju Search (#285): every synced indexer is asked by the IDs its capabilities list, and by name.
+    const searchIndexers = enabledSynced;
     const neededMethods = new Set<string>();
-    for (const indexer of searchIndexers) {
-      const methods = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      const methodArr = Array.isArray(methods) ? methods : [methods];
-      for (const m of methodArr) neededMethods.add(m);
-    }
+    for (const indexer of searchIndexers) for (const m of waysOf(kind, indexer.capabilities)) neededMethods.add(m);
     console.log('');
     console.log('═══ Search Setup ' + '═'.repeat(46));
-    console.log(`📋 NZBHydra search methods: ${[...neededMethods].join(', ')} across ${searchIndexers.length} indexer(s)`);
-    for (const indexer of searchIndexers) {
-      const m = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      console.log(`   ${indexer.name}: ${(Array.isArray(m) ? m : [m]).join(', ')}`);
-    }
+    console.log(`📋 Kaiju Search (NZBHydra): ${[...neededMethods].join(', ')} across ${searchIndexers.length} indexer(s)`);
+    for (const indexer of searchIndexers) console.log(`   ${indexer.name}: ${waysOf(kind, indexer.capabilities).join(', ')}`);
 
     // Resolve external IDs needed by indexers — seed from anime database if available
     const resolvedIds = new Map<string, { idParam: string; idValue: string } | null>();
@@ -210,6 +180,7 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
         return [];
       });
       flushBuffer(lines, 'NZBHydra');
+      const merged = mergeFound(results);
 
       const responseTime = Date.now() - startTime;
       const indexerCounts = new Map<string, number>();
@@ -219,7 +190,7 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
       for (const [name, count] of indexerCounts) {
         trackQuery(name, true, responseTime, count);
       }
-      return results;
+      return merged;
     } catch (error) {
       const responseTime = Date.now() - startTime;
       trackQuery('NZBHydra', false, responseTime, 0, error instanceof Error ? error.message : 'Unknown error');
@@ -230,41 +201,18 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
   } else {
     // === NEWZNAB MODE ===
     const enabledIndexers = config.indexers.filter(i => i.enabled);
+    const effectiveIndexers = enabledIndexers;
+    // Kaiju Search (#285): every indexer is asked by name, so each is a target of the name retries below.
+    const isTextCapable = (_i: typeof effectiveIndexers[number]): boolean => true;
+    const waysFor = (i: typeof effectiveIndexers[number]) => waysOf(kind, i.caps);
 
-    // Per-indexer anime method swap
-    const effectiveIndexers = isAnime
-      ? enabledIndexers.map(i => ({
-          ...i,
-          movieSearchMethod: i.animeMovieSearchMethod ?? ['text'] as ('imdb' | 'tmdb' | 'tvdb' | 'text')[],
-          tvSearchMethod: i.animeTvSearchMethod ?? ['text'] as ('imdb' | 'tvdb' | 'tvmaze' | 'text')[],
-        }))
-      : enabledIndexers;
-    if (isAnime) console.log(`🎌 Anime detected — using per-indexer anime search methods`);
-
-    // Indexer is text-capable when its configured method (post-anime-swap) for the current type includes 'text'.
-    const isTextCapable = (i: typeof effectiveIndexers[number]): boolean => {
-      const m = type === 'movie' ? (i.movieSearchMethod || ['imdb']) : (i.tvSearchMethod || ['imdb']);
-      return (Array.isArray(m) ? m : [m]).includes('text');
-    };
-
-    // Collect unique search methods needed across all enabled indexers
+    // The ways needed across all enabled indexers: the IDs their caps list, and by name.
     const neededMethods = new Set<string>();
-    for (const indexer of effectiveIndexers) {
-      const methods = type === 'movie'
-        ? (indexer.movieSearchMethod || ['imdb'])
-        : (indexer.tvSearchMethod || ['imdb']);
-      const methodArr = Array.isArray(methods) ? methods : [methods];
-      for (const m of methodArr) neededMethods.add(m);
-    }
+    for (const indexer of effectiveIndexers) for (const m of waysFor(indexer)) neededMethods.add(m);
     console.log('');
     console.log('═══ Search Setup ' + '═'.repeat(46));
-    console.log(`📋 Newznab search methods: ${[...neededMethods].join(', ')} across ${effectiveIndexers.length} indexer(s)`);
-    for (const indexer of effectiveIndexers) {
-      const m = type === 'movie'
-        ? (indexer.movieSearchMethod || ['imdb'])
-        : (indexer.tvSearchMethod || ['imdb']);
-      console.log(`   ${indexer.name}: ${(Array.isArray(m) ? m : [m]).join(', ')}`);
-    }
+    console.log(`📋 Kaiju Search (Newznab): ${[...neededMethods].join(', ')} across ${effectiveIndexers.length} indexer(s)`);
+    for (const indexer of effectiveIndexers) console.log(`   ${indexer.name}: ${waysFor(indexer).join(', ')}`);
     if (isAnime && neededMethods.has('text') && additionalTitles?.length) {
       console.log(`🎌 Anime dual-title search: "${title}" + ${additionalTitles.map(t => `"${t}"`).join(', ')}`);
     }
@@ -311,10 +259,7 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
     const searchPromises = effectiveIndexers
       .map(async (indexer) => {
         const startTime = Date.now();
-        const methods = type === 'movie'
-          ? (indexer.movieSearchMethod || ['imdb'])
-          : (indexer.tvSearchMethod || ['imdb']);
-        const methodArr = Array.isArray(methods) ? methods : [methods];
+        const methodArr = waysFor(indexer);
 
         const searcher = new UsenetSearcher(applySearchTimeoutOverride(indexer));
 
@@ -327,10 +272,11 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
                 ? resolvedIds.get(method) ?? null
                 : null;
 
+              const way = method === 'text' ? 'name' : 'id';
               if (type === 'movie') {
-                tasks.push(withSubBuffer(`movie ${method} search`, () => searcher.searchMovie(imdbId, title, year, country, externalId || undefined, method, additionalTitles, titleYear)));
+                tasks.push(withSubBuffer(`movie ${method} search`, () => searcher.searchMovie(imdbId, title, year, country, externalId || undefined, method, additionalTitles, titleYear)).then(r => foundBy(r, way)));
               } else if (type === 'series' && season !== undefined && episode !== undefined) {
-                tasks.push(withSubBuffer(`TV ${method} search S${season}E${episode}`, () => searcher.searchTVShow(imdbId, title, season, episode, episodesInSeason, year, country, externalId || undefined, method, additionalTitles, titleYear, { includePacks: false })));
+                tasks.push(withSubBuffer(`TV ${method} search S${season}E${episode}`, () => searcher.searchTVShow(imdbId, title, season, episode, episodesInSeason, year, country, externalId || undefined, method, additionalTitles, titleYear, { includePacks: false })).then(r => foundBy(r, way)));
               }
 
               if (method === 'text' && isAnime && additionalTitles?.length) {
@@ -676,7 +622,7 @@ export async function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
     // cluster, matching Prowlarr/NZBHydra/EasyNews single-cluster shape.
     for (const [name, lines] of indexerLines) flushBuffer(lines, name);
 
-    return results;
+    return mergeFound(results);
   }
 }
 

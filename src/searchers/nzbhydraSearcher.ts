@@ -9,6 +9,7 @@
  * makes one NZBHydra API call per unique method, and merges results.
  */
 
+import { waysOf, foundBy } from '../addon/kaijuSearch.js';
 import axios from 'axios';
 import type { SyncedIndexer, NZBSearchResult } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
@@ -86,11 +87,10 @@ export class NzbhydraSearcher {
         slog(`⚠️  ${method} ID unavailable for ${indexerNames.length} indexer(s) — skipping`);
         continue;
       }
-      idTasks.push(withSubBuffer(`movie ${method} search × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)));
+      idTasks.push(withSubBuffer(`movie ${method} search × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)).then(r => foundBy(r, 'id')));
     }
 
-    // Movie text queries only run against indexers that opted into 'text' via movieSearchMethod.
-    // ID-method indexers stay on their ID endpoints; pack queries below keep the union intentionally.
+    // Movie name queries run against every indexer (Kaiju Search, #285).
     const allTextNames = [...new Set(textMethodNames)];
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true && !!additionalTitles?.length;
     const animeFanoutEnabled = !!isAnime && !!additionalTitles?.length && !parallelAltEnabled;
@@ -251,7 +251,7 @@ export class NzbhydraSearcher {
         slog(`⚠️  ${method} ID unavailable for ${indexerNames.length} indexer(s) — skipping`);
         continue;
       }
-      idTasks.push(withSubBuffer(`TV ${method} search S${season}E${episode} × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)));
+      idTasks.push(withSubBuffer(`TV ${method} search S${season}E${episode} × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)).then(r => foundBy(r, 'id')));
     }
 
     const packIndexerNames = [...new Set([...textMethodNames, ...idSearchedNames])];
@@ -632,13 +632,11 @@ export class NzbhydraSearcher {
     return pages.length > 0 ? Math.max(...pages) : 3;
   }
 
+  /** The indexers grouped by each way Kaiju Search asks them (#285): the IDs their capabilities list, and by name. */
   private groupByMethod(type: 'movie' | 'tv'): Map<string, string[]> {
     const groups = new Map<string, string[]>();
     for (const indexer of this.indexers.filter(i => i.enabledForSearch)) {
-      const methods = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      // For NZBHydra, we use indexer names (not numeric IDs) as the identifier
-      const methodArr = Array.isArray(methods) ? methods : [methods];
-      for (const method of methodArr) {
+      for (const method of waysOf(type, indexer.capabilities)) {
         if (!groups.has(method)) groups.set(method, []);
         if (!groups.get(method)!.includes(indexer.name)) groups.get(method)!.push(indexer.name);
       }

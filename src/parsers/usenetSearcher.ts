@@ -214,8 +214,7 @@ export class UsenetSearcher {
 
   async searchMovie(imdbId: string, title: string, year?: string, country?: string, externalId?: { idParam: string; idValue: string }, searchMethod?: string, additionalTitles?: string[], titleYear?: string): Promise<NZBSearchResult[]> {
     try {
-      const methods = this.indexer.movieSearchMethod;
-      const method = searchMethod || (Array.isArray(methods) ? methods[0] : methods) || 'imdb';
+      const method = searchMethod || 'imdb'; // Kaiju Search (#285) names the way of every query
 
       // Text-based search
       if (method === 'text') {
@@ -368,8 +367,7 @@ export class UsenetSearcher {
     options?: { numberingScheme?: 'seasonal' | 'absolute' | 'date'; absoluteEp?: number; airedDate?: string; includePacks?: boolean },
   ): Promise<NZBSearchResult[]> {
     try {
-      const tvMethods = this.indexer.tvSearchMethod;
-      const method = searchMethod || (Array.isArray(tvMethods) ? tvMethods[0] : tvMethods) || 'imdb';
+      const method = searchMethod || 'imdb'; // Kaiju Search (#285) names the way of every query
 
       // Text-based search
       if (method === 'text') {

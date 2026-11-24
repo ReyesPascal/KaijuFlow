@@ -18,6 +18,7 @@
  * Each group uses the appropriate endpoint and parameters.
  */
 
+import { waysOf, foundBy } from '../addon/kaijuSearch.js';
 import axios from 'axios';
 import type { SyncedIndexer, NZBSearchResult, ProwlarrSearchResult } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
@@ -97,14 +98,13 @@ export class ProwlarrSearcher {
             continue;
           }
 
-          idSearches.push(withSubBuffer(`movie ${method} search "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)));
+          idSearches.push(withSubBuffer(`movie ${method} search "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)).then(r => foundBy(r, 'id')));
           idSearchedIndexerIds.push(indexerId);
         }
       }
     }
 
-    // Movie text queries only run against indexers that opted into 'text' via movieSearchMethod.
-    // ID-method indexers stay on their ID endpoints; pack queries below keep the union intentionally.
+    // Movie name queries run against every indexer (Kaiju Search, #285).
     const allTextIndexerIds = [...new Set(textMethodIds)];
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true && !!additionalTitles?.length;
     const animeFanoutEnabled = !!isAnime && !!additionalTitles?.length && !parallelAltEnabled;
@@ -258,7 +258,7 @@ export class ProwlarrSearcher {
             continue;
           }
 
-          idSearches.push(withSubBuffer(`TV ${method} search S${season}E${episode} "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)));
+          idSearches.push(withSubBuffer(`TV ${method} search S${season}E${episode} "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)).then(r => foundBy(r, 'id')));
           idSearchedIndexerIds.push(indexerId);
         }
       }
@@ -747,12 +747,11 @@ export class ProwlarrSearcher {
     return pages.length > 0 ? Math.max(...pages) : 3;
   }
 
+  /** The indexers grouped by each way Kaiju Search asks them (#285): the IDs their capabilities list, and by name. */
   private groupByMethod(type: 'movie' | 'tv'): Map<string, string[]> {
     const groups = new Map<string, string[]>();
     for (const indexer of this.indexers.filter(i => i.enabledForSearch)) {
-      const methods = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      const methodArr = Array.isArray(methods) ? methods : [methods];
-      for (const method of methodArr) {
+      for (const method of waysOf(type, indexer.capabilities)) {
         if (!groups.has(method)) groups.set(method, []);
         if (!groups.get(method)!.includes(indexer.id)) groups.get(method)!.push(indexer.id);
       }

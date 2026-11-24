@@ -145,11 +145,6 @@ export const config: Config = {
       ...(cacheEmptyResultsEnv !== undefined && { cacheEmptyResults: cacheEmptyResultsEnv }),
     };
   },
-  get useTextSearch() {
-    // Backward compat: derive from searchConfig
-    const sc = configData.searchConfig;
-    return sc ? (sc.movieSearchMethod === 'text' || sc.tvSearchMethod === 'text') : (configData.useTextSearch || false);
-  },
   get includeSeasonPacks() {
     return configData.searchConfig?.includeSeasonPacks ?? configData.includeSeasonPacks ?? true;
   },

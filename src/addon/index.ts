@@ -32,6 +32,7 @@ import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
 import { flowTitleOf, markSources } from '../parsers/searchFlow.js';
+import { waysOf } from './kaijuSearch.js';
 import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
 import { recall } from '../play/sourceMemory.js';
@@ -84,13 +85,13 @@ export function buildSearchCacheKey(manifestKey: string, type: string, id: strin
   if (cfg.indexManager === 'prowlarr' || cfg.indexManager === 'nzbhydra') {
     const syncedEnabled = (cfg.syncedIndexers || []).filter(i => i.enabledForSearch);
     const syncedFingerprint = syncedEnabled
-      .map(i => `${i.id}:${type === 'movie' ? i.movieSearchMethod : i.tvSearchMethod}`)
+      .map(i => `${i.id}:${waysOf(type === 'movie' ? 'movie' : 'tv', i.capabilities).join('+')}`)
       .join(',');
     return `${manifestKey}:stream:${type}:${id}:${cfg.indexManager}:${syncedFingerprint}${packsSuffix}${easynewsSuffix}${aliasFbSuffix}`;
   }
   const enabledIndexers = cfg.indexers.filter(i => i.enabled);
   const methodsFingerprint = enabledIndexers
-    .map(i => `${i.name}:${type === 'movie' ? (i.movieSearchMethod || ['imdb']).join('+') : (i.tvSearchMethod || ['imdb']).join('+')}`)
+    .map(i => `${i.name}:${waysOf(type === 'movie' ? 'movie' : 'tv', i.caps).join('+')}`)
     .join(',');
   return `${manifestKey}:stream:${type}:${id}:${methodsFingerprint}${packsSuffix}${easynewsSuffix}${aliasFbSuffix}`;
 }
