@@ -55,6 +55,7 @@ import draw  # noqa: E402
 import caselog  # noqa: E402
 import diagnosis  # noqa: E402
 import evidence  # noqa: E402
+import fixing  # noqa: E402
 import indexer_standin  # noqa: E402
 import nntp  # noqa: E402
 import pool  # noqa: E402
@@ -492,6 +493,10 @@ class RealIO:
     def start_diagnosing_agent(self, cases, ids, run_dir):
         """The diagnosing agent on the check's open Case logs (#287): a herdr agent in the agents tab, else claude -p."""
         return caselog.start_agent(cases, ids, run_dir)
+
+    def tracker(self):
+        """The issue tracker a check files its fix tickets with (#288): this repo's GitHub Issues through gh."""
+        return fixing.GitHub()
 
     def alert(self, line):
         """The owner told in one line, the usual alert (kf-alert returns at once; its voice runs detached)."""
@@ -1613,8 +1618,10 @@ def write_check_ending(cfg, io, check, started, logbuf):
     save_evidence(io, check)
     try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
         # section says if it could not
+        # a proved KaijuFlow cause files its fix ticket, unless the check is a dry run (#288)
         check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet, cases=cfg.get('cases'),
-                                                   agent=io.start_diagnosing_agent, alert=io.alert)
+                                                   agent=io.start_diagnosing_agent, alert=io.alert, book=cfg.get('casebook'),
+                                                   tracker=None if cfg.get('tickets_dry_run') else io.tracker())
     except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
         check['diagnosis'] = None
         check['diagnosis_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
@@ -1975,6 +1982,8 @@ def build_parser():
                     '--sides kaijuflow --rounds 1 (a short run; does not imply --no-wait)')
     ap.add_argument('--cases', default=caselog.CASES,
                     help='check --quick only: the Case logs of failures with no proved cause (default %(default)s, #287)')
+    ap.add_argument('--tickets-dry-run', action='store_true',
+                    help='check --quick only: write the fix tickets of proved KaijuFlow causes into the check folder, file none (#288)')
     ap.add_argument('--ledger', help='check --quick only: the titles already played (default <runs root>/titles-played.json)')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
@@ -2062,6 +2071,7 @@ def main(argv):
                wait=not a.no_wait, topup_command=topup_command(a))
     if a.cmd == 'check' or (a.cmd == 'preflight' and a.mode == 'check'):
         cfg.update(name=a.name or 'quick-check', indexers=read_key_file(_key_path(cfg))[1], cases=a.cases,
+                   tickets_dry_run=a.tickets_dry_run,
                    ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'))
     started = time.time()
     if a.cmd == 'check':

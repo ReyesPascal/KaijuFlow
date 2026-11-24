@@ -237,7 +237,7 @@ The one system that finds, proves and learns why a play in a check went wrong, r
 _Avoid_: debugging (by hand), triage, root-cause tool
 
 **Casebook**:
-The known causes of failed plays, one readable file per cause in a fixed format (what the viewer saw, signs, cause, how it was proved, ruled out, fix, history), with an index generated from the files that the programs read. A match in it only orders the leads; it never names a cause by itself.
+The known causes of failed plays, one readable file per cause in a fixed format (what the viewer saw, signs, cause, how it was proved, ruled out, fix, history), with an index generated from the files that the programs read. A match in it only orders the leads; it never names a cause by itself. A proved KaijuFlow cause files its own fix ticket; one that is not KaijuFlow's gets a workaround. A failure that proves a cause already proved fixed is a *comeback*, and reopens its entry (`tools/brain/docs/formats.md`, "Fixing").
 _Avoid_: known-error database, FAQ, list of bugs
 
 **Clue**:

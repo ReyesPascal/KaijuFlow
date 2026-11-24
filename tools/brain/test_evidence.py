@@ -113,8 +113,8 @@ class FailedPlayWorld(CheckWorld):
         return '\n'.join(lines + [super().logs(container, since)])
 
 
-def run_failed_check(case, **kw):
-    cfg, world = check_cfg(case), FailedPlayWorld(**kw)
+def run_failed_check(case, cfg=None, **kw):
+    cfg, world = dict(check_cfg(case), **(cfg or {})), FailedPlayWorld(**kw)
     world.case, world.cases = case, cfg['cases']
     code, out = run_check(cfg, world)
     folder = os.path.join(cfg['runs_root'], CHECK)

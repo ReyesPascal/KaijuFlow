@@ -3,6 +3,7 @@
     python3 -I tools/brain/diagnosis.py diagnose <check folder | evidence folder>   diagnose and write diagnosis.json
     python3 -I tools/brain/diagnosis.py record <check folder>     put its proved occurrences and ruled-out leads on the Casebook
     python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure with the current rules
+    python3 -I tools/brain/diagnosis.py fix <check folder> [--casebook DIR] [--dry-run]   its proved causes' fixes (#288)
     python3 -I tools/brain/diagnosis.py case <list|show|run|add|repeat|entry> ...   work a Case log (#287; case --help)
 
 The answers: *found: X, proved by Clues A, B* (a lead's confirming recipe passed on this failure's own evidence),
@@ -24,6 +25,8 @@ import casebook  # noqa: E402
 import caselog  # noqa: E402
 import clues  # noqa: E402
 import evidence  # noqa: E402
+import fixing  # noqa: E402
+import scoreboard  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RULES = os.path.join(HERE, 'masking-rules.json')
@@ -175,7 +178,8 @@ def sign_fits(sign, fp):
     return re.fullmatch(pattern, got[2], re.S) is not None
 
 
-def load_index(folder=casebook.FOLDER):
+def load_index(folder=None):
+    folder = casebook.FOLDER if folder is None else folder
     with open(os.path.join(folder, casebook.INDEX)) as f:
         return json.load(f)['entries']
 
@@ -304,9 +308,12 @@ def counts(plays):
             'unreadable': sum(1 for p in plays if p.get('error'))}
 
 
-def summarize(run_dir, plays, rules):
+def summarize(run_dir, plays, rules, library=None, kept=None):
+    """Writes the check's summary; `kept` are the fields of its earlier summary to keep (a new masking version)."""
     keep = ('release', 'kind', 'fingerprint', 'verdict', 'cause', 'proved_by', 'says')
-    out = {'rules': rules['version'], 'counts': counts(plays), 'plays': []}
+    out = dict(kept or {}, rules=rules['version'], counts=counts(plays), plays=[])
+    if library is not None:
+        out['library'] = sorted(library)  # the Clues there were, so the next check tells reused from new (#288)
     for p in plays:
         row = {'evidence': os.path.relpath(p['path'], run_dir), 'label': p.get('label')}
         if p.get('error'):
@@ -328,7 +335,7 @@ def diagnose_check(run_dir, entries=None, library=None, rules=None):
             plays.append(dict(diagnose_stored(folder, entries, library, rules), path=folder))
         except Exception as e:  # noqa: BLE001  (one broken folder never stops the others)
             plays.append({'path': folder, 'error': br.scrub_text(f'{type(e).__name__}: {e}'), 'failures': []})
-    return summarize(run_dir, plays, rules)
+    return summarize(run_dir, plays, rules, clues.CLUES if library is None else library)
 
 
 def stored_checks(root):
@@ -364,7 +371,8 @@ def refingerprint(root, rules=None, entries=None, library=None):
                 d = _read_json(os.path.join(folder, STORED))
                 if d is not None:
                     plays.append(dict(d, path=folder))
-            summarize(run_dir, plays, rules)
+            old = _read_json(os.path.join(run_dir, STORED)) or {}
+            summarize(run_dir, plays, rules, kept={k: v for k, v in old.items() if k not in ('rules', 'counts', 'plays')})
     return changed
 
 
@@ -448,27 +456,57 @@ def _start_agent(summary, run_dir, cases, agent, alert):
             pass
 
 
+def stored_plays(run_dir):
+    """Every diagnosed evidence folder of a check: {'path', 'evidence' (relative to the run folder), 'meta', 'diagnosis'}."""
+    out = []
+    for folder in evidence_folders(run_dir):
+        d = _read_json(os.path.join(folder, STORED))
+        if d is not None:
+            out.append({'path': folder, 'evidence': os.path.relpath(folder, run_dir), 'meta': evidence.read(folder).meta,
+                        'diagnosis': d})
+    return out
+
+
 def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None, cases=None, agent=None,
-                alert=None):
+                alert=None, book=None, tracker=None):
     """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
     `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
-    rules changed, then this check's plays diagnosed, and every failure with no proved cause put in its Case log under
-    `cases`; when one of those logs is open, `agent(cases, ids, run_dir)` starts the diagnosing agent on them and
-    `alert(line)` tells the owner in one line. The summary, or None when the check left no evidence folder."""
+    rules changed, then this check's plays diagnosed against the Casebook in `book` (default the repo's), every proved
+    cause's fix (fixing.after_check: a KaijuFlow cause's ticket, filed through `tracker` unless it is None, a dry run),
+    and every failure with no proved cause put in its Case log under `cases`; when one of those logs is open,
+    `agent(cases, ids, run_dir)` starts the diagnosing agent on them and `alert(line)` tells the owner in one line. The
+    summary, or None when the check left no evidence folder."""
     if not evidence_folders(run_dir):
         return None
     if usenet is not None:
         live_clues(run_dir, usenet)
+    book = casebook.FOLDER if book is None else book
     rules = load_rules() if rules is None else rules
-    entries = load_index() if entries is None else entries
+    entries = load_index(book) if entries is None else entries
     refingerprint(runs_root, rules, entries, library)
     summary = diagnose_check(run_dir, entries, library, rules)
+    summary['fixes'] = fixing.after_check(run_dir, stored_plays(run_dir), book, tracker)
     if cases is not None:
         summary['cases'] = open_cases(run_dir, cases, library)
         summary['open_cases'] = caselog.count_open(cases)
         _start_agent(summary, run_dir, cases, agent, alert)
-        _write_json(os.path.join(run_dir, STORED), summary)
+    summary['scoreboard'] = score(run_dir, runs_root, summary, library, book, cases)
+    _write_json(os.path.join(run_dir, STORED), summary)
     return summary
+
+
+def score(run_dir, runs_root, summary, library, book, cases):
+    """The scoreboard's four extra numbers (story 58, scoreboard.score) for a check just diagnosed."""
+    name = os.path.basename(os.path.normpath(run_dir))
+    earlier = []
+    for d in stored_checks(runs_root):
+        other = os.path.basename(os.path.normpath(d))
+        s = _read_json(os.path.join(d, STORED)) if other < name else None
+        if s is not None:
+            earlier.append((other, s))
+    earlier.sort(key=lambda e: e[0])
+    return scoreboard.score(name, summary, stored_plays(run_dir), clues.CLUES if library is None else library, earlier,
+                            casebook.load(book)[0], None if cases is None else caselog.logs(cases))
 
 
 def _plural(n, word):
@@ -493,6 +531,8 @@ def report_section(summary, error=None):
         for f in p['failures']:
             source = f"{f['release']}: " if f.get('release') else ''
             lines.append(f"- {p.get('label') or p['evidence']}: {source}{f['says']}.")
+    if summary.get('fixes'):
+        lines += ['', 'Fixing:', ''] + fixing.report_lines(summary['fixes'])
     if summary.get('cases'):
         lines.append('')
         for k in summary['cases']:
@@ -502,14 +542,14 @@ def report_section(summary, error=None):
     if a:
         lines += ['', f"The diagnosing agent started: {a['started']}." if a['error'] is None else
                   f"The diagnosing agent could not start: {a['error']}."]
+    if summary.get('scoreboard'):
+        lines += [''] + scoreboard.report_lines(summary['scoreboard'])
     return lines
 
 
 # --------------------------------------------------------------------------- recording on the Casebook
 
-def _value(v):
-    v = str(v)
-    return json.dumps(v, ensure_ascii=False) if not v or v != v.strip() or casebook.PLAIN_BAD.search(v) else v
+_value = casebook.written
 
 
 def _seen_lines(item):
@@ -584,6 +624,9 @@ def record(run_dir, folder=casebook.FOLDER):
         if slot['seen'] or slot['ruled_out']:
             _add_to_entry(os.path.join(folder, entries[i]['file']), slot['seen'], slot['ruled_out'])
             out[i] = {'seen': len(slot['seen']), 'ruled_out': len(slot['ruled_out'])}
+    for i, changed in fixing.record(run_dir, (_read_json(os.path.join(run_dir, STORED)) or {}).get('fixes') or [],
+                                    folder).items():
+        out.setdefault(i, {'seen': 0, 'ruled_out': 0})['fixes'] = changed
     casebook.write_index(folder)
     return out
 
@@ -598,9 +641,33 @@ def _say(play):
             for f in play['failures']]
 
 
+def fix(run_dir, book=None, tracker=None):
+    """`diagnosis.py fix`: the check diagnosed again against the Casebook in `book` (one that has the cause now: a Case
+    log written up as an entry) and its fixes made as after the check (fixing.after_check); the rest of the check's
+    summary is kept. Returns the fixes."""
+    book = casebook.FOLDER if book is None else book
+    old = _read_json(os.path.join(run_dir, STORED)) or {}
+    summary = diagnose_check(run_dir, load_index(book))
+    summary = dict(old, **summary, fixes=fixing.after_check(run_dir, stored_plays(run_dir), book, tracker))
+    _write_json(os.path.join(run_dir, STORED), summary)
+    return summary['fixes']
+
+
 def main(argv):
     if len(argv) > 1 and argv[1] == 'case':
         return caselog.main(argv[2:])
+    if len(argv) > 1 and argv[1] == 'fix':
+        import argparse  # noqa: PLC0415
+        ap = argparse.ArgumentParser(prog='diagnosis.py fix', description='Diagnose a check again with the Casebook as it '
+                                     'is now, and make its proved causes\' fixes (a KaijuFlow cause files its ticket).')
+        ap.add_argument('folder', help='the check folder')
+        ap.add_argument('--casebook', help='the Casebook folder (default the repo\'s)')
+        ap.add_argument('--dry-run', action='store_true', help='write the fix tickets\' text, file none')
+        a = ap.parse_args(argv[2:])
+        fixes = fix(a.folder, a.casebook, None if a.dry_run else fixing.GitHub())
+        for line in fixing.report_lines(fixes) or ['No proved cause: nothing to fix.']:
+            print(line)
+        return 0
     if len(argv) < 2 or argv[1] not in ('diagnose', 'record', 'refingerprint') or \
             len(argv) > 3 or (argv[1] != 'refingerprint' and len(argv) != 3):
         print(__doc__.strip().split('\n\n')[1], file=sys.stderr)

@@ -598,8 +598,7 @@ def repeat(cases, cid, folder, library=None):
 
 def _value(v):
     import casebook  # noqa: PLC0415
-    v = str(v)
-    return json.dumps(v, ensure_ascii=False) if not v or v != v.strip() or casebook.PLAIN_BAD.search(v) else v
+    return casebook.written(v)
 
 
 def _sign(log):
