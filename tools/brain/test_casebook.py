@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import casebook
 
@@ -221,6 +222,46 @@ class FormatTest(unittest.TestCase):
         folder = casebook_with({'unscramble-read-error.md': text})
         self.addCleanup(shutil.rmtree, folder, True)
         self.assertEqual(casebook.problems(folder, clues=set()), [])
+
+
+PROVED_FIXED = ENTRY.replace('status: fixed awaiting proof', 'status: proved fixed')
+
+
+class ProvedTest(unittest.TestCase):
+    def problems_of(self, text, clues):
+        folder = casebook_with({'unscramble-read-error.md': text})
+        self.addCleanup(shutil.rmtree, folder, True)
+        return casebook.problems(folder, clues=clues)
+
+    def test_proved_fixed_with_a_clue_not_yet_in_the_library_is_a_problem(self):
+        self.assertEqual(self.problems_of(PROVED_FIXED, {'unscramble-read-error'}),
+                         ['unscramble-read-error.md: status proved fixed needs a confirming test that runs; '
+                          'not in the Clue library: altmount-missing-volumes'])
+
+    def test_reopened_is_a_proved_claim_too(self):
+        text = ENTRY.replace('status: fixed awaiting proof', 'status: reopened')
+        self.assertEqual(self.problems_of(text, set()),
+                         ['unscramble-read-error.md: status reopened needs a confirming test that runs; '
+                          'not in the Clue library: unscramble-read-error, altmount-missing-volumes'])
+
+    def test_proved_fixed_without_kept_evidence_is_a_problem(self):
+        text = PROVED_FIXED.replace('confirm:\n  - clue: unscramble-read-error\n    answer: yes\n'
+                                    '  - clue: altmount-missing-volumes\n    answer: yes\n',
+                                    'confirm: none (no evidence kept)\n')
+        self.assertEqual(self.problems_of(text, {'unscramble-read-error', 'altmount-missing-volumes'}),
+                         ['unscramble-read-error.md: status proved fixed needs a confirming test that runs; '
+                          'confirm is none (no evidence kept)'])
+
+    def test_proved_fixed_whose_every_clue_is_in_the_library_is_no_problem(self):
+        self.assertEqual(self.problems_of(PROVED_FIXED, {'unscramble-read-error', 'altmount-missing-volumes'}), [])
+
+    def test_the_check_reads_the_clue_library_by_default(self):
+        folder = casebook_with({'unscramble-read-error.md': PROVED_FIXED})
+        self.addCleanup(shutil.rmtree, folder, True)
+        with mock.patch.dict(casebook.clues.CLUES, clear=True):
+            self.assertEqual(len(casebook.problems(folder)), 1)
+        with mock.patch.dict(casebook.clues.CLUES, {'unscramble-read-error': None, 'altmount-missing-volumes': None}):
+            self.assertEqual(casebook.problems(folder), [])
 
 
 class CommandTest(unittest.TestCase):
