@@ -6,7 +6,7 @@ step: health_batch
 whose: unknown
 status: open
 match:
-  - rules: 1
+  - rules: 2
     sign: "slow play | first_byte ok | *"
 confirm:
   - clue: health-batch-inside-list
@@ -55,3 +55,4 @@ None yet. The list-time check that ran on warm lists then has since been deleted
 
 - 2026-11-24: converted from the casebook sweep (draft D4).
 - 2026-11-24: its slow-play sign names the last step line, `first_byte ok` (was `slow play | list ok | *`, which no fingerprint gives: a slow play's video came, so its last step line is `first_byte`; where the time went is the confirming test's to tell; review of #279).
+- 2026-11-24: its slow-play sign is `slow play | first_byte ok | *` (rules 2): any slow play: where its time went is outside the played Source's steps (the list, the machine), so its confirming test tells (review of #279, round 2).

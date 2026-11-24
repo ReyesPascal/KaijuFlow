@@ -111,8 +111,28 @@ def failures(ev):
     steps = [s for s in ev.steps if s.get('step') not in LIST_OWN + EVENTS + SEARCH_LINES]  # the last step line
     step = steps[-1] if steps else None
     kind = play_kind or ('slow play' if o.get('slow') else ev.meta.get('kept_because') or 'fail')
-    return out + [{'release': None, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none',
-                   'reason': o.get('why') or '' if play_kind else ''}]
+    reason = o.get('why') or '' if play_kind else ''
+    if kind == 'slow play':
+        step, reason = _slow(ev, steps) or (step, reason)
+    return out + [{'release': None, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none', 'reason': reason}]
+
+
+def _played(ev):
+    """The release whose video played: its `played` line's (#242), else the one whose `first_byte` was ok last."""
+    title = next((s.get('title') for s in ev.steps if s.get('step') == 'played' and s.get('title')), None)
+    return title or next((s.get('title') for s in reversed(ev.steps) if s.get('step') == 'first_byte' and s.get('ok')), None)
+
+
+def _slow(ev, steps):
+    """(step, reason) of a slow play: the played Source's last step line (the Walk can go on after it), and the step
+    of it that took the most time, `most time in <step>`; None when no Source is known to have played."""
+    played = _played(ev)
+    mine = [s for s in steps if played and s.get('title') == played]
+    if not mine:
+        return None
+    longest = max((s for s in mine if s.get('step') in clues.PREPARE + ('play_check',)), key=lambda s: s.get('ms') or 0,
+                  default=None)
+    return mine[-1], f"most time in {longest['step']}" if longest else ''
 
 
 def _never_a_sign(ev):

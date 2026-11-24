@@ -107,11 +107,23 @@ def signs_of(kind):
 
 
 class EverySignCanMatchTest(unittest.TestCase):
-    def test_a_slow_play_has_every_slow_play_entry_for_a_lead(self):
-        folder = variant(self, LOG_CUT, {'outcome': 'played', 'why': '', 'slow': True, 'start_s': 75.0})
+    def test_a_slow_play_is_where_its_played_source_ended_and_where_its_time_went(self):
+        # #218's Witcher told as a slow play: the Walk goes on after the played Source (playWEB) sent its first byte
+        folder = variant(self, TWO_REFUSALS, {'outcome': 'played', 'why': '', 'slow': True, 'start_s': 75.0})
         [f] = diagnosis.diagnose(folder)['failures']
-        self.assertEqual(f['kind'], 'slow play')
-        self.assertEqual({t['id'] for t in f['leads']}, signs_of('slow play'))
+        self.assertEqual((f['kind'], f['where'], f['reason']), ('slow play', 'first_byte ok', 'most time in play_check'))
+        self.assertEqual({t['id'] for t in f['leads']},
+                         {'busy-machine', 'first-title-after-reset-swings', 'health-check-before-list', 'laptop-on-battery',
+                          'warm-lists-slow-2026-11-13', 'head-start-ran-on', 'eeaao-slow-start'})
+
+    def test_every_slow_play_sign_can_be_given(self):
+        steps = ('nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'play_check')
+        reachable = {f'slow play | first_byte ok | most time in {s}' for s in steps}
+        for e in diagnosis.load_index():
+            for m in e['match']:
+                if m['sign'].startswith('slow play | '):
+                    with self.subTest(entry=e['id']):
+                        self.assertTrue(any(diagnosis.sign_fits(m['sign'], fp) for fp in reachable), m['sign'])
 
     def test_nothing_to_play_with_the_dev_switch_on_is_where_the_search_failed(self):
         folder = variant(self, LOG_CUT, {'outcome': 'nothing to play', 'why': 'the list was empty', 'sources': 0},
@@ -229,9 +241,10 @@ class StoredFailuresTest(unittest.TestCase):
         root, run_dir = stored_check(self)
         diagnosis.diagnose_check(run_dir)
         before = stored(run_dir)
-        self.assertEqual({d['rules'] for d in before.values()}, {1})
         rules = diagnosis.load_rules()
-        rules = dict(rules, version=2, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}] + rules['masks'])
+        v = rules['version']
+        self.assertEqual({d['rules'] for d in before.values()}, {v})
+        rules = dict(rules, version=v + 1, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}] + rules['masks'])
         path = os.path.join(tempdir(self), 'masking-rules.json')
         with open(path, 'w') as f:
             json.dump(rules, f)
@@ -241,9 +254,9 @@ class StoredFailuresTest(unittest.TestCase):
         after = stored(run_dir)
         self.assertEqual(sorted(changed), sorted(os.path.join(run_dir, evidence.DIR, n) for n in after))
         for name, d in after.items():
-            self.assertEqual(d['rules'], 2)
+            self.assertEqual(d['rules'], v + 1)
             old = [f['fingerprint'] for f in before[name]['failures']]
-            self.assertEqual(d['earlier'], [{'rules': 1, 'fingerprints': old}])
+            self.assertEqual(d['earlier'], [{'rules': v, 'fingerprints': old}])
             for f in d['failures']:
                 self.assertIn('"code":"<code>"', f['fingerprint'])
                 self.assertNotIn('INTERNAL_SERVER_ERROR', f['fingerprint'])
@@ -268,7 +281,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(casebook.problems(book), [])  # still the format, and the index was written again
         self.assertEqual(entries['unscramble-read-error']['seen'][-1], {
             'check': '2026-11-23T190950Z-grouped-219', 'title': 'The Witcher S01E01', 'play': 'evidence/01-219-witcher-read-error',
-            'date': '2026-11-23', 'rules': 1})
+            'date': '2026-11-23', 'rules': diagnosis.load_rules()['version']})
         self.assertEqual(entries['unchecked-dead-season-pack']['seen'][-1]['play'], 'evidence/02-189-twilight-dead-pack')
         _, sections = casebook.read_entry(os.path.join(book, 'unscramble-read-error.md'))
         ruled = sections['Ruled out'].splitlines()[-1]

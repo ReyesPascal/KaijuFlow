@@ -6,8 +6,8 @@ step: play_check
 whose: unknown
 status: open
 match:
-  - rules: 1
-    sign: "slow play | first_byte ok | *"
+  - rules: 2
+    sign: "slow play | first_byte ok | *most time in play_check*"
 confirm:
   - clue: play-check-slow-blocked
     answer: yes
@@ -60,3 +60,4 @@ None yet.
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft D2).
+- 2026-11-24: its slow-play sign is `slow play | first_byte ok | *most time in play_check*` (rules 2): the step of the played Source that took the most time, `play_check`, as rules 2's fingerprint gives it (review of #279, round 2).

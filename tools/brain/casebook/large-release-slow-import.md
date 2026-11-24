@@ -6,8 +6,8 @@ step: import_wait
 whose: unknown
 status: open
 match:
-  - rules: 1
-    sign: "slow play | first_byte ok | *"
+  - rules: 2
+    sign: "slow play | first_byte ok | *most time in import_wait*"
 confirm:
   - clue: import-wait-long
     answer: yes
@@ -53,3 +53,4 @@ None yet.
 
 - 2026-11-24: converted from the casebook sweep (draft B8). The one-page side took 24 s and 42 s on the same title.
 - 2026-11-24: its slow-play sign names the last step line, `first_byte ok` (was `slow play | import_wait ok | *`, which no fingerprint gives: a slow play's video came, so its last step line is `first_byte`; where the time went is the confirming test's to tell; review of #279).
+- 2026-11-24: its slow-play sign is `slow play | first_byte ok | *most time in import_wait*` (rules 2): the step of the played Source that took the most time, `import_wait`, as rules 2's fingerprint gives it (review of #279, round 2).

@@ -6,8 +6,8 @@ step: head_start
 whose: KaijuFlow
 status: fixed awaiting proof
 match:
-  - rules: 1
-    sign: "slow play | first_byte ok | *"
+  - rules: 2
+    sign: "slow play | first_byte ok | *most time in play_check*"
   - rules: 1
     sign: "fallback | import_wait not ok | *"
 confirm:
@@ -49,3 +49,4 @@ Nothing tested and rejected yet.
 
 - 2026-11-24: converted from the casebook sweep (draft B7).
 - 2026-11-24: its slow-play sign names the last step line, `first_byte ok` (was `slow play | play_check ok | *`, which no fingerprint gives: a slow play's video came, so its last step line is `first_byte`; where the time went is the confirming test's to tell; review of #279).
+- 2026-11-24: its slow-play sign is `slow play | first_byte ok | *most time in play_check*` (rules 2): the step of the played Source that took the most time, `play_check`, as rules 2's fingerprint gives it (review of #279, round 2).

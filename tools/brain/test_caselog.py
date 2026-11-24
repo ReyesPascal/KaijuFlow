@@ -100,9 +100,8 @@ class NewMaskingRulesTest(unittest.TestCase):
     def test_a_new_masking_version_fingerprints_the_case_logs_again_so_the_same_failure_joins_its_log(self):
         root, run_dir, cases, _ = after(self, (TWO_REFUSALS,))
         [(cid, log)] = logs(cases).items()
-        rules = diagnosis.load_rules()
-        rules = dict(rules, version=2, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}]
-                     + rules['masks'])
+        rules = rules_v2()
+        v = rules['version'] - 1
 
         _, later, _, summary = after(self, (TWO_REFUSALS,), cases=cases, rules=rules)
 
@@ -110,14 +109,15 @@ class NewMaskingRulesTest(unittest.TestCase):
         self.assertEqual(again, cid)
         self.assertEqual([o['n'] for o in log['occurrences']], [1, 2])
         self.assertIn('"code":"<code>"', log['fingerprint'])
-        self.assertEqual(log['rules'], 2)
-        self.assertEqual([e['rules'] for e in log['earlier']], [1])
+        self.assertEqual(log['rules'], v + 1)
+        self.assertEqual([e['rules'] for e in log['earlier']], [v])
         self.assertEqual(summary['cases'], [{'id': cid, 'status': 'open', 'occurrences': 2, 'new': False}])
 
 
 def rules_v2():
+    """The masking rules of a next version: error codes masked too."""
     rules = diagnosis.load_rules()
-    return dict(rules, version=2, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}]
+    return dict(rules, version=rules['version'] + 1, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}]
                 + rules['masks'])
 
 
@@ -132,7 +132,8 @@ class NewMaskingRulesAndCaseLogsTest(unittest.TestCase):
             code, out = case_cmd(self.cases, 'repeat', self.id, os.path.join(again, 'evidence', '01-218-witcher-two-refusals'))
         self.assertEqual((code, out.strip()), (0, f'{self.id}: occurrence 2 added (repeat)'))
         log = logs(self.cases)[self.id]
-        self.assertEqual((log['rules'], [e['rules'] for e in log['earlier']]), (2, [1]))
+        v = diagnosis.load_rules()['version']
+        self.assertEqual((log['rules'], [e['rules'] for e in log['earlier']]), (v + 1, [v]))
 
     def test_a_log_whose_first_evidence_folder_is_gone_or_unreadable_is_fingerprinted_from_the_next(self):
         _, later, _, _ = after(self, (TWO_REFUSALS,), cases=self.cases)  # occurrence 2, another check's folder
@@ -146,9 +147,9 @@ class NewMaskingRulesAndCaseLogsTest(unittest.TestCase):
         self.assertIn('"code":"<code>"', logs(self.cases)[self.id]['fingerprint'])
 
         shutil.rmtree(first)  # archived: gone
-        rules = dict(rules_v2(), version=3)
+        rules = dict(rules_v2(), version=rules_v2()['version'] + 1)
         self.assertEqual(caselog.refingerprint(self.cases, rules), [self.id])
-        self.assertEqual(logs(self.cases)[self.id]['rules'], 3)
+        self.assertEqual(logs(self.cases)[self.id]['rules'], rules['version'])
 
 
 class NeverRepeatsAClueTest(unittest.TestCase):
@@ -444,7 +445,8 @@ class SolvedTest(CaseWrites):
         self.assertEqual((e['kind'], e['step'], e['whose'], e['status'], e['confirm']),
                          ('check miss', 'import_wait', 'AltMount', 'open', RECIPE))
         self.assertEqual(e['seen'], [{'check': '2026-11-23T183239Z-baseline-218', 'title': 'The Witcher S01E01',
-                                      'play': 'evidence/01-218-witcher-two-refusals', 'date': '2026-11-23', 'rules': 1}])
+                                      'play': 'evidence/01-218-witcher-two-refusals', 'date': '2026-11-23',
+                                      'rules': diagnosis.load_rules()['version']}])
         _, sections = casebook.read_entry(os.path.join(book, 'altmount-extension-refused-file.md'))
         self.assertIn("the Source's articles are gone", sections['Ruled out'])
         self.assertIn('Probable, not proved', sections['How it was proved'])
