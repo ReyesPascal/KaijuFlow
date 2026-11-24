@@ -136,9 +136,10 @@ function loadConfigFile(): ConfigData {
   };
 }
 
-// Save config to file (atomic: write to .tmp, then rename)
+// Save config to file (atomic: write to .tmp, then rename). The .tmp name is per process: the unit test files run in
+// parallel processes on one config file, and a shared name let one process rename another's .tmp away (ENOENT, #258).
 export function saveConfigFile(data: ConfigData): void {
-  const tmpFile = CONFIG_FILE + '.tmp';
+  const tmpFile = `${CONFIG_FILE}.${process.pid}.tmp`;
   try {
     fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmpFile, CONFIG_FILE);
