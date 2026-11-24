@@ -138,15 +138,35 @@ function loadConfigFile(): ConfigData {
 
 // Save config to file (atomic: write to .tmp, then rename). The .tmp name is per process: the unit test files run in
 // parallel processes on one config file, and a shared name let one process rename another's .tmp away (ENOENT, #258).
+// The save keeps the owner of the file it replaces (#261): a root test container otherwise left the test copy's
+// config.json root-owned, and testbed.py apply (user brain) could no longer write it.
 export function saveConfigFile(data: ConfigData): void {
   const tmpFile = `${CONFIG_FILE}.${process.pid}.tmp`;
   try {
     fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
+    keepOwner(CONFIG_FILE, tmpFile);
     fs.renameSync(tmpFile, CONFIG_FILE);
   } catch (error) {
     try { fs.unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
     console.error('Error saving config file:', error);
     throw new Error('Failed to save configuration');
+  }
+}
+
+/** Gives `tmpFile` the uid/gid of the file at `target`, when there is one and they differ. Never throws. */
+function keepOwner(target: string, tmpFile: string): void {
+  let old: fs.Stats, made: fs.Stats;
+  try {
+    old = fs.statSync(target);
+    made = fs.statSync(tmpFile);
+  } catch {
+    return; // No file there yet: a new file stays as the process makes it.
+  }
+  if (old.uid === made.uid && old.gid === made.gid) return;
+  try {
+    fs.chownSync(tmpFile, old.uid, old.gid);
+  } catch (error) {
+    console.warn(`⚠️ Config saved, but could not keep its owner ${old.uid}:${old.gid}:`, (error as Error).message);
   }
 }
 
