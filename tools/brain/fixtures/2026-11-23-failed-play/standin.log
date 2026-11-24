@@ -1,0 +1,11 @@
+HIT ninjacentral api cat=5000&extended=1&q=The Witcher S01&t=search wait_ms=463 from=172.18.0.3 t=1795461133754
+HIT ninjacentral api cat=5000&extended=1&q=The Witcher S01E01&t=search wait_ms=512 from=172.18.0.3 t=1795461133803
+HIT ninjacentral api cat=5000&extended=1&offset=100&q=The Witcher S01E01&t=search wait_ms=319 from=172.18.0.3 t=1795461134172
+HIT ninjacentral api cat=5000&extended=1&offset=100&q=The Witcher S01&t=search wait_ms=390 from=172.18.0.3 t=1795461134242
+HIT ninjacentral api cat=5000&extended=1&offset=200&q=The Witcher S01&t=search wait_ms=428 from=172.18.0.3 t=1795461134729
+HIT ninjacentral nzb c4356bfea1e8 wait_ms=871 from=172.18.0.3 t=1795461136107
+HIT ninjacentral nzb 88bb62cda543 wait_ms=872 from=172.18.0.3 t=1795461136109
+HIT ninjacentral nzb 49ec7b77e39c wait_ms=877 from=172.18.0.3 t=1795461136113
+HIT ninjacentral nzb 3f9007e8a213 wait_ms=841 from=172.18.0.3 t=1795461138139
+HIT ninjacentral nzb 84604e3baa8c wait_ms=586 from=172.18.0.3 t=1795461149845
+MISS ninjacentral nzb 49dfcbc6a806 The.Witcher.2019.S01E01.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE from=172.18.0.3 t=1795461151993
