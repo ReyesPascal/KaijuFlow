@@ -208,7 +208,7 @@ def prove(lead, ev, failure, library):
         return dict(lead, result='no confirming test', why='Clues not built yet: ' + ', '.join(missing), clues=[])
     ran = []
     for item in confirm:
-        r = clues.run(item['clue'], ev, failure)
+        r = clues.run(item['clue'], ev, failure, library)
         ran.append(dict(r, wanted=item['answer']))
     if any(r['answer'] != r['wanted'] and r['answer'] in (clues.YES, clues.NO) for r in ran):
         result = 'ruled out'

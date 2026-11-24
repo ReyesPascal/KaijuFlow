@@ -55,6 +55,17 @@ class FoundTest(unittest.TestCase):
         self.assertEqual(said['unscramble-read-error'], 'no')
 
 
+class LibraryTest(unittest.TestCase):
+    def test_a_lead_is_proved_by_the_clues_of_the_library_diagnosis_is_given(self):
+        [f] = answers(INDEXER_DOWN)
+        entry = {'id': 'indexer-down', 'match': [{'rules': 1, 'sign': f['fingerprint']}], 'occurrences': 0,
+                 'status': 'open', 'whose': 'indexer', 'confirm': [{'clue': 'only-here', 'answer': 'yes'}]}
+        library = dict(clues.CLUES, **{'only-here': clues.Clue('only-here', 'Only in this library?',
+                                                                lambda ev, failure: (clues.YES, ['it is here']))})
+        [f] = diagnosis.diagnose(INDEXER_DOWN, entries=[entry], library=library)['failures']
+        self.assertEqual((f['verdict'], f['cause'], f['proved_by']), ('found', 'indexer-down', ['only-here']))
+
+
 class FingerprintTest(unittest.TestCase):
     def test_one_cause_seen_in_two_runs_has_one_fingerprint_and_its_details_are_masked(self):
         [in_219], [in_218, sic] = answers(READ_ERROR), answers(TWO_REFUSALS)
