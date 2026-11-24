@@ -24,6 +24,7 @@ import casebook  # noqa: E402
 import caselog  # noqa: E402
 import clues  # noqa: E402
 import evidence  # noqa: E402
+import fixing  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RULES = os.path.join(HERE, 'masking-rules.json')
@@ -175,7 +176,8 @@ def sign_fits(sign, fp):
     return re.fullmatch(pattern, got[2], re.S) is not None
 
 
-def load_index(folder=casebook.FOLDER):
+def load_index(folder=None):
+    folder = casebook.FOLDER if folder is None else folder
     with open(os.path.join(folder, casebook.INDEX)) as f:
         return json.load(f)['entries']
 
@@ -448,26 +450,41 @@ def _start_agent(summary, run_dir, cases, agent, alert):
             pass
 
 
+def stored_plays(run_dir):
+    """Every diagnosed evidence folder of a check: {'path', 'evidence' (relative to the run folder), 'meta', 'diagnosis'}."""
+    out = []
+    for folder in evidence_folders(run_dir):
+        d = _read_json(os.path.join(folder, STORED))
+        if d is not None:
+            out.append({'path': folder, 'evidence': os.path.relpath(folder, run_dir), 'meta': evidence.read(folder).meta,
+                        'diagnosis': d})
+    return out
+
+
 def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None, cases=None, agent=None,
-                alert=None):
+                alert=None, book=None, tracker=None):
     """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
     `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
-    rules changed, then this check's plays diagnosed, and every failure with no proved cause put in its Case log under
-    `cases`; when one of those logs is open, `agent(cases, ids, run_dir)` starts the diagnosing agent on them and
-    `alert(line)` tells the owner in one line. The summary, or None when the check left no evidence folder."""
+    rules changed, then this check's plays diagnosed against the Casebook in `book` (default the repo's), every proved
+    cause's fix (fixing.after_check: a KaijuFlow cause's ticket, filed through `tracker` unless it is None, a dry run),
+    and every failure with no proved cause put in its Case log under `cases`; when one of those logs is open,
+    `agent(cases, ids, run_dir)` starts the diagnosing agent on them and `alert(line)` tells the owner in one line. The
+    summary, or None when the check left no evidence folder."""
     if not evidence_folders(run_dir):
         return None
     if usenet is not None:
         live_clues(run_dir, usenet)
+    book = casebook.FOLDER if book is None else book
     rules = load_rules() if rules is None else rules
-    entries = load_index() if entries is None else entries
+    entries = load_index(book) if entries is None else entries
     refingerprint(runs_root, rules, entries, library)
     summary = diagnose_check(run_dir, entries, library, rules)
+    summary['fixes'] = fixing.after_check(run_dir, stored_plays(run_dir), book, tracker)
     if cases is not None:
         summary['cases'] = open_cases(run_dir, cases, library)
         summary['open_cases'] = caselog.count_open(cases)
         _start_agent(summary, run_dir, cases, agent, alert)
-        _write_json(os.path.join(run_dir, STORED), summary)
+    _write_json(os.path.join(run_dir, STORED), summary)
     return summary
 
 
@@ -493,6 +510,8 @@ def report_section(summary, error=None):
         for f in p['failures']:
             source = f"{f['release']}: " if f.get('release') else ''
             lines.append(f"- {p.get('label') or p['evidence']}: {source}{f['says']}.")
+    if summary.get('fixes'):
+        lines += ['', 'Fixing:', ''] + fixing.report_lines(summary['fixes'])
     if summary.get('cases'):
         lines.append('')
         for k in summary['cases']:
@@ -507,9 +526,7 @@ def report_section(summary, error=None):
 
 # --------------------------------------------------------------------------- recording on the Casebook
 
-def _value(v):
-    v = str(v)
-    return json.dumps(v, ensure_ascii=False) if not v or v != v.strip() or casebook.PLAIN_BAD.search(v) else v
+_value = casebook.written
 
 
 def _seen_lines(item):
@@ -584,6 +601,9 @@ def record(run_dir, folder=casebook.FOLDER):
         if slot['seen'] or slot['ruled_out']:
             _add_to_entry(os.path.join(folder, entries[i]['file']), slot['seen'], slot['ruled_out'])
             out[i] = {'seen': len(slot['seen']), 'ruled_out': len(slot['ruled_out'])}
+    for i, changed in fixing.record(run_dir, (_read_json(os.path.join(run_dir, STORED)) or {}).get('fixes') or [],
+                                    folder).items():
+        out.setdefault(i, {'seen': 0, 'ruled_out': 0})['fixes'] = changed
     casebook.write_index(folder)
     return out
 

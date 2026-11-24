@@ -16,6 +16,7 @@ import brainreport as br
 import brainrun
 import common
 import draw
+import fixing
 import pool
 import quickcheck as qc
 import testbed
@@ -505,6 +506,18 @@ class CheckWorld:
     def alert(self, line):
         self.calls.append(('alert', line))
 
+    def tracker(self):  # the issue tracker a check files its fix tickets with (#288): none open, each filing noted
+        world = self
+
+        class Tracker:
+            def find(self, text):
+                return None
+
+            def file(self, title, body):
+                world.calls.append(('file ticket', title))
+                return '#401', None
+        return Tracker()
+
     def now(self):
         return self.clock
 
@@ -840,6 +853,11 @@ class RealPartsTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual((seen['name'], seen['ledger'], seen['indexers']),
                          ('quick-check', os.path.join(self.root, 'titles-played.json'), ['drunkenslug', 'ninjacentral']))
+        self.assertFalse(seen['tickets_dry_run'])  # a check files its fix tickets (#288) ...
+        with mock.patch.object(brainrun, 'quick_check_command', side_effect=fake_check):
+            brainrun.main(['check', '--quick', '--test-dir', td, '--runs-root', self.root, '--tickets-dry-run'])
+        self.assertTrue(seen['tickets_dry_run'])  # ... unless it is a dry run
+        self.assertIsInstance(brainrun.RealIO(self.cfg).tracker(), fixing.GitHub)
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             brainrun.main(['check', '--quick', '--run', self.root])
 

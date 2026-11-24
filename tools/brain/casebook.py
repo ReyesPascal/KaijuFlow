@@ -40,6 +40,12 @@ DATE = re.compile(r'^\d{4}-\d\d-\d\d$')
 PLAIN_BAD = re.compile(r'(^["\'\[\]{}&*!|>%@`#,?-]|: | #|:$)')
 
 
+def written(v):
+    """One value as an entry file writes it: plain, or a JSON string in double quotes when plain text would not do."""
+    v = str(v)
+    return json.dumps(v, ensure_ascii=False) if not v or v != v.strip() or PLAIN_BAD.search(v) else v
+
+
 class FormatError(Exception):
     pass
 
