@@ -133,7 +133,10 @@ def _episode_start(rel, j):
 
 
 def right_title(release, title, names=()):
-    """(True, '') when the release name played is the drawn title, else (False, why). `title` is the draw's
+    """(True, '') when the release name played is the drawn title, else (False, why). KaijuFlow's Search Flow holds a
+    copy of this rule (`strictMatch`, src/parsers/searchFlow.ts, #282): both are tested on the shared table of real
+    release names (tests/fixtures/release-names/table.tsv), so a change here (a tag allowed, a why reworded) goes into
+    both copies and the table. `title` is the draw's
     [type, id, label, kind, date]; `names` are other names of it (TMDB's original and alternative titles), tried when the
     label's name does not fit.
 
