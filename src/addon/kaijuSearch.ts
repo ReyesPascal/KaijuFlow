@@ -15,6 +15,7 @@
 import type { IndexerCaps } from '../types.js';
 import { indexerContentKey } from './dedup.js';
 import { asRead } from '../config/capsMigration.js';
+import type { ReleaseSource } from '../play/types.js';
 
 /** A way of asking an indexer: by one of its IDs, or by name (`text`, the searchers' own word for it). */
 export type SearchWay = 'imdb' | 'tmdb' | 'tvdb' | 'tvmaze' | 'text';
@@ -161,4 +162,9 @@ export function logStrictAlone(log: (fields: Record<string, unknown>) => void, m
   if (marked.length === 0 || marked.some(r => r.flow === 'sure' && !r.proof)) return;
   const sure = marked.filter(r => r.flow === 'sure').length;
   log({ strict_alone: 'nothing', kept: marked.length, sure, maybe: marked.length - sure });
+}
+
+/** A Release's Sources as the play side knows them (#300; play/types.ts ReleaseSource); undefined without `sources`. */
+export function releaseSourcesOf(r: { sources?: { link: string; title: string; indexerName?: string; size?: number; searchExitIp?: string }[] }): ReleaseSource[] | undefined {
+  return r.sources?.map(s => ({ nzbUrl: s.link, title: s.title, indexerName: s.indexerName ?? '', size: s.size, searchExitIp: s.searchExitIp }));
 }

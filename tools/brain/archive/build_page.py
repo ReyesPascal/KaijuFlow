@@ -29,7 +29,7 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]  # python3 -I leaves them off; the archive, then the live tools
 import brainreport as br  # noqa: E402
 import pagetargets as pt  # noqa: E402
 import runs  # noqa: E402
@@ -295,4 +295,5 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    import retired  # retired by ADR 0010 (#273): runs only with --revive
+    sys.exit(retired.gate('build_page', 'build_page.py', sys.argv[1:]))

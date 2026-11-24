@@ -85,14 +85,15 @@ export async function createFakeAltmount(listen) {
     if (path.endsWith('.nzb')) {
       const tag = path.slice(1, -4);
       const grab = { tag, asked: Date.now(), answered: null };
-      grabs.push(grab);
+      // Another fake indexer fetching the NZB it serves as its own copy (#300) is not a grab of this link.
+      if (!req.headers['x-fake-copy']) grabs.push(grab);
       res.on('finish', () => { grab.answered = Date.now(); });
       res.on('close', () => { if (grab.answered === null) grab.closed = Date.now(); });
       const wait = [...slowGrabs].find(([prefix]) => tag.startsWith(prefix))?.[1];
       if (wait) await new Promise(r => setTimeout(r, wait));
       // A link the indexer does not know (addGone) answers 404, as an indexer does for a removed NZB.
       if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
-      if (indexerDown) { res.writeHead(indexerDown, { 'Retry-After': '60' }); res.end('indexer unavailable'); return; }
+      if (indexerDown && !req.headers['x-fake-copy']) { res.writeHead(indexerDown, { 'Retry-After': '60' }); res.end('indexer unavailable'); return; }
       res.writeHead(200, { 'Content-Type': 'application/x-nzb' });
       res.end(sources.get(tag).nzb ?? `<nzb><file subject="${tag}"/></nzb>`);
       return;

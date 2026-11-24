@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 
 import brainrun
-from test_preflight import COMMIT, OLDER, FakeWorld, make_cfg, record, run_command
+from test_preflight import COMMIT, OLDER, PLENTY, FakeWorld, make_cfg, run_command
 from test_settings import SECRET, make_copies, put_limits, rules, tempdir
 
 ADD = 'python3 -I tools/brain/testbed.py indexer add'
@@ -51,43 +51,42 @@ class EveryRefusalNamesItsFixTest(unittest.TestCase):
     def setUp(self):
         self.td = make_copies(self)
         self.cfg = make_cfg(self.td, runs_root=tempdir(self))
-        record(self.cfg)
 
     def test_the_machine_and_the_repository(self):
-        self.stops('run', self.cfg, Fixing(self.cfg, dirty=True), 'git commit')
-        self.stops('run', self.cfg, Fixing(self.cfg, label=OLDER, changed={OLDER: True}), '--rebuild-image', '--fix')
-        self.stops('run', self.cfg, Fixing(self.cfg, free=False), "ss -ltnp 'sport = :1340'")
-        self.stops('run', self.cfg, Fixing(self.cfg, load=2.5), 'uptime')
-        self.stops('run', self.cfg, Fixing(self.cfg, machine=('127.0.0.1', '192.0.2.99')), 'testbed.py up')
-        self.stops('run', self.cfg, Fixing(self.cfg, dns=('10.0.0.1',)), 'dig +short news.newshosting.com @192.168.4.1')
-        self.stops('run', self.cfg, Fixing(self.cfg, power='battery'), 'plug it in')
+        self.stops('check', self.cfg, Fixing(self.cfg, dirty=True), 'git commit')
+        self.stops('check', self.cfg, Fixing(self.cfg, label=OLDER, changed={OLDER: True}), '--rebuild-image', '--fix')
+        self.stops('check', self.cfg, Fixing(self.cfg, free=False), "ss -ltnp 'sport = :1340'")
+        self.stops('check', dict(self.cfg, full_check=True), Fixing(self.cfg, load=2.5), 'uptime')
+        self.stops('check', self.cfg, Fixing(self.cfg, machine=('127.0.0.1', '192.0.2.99')), 'testbed.py up')
+        self.stops('check', self.cfg, Fixing(self.cfg, dns=('10.0.0.1',)), 'dig +short news.newshosting.com @192.168.4.1')
+        self.stops('check', self.cfg, Fixing(self.cfg, power='battery'), 'plug it in')
 
     def test_the_key_file(self):
         path = os.path.join(self.td, 'indexers.json')
         os.chmod(path, 0o644)
-        self.stops('record', self.cfg, Fixing(self.cfg), f'chmod 600 {path}', '--fix')
+        self.stops('check', self.cfg, Fixing(self.cfg), f'chmod 600 {path}', '--fix')
         os.remove(path)
-        self.stops('record', self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
+        self.stops('check', self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
         with open(path, 'w') as f:
             f.write('{}')
         os.chmod(path, 0o600)
-        self.stops('record', self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
+        self.stops('check', self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
 
     def test_the_indexers_switched_on(self):
         cfg = make_cfg(make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'),
                                    key_slugs=('ninjacentral', 'drunkenslug')))
-        self.stops('record', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py indexer on drunkenslug', '--fix')
+        self.stops('check', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py indexer on drunkenslug', '--fix')
         cfg = make_cfg(make_copies(self, enabled=('ninjacentral', 'althub'), disabled=('drunkenslug',),
                                    key_slugs=('ninjacentral',)))
-        self.stops('record', cfg, Fixing(cfg), f'{ADD} althub --stash <entry>')
+        self.stops('check', cfg, Fixing(cfg), f'{ADD} althub --stash <entry>')
 
     def test_the_settings_of_the_test_copies(self):
         cfg = make_cfg(make_copies(self, kf_rules=rules(films=4000)))
-        self.stops('record', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py apply kaijuflow', '--fix')
+        self.stops('check', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py apply kaijuflow', '--fix')
         cfg = make_cfg(make_copies(self, caps=(12, 100)))
-        self.stops('record', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py settings')
+        self.stops('check', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py settings')
         cfg = make_cfg(make_copies(self, url=lambda s: 'https://real.example/api'))
-        self.stops('record', cfg, Fixing(cfg), "KaijuFlow's indexer settings")
+        self.stops('check', cfg, Fixing(cfg), "KaijuFlow's indexer settings")
 
     def test_the_allowance(self):
         put_limits(os.path.join(self.td, 'indexers.json'), {'ninjacentral': (2000, 450), 'drunkenslug': (10, 100)})
@@ -163,7 +162,7 @@ class FixTest(unittest.TestCase):
         with open(path, 'w') as f:
             json.dump(data, f)
         cfg = make_cfg(td, fix=True)
-        code, text = run_command('record', cfg, Fixing(cfg))
+        code, text = run_command('check', cfg, Fixing(cfg, allowance=PLENTY))  # its key file holds no limits; the allowance is not the point
         self.assertEqual(code, 0, text)
         self.assertEqual(switched_on(td), ['NinjaCentral'])
 

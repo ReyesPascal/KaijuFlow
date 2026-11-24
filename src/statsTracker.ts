@@ -32,6 +32,8 @@ export interface IndexerStats {
   grabHistory: Array<{
     timestamp: string;
     title: string;
+    /** How long the NZB download took (#300); absent for grabs recorded before. */
+    downloadMs?: number;
   }>;
 }
 
@@ -286,7 +288,7 @@ export function mergeDuplicateIndexerKeys(): number {
 }
 
 // Track a grab (when NZB is actually downloaded/selected)
-export function trackGrab(indexerName: string, title: string): void {
+export function trackGrab(indexerName: string, title: string, downloadMs?: number): void {
   const key = findIndexerKey(indexerName);
   if (!statsData.indexers[key]) {
     statsData.indexers[key] = {
@@ -324,6 +326,7 @@ export function trackGrab(indexerName: string, title: string): void {
   indexer.grabHistory.push({
     timestamp: new Date().toISOString(),
     title,
+    ...(downloadMs !== undefined ? { downloadMs } : {}),
   });
   
   if (indexer.grabHistory.length > 100) {
@@ -363,4 +366,18 @@ export async function runStaleIndexerStatsCleanup(): Promise<void> {
   } catch (err) {
     console.error('\u{1F5D1}️ Stale stats cleanup failed:', err);
   }
+}
+
+/** The NZB downloads `recentNzbDownloadMs` averages: the indexer's last ones with a time. */
+const RECENT_NZB_DOWNLOADS = 10;
+
+/**
+ * How long an indexer's recent NZB downloads took, on average (ms): its last RECENT_NZB_DOWNLOADS timed grabs.
+ * Undefined when it has none. A Release's NZB is fetched from the indexer with the lowest (#300).
+ */
+export function recentNzbDownloadMs(indexerName: string): number | undefined {
+  const timed = (statsData.indexers[findIndexerKey(indexerName)]?.grabHistory ?? [])
+    .filter(g => typeof g.downloadMs === 'number').slice(-RECENT_NZB_DOWNLOADS);
+  if (timed.length === 0) return undefined;
+  return timed.reduce((sum, g) => sum + g.downloadMs!, 0) / timed.length;
 }

@@ -10,6 +10,7 @@ import unittest
 
 import brainreport as br
 import brainrun
+import retired_run
 import build_page as bp
 import runcheck
 import runs
@@ -24,7 +25,7 @@ def run_on(tmp, name, recording, commit, minutes):
     CHECK.txt stored as the run command stores it."""
     io = CleanIO(commit=commit)
     io.clock += datetime.timedelta(minutes=minutes)
-    run = brainrun.run_all(make_cfg(tmp, name=name, listname=recording), io)
+    run = retired_run.run_all(make_cfg(tmp, name=name, listname=recording), io)
     runcheck.check_and_store(run['dir'])
     return run
 

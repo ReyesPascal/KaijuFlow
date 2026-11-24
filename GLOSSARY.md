@@ -85,7 +85,7 @@ What a play of a list is for: the title's type, season, episode, aired date and 
 _Avoid_: play params, episode info, session data
 
 **Source memory**:
-What KaijuFlow remembers of Sources across plays and restarts: the ready ones (the Backend made their video, so a later play reuses it) and the dead ones (bad Sources, ADR 0004, kept out of lists and walks). A play remembers what it learned and recalls a Source as its play context asks for it; the memory alone decides how a Source is keyed, so a Source remembered by one play is found by another for the same episode, a dated one included (#247). A dead mark is the Source's for every episode when its link is gone or the check blocked it, otherwise its episode's, unless a season pack fails whole before any episode of it played.
+What KaijuFlow remembers of Sources across plays and restarts: the ready ones (the Backend made their video, so a later play reuses it) and the dead ones (bad Sources, ADR 0004, kept out of lists and walks). A play remembers what it learned and recalls a Source as its play context asks for it; the memory alone decides how a Source is keyed, so a Source remembered by one play is found by another for the same episode, a dated one included (#247). A dead mark is the Source's for every episode when its link is gone or the check blocked it, otherwise its episode's, unless a season pack fails whole before any episode of it played. A dead mark on a Release covers its Source on every indexer, except a link one indexer says is gone, which is that Source's alone (#300).
 _Avoid_: NZB database, healthy cache, stream cache (the prepares under way)
 
 **Disc image**:
@@ -110,11 +110,11 @@ _Avoid_: variant, candidate, contestant
 The setup where the player gets its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it. A side of earlier runs only; KaijuFlow's runs no longer play it.
 _Avoid_: AltMount's own addon, addon, AltMount alone
 
-**Short run**:
+**Short run** (retired by ADR 0010):
 A timed run that is not the full plan: without KaijuFlow's own pass, one round instead of two, or fewer titles than the list, for a quick check while tuning. It says what it played, and it is never a baseline or a previous run.
 _Avoid_: partial run, quick run
 
-**Pass**:
+**Pass** (retired by ADR 0010):
 The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of KaijuFlow and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
 _Avoid_: batch, phase (cold or warm is the phase)
 
@@ -126,7 +126,7 @@ _Avoid_: think time, settle (the settle is the pause after a play)
 A short fixed piece of single-thread work (about 1 s on Brain plugged in) that a run's preflight times before the run starts, the same work every run, so a run whose CPU was slower says so. It judges nothing; the run keeps it in `meta.json` and the report holds it against the previous run's. Format in `tools/brain/docs/formats.md`.
 _Avoid_: benchmark (it measures the machine, not KaijuFlow)
 
-**Round**:
+**Round** (retired by ADR 0010):
 Every title played once, cold or warm, on every side of a pass. A timed run plays four rounds: cold, warm, cold, warm. A side's figures for a round are made of its own plays in it; the time a round takes covers every side of the pass.
 _Avoid_: iteration, lap
 
@@ -170,7 +170,7 @@ _Avoid_: fail (video arrived), timeout
 A play of a TV episode whose Source KaijuFlow already prepared for an earlier episode, as a viewer watching on gets. It is reported apart from fresh plays, since it starts partly warm.
 _Avoid_: warm start (a warm start is the same Source and episode again), binge play
 
-**Previous run**:
+**Previous run** (retired by ADR 0010):
 The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its warm title to video, its fallbacks and their extra seconds against the previous run's, which never change the verdict. A run that was stopped or is short is not judged. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
 _Avoid_: baseline (the baseline is one run; the previous run moves on with every run), last run (it may be on another recording)
 
@@ -186,15 +186,15 @@ _Avoid_: baseline list, normal titles
 A title list of the kinds where dead Sources are common (older releases, titles prone to takedowns, less popular titles), chosen by kind only and played as each app plays it, with no check beforehand; never chosen by which side failed. It shows what checking saves.
 _Avoid_: stress list, fail list
 
-**Speed test**:
+**Speed test** (retired by ADR 0010):
 A timed run on an easy list and a hard list drawn from the pool, titles KaijuFlow has not played before. The first speed test that works is the baseline.
 _Avoid_: baseline, benchmark
 
-**Tuning test**:
+**Tuning test** (retired by ADR 0010):
 A timed run that plays a title list again, so a change to KaijuFlow or its AltMount can be judged against the run before it on the same titles.
 _Avoid_: speed test (when the titles are reused), rerun
 
-**Grouped run**:
+**Grouped run** (retired by ADR 0010):
 A tuning test that carries several changes at once and is judged as one against the previous run. When it is not kept, its changes are split in halves, each half run on its own, until the change that made it not kept shows.
 _Avoid_: batch run, combined test
 
@@ -214,16 +214,16 @@ _Avoid_: baseline settings, golden config
 One rule set for every side of a comparison of setups (the same list of Sources, 4K first, one try per play), and KaijuFlow's top pick compared per title with each other setup's. KaijuFlow's runs alone need neither.
 _Avoid_: fair run, same settings
 
-**Recording**:
+**Recording** (retired by ADR 0010):
 The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing.
 _Avoid_: cache, snapshot
 
 **Stand-in**:
-The small stand-in indexer on port 1340 that every test copy talks to. It records real answers once and replays them afterwards.
+The small stand-in indexer on port 1340 that every test copy talks to. In a real-use check it passes every request to the live indexer and keeps the answers in the check's own store, so the cap rule and the allowance count the check (its replay of a Recording is retired by ADR 0010).
 _Avoid_: mock, proxy
 
 **Cap rule**:
-The first "limit reached" from any indexer stops the pass at once, and its result is null: no numbers are reported. The work waits for the indexer's reset.
+The first "limit reached" from any indexer stops the check at once with no verdict. The work waits for the indexer's reset.
 _Avoid_: rate-limit handling
 
 **Stopped run**:

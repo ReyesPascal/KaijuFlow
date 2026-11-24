@@ -18,6 +18,7 @@ import type { Stream, AutoPlayConfig } from '../types.js';
 import type { HealthCheckResult } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
 import { createFallbackGroup, fallbackGroupCount, isUltimateFallbackActive, type FallbackCandidate } from '../play/index.js';
+import { releaseSourcesOf } from './kaijuSearch.js';
 import { timeStepSync } from '../utils/stepTiming.js';
 import { encodeTileEnvelope, toContentType } from '../play/redirectHelpers.js';
 import { episodeForTile, type PlayContext } from '../play/playContext.js';
@@ -83,7 +84,9 @@ export function candidatesOf(allResults: any[]): FallbackCandidate[] {
         if (meta.sig) nzbParams.set('sig', meta.sig);
         nzbUrl = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/easynews/nzb?${nzbParams.toString()}`;
       }
-      return { nzbUrl, title: r.title, indexerName: r.indexerName, size: r.size, isSeasonPack: r.isSeasonPack || false, searchExitIp: r.searchExitIp, flow: r.flow, flowWhy: r.flowWhy, proof: r.proof };
+      // A Release's Sources on every indexer (#299), for the Walk's NZB choice and its dead marks (#300).
+      const sources = r.easynewsMeta ? undefined : releaseSourcesOf(r);
+      return { nzbUrl, title: r.title, indexerName: r.indexerName, size: r.size, isSeasonPack: r.isSeasonPack || false, searchExitIp: r.searchExitIp, flow: r.flow, flowWhy: r.flowWhy, proof: r.proof, ...(sources ? { sources } : {}) };
     });
 }
 

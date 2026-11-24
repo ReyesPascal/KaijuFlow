@@ -2,8 +2,9 @@
 
 brainrun.py collects one "visit" per run phase, side and title; this module turns visits into
 medians, a failure split, a diff against the previous run, the plain-language report and the run folder / INDEX.md
-bookkeeping. The run is judged against the previous run in runcheck.py; the Speed Check page's targets, held against
-other setups, are in pagetargets.py (page code, #187).
+bookkeeping. Real-use checks use its log readers, step lines and INDEX.md bookkeeping; the run report, the diff and the
+medians serve the retired timed runs (ADR 0010, #273), whose judgement (runcheck.py) and page (build_page.py) are archived
+in archive/.
 """
 import datetime
 import json

@@ -8,12 +8,18 @@
  *
  * Saved to `config/healthy-nzbs.json` (ready) and `config/dead-nzbs.json` (dead), in the layout earlier builds wrote,
  * so a saved memory loads across builds. A dead mark is keyed by the Source (ADR 0004).
+ *
+ * Releases (#300; GLOSSARY: Release): a Source given with its Release's `sources` is the Release. A dead mark on it is
+ * written on every one of its Sources, and a Release is dead when one of them carries a mark of the Release's, so a bad
+ * upload is not tried again from another indexer, a mark written before the upload was found there included. A link
+ * the indexer says is gone, or its bad NZB, is that indexer's own (`linkOnly`): it marks that Source alone, and the
+ * Release is dead by it only once every Source's link is.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { StreamData } from './types.js';
+import type { StreamData, ReleaseSource } from './types.js';
 import { BACKEND_ID } from '../backends/types.js';
 import { config as globalConfig } from '../config/index.js';
 import { episodeOf, type PlayContext } from './playContext.js';
@@ -32,6 +38,13 @@ export interface RememberedSource {
   /** Video bytes when known, else the indexer's NZB bytes: shown with a dead mark. */
   size?: number;
   isSeasonPack?: boolean;
+  /** The Release's Sources, one per indexer (#300). Absent: the Source is its own Release. */
+  sources?: ReleaseSource[];
+}
+
+/** A Release's Sources: its `sources`, or the Source alone. */
+export function sourcesOf<T extends { nzbUrl: string; title: string; indexerName?: string }>(release: T & { sources?: ReleaseSource[] }): (T | ReleaseSource)[] {
+  return release.sources?.length ? release.sources : [release];
 }
 
 /** What a play learned about a Source. */
@@ -43,7 +56,7 @@ export type Outcome =
    * says is gone, a check that blocked the whole Source). Otherwise it is the play's episode's, unless a season pack
    * fails whole before any episode of it was ever ready: then the pack is marked dead, so its siblings drop out of lists.
    */
-  | { source: RememberedSource; play?: PlayContext; dead: Error; everyEpisode?: boolean };
+  | { source: RememberedSource; play?: PlayContext; dead: Error; everyEpisode?: boolean; linkOnly?: boolean };
 
 /** What the memory holds for a Source as a play asks for it. */
 export interface Recalled {
@@ -108,6 +121,8 @@ const deadMarks = new Map<string, DeadNzbEntry>();
 const isActiveBackendEntry = (e: ReadyEntry): boolean => e.backend === BACKEND_ID;
 const isTimeoutMark = (e: DeadNzbEntry): boolean => (e.error as { isTimeout?: boolean }).isTimeout === true;
 const isEpisodeMark = (e: DeadNzbEntry): boolean => (e.error as { isEpisodeSpecific?: boolean }).isEpisodeSpecific === true;
+/** A mark of one indexer's link (#300): gone there, or its NZB bad. It is not the Release's. */
+const isLinkOnly = (e: Error): boolean => (e as { isLinkOnly?: boolean }).isLinkOnly === true;
 /** A timed-out mark is kept only for this run when the owner turned off remembering timeouts. */
 const hiddenTimeout = (e: DeadNzbEntry): boolean => isTimeoutMark(e) && globalConfig.playCacheTimeouts === false;
 
@@ -160,7 +175,7 @@ interface SerializedDeadEntry {
   indexerName?: string;
   size?: number;
   // isNzbdavFailure: the flag's name in dead marks saved before #200; read on load, never written.
-  error: { message: string; isBadSource?: boolean; isNzbdavFailure?: boolean; isTimeout?: boolean; isEpisodeSpecific?: boolean };
+  error: { message: string; isBadSource?: boolean; isNzbdavFailure?: boolean; isTimeout?: boolean; isEpisodeSpecific?: boolean; isLinkOnly?: boolean };
   createdAt?: number;
   expiresAt: number;
 }
@@ -190,6 +205,7 @@ function loadFromDisk(): void {
       const error = new Error(entry.error.message);
       (error as any).isBadSource = entry.error.isBadSource ?? entry.error.isNzbdavFailure ?? false;
       (error as any).isTimeout = entry.error.isTimeout ?? false;
+      if (entry.error.isLinkOnly) (error as any).isLinkOnly = true;
       // Writers before the episode scope stored episode-keyed marks with isEpisodeSpecific=false, which made them
       // bans of the whole Source: any of the stored flag, the key's shape or the old multi-episode message makes a
       // mark the episode's. `||` is required: ?? would stop at the false boolean.
@@ -235,6 +251,7 @@ export function saveCacheToDisk(): void {
         isBadSource: (entry.error as any).isBadSource ?? false,
         isTimeout: (entry.error as any).isTimeout ?? false,
         isEpisodeSpecific: (entry.error as any).isEpisodeSpecific ?? false,
+        ...(isLinkOnly(entry.error) ? { isLinkOnly: true } : {}),
       },
       createdAt: entry.createdAt,
       expiresAt: Number.isFinite(entry.expiresAt) ? entry.expiresAt : 0,
@@ -267,7 +284,7 @@ function setDead(key: string, source: RememberedSource, error: Error): void {
   saveCacheToDisk();
 }
 
-/** Keep what a play learned about a Source. */
+/** Keep what a play learned about a Source. A Release's dead mark goes on every one of its Sources (#300). */
 export function remember(outcome: Outcome): void {
   const { source, play } = outcome;
   const episodePattern = episodePatternOf(play);
@@ -279,11 +296,16 @@ export function remember(outcome: Outcome): void {
     saveCacheToDisk();
     return;
   }
-  const error = outcome.dead as Error & { isEpisodeSpecific?: boolean };
+  const error = outcome.dead as Error & { isEpisodeSpecific?: boolean; isLinkOnly?: boolean };
+  if (outcome.linkOnly) error.isLinkOnly = true;
+  const marked = outcome.linkOnly ? [source] : sourcesOf(source);
   const whole = outcome.everyEpisode === true
-    || (error.isEpisodeSpecific !== true && packNeverReady(source.nzbUrl, source.isSeasonPack));
+    || (error.isEpisodeSpecific !== true && marked.every(s => packNeverReady(s.nzbUrl, source.isSeasonPack)));
   if (!whole && episodePattern) error.isEpisodeSpecific = true; // the mark is this episode's (recall honours it)
-  setDead(whole ? deadKey(source.nzbUrl) : deadKey(source.nzbUrl, episodePattern), source, error);
+  for (const s of marked) {
+    const one = { nzbUrl: s.nzbUrl, title: s.title, indexerName: s.indexerName, size: s === source ? source.size : s.size ?? source.size };
+    setDead(whole ? deadKey(s.nzbUrl) : deadKey(s.nzbUrl, episodePattern), one, error);
+  }
 }
 
 /** A live dead mark of the Source for every episode: its bare-URL mark, or a mark under an episode key that is not
@@ -300,10 +322,8 @@ function deadForEveryEpisode(nzbUrl: string, now: number): DeadNzbEntry | undefi
   return undefined;
 }
 
-/** What is remembered of a Source as a play asks for it. */
-export function recall(source: { nzbUrl: string; title: string }, play?: PlayContext): Recalled {
-  const now = Date.now();
-  const episodePattern = episodePatternOf(play);
+/** What is remembered of one Source as a play asks for it. */
+function recallOne(source: { nzbUrl: string; title: string }, episodePattern: string | undefined, now: number): Recalled {
   const ready = readyCache.get(readyKey(source.nzbUrl, source.title, episodePattern));
   const episodeMark = episodePattern ? deadMarks.get(deadKey(source.nzbUrl, episodePattern)) : undefined;
   const dead = (episodeMark && episodeMark.expiresAt > now ? episodeMark : undefined) ?? deadForEveryEpisode(source.nzbUrl, now);
@@ -311,6 +331,20 @@ export function recall(source: { nzbUrl: string; title: string }, play?: PlayCon
     ...(ready && ready.expiresAt > now && isActiveBackendEntry(ready) ? { ready: ready.data } : {}),
     ...(dead ? { dead: dead.error } : {}),
   };
+}
+
+/**
+ * What is remembered of a Source, or of a Release (given with its `sources`), as a play asks for it. A Release is
+ * ready when one of its Sources is, and dead when one carries a mark of the Release's or every one is marked (#300).
+ */
+export function recall(source: { nzbUrl: string; title: string; sources?: ReleaseSource[] }, play?: PlayContext): Recalled {
+  const now = Date.now();
+  const episodePattern = episodePatternOf(play);
+  const each = sourcesOf(source).map(s => recallOne(s, episodePattern, now));
+  const ready = each.find(r => r.ready)?.ready;
+  const marks = each.map(r => r.dead);
+  const dead = marks.find(d => d && !isLinkOnly(d)) ?? (marks.every(d => d) ? marks[0] : undefined);
+  return { ...(ready ? { ready } : {}), ...(dead ? { dead } : {}) };
 }
 
 /** Whether anything is remembered of a Source for any episode (ready, or dead for every episode): the coarse check

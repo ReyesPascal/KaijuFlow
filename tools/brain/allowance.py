@@ -17,7 +17,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
-import runs  # noqa: E402
 
 ROLLING = 'rolling-24h'
 DEFAULT_LIVE_STATS = os.path.expanduser('~/usenet-stack/usenet-ultimate_config/stats.json')
@@ -206,57 +205,3 @@ def left(cfg, now=None, stats_files=None):
         return None, problem
     return {slug: {kind: lim[kind] - used[slug]['standin'][kind] - used[slug]['copies'][kind] for kind in KINDS}
             for slug, lim in limits.items()}, None
-
-
-def last_complete_recording(runs_root, listname):
-    """(folder name, {indexer slug: {'search': n, 'download': n}}) of the newest complete record folder of this list, or None.
-
-    Complete: its meta.json says status "recorded". The list comes from the first line of its stand-in log."""
-    for folder in sorted(glob.glob(os.path.join(runs_root, '*-record')), reverse=True):
-        try:
-            meta = runs.load(folder)
-        except runs.Unreadable:
-            continue
-        if meta.get('status') != 'recorded':
-            continue
-        log = os.path.join(folder, 'logs', 'standin.log')
-        try:
-            with open(log, errors='replace') as f:
-                head = f.readline()
-        except OSError:
-            continue
-        m = re.match(r'stand-in record list=(\S+)', head)
-        if not m or m.group(1) != listname:
-            continue
-        counts = {}
-        for slug, kind, _ in requests_in(log):
-            counts.setdefault(slug, dict.fromkeys(KINDS, 0))[kind] += 1
-        return os.path.basename(folder), counts
-    return None
-
-
-def record_preflight_lines(cfg, now=None, stats_files=None):
-    """What `preflight --for record` adds: the allowance table, the last complete recording's request count, and a warning
-    when that many requests may not fit in what is left. Warns only; never blocks."""
-    now = now or datetime.datetime.now(datetime.timezone.utc)
-    limits, used, problem = _compute(cfg, now, stats_files)
-    lines = [problem] if problem else table(limits, used) + [COLUMNS, CAVEAT]
-    last = last_complete_recording(cfg['runs_root'], cfg.get('listname')) if cfg.get('runs_root') else None
-    if last is None:
-        lines.append(f"There is no earlier complete recording of the list '{cfg.get('listname')}', so the request count of a full pass is not known yet.")
-        return lines
-    folder, counts = last
-    total = sum(sum(c.values()) for c in counts.values())
-    parts = ', '.join(f'{slug}: {c["search"]} searches and {c["download"]} downloads' for slug, c in sorted(counts.items()))
-    lines.append(f"The last complete recording of the list '{cfg.get('listname')}' ({folder}) sent {total} requests to the indexers ({parts}). "
-                 'A top-up sends fewer, because stored answers are not asked for again.')
-    for slug, c in sorted(counts.items()):
-        lim = (limits or {}).get(slug)
-        if not lim:
-            continue
-        for kind in KINDS:
-            left = lim[kind] - used[slug]['standin'][kind] - used[slug]['copies'][kind]
-            if c[kind] > left:
-                lines.append(f'Warning: {lim["name"]} has {left} {KIND_NAMES[kind]} left but the last full recording needed {c[kind]}. '
-                             'The recording may stop at the limit; it can be topped up after the reset.')
-    return lines

@@ -1,4 +1,7 @@
 # The Brain tools are compact one-file scripts; CI lints them for bugs, not layout.
 # F = pyflakes: undefined names, unused imports and variables, bad f-strings. Syntax is covered by py_compile.
+# archive/ holds the retired recording path (ADR 0010, #273): kept, not checked (retired.py, archive/README.md).
+extend-exclude = ["archive"]
+
 [lint]
 select = ["F"]
