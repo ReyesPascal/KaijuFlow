@@ -112,13 +112,12 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
     }
 
     // Kaiju Search (#285): every synced indexer is asked by the IDs its capabilities list, and by name.
-    const searchIndexers = enabledSynced;
     const neededMethods = new Set<string>();
-    for (const indexer of searchIndexers) for (const m of waysOf(kind, indexer.capabilities)) neededMethods.add(m);
+    for (const indexer of enabledSynced) for (const m of waysOf(kind, indexer.capabilities)) neededMethods.add(m);
     console.log('');
     console.log('═══ Search Setup ' + '═'.repeat(46));
-    console.log(`📋 Kaiju Search (Prowlarr): ${[...neededMethods].join(', ')} across ${searchIndexers.length} indexer(s)`);
-    for (const indexer of searchIndexers) console.log(`   ${indexer.name}: ${waysOf(kind, indexer.capabilities).join(', ')}`);
+    console.log(`📋 Kaiju Search (Prowlarr): ${[...neededMethods].join(', ')} across ${enabledSynced.length} indexer(s)`);
+    for (const indexer of enabledSynced) console.log(`   ${indexer.name}: ${waysOf(kind, indexer.capabilities).join(', ')}`);
 
     // Resolve external IDs needed by indexers — seed from anime database if available
     const resolvedIds = new Map<string, { idParam: string; idValue: string } | null>();
@@ -135,12 +134,12 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
         resolvedIds.set(method, result);
       }));
 
-    for (const i of searchIndexers) asked.push({ source: i.name, ids: idsAsked(kind, i.capabilities, imdbId, resolvedIds) });
+    for (const i of enabledSynced) asked.push({ source: i.name, ids: idsAsked(kind, i.capabilities, imdbId, resolvedIds) });
     const startTime = Date.now();
     const timeoutEnabled = config.searchTimeoutOverride !== undefined ? true : config.prowlarrTimeoutEnabled;
     const timeoutSeconds = config.searchTimeoutOverride ?? config.prowlarrTimeout;
     const searcher = new ProwlarrSearcher(
-      config.prowlarrUrl, config.prowlarrApiKey, searchIndexers,
+      config.prowlarrUrl, config.prowlarrApiKey, enabledSynced,
       timeoutEnabled, timeoutSeconds,
     );
 
@@ -181,13 +180,12 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
     }
 
     // Kaiju Search (#285): every synced indexer is asked by the IDs its capabilities list, and by name.
-    const searchIndexers = enabledSynced;
     const neededMethods = new Set<string>();
-    for (const indexer of searchIndexers) for (const m of waysOf(kind, indexer.capabilities)) neededMethods.add(m);
+    for (const indexer of enabledSynced) for (const m of waysOf(kind, indexer.capabilities)) neededMethods.add(m);
     console.log('');
     console.log('═══ Search Setup ' + '═'.repeat(46));
-    console.log(`📋 Kaiju Search (NZBHydra): ${[...neededMethods].join(', ')} across ${searchIndexers.length} indexer(s)`);
-    for (const indexer of searchIndexers) console.log(`   ${indexer.name}: ${waysOf(kind, indexer.capabilities).join(', ')}`);
+    console.log(`📋 Kaiju Search (NZBHydra): ${[...neededMethods].join(', ')} across ${enabledSynced.length} indexer(s)`);
+    for (const indexer of enabledSynced) console.log(`   ${indexer.name}: ${waysOf(kind, indexer.capabilities).join(', ')}`);
 
     // Resolve external IDs needed by indexers — seed from anime database if available
     const resolvedIds = new Map<string, { idParam: string; idValue: string } | null>();
@@ -204,12 +202,12 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
         resolvedIds.set(method, result);
       }));
 
-    for (const i of searchIndexers) asked.push({ source: i.name, ids: idsAsked(kind, i.capabilities, imdbId, resolvedIds) });
+    for (const i of enabledSynced) asked.push({ source: i.name, ids: idsAsked(kind, i.capabilities, imdbId, resolvedIds) });
     const startTime = Date.now();
     const nzbhydraTimeoutEnabled = config.searchTimeoutOverride !== undefined ? true : config.nzbhydraTimeoutEnabled;
     const nzbhydraTimeoutSeconds = config.searchTimeoutOverride ?? config.nzbhydraTimeout;
     const searcher = new NzbhydraSearcher(
-      config.nzbhydraUrl, config.nzbhydraApiKey, searchIndexers,
+      config.nzbhydraUrl, config.nzbhydraApiKey, enabledSynced,
       config.nzbhydraUsername, config.nzbhydraPassword,
       nzbhydraTimeoutEnabled, nzbhydraTimeoutSeconds,
     );
@@ -245,18 +243,15 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
   } else {
     // === NEWZNAB MODE ===
     const enabledIndexers = config.indexers.filter(i => i.enabled);
-    const effectiveIndexers = enabledIndexers;
-    // Kaiju Search (#285): every indexer is asked by name, so each is a target of the name retries below.
-    const isTextCapable = (_i: typeof effectiveIndexers[number]): boolean => true;
-    const waysFor = (i: typeof effectiveIndexers[number]) => waysOf(kind, i.caps);
+    const waysFor = (i: typeof enabledIndexers[number]) => waysOf(kind, i.caps);
 
     // The ways needed across all enabled indexers: the IDs their caps list, and by name.
     const neededMethods = new Set<string>();
-    for (const indexer of effectiveIndexers) for (const m of waysFor(indexer)) neededMethods.add(m);
+    for (const indexer of enabledIndexers) for (const m of waysFor(indexer)) neededMethods.add(m);
     console.log('');
     console.log('═══ Search Setup ' + '═'.repeat(46));
-    console.log(`📋 Kaiju Search (Newznab): ${[...neededMethods].join(', ')} across ${effectiveIndexers.length} indexer(s)`);
-    for (const indexer of effectiveIndexers) console.log(`   ${indexer.name}: ${waysFor(indexer).join(', ')}`);
+    console.log(`📋 Kaiju Search (Newznab): ${[...neededMethods].join(', ')} across ${enabledIndexers.length} indexer(s)`);
+    for (const indexer of enabledIndexers) console.log(`   ${indexer.name}: ${waysFor(indexer).join(', ')}`);
     if (isAnime && neededMethods.has('text') && additionalTitles?.length) {
       console.log(`🎌 Anime dual-title search: "${title}" + ${additionalTitles.map(t => `"${t}"`).join(', ')}`);
     }
@@ -278,7 +273,7 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
         resolvedIds.set(method, result);
       }));
 
-    for (const i of effectiveIndexers) asked.push({ source: i.name, ids: idsAsked(kind, i.caps, imdbId, resolvedIds) });
+    for (const i of enabledIndexers) asked.push({ source: i.name, ids: idsAsked(kind, i.caps, imdbId, resolvedIds) });
 
     // Indexers that timed out during the main search pass. Scoped to this single
     // indexManagerSearch invocation so the text-fallback and alt-title retries can
@@ -297,12 +292,12 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
       indexerLines.set(name, existing);
     };
 
-    if (isAnime && !!additionalTitles?.length && effectiveIndexers.some(isTextCapable)) {
+    if (isAnime && !!additionalTitles?.length && enabledIndexers.length > 0) {
       console.log(`🎌 Newznab anime dual-title fan-out: querying primary + ${additionalTitles!.length} alt(s)`);
     }
 
     // Search across all enabled indexers, each with its own methods and resolved IDs
-    const searchPromises = effectiveIndexers
+    const searchPromises = enabledIndexers
       .map(async (indexer) => {
         const startTime = Date.now();
         const methodArr = waysFor(indexer);
@@ -374,14 +369,13 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true
       && !!additionalTitles?.length
       && !isAnime;
-    const parallelAltCapable = effectiveIndexers.filter(isTextCapable);
-    if (parallelAltEnabled && parallelAltCapable.length > 0) {
+    if (parallelAltEnabled && enabledIndexers.length > 0) {
       slog(type === 'movie'
         ? `🔀 Newznab parallel alt-title movie search: querying primary + ${additionalTitles!.length} alt(s) concurrently`
         : `🔀 Newznab parallel alt-title search: querying primary + ${additionalTitles!.length} alt(s) concurrently`);
     }
     const altSearchPromises = parallelAltEnabled
-      ? parallelAltCapable.flatMap(indexer => additionalTitles!.map(async (altTitle) => {
+      ? enabledIndexers.flatMap(indexer => additionalTitles!.map(async (altTitle) => {
           const startTime = Date.now();
           const searcher = new UsenetSearcher(applySearchTimeoutOverride(indexer));
           const { result, lines } = await withBuffer(async (): Promise<any[]> => {
@@ -427,7 +421,7 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
       && config.searchConfig?.aliasTitleFallback !== false
       && !!searchAliases?.length
     ) {
-      const retryIndexers = effectiveIndexers.filter(i => !timedOutIndexers.has(i.name) && isTextCapable(i));
+      const retryIndexers = enabledIndexers.filter(i => !timedOutIndexers.has(i.name));
       if (retryIndexers.length === 0 && enabledIndexers.length > 0) {
         slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
       }
@@ -492,7 +486,7 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
       && episode !== undefined
       && config.searchConfig?.absoluteEpisodeFallback !== false
     ) {
-      const retryIndexers = effectiveIndexers.filter(i => !timedOutIndexers.has(i.name) && isTextCapable(i));
+      const retryIndexers = enabledIndexers.filter(i => !timedOutIndexers.has(i.name));
       if (retryIndexers.length === 0 && enabledIndexers.length > 0) {
         slog(`⚠️  No text-method indexers, skipping absolute-episode fallback`);
       }
@@ -558,7 +552,7 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
     // Skip indexers that have timed out at any prior point in this cycle.
     // Skipped entirely in parallel-alt mode — those alts already fired upfront.
     if (results.length === 0 && additionalTitles?.length && enabledIndexers.length > 0 && !parallelAltEnabled) {
-      const altIndexers = effectiveIndexers.filter(i => !timedOutIndexers.has(i.name) && isTextCapable(i));
+      const altIndexers = enabledIndexers.filter(i => !timedOutIndexers.has(i.name));
       if (altIndexers.length === 0 && enabledIndexers.length > 0) {
         slog(`⚠️  No text-method indexers, skipping alt-title retry`);
       }
