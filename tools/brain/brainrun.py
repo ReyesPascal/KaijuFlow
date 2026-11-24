@@ -1176,15 +1176,28 @@ def preflight(mode, cfg, io, seen=None):
         if problem:
             problems.append(problem)  # the limits file is missing or wrong: the sentence says what to fill in
         else:
+            # Every title is searched on every indexer, so each needs the check's searches; the Walk's grabs are shared
+            # (at most 30 per title in all, from whichever indexer has the Source), so the indexers together must hold the
+            # check's downloads (owner's pick on #286, 2026-11-24, when DrunkenSlug's 100 a day joined NinjaCentral).
+            downloads = {}
             for slug in sorted({slug for s in readable for slug in rep['enabled'][s]}):
                 have = left.get(allowance.norm(slug))
                 if have is None:
                     problems.append(f'The limits file has no entry for {slug}, so its allowance cannot be checked: add one.')
                     continue
+                downloads[slug] = have['download']
                 for kind in allowance.KINDS:
-                    if have[kind] < want[kind]:
+                    if kind != 'download' and have[kind] < want[kind]:
                         problems.append(f'{slug} has {have[kind]} {allowance.KIND_NAMES[kind]} left today, and the check may need '
                                         f'{want[kind]}: wait for its reset (brainrun.py usage shows the allowance).')
+            if downloads and sum(downloads.values()) < want['download']:
+                name, each = allowance.KIND_NAMES['download'], ', '.join(f'{s} {n}' for s, n in downloads.items())
+                if len(downloads) == 1:
+                    problems.append(f'{next(iter(downloads))} has {sum(downloads.values())} {name} left today, and the check may need '
+                                    f"{want['download']}: wait for its reset (brainrun.py usage shows the allowance).")
+                else:
+                    problems.append(f'The indexers have {sum(downloads.values())} {name} left today between them ({each}), and the '
+                                    f"check may need {want['download']}: wait for a reset (brainrun.py usage shows the allowance).")
     return problems
 
 

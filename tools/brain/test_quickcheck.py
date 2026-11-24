@@ -900,17 +900,36 @@ class CheckPreflightTest(unittest.TestCase):
         self.assertNotIn(SECRET, text)
 
     def test_too_little_allowance_left_refuses_a_check(self):
-        self.used(450 - 149)  # 149 downloads left; 5 titles may need 150
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
+        self.used(450 - 149)  # 149 downloads left between the two; 5 titles may need 150
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
-        self.assertIn('ninjacentral has 149 downloads left today, and the check may need 150', text)
+        self.assertIn('The indexers have 149 downloads left today between them (drunkenslug 0, ninjacentral 149), '
+                      'and the check may need 150', text)
+
+    def test_the_walks_grabs_are_shared_so_downloads_count_once_across_the_indexers(self):
+        # owner's pick on #286, 2026-11-24: the Walk grabs at most 30 per title in all, from whichever indexer has the
+        # Source, so two indexers together must hold the check's downloads; neither needs all of them alone
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 100)})
+        self.used(450 - 60)  # ninjacentral 60 left, drunkenslug 100: 160 between them, 150 needed
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        self.assertEqual(code, 0, text)
+
+    def test_searches_still_count_per_indexer(self):
+        # every title is searched on every indexer, so each needs the check's searches itself
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (59, 100)})
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        self.assertEqual(code, 1, text)
+        self.assertIn('drunkenslug has 59 searches left today, and the check may need 60', text)
 
     def test_a_drill_down_asks_for_one_titles_allowance(self):
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
         self.used(450 - 30)  # 30 downloads left: one title may need 30, five 150
         code, text = run_command('check', dict(self.cfg, check_titles=1), FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
-        self.assertIn('ninjacentral has 30 downloads left today, and the check may need 150', text)
+        self.assertIn('The indexers have 30 downloads left today between them (drunkenslug 0, ninjacentral 30), '
+                      'and the check may need 150', text)
 
     def test_a_missing_limits_file_or_entry_refuses_a_check(self):
         self.limits({'ninjacentral': (2000, 450)})
