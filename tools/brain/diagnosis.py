@@ -86,6 +86,8 @@ def failures(ev):
     in the order they failed, or one for the play itself when no Source failed (nothing to play, a fail before any
     Source, a slow play). Each: release, kind, step (the failing step line or None), where, reason."""
     o = ev.meta.get('outcome') or {}
+    if not ev.meta.get('kept_because'):
+        return []  # a play that went fine (a Drill-down keeps its folder too, #272) has no failure
     if o.get('outcome') == 'fail':
         play_kind = 'wrong title' if (o.get('why') or '').startswith('the wrong title played') else 'fail'
     elif o.get('outcome') == 'nothing to play':
@@ -624,8 +626,11 @@ def record(run_dir, folder=casebook.FOLDER):
         if slot['seen'] or slot['ruled_out']:
             _add_to_entry(os.path.join(folder, entries[i]['file']), slot['seen'], slot['ruled_out'])
             out[i] = {'seen': len(slot['seen']), 'ruled_out': len(slot['ruled_out'])}
-    for i, changed in fixing.record(run_dir, (_read_json(os.path.join(run_dir, STORED)) or {}).get('fixes') or [],
-                                    folder).items():
+    summary = _read_json(os.path.join(run_dir, STORED)) or {}
+    # a Drill-down's marks first (#272): a comeback it reopened is then not reopened again by its fix
+    for i, changed in fixing.record_drill(summary.get('drill'), folder).items():
+        out.setdefault(i, {'seen': 0, 'ruled_out': 0})['drill'] = changed
+    for i, changed in fixing.record(run_dir, summary.get('fixes') or [], folder).items():
         out.setdefault(i, {'seen': 0, 'ruled_out': 0})['fixes'] = changed
     casebook.write_index(folder)
     return out
@@ -680,7 +685,9 @@ def main(argv):
     folder = argv[2]
     if argv[1] == 'record':
         for i, n in record(folder).items():
-            print(f"{i}: {_plural(n['seen'], 'occurrence')} added, {_plural(n['ruled_out'], 'ruled-out line')} added")
+            print(f"{i}: {_plural(n['seen'], 'occurrence')} added, {_plural(n['ruled_out'], 'ruled-out line')} added"
+                  + ''.join(f"; {what}: {', '.join(n[k])}" for k, what in (('drill', 'Drill-down'), ('fixes', 'fixes'))
+                            if n.get(k)))
         print('Casebook index written again: commit the entries and the index.')
         return 0
     if os.path.exists(os.path.join(folder, 'evidence.json')):

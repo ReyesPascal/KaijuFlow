@@ -1,7 +1,7 @@
 """The evidence folder (#280, spec #279): what a failed or fallen-back play leaves for Diagnosis, saved by one shared part.
 
-The quick check calls `save` for every play `kept_because` names (and the full check and the Drill-down will call the same
-part), so all three write one format: tools/brain/docs/formats.md, "Evidence folder". A play that went fine gets none.
+The quick check calls `save` for every play `kept_because` names, the Drill-down (#272) for its one play however it went
+(and the full check will call the same part), so all three write one format: tools/brain/docs/formats.md, "Evidence folder". A play that went fine gets none.
 `save` reads only what it is handed and what the io gives (the check's stored indexer answers, the stand-in's request
 lines, AltMount's copy of a failed import, the test copies' secret values for scrubbing); it never asks an indexer.
 """
