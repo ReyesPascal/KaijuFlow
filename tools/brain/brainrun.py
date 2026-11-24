@@ -1186,7 +1186,8 @@ def run_all(cfg, io):
            'facts': {'stand-in replay wait': 'on' if cfg.get('wait', True) else 'off', 'browse pause': br.pause_text(cfg['browse_pause']),
                      'one-page side': 'yes' if 'kaijuflow-1page' in run_sides(cfg) else 'no'},
            'timing': {'seconds': None, 'settle_s': cfg['settle'], 'passes': [], 'rounds': [], 'resets': []},
-           'lists': title_lists(cfg['titles']), 'start_load': start_load}
+           'lists': title_lists(cfg['titles']), 'start_load': start_load,
+           'machine': seen.get('machine')}  # the power state, CPU policy and CPU probe the preflight judged (#262)
     wait = cfg.get('wait', True)
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     try:
@@ -1270,7 +1271,7 @@ def write_run_ending(cfg, io, run, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': run['status'], 'visits': run['visits']}, indent=1))
     meta = {k: run.get(k) for k in ('name', 'status', 'started', 'finished', 'commit', 'head', 'dirty', 'recording', 'titles', 'indexers',
                                     'sides', 'rounds', 'short', 'settings', 'facts', 'addresses', 'standin_unmatched', 'null', 'stopped', 'error',
-                                    'standin_misses', 'changes', 'previous', 'timing', 'browse_pause_s', 'start_load')}
+                                    'standin_misses', 'changes', 'previous', 'timing', 'browse_pause_s', 'start_load', 'machine')}
     if run.get('lists'):  # a run on a tagged title list (#167); a run without tags keeps its meta.json as before
         meta['lists'] = run['lists']
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
