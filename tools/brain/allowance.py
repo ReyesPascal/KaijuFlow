@@ -104,7 +104,7 @@ def _parse_iso(s):
     return when if when.tzinfo else when.replace(tzinfo=datetime.timezone.utc)
 
 
-def _log_requests(log):
+def requests_in(log):
     """[(slug, kind, when)] for the RECORD and ERROR lines of one stand-in log."""
     out = []
     try:
@@ -124,7 +124,7 @@ def standin_requests(runs_root):
     """Every request the stand-in sent to a real indexer, from every record folder's log."""
     out = []
     for log in sorted(glob.glob(os.path.join(runs_root, '*', 'logs', 'standin.log'))):
-        out.extend(_log_requests(log))
+        out.extend(requests_in(log))
     return out
 
 
@@ -228,7 +228,7 @@ def last_complete_recording(runs_root, listname):
         if not m or m.group(1) != listname:
             continue
         counts = {}
-        for slug, kind, _ in _log_requests(log):
+        for slug, kind, _ in requests_in(log):
             counts.setdefault(slug, dict.fromkeys(KINDS, 0))[kind] += 1
         return os.path.basename(folder), counts
     return None

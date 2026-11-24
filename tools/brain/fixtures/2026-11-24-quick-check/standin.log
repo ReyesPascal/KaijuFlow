@@ -1,0 +1,58 @@
+stand-in record list=check on 0.0.0.0:1340
+RECORD drunkenslug api extended=1&imdbid=32537226&t=movie -> 200 86510 bytes from=172.18.0.3 t=1795522984248
+RECORD ninjacentral api cat=2000&extended=1&q=Hunting Season 2025&t=search -> 200 83296 bytes from=172.18.0.3 t=1795522984305
+RECORD ninjacentral api extended=1&imdbid=32537226&t=movie -> 200 125069 bytes from=172.18.0.3 t=1795522984309
+RECORD drunkenslug api cat=2000&extended=1&q=Hunting Season 2025&t=search -> 200 82224 bytes from=172.18.0.3 t=1795522984356
+RECORD drunkenslug nzb 6b8caa20c9ff -> 200 289262 bytes from=172.18.0.3 t=1795522985245
+RECORD drunkenslug nzb 1297cfe18026 -> 200 1459849 bytes from=172.18.0.3 t=1795522985538
+RECORD ninjacentral nzb 25db98766c16 -> 200 1367389 bytes from=172.18.0.3 t=1795522985669
+RECORD drunkenslug api extended=1&imdbid=36583977&t=movie -> 200 77713 bytes from=172.18.0.3 t=1795522993559
+RECORD ninjacentral api extended=1&imdbid=36583977&t=movie -> 200 115692 bytes from=172.18.0.3 t=1795522993646
+RECORD drunkenslug api cat=2000&extended=1&q=Forgotten Island 2026&t=search -> 200 71368 bytes from=172.18.0.3 t=1795522993938
+RECORD ninjacentral api cat=2000&extended=1&q=Forgotten Island 2026&t=search -> 200 72034 bytes from=172.18.0.3 t=1795522993938
+RECORD drunkenslug nzb 050f6bf548e7 -> 200 538312 bytes from=172.18.0.3 t=1795522994904
+RECORD ninjacentral nzb 12f2f6c19d93 -> 200 3003523 bytes from=172.18.0.3 t=1795522995208
+RECORD drunkenslug nzb 4ce4de088643 -> 200 3236168 bytes from=172.18.0.3 t=1795522996133
+RECORD ninjacentral api extended=1&imdbid=13701240&t=movie -> 200 37349 bytes from=172.18.0.3 t=1795523003399
+RECORD drunkenslug api extended=1&imdbid=13701240&t=movie -> 200 999 bytes from=172.18.0.3 t=1795523003444
+RECORD drunkenslug api cat=2000&extended=1&q=Miraculous World Tokyo, Stellar Force 2025&t=search -> 200 14663 bytes from=172.18.0.3 t=1795523003529
+RECORD ninjacentral api cat=2000&extended=1&q=Miraculous World Tokyo, Stellar Force 2025&t=search -> 200 33027 bytes from=172.18.0.3 t=1795523003614
+RECORD drunkenslug nzb a1e4351b2129 -> 200 376796 bytes from=172.18.0.3 t=1795523004296
+RECORD ninjacentral nzb 2e6ba5143217 -> 200 511899 bytes from=172.18.0.3 t=1795523004492
+RECORD ninjacentral nzb 263bf7846aad -> 200 312739 bytes from=172.18.0.3 t=1795523004645
+RECORD drunkenslug nzb 7fbf01d0ea32 -> 200 54334 bytes from=172.18.0.3 t=1795523008203
+RECORD ninjacentral api ep=5&extended=1&imdbid=0804503&season=4&t=tvsearch -> 200 87005 bytes from=172.18.0.3 t=1795523014108
+RECORD ninjacentral api cat=5000&extended=1&q=Mad Men S04E05&t=search -> 200 87682 bytes from=172.18.0.3 t=1795523014109
+RECORD drunkenslug api cat=5000&extended=1&q=Mad Men S04&t=search -> 200 187988 bytes from=172.18.0.3 t=1795523014198
+RECORD ninjacentral api cat=5000&extended=1&q=Mad Men S01&t=search -> 200 184660 bytes from=172.18.0.3 t=1795523014208
+RECORD ninjacentral api cat=5000&extended=1&q=Mad Men S04&t=search -> 200 186706 bytes from=172.18.0.3 t=1795523014234
+RECORD drunkenslug api ep=5&extended=1&imdbid=0804503&season=4&t=tvsearch -> 200 85250 bytes from=172.18.0.3 t=1795523014289
+RECORD drunkenslug api cat=5000&extended=1&q=Mad Men S04E05&t=search -> 200 70551 bytes from=172.18.0.3 t=1795523014389
+RECORD ninjacentral api cat=5000&extended=1&offset=100&q=Mad Men S04&t=search -> 200 194399 bytes from=172.18.0.3 t=1795523014647
+RECORD ninjacentral api cat=5000&extended=1&offset=100&q=Mad Men S01&t=search -> 200 192528 bytes from=172.18.0.3 t=1795523014649
+RECORD drunkenslug api cat=5000&extended=1&offset=100&q=Mad Men S04&t=search -> 200 190239 bytes from=172.18.0.3 t=1795523014698
+RECORD ninjacentral api cat=5000&extended=1&offset=200&q=Mad Men S01&t=search -> 200 193011 bytes from=172.18.0.3 t=1795523015060
+RECORD ninjacentral api cat=5000&extended=1&offset=200&q=Mad Men S04&t=search -> 200 194151 bytes from=172.18.0.3 t=1795523015103
+RECORD drunkenslug api cat=5000&extended=1&offset=200&q=Mad Men S04&t=search -> 200 187550 bytes from=172.18.0.3 t=1795523015186
+RECORD drunkenslug api cat=5000&extended=1&q=Mad Men S01&t=search -> 200 187177 bytes from=172.18.0.3 t=1795523015672
+RECORD drunkenslug api cat=5000&extended=1&offset=100&q=Mad Men S01&t=search -> 200 190856 bytes from=172.18.0.3 t=1795523016383
+RECORD drunkenslug api cat=5000&extended=1&offset=200&q=Mad Men S01&t=search -> 200 186456 bytes from=172.18.0.3 t=1795523017090
+RECORD drunkenslug nzb fa171bff8caf -> 200 1050617 bytes from=172.18.0.3 t=1795523018349
+RECORD drunkenslug nzb 3b8815e513a7 -> 200 12704566 bytes from=172.18.0.3 t=1795523018650
+RECORD ninjacentral nzb 5acd07c29738 -> 200 13547124 bytes from=172.18.0.3 t=1795523018730
+RECORD ninjacentral api ep=4&extended=1&imdbid=0247102&season=4&t=tvsearch -> 200 1000 bytes from=172.18.0.3 t=1795523026994
+RECORD ninjacentral api cat=5000&extended=1&q=Girlfriends S04E04&t=search -> 200 14069 bytes from=172.18.0.3 t=1795523027015
+RECORD ninjacentral api cat=5000&extended=1&q=Girlfriends S04&t=search -> 200 133382 bytes from=172.18.0.3 t=1795523027175
+RECORD ninjacentral api cat=5000&extended=1&q=Girlfriends S01&t=search -> 200 205826 bytes from=172.18.0.3 t=1795523027243
+RECORD drunkenslug api cat=5000&extended=1&q=Girlfriends S04E04&t=search -> 200 31047 bytes from=172.18.0.3 t=1795523027251
+RECORD drunkenslug api cat=5000&extended=1&q=Girlfriends S04&t=search -> 200 168199 bytes from=172.18.0.3 t=1795523027285
+RECORD drunkenslug api ep=4&extended=1&imdbid=0247102&season=4&t=tvsearch -> 200 8897 bytes from=172.18.0.3 t=1795523027286
+RECORD drunkenslug api cat=5000&extended=1&offset=100&q=Girlfriends S04&t=search -> 200 69895 bytes from=172.18.0.3 t=1795523027628
+RECORD ninjacentral api cat=5000&extended=1&offset=100&q=Girlfriends S01&t=search -> 200 194113 bytes from=172.18.0.3 t=1795523027700
+RECORD ninjacentral api cat=5000&extended=1&offset=200&q=Girlfriends S01&t=search -> 200 204318 bytes from=172.18.0.3 t=1795523028275
+RECORD drunkenslug api cat=5000&extended=1&q=Girlfriends S01&t=search -> 200 168738 bytes from=172.18.0.3 t=1795523028932
+RECORD drunkenslug api cat=5000&extended=1&offset=100&q=Girlfriends S01&t=search -> 200 170013 bytes from=172.18.0.3 t=1795523030010
+RECORD drunkenslug api cat=5000&extended=1&offset=200&q=Girlfriends S01&t=search -> 200 165051 bytes from=172.18.0.3 t=1795523030650
+RECORD ninjacentral nzb 460a8df57f7b -> 200 26811 bytes from=172.18.0.3 t=1795523031073
+RECORD drunkenslug nzb 7a6437c3e609 -> 200 27453 bytes from=172.18.0.3 t=1795523031257
+RECORD ninjacentral nzb 5b3b85d37bbd -> 200 2513123 bytes from=172.18.0.3 t=1795523031743

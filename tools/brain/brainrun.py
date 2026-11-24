@@ -1513,7 +1513,7 @@ def check_visit_answer(got, play, pause_s=0, sleep=time.sleep):
 
 def collect_check_visit(cfg, io, title, logbuf, plays=None, secrets=()):
     """One title of a check: its list, the Browse pause, one press of Best; then KaijuFlow's play step lines for it
-    (quickcheck.visit_steps), its AltMount imports and any "limit reached" line in either log. Both containers' lines go
+    (quickcheck.visit_steps) and the Releases each indexer's search found (quickcheck.found_by_indexer), its AltMount imports and any "limit reached" line in either log. Both containers' lines go
     to `logbuf` scrubbed (evidence.scrub, with the test copies' `secrets`) and, unscrubbed, to `plays` for the evidence
     folder of a play that fails (write_check_ending)."""
     kind, vid, label = title[:3]
@@ -1527,8 +1527,9 @@ def collect_check_visit(cfg, io, title, logbuf, plays=None, secrets=()):
     if plays is not None:
         plays.append({'kf_text': kf_text, 'be_text': be_text})
     lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
+    steps = br.parse_step_lines(kf_text)
     return {'title': list(title), 'label': label, 'id': vid, 't_start': br.iso(t0), 't_end': br.iso(t1), **http,
-            'steps': quickcheck.visit_steps(br.parse_step_lines(kf_text), vid, since),
+            'steps': quickcheck.visit_steps(steps, vid, since), 'found': quickcheck.found_by_indexer(steps, vid, since),
             'imports': [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi],
             'limit': br.limit_event(kf_text + '\n' + be_text, cfg['indexers'])}
 
@@ -1649,7 +1650,10 @@ def write_check_ending(cfg, io, check, started, logbuf):
             return io.title_names(title)
         except Exception:  # noqa: BLE001  (TMDB down: judge says the other names could not be read)
             return None
-    check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t)) for v in quickcheck.judged(check)]
+    check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t), indexers=check['indexers'])
+                         for v in quickcheck.judged(check)]
+    # what the stand-in sent each indexer, for the report's indexer table (#304)
+    check['requests'] = quickcheck.requests_by_indexer(allowance.requests_in(os.path.join(run_dir, 'logs', 'standin.log')))
     save_evidence(io, check, every=check['kind'] == drill.KIND)  # a Drill-down keeps its play's folder however it went
     try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
         # section says if it could not
