@@ -1,0 +1,478 @@
+2026-11-20T22:42:16.641875122Z 
+2026-11-20T22:42:16.641922334Z 
+2026-11-20T22:42:16.641929496Z ╔══════════════════════════════════════════════════════════════════════
+2026-11-20T22:42:16.641939411Z ║  🔍 Searching for series tt0052520 S2E6 [newznab]
+2026-11-20T22:42:16.641944714Z ╚══════════════════════════════════════════════════════════════════════
+2026-11-20T22:42:16.641951504Z 
+2026-11-20T22:42:16.641956119Z ═══ Title Resolution ══════════════════════════════════════════
+2026-11-20T22:42:16.721895907Z 🎯 Resolved tt0052520 → "The Twilight Zone" (1959, United States) [S2: 29 episodes] [Drama, Fantasy, Horror] [51min]
+2026-11-20T22:42:16.721924192Z 🔗 Using cached TVDB token
+2026-11-20T22:42:16.838873682Z 🔗 TVDB remoteid result: series id=73587 name="The Twilight Zone" (1959) aliases=1
+2026-11-20T22:42:16.838921644Z 🔗 Using cached TVDB token
+2026-11-20T22:42:16.939475838Z 🔗 TVDB episode count: tt0052520 S02 → 29 episodes (25min) [The Eye of the Beholder] [abs E42] [aired 1960-11-11]
+2026-11-20T22:42:16.939527638Z 📌 Title: "The Twilight Zone" (1959) [United States] — 29 eps in season
+2026-11-20T22:42:16.939551418Z 🔗 Using cached TVDB token
+2026-11-20T22:42:17.025359260Z 🔗 TVDB remoteid result: series id=73587 name="The Twilight Zone" (1959) aliases=1
+2026-11-20T22:42:17.025586445Z 🎯 TVDB title resolved: tt0052520 → "The Twilight Zone"
+2026-11-20T22:42:17.026004698Z 🔗 Using cached TVDB token
+2026-11-20T22:42:17.112432615Z 🔄 Remake detected for "The Twilight Zone": 1959, 1985, 2002, 2019
+2026-11-20T22:42:17.112533711Z 
+2026-11-20T22:42:17.112548356Z ═══ Search Setup ══════════════════════════════════════════════
+2026-11-20T22:42:17.112552382Z 📋 Newznab search methods: text across 1 indexer(s)
+2026-11-20T22:42:17.112554595Z    NinjaCentral: text
+2026-11-20T22:42:17.404154306Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":290,"ok":true,"t":"2026-11-20T22:42:17.404Z","ref":"tt0052520:2:6","page":1}
+2026-11-20T22:42:17.490829145Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":376,"ok":true,"t":"2026-11-20T22:42:17.490Z","ref":"tt0052520:2:6","page":1}
+2026-11-20T22:42:17.520706187Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":407,"ok":true,"t":"2026-11-20T22:42:17.520Z","ref":"tt0052520:2:6","page":1}
+2026-11-20T22:42:17.880481314Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":371,"ok":true,"t":"2026-11-20T22:42:17.880Z","ref":"tt0052520:2:6","page":2}
+2026-11-20T22:42:18.025568586Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":489,"ok":true,"t":"2026-11-20T22:42:18.025Z","ref":"tt0052520:2:6","page":2}
+2026-11-20T22:42:18.321243662Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":424,"ok":true,"t":"2026-11-20T22:42:18.321Z","ref":"tt0052520:2:6","page":3}
+2026-11-20T22:42:18.383106268Z 📦 Range match: S01-S05 covers S2 in The.Twilight.Zone.S01-S05.1959-1964.DVDRip.XviD-TVA
+2026-11-20T22:42:18.437277615Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":393,"ok":true,"t":"2026-11-20T22:42:18.437Z","ref":"tt0052520:2:6","page":3}
+2026-11-20T22:42:18.489021508Z 
+2026-11-20T22:42:18.489073790Z ═══ NinjaCentral ════════════════════════════════════════════════
+2026-11-20T22:42:18.489076522Z   ┌─ TV text search S2E6 
+2026-11-20T22:42:18.489077739Z   │   ┌─ TV text search [NinjaCentral] "The Twilight Zone S02E06" 
+2026-11-20T22:42:18.489078939Z   │   │ 🔍 [NinjaCentral] TV text search for: The Twilight Zone S02E06
+2026-11-20T22:42:18.489080051Z   │   │ 🔍 Searching NinjaCentral: http://host.docker.internal:1340/ninjacentral/api [timeout=15s]
+2026-11-20T22:42:18.489081181Z   │   │    Query: "The Twilight Zone S02E06", Category: 5000
+2026-11-20T22:42:18.489096122Z   │   │ ✅ Response received (200), parsing...
+2026-11-20T22:42:18.489097304Z   │   │    📦 Found 36 results (total: 36)
+2026-11-20T22:42:18.489098407Z   │   │    🎯 [NinjaCentral] Title filter: 36 → 10 (removed 26 mismatches)
+2026-11-20T22:42:18.489099499Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.489100590Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.POLISH.720p.WEB.H264-A4O
+2026-11-20T22:42:18.489111124Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.489112382Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.489113504Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E06.The.Eye.of.the.Beholder.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.489114634Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.489115737Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.489116811Z   │   │       ✂️  The Twilight Zone 2019 S02E06 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.489117889Z   │   │       ✂️  The Twilight Zone 2019 S02E06 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.489118971Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.489120050Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.489121147Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.iNTERNAL.480p.x264-mSD
+2026-11-20T22:42:18.489122190Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.BDRip.x264-BORDURE
+2026-11-20T22:42:18.489123235Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.720p.BluRay.x264-BORDURE
+2026-11-20T22:42:18.489125071Z   │   │       ✂️  The.Twilight.Zone.2019.S02e06.8.1080P.Amzn.Web-Dl.Ddp5.1.H.265
+2026-11-20T22:42:18.489126189Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.1080p.HEVC.x265
+2026-11-20T22:42:18.489127289Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.1080p.WEB.H264-SKEDADDLE
+2026-11-20T22:42:18.489136745Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb
+2026-11-20T22:42:18.489139026Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.iNTERNAL.1080p.HEVC.x265-MeGusta
+2026-11-20T22:42:18.489140925Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.INTERNAL.1080p.HEVC.X265-MeGusta
+2026-11-20T22:42:18.489142955Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.iNTERNAL.1080p.HEVC.x265
+2026-11-20T22:42:18.489144819Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.iNTERNAL.1080p.WEB.H264-GHOSTS
+2026-11-20T22:42:18.489146586Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.iNTERNAL.720p.WEB.H264-GHOSTS
+2026-11-20T22:42:18.489148085Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.1080p.WEB.H264-SKEDADDLE
+2026-11-20T22:42:18.489149664Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.720p.HEVC.x265
+2026-11-20T22:42:18.489151406Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.720p.WEB.H264-FiASCO
+2026-11-20T22:42:18.489152862Z   │   └─
+2026-11-20T22:42:18.489154403Z   └─
+2026-11-20T22:42:18.489155856Z   ┌─ Pack queries 
+2026-11-20T22:42:18.489157656Z   │   ┌─ Season pack: The Twilight Zone S02 
+2026-11-20T22:42:18.489161316Z   │   │ 🔍 Searching NinjaCentral: http://host.docker.internal:1340/ninjacentral/api [timeout=15s]
+2026-11-20T22:42:18.489163427Z   │   │    Query: "The Twilight Zone S02", Category: 5000
+2026-11-20T22:42:18.489165156Z   │   │ ✅ Response received (200), parsing...
+2026-11-20T22:42:18.489167047Z   │   │    📦 Found 100 results (total: 589)
+2026-11-20T22:42:18.489168843Z   │   │    📄 Fetching page 2 (offset 100)...
+2026-11-20T22:42:18.489170784Z   │   │    📄 Page 2: +100 (total so far: 200)
+2026-11-20T22:42:18.489172330Z   │   │    📄 Fetching page 3 (offset 200)...
+2026-11-20T22:42:18.489173948Z   │   │    📄 Page 3: +100 (total so far: 300)
+2026-11-20T22:42:18.489175877Z   │   │    📦 [NinjaCentral] Season pack filter: 300 → 10 (removed 290 mismatches)
+2026-11-20T22:42:18.489177846Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.489179190Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.POLISH.720p.WEB.H264-A4O
+2026-11-20T22:42:18.489180280Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.489181391Z   │   │       ✂️  The.Twilight.Zone.2019.S02E09.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490617554Z   │   │       ✂️  The.Twilight.Zone.2019.S02E07.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490629871Z   │   │       ✂️  The.Twilight.Zone.2019.S02E07.POLISH.1080p.WEB.H264-A4O
+2026-11-20T22:42:18.490632494Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490634664Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490636743Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.POLISH.1080p.WEB.H264-A4O
+2026-11-20T22:42:18.490638851Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.POLISH.720p.WEB.H264-A4O
+2026-11-20T22:42:18.490640973Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.POLISH.1080p.WEB.H264-A4O
+2026-11-20T22:42:18.490642994Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490645226Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490647619Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490649771Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490652045Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.POLISH.720p.WEB.H264-A4O
+2026-11-20T22:42:18.490653913Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490656192Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.POLISH.1080p.WEB.H264-A4O
+2026-11-20T22:42:18.490658421Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.POLISH.720p.WEB.H264-A4O
+2026-11-20T22:42:18.490670980Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.POLISH.720p.WEB.H264-A4O
+2026-11-20T22:42:18.490673691Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490675949Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.POLISH.1080p.WEB.H264-A4O
+2026-11-20T22:42:18.490678147Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.POLISH.720p.WEB.H264-A4O
+2026-11-20T22:42:18.490680486Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.POLISH.720p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490682603Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.POLISH.1080p.WEB.H264-A4O-FTP
+2026-11-20T22:42:18.490684561Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.POLISH.1080p.WEB.H264-A4O
+2026-11-20T22:42:18.490686242Z   │   │       ✂️  The Twilight Zone-1959-Season 02-1080p BDRip x265 10bit FLAC 2.0-Frys-TAoE
+2026-11-20T22:42:18.490688105Z   │   │       ✂️  The Twilight Zone 2019 S02 1080p AMZN WEB-DL DDP5 1 H 264-NTb
+2026-11-20T22:42:18.490690705Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.Ovation.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.490693027Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.Meet.In.the.Middle.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.490694881Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.Who.of.You.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.490696812Z   │   │       ✂️  The.Twilight.Zone.2019.S02E09.Try.Try.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.490698683Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.490700635Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.Downtime.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.490702927Z   │   │       ✂️  The.Twilight.Zone.2019.S02E07.A.Human.Face.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv
+2026-11-20T22:42:18.490704641Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E11.The.Night.of.the.Meek.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490706475Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E12.Dust.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490708372Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E15.The.Invaders.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490710109Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E19.Mr.Dingle.the.Strong.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490711950Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E05.The.Howling.Man.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490713729Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E25.The.Silence.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490715537Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E06.The.Eye.of.the.Beholder.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490717338Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E13.Back.There.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490721936Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E16.Penny.for.Your.Thoughts.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490723859Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E03.Nervous.Man.in.a.Four.Dollar.Room.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490725624Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E02.The.Man.in.the.Bottle.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490727664Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E27.The.Mind.and.the.Matter.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490729582Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E21.The.Prime.Mover.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490731422Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E08.The.Lateness.of.the.Hour.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490733349Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E22.Long.Distance.Call.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490735219Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E01.King.Nine.Will.Not.Return.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490737171Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E04.A.Thing.About.Machines.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490739149Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E17.Twenty-Two.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490741154Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E29.The.Obsolete.Man.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490743277Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E09.The.Trouble.With.Templeton.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490745510Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E24.Rip.Van.Winkle.Caper.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490747729Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E20.Static.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490749744Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E14.The.Whole.Truth.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490751640Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E18.The.Odyssey.of.Flight.33.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490753777Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E10.A.Most.Unusual.Camera.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490755656Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E07.Nick.of.Time.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490757433Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E23.A.Hundred.Yards.Over.the.Rim.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490759313Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E28.Will.The.Real.Martian.Please.Stand.Up.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490761229Z   │   │       ✂️  The.Twilight.Zone.Classic.S02E26.Shadow.Play.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490763510Z   │   │       ✂️  The.Twilight.Zone.Classic.S02.1080p.PMTP.WEB-DL.AAC2.0.H.264-GPRS
+2026-11-20T22:42:18.490767482Z   │   │       ✂️  The.Twilight.Zone.[1985].S02E04.Part1.DVDRip.x264.AAC-skorpion [KfsCp0hbAj]
+2026-11-20T22:42:18.490769618Z   │   │       ✂️  The.Twilight.Zone.[1985].S02E07.DVDRip.x265.AAC-skorpion [b8dIzKzu7I]
+2026-11-20T22:42:18.490771432Z   │   │       ✂️  The.Twilight.Zone.1960.S02E02.720p.BluRay.x265.HEVC.2CH-MRN [TsNoVSjoHj]
+2026-11-20T22:42:18.490773311Z   │   │       ✂️  The.Twilight.Zone.1961.S02E18.720p.BluRay.x265.HEVC.2CH-MRN [C6QdL7DqiG]
+2026-11-20T22:42:18.490775241Z   │   │       ✂️  The.Twilight.Zone.1960.S02E08.720p.BluRay.x265.HEVC.2CH-MRN [cioMTZKk1t]
+2026-11-20T22:42:18.490777051Z   │   │       ✂️  The.Twilight.Zone.1961.S02E25.720p.BluRay.x265.HEVC.2CH-MRN [opvJ4XSaP0]
+2026-11-20T22:42:18.490778934Z   │   │       ✂️  The.Twilight.Zone.1961.S02E27.720p.BluRay.x265.HEVC.2CH-MRN [X4tz9Pfs8J]
+2026-11-20T22:42:18.490781110Z   │   │       ✂️  The.Twilight.Zone.1961.S02E17.720p.BluRay.x265.HEVC.2CH-MRN [BZZMyoF7Ct]
+2026-11-20T22:42:18.490783024Z   │   │       ✂️  The.Twilight.Zone.2019.S02E10.You.Might.Also.Like.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490785041Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.Meet.in.the.Middle.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490787065Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.The.Who.of.You.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490789119Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.Ovation.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490791150Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.Downtime.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490793018Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490794845Z   │   │       ✂️  The.Twilight.Zone.2019.S02E08.A.Small.Town.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490796828Z   │   │       ✂️  The.Twilight.Zone.2019.S02E09.Try .Try.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490798712Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.Among.the.Untrodden.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490800614Z   │   │       ✂️  The.Twilight.Zone.2019.S02E07.A.Human.Face.1080p.AMZN.Webrip.x265.10bit.EAC3.5.1.HxD.TAoE
+2026-11-20T22:42:18.490803113Z   │   │       ✂️  The.Twilight.Zone.2019.S02.1080p.BluRay.DDP.5.1.x265-edge2020
+2026-11-20T22:42:18.490804949Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490806721Z   │   │       ✂️  The.Twilight.Zone.2019.S02E10.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490810257Z   │   │       ✂️  The.Twilight.Zone.2019.S02E09.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490812467Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490816439Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490818514Z   │   │       ✂️  The.Twilight.Zone.2019.S02E08.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490820502Z   │   │       ✂️  The.Twilight.Zone.2019.S02E07.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490822526Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490824581Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490826785Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.1080p.BluRay.x265.SDR.DDP.5.1.English.DarQ-HONE
+2026-11-20T22:42:18.490829038Z   │   │       ✂️  The Twilight Zone 2019 S02E01 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490831385Z   │   │       ✂️  The Twilight Zone 2019 S02E08 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490833629Z   │   │       ✂️  The Twilight Zone 2019 S02E05 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490835664Z   │   │       ✂️  The Twilight Zone 2019 S02E09 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490837769Z   │   │       ✂️  The Twilight Zone 2019 S02E07 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490840047Z   │   │       ✂️  The Twilight Zone 2019 S02E06 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490842051Z   │   │       ✂️  The Twilight Zone 2019 S02E04 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490844148Z   │   │       ✂️  The Twilight Zone 2019 S02E03 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490846192Z   │   │       ✂️  The Twilight Zone 2019 S02E02 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490848743Z   │   │       ✂️  The Twilight Zone 2019 S02E10 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490850765Z   │   │       ✂️  The Twilight Zone 2019 S02E01 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490852666Z   │   │       ✂️  The Twilight Zone 2019 S02E06 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490854760Z   │   │       ✂️  The Twilight Zone 2019 S02E07 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490857104Z   │   │       ✂️  The Twilight Zone 2019 S02E05 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490859283Z   │   │       ✂️  The Twilight Zone 2019 S02E08 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490861468Z   │   │       ✂️  The Twilight Zone 2019 S02E09 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490863362Z   │   │       ✂️  The Twilight Zone 2019 S02E10 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490865208Z   │   │       ✂️  The Twilight Zone 2019 S02E02 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490869553Z   │   │       ✂️  The Twilight Zone 2019 S02E04 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490871516Z   │   │       ✂️  The Twilight Zone 2019 S02E03 1080p BluRay x265 SDR DDP 5 1 English DarQ-HONE
+2026-11-20T22:42:18.490873662Z   │   │       ✂️  The.Twilight.Zone.(2019).S02.(1080p.BluRay.x265.SDR.DDP.5.1.English.-.DarQ.HONE)
+2026-11-20T22:42:18.490875612Z   │   │       ✂️  The Twilight Zone 2019 S02 COMPLETE 1080p WEB.H264-GHOSTS
+2026-11-20T22:42:18.490877797Z   │   │       ✂️  The.Twilight.Zone.2019.S02.MULTi.1080p.WEB.H264-AZR
+2026-11-20T22:42:18.490879871Z   │   │       ✂️  the.twilight.zone.2019.s02e05.multi.1080p.web.h264-azr
+2026-11-20T22:42:18.490881757Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.MULTi.1080p.WEB.H264-AZR
+2026-11-20T22:42:18.490883707Z   │   │       ✂️  The.Twilight.Zone.2019.S02.1080p.BluRay.DDP5.1.x264-BTN
+2026-11-20T22:42:18.490885538Z   │   │       ✂️  The.Twilight.Zone.2019.S02.1080p.BluRay.DDP5.1.x264-BTN
+2026-11-20T22:42:18.490887252Z   │   │       ✂️  The.Twilight.Zone.1959-S02E06-The.Eye.of.the.Beholder.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490889535Z   │   │       ✂️  The.Twilight.Zone.1959-S02E10-A.Most.Unusual.Camera.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490891379Z   │   │       ✂️  The.Twilight.Zone.1959-S02E09-The.Trouble.with.Templeton.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490893964Z   │   │       ✂️  The.Twilight.Zone.1959-S02E07-Nick.of.Time.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490896091Z   │   │       ✂️  The.Twilight.Zone.1959-S02E01-King.Nine.Will.Not.Return.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490898258Z   │   │       ✂️  The.Twilight.Zone.1959-S02E14-The.Whole.Truth.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490900439Z   │   │       ✂️  The.Twilight.Zone.1959-S02E05-The.Howling.Man.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490902428Z   │   │       ✂️  The.Twilight.Zone.1959-S02E15-The.Invaders.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490904305Z   │   │       ✂️  The.Twilight.Zone.1959-S02E11-The.Night.of.the.Meek.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490906426Z   │   │       ✂️  The.Twilight.Zone.1959-S02E19-Mr.Dingle,.the.Strong.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490908825Z   │   │       ✂️  The.Twilight.Zone.1959-S02E02-The.Man.in.the.Bottle.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490911019Z   │   │       ✂️  The.Twilight.Zone.1959-S02E04-A.Thing.About.Machines.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490913450Z   │   │       ✂️  The.Twilight.Zone.1959-S02E08-The.Lateness.of.the.Hour.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490915448Z   │   │       ✂️  The.Twilight.Zone.1959-S02E25-The.Silence.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490917399Z   │   │       ✂️  The.Twilight.Zone.1959-S02E17-Twenty.Two.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490919439Z   │   │       ✂️  The.Twilight.Zone.1959-S02E22-Long.Distance.Call.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490924808Z   │   │       ✂️  The.Twilight.Zone.1959-S02E16-A.Penny.For.Your.Thoughts.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490926750Z   │   │       ✂️  The.Twilight.Zone.1959-S02E18-The.Odyssey.of.Flight.33.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490928851Z   │   │       ✂️  The.Twilight.Zone.1959-S02E13-Back.There.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490931009Z   │   │       ✂️  The.Twilight.Zone.1959-S02E12-Dust.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490933204Z   │   │       ✂️  The.Twilight.Zone.1959-S02E21-The.Prime.Mover.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490935175Z   │   │       ✂️  The.Twilight.Zone.1959-S02E29-The.Obsolete.Man.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490938393Z   │   │       ✂️  The.Twilight.Zone.1959-S02E20-Static.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490940328Z   │   │       ✂️  The.Twilight.Zone.1959-S02E23-A.Hundred.Yards.over.the.Rim.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490943143Z   │   │       ✂️  The.Twilight.Zone.1959-S02E24-The.Rip.Van.Winkle.Caper.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490945115Z   │   │       ✂️  The.Twilight.Zone.1959-S02E28-Will.the.Real.Martian.Please.Stand.Up.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490947054Z   │   │       ✂️  The.Twilight.Zone.1959-S02E03-Nervous.Man.in.a.Four.Dollar.Room.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490949040Z   │   │       ✂️  The.Twilight.Zone.1959-S02E27-The.Mind.and.the.Matter.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490951087Z   │   │       ✂️  The.Twilight.Zone.1959-S02E26-Shadow.Play.1080p.BluRay.x265.ImE
+2026-11-20T22:42:18.490953079Z   │   │       ✂️  The.Twilight.Zone.2019-S02E10-You.Might.Also.Like.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490955105Z   │   │       ✂️  The.Twilight.Zone.2019-S02E09-Try.Try.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490957021Z   │   │       ✂️  The.Twilight.Zone.2019-S02E08-A.Small.Town.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490959120Z   │   │       ✂️  The.Twilight.Zone.2019-S02E07-A.Human.Face.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490961639Z   │   │       ✂️  The.Twilight.Zone.2019-S02E06-8.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490963753Z   │   │       ✂️  The.Twilight.Zone.2019-S02E05-Among.the.Untrodden.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490966143Z   │   │       ✂️  The.Twilight.Zone.2019-S02E04-Ovation.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490968281Z   │   │       ✂️  The.Twilight.Zone.2019-S02E03-The.Who.of.You.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490970417Z   │   │       ✂️  The.Twilight.Zone.2019-S02E02-Downtime.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490972529Z   │   │       ✂️  The.Twilight.Zone.2019-S02E01-Meet.in.the.Middle.1080p.BluRay-BORDURE
+2026-11-20T22:42:18.490974501Z   │   │       ✂️  The.Twilight.Zone.2019.S02.WEBRip.x264-ION10
+2026-11-20T22:42:18.490976799Z   │   │       ✂️  The.Twilight.Zone.2019.S02.WEBRip.x264-ION10
+2026-11-20T22:42:18.490980893Z   │   │       ✂️  The.Twilight.Zone.2019.S02E10.iNTERNAL.1080p.WEB.H264-GHOSTS
+2026-11-20T22:42:18.490982910Z   │   │       ✂️  The.Twilight.Zone.2019.S02E08.iNTERNAL.1080p.WEB.H264-GHOSTS
+2026-11-20T22:42:18.490985196Z   │   │       ✂️  The.Twilight.Zone.2019.S02E10.iNTERNAL.720p.WEB.H264-GHOSTS
+2026-11-20T22:42:18.490987191Z   │   │       ✂️  The.Twilight.Zone.2019.S02E10.720p.WEB.H264-FiASCO
+2026-11-20T22:42:18.490989046Z   │   │       ✂️  The.Twilight.Zone.1960.S02E13.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.490990976Z   │   │       ✂️  The.Twilight.Zone.1960.S02E26.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.490993346Z   │   │       ✂️  The.Twilight.Zone.1960.S02E23.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.490995357Z   │   │       ✂️  The.Twilight.Zone.1960.S02E22.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.490997218Z   │   │       ✂️  The.Twilight.Zone.1960.S02E20.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.490999669Z   │   │       ✂️  The.Twilight.Zone.1960.S02E11.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491001493Z   │   │       ✂️  The.Twilight.Zone.1960.S02E10.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491003462Z   │   │       ✂️  The.Twilight.Zone.1960.S02E09.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491005663Z   │   │       ✂️  The.Twilight.Zone.1960.S02E08.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491031133Z   │   │       ✂️  The.Twilight.Zone.1960.S02E07.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491041416Z   │   │       ✂️  The.Twilight.Zone.1960.S02E19.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491044303Z   │   │       ✂️  The.Twilight.Zone.1960.S02E06.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491046705Z   │   │       ✂️  The.Twilight.Zone.1960.S02E05.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491048424Z   │   │       ✂️  The.Twilight.Zone.1960.S02E25.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491050183Z   │   │       ✂️  The.Twilight.Zone.1960.S02E24.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491053222Z   │   │       ✂️  The.Twilight.Zone.1960.S02E14.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491054976Z   │   │       ✂️  The.Twilight.Zone.1960.S02E18.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491056672Z   │   │       ✂️  The.Twilight.Zone.1960.S02E17.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491058513Z   │   │       ✂️  The.Twilight.Zone.1960.S02E16.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491060257Z   │   │       ✂️  The.Twilight.Zone.1960.S02E16.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491061998Z   │   │       ✂️  The.Twilight.Zone.1960.S02E04.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491074011Z   │   │       ✂️  The.Twilight.Zone.1960.S02E15.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491076446Z   │   │       ✂️  The.Twilight.Zone.1960.S02E12.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491078511Z   │   │       ✂️  The.Twilight.Zone.1960.S02E02.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491080357Z   │   │       ✂️  The.Twilight.Zone.1960.S02E28.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491095375Z   │   │       ✂️  The.Twilight.Zone.1960.S02E29.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491097296Z   │   │       ✂️  The.Twilight.Zone.1960.S02E03.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491101805Z   │   │       ✂️  The.Twilight.Zone.1960.S02E01.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP
+2026-11-20T22:42:18.491114855Z   │   │       ✂️  The.Twilight.Zone.1960.S02E12.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491121566Z   │   │       ✂️  The.Twilight.Zone.1960.S02E20.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491188831Z   │   │       ✂️  The.Twilight.Zone.1960.S02E17.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491192951Z   │   │       ✂️  The.Twilight.Zone.1960.S02E06.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491198708Z   │   │       ✂️  The.Twilight.Zone.1960.S02E26.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491203620Z   │   │       ✂️  The.Twilight.Zone.1960.S02E14.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491230245Z   │   │       ✂️  The.Twilight.Zone.1960.S02E16.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491232869Z   │   │       ✂️  The.Twilight.Zone.1960.S02E28.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491238007Z   │   │       ✂️  The.Twilight.Zone.1960.S02E27.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491256798Z   │   │       ✂️  The.Twilight.Zone.1960.S02E22.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491259119Z   │   │       ✂️  The.Twilight.Zone.1960.S02E19.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491274705Z   │   │       ✂️  The.Twilight.Zone.1960.S02E10.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491283787Z   │   │       ✂️  The.Twilight.Zone.1960.S02E02.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491294400Z   │   │       ✂️  The.Twilight.Zone.1960.S02E25.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491311016Z   │   │       ✂️  The.Twilight.Zone.1960.S02E04.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491328105Z   │   │       ✂️  The.Twilight.Zone.1960.S02E24.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491331133Z   │   │       ✂️  The.Twilight.Zone.1960.S02E18.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491337134Z   │   │       ✂️  The.Twilight.Zone.1960.S02E08.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491339113Z   │   │       ✂️  The.Twilight.Zone.1960.S02E01.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491365056Z   │   │       ✂️  The.Twilight.Zone.1960.S02E09.1080p.BluRay.x265-RARBG
+2026-11-20T22:42:18.491384509Z   │   │       ✂️  The.Twilight.Zone.1960.S02E06.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491389151Z   │   │       ✂️  The.Twilight.Zone.1960.S02E21.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491391457Z   │   │       ✂️  The.Twilight.Zone.1960.S02E11.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491409152Z   │   │       ✂️  The.Twilight.Zone.1960.S02E22.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491442768Z   │   │       ✂️  The.Twilight.Zone.1960.S02E27.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491445554Z   │   │       ✂️  The.Twilight.Zone.1960.S02E04.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491468622Z   │   │       ✂️  The.Twilight.Zone.1960.S02E05.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491495171Z   │   │       ✂️  The.Twilight.Zone.1960.S02E19.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491498075Z   │   │       ✂️  The.Twilight.Zone.1960.S02E08.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491524899Z   │   │       ✂️  The.Twilight.Zone.1960.S02E09.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491548752Z   │   │       ✂️  The.Twilight.Zone.1960.S02E10.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491551788Z   │   │       ✂️  The.Twilight.Zone.1960.S02E13.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491557378Z   │   │       ✂️  The.Twilight.Zone.1960.S02E14.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491568071Z   │   │       ✂️  The.Twilight.Zone.1960.S02E12.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491598689Z   │   │       ✂️  The.Twilight.Zone.1960.S02E07.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491601285Z   │   │       ✂️  The.Twilight.Zone.1960.S02E20.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491603068Z   │   │       ✂️  The.Twilight.Zone.1960.S02E28.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:18.491608307Z   │   │       ✂️  The.Twilight.Zone.1960.S02E05.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491615175Z   │   │       ✂️  The.Twilight.Zone.1960.S02E11.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491630667Z   │   │       ✂️  The.Twilight.Zone.1960.S02E15.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491644590Z   │   │       ✂️  The.Twilight.Zone.1960.S02E13.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491681518Z   │   │       ✂️  The.Twilight.Zone.1960.S02E09.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491685692Z   │   │       ✂️  The.Twilight.Zone.1960.S02E23.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491702616Z   │   │       ✂️  The.Twilight.Zone.1960.S02E06.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491722226Z   │   │       ✂️  The.Twilight.Zone.1960.S02E10.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491746018Z   │   │       ✂️  The.Twilight.Zone.1960.S02E02.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491752222Z   │   │       ✂️  The.Twilight.Zone.1960.S02E22.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491777246Z   │   │       ✂️  The.Twilight.Zone.1960.S02E25.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491788076Z   │   │       ✂️  The.Twilight.Zone.1960.S02E28.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491821547Z   │   │       ✂️  The.Twilight.Zone.1960.S02E04.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491824592Z   │   │       ✂️  The.Twilight.Zone.1960.S02E18.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491842445Z   │   │       ✂️  The.Twilight.Zone.1960.S02E12.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491863152Z   │   │       ✂️  The.Twilight.Zone.1960.S02E19.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491889951Z   │   │       ✂️  The.Twilight.Zone.1960.S02E26.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491893090Z   │   │       ✂️  The.Twilight.Zone.1960.S02E21.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491915456Z   │   │       ✂️  The.Twilight.Zone.1960.S02E29.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491935155Z   │   │       ✂️  The.Twilight.Zone.1960.S02E08.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491962827Z   │   │       ✂️  The.Twilight.Zone.1960.S02E07.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491968152Z   │   │       ✂️  The.Twilight.Zone.1960.S02E03.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491989541Z   │   │       ✂️  The.Twilight.Zone.1960.S02E17.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.491995296Z   │   │       ✂️  The.Twilight.Zone.1960.S02E24.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.492004879Z   │   │       ✂️  The.Twilight.Zone.1960.S02E27.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.492020322Z   │   │       ✂️  The.Twilight.Zone.1960.S02E16.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.492047347Z   │   │       ✂️  The.Twilight.Zone.1960.S02E20.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.492055615Z   │   │       ✂️  The.Twilight.Zone.1960.S02E14.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.492071249Z   │   │       ✂️  The.Twilight.Zone.1960.S02E01.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:18.492087755Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.Among.the.Untrodden.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492107892Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.Ovation.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492138696Z   │   │       ✂️  The.Twilight.Zone.2019.S02E09.Try.Try.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492152517Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492166245Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.Downtime.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492184632Z   │   │       ✂️  The.Twilight.Zone.2019.S02E08.A.Small.Town.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492205408Z   │   │       ✂️  The.Twilight.Zone.2019.S02E07.A.Human.Face.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492208620Z   │   │       ✂️  The.Twilight.Zone.2019.S02E10.You.Might.Also.Like.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492233018Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.Meet.In.the.Middle.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492238057Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.Who.of.You.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492240633Z   │   │       ✂️  The.Twilight.Zone.2019.S02E08.A.Small.Town.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492253638Z   │   │       ✂️  The.Twilight.Zone.2019.S02E03.Who.of.You.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492265413Z   │   │       ✂️  The.Twilight.Zone.2019.S02E05.Among.the.Untrodden.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492300313Z   │   │       ✂️  The.Twilight.Zone.2019.S02E10.You.Might.Also.Like.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492303719Z   │   │       ✂️  The.Twilight.Zone.2019.S02E04.Ovation.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492363368Z   │   │       ✂️  The.Twilight.Zone.2019.S02E09.Try.Try.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492367013Z   │   │       ✂️  The.Twilight.Zone.2019.S02E06.8.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492369159Z   │   │       ✂️  The.Twilight.Zone.2019.S02E07.A.Human.Face.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492371270Z   │   │       ✂️  The.Twilight.Zone.2019.S02E01.Meet.In.the.Middle.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492373387Z   │   │       ✂️  The.Twilight.Zone.2019.S02E02.Downtime.1080p.AMZN.WEBRip.DD5.1.X.264-EVO
+2026-11-20T22:42:18.492379581Z   │   │       ✂️  The.Twilight.Zone.2019.S02.COMPLETE.1080p.WEB-DL.6CH.x265-HETeam
+2026-11-20T22:42:18.492382037Z   │   │       ✂️  The.Twilight.Zone.S02E24.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492404587Z   │   │       ✂️  The.Twilight.Zone.S02E27.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492407540Z   │   │       ✂️  The.Twilight.Zone.S02E03.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492414750Z   │   │       ✂️  The.Twilight.Zone.S02E05.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492432522Z   │   │       ✂️  The.Twilight.Zone.S02E23.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492447066Z   │   │       ✂️  The.Twilight.Zone.S02E09.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492476048Z   │   │       ✂️  The.Twilight.Zone.S02E02.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492480214Z   │   │       ✂️  The.Twilight.Zone.S02E20.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492490578Z   │   │       ✂️  The.Twilight.Zone.S02E25.1080p.BluRay.x265-YAWNiX
+2026-11-20T22:42:18.492509895Z   │   │    📦 [NinjaCentral] Found 10 season packs
+2026-11-20T22:42:18.492518270Z   │   └─
+2026-11-20T22:42:18.492531478Z   │   ┌─ Multi-season fanout: The Twilight Zone S01 
+2026-11-20T22:42:18.492546387Z   │   │ 🔍 Searching NinjaCentral: http://host.docker.internal:1340/ninjacentral/api [timeout=15s]
+2026-11-20T22:42:18.492561091Z   │   │    Query: "The Twilight Zone S01", Category: 5000
+2026-11-20T22:42:18.492567614Z   │   │ ✅ Response received (200), parsing...
+2026-11-20T22:42:18.492588650Z   │   │    📦 Found 100 results (total: 937)
+2026-11-20T22:42:18.492591835Z   │   │    📄 Fetching page 2 (offset 100)...
+2026-11-20T22:42:18.492608029Z   │   │    📄 Page 2: +100 (total so far: 200)
+2026-11-20T22:42:18.492611571Z   │   │    📄 Fetching page 3 (offset 200)...
+2026-11-20T22:42:18.492624230Z   │   │    📄 Page 3: +100 (total so far: 300)
+2026-11-20T22:42:18.492642059Z   │   │    📦 [NinjaCentral] Multi-season fanout filter: 300 → 6
+2026-11-20T22:42:18.492645093Z   │   │    📦 [NinjaCentral] Found 6 multi-season pack(s) covering S2
+2026-11-20T22:42:18.492666689Z   │   └─
+2026-11-20T22:42:18.492680217Z   │   ┌─ Series-pack keyword queries 
+2026-11-20T22:42:18.492712057Z   │   │ 📦 [NinjaCentral] Series-pack: skipped (no keywords selected)
+2026-11-20T22:42:18.492724128Z   │   └─
+2026-11-20T22:42:18.492740933Z   └─
+2026-11-20T22:42:18.492756475Z 
+2026-11-20T22:42:18.492849608Z 
+2026-11-20T22:42:18.492857608Z ═══ Results Processing ════════════════════════════════════════
+2026-11-20T22:42:18.492893042Z 📊 Found 26 total results (indexer: 26, easynews: 0)
+2026-11-20T22:42:18.496473600Z 🎯 Remake filter: removed 3 result(s) from wrong version (20 remaining)
+2026-11-20T22:42:18.496499936Z    ✂️  "The.Twilight.Zone.S02E06.1080p.BluRay.x265-YAWNiX"
+2026-11-20T22:42:18.496502467Z    ✂️  "The.Twilight.Zone.S02E06.480p.x264-ZMNT"
+2026-11-20T22:42:18.496504620Z    ✂️  "The.Twilight.Zone.S02E06.720p.HEVC.x265"
+2026-11-20T22:42:18.496506986Z 🎯 Remake filter: deprioritized 3 yearless season pack(s) to end of results
+2026-11-20T22:42:18.496509085Z    ⬇️  "The Twilight Zone S02 1080p AMZN WEB-DL DD 2 0 H 264-playWEB"
+2026-11-20T22:42:18.496511212Z    ⬇️  "The Twilight Zone S02 720p AMZN WEB-DL DD 2 0 H 264-playWEB"
+2026-11-20T22:42:18.496513224Z    ⬇️  "The.Twilight.Zone.S02.1080p.BluRay.DDP.2.0.x265-edge2020"
+2026-11-20T22:42:18.500783866Z 🚫 Filters dropped 7/20 candidate(s) — No disc images: 7
+2026-11-20T22:42:18.511221074Z 📊 Returning 16 streams after filtering
+2026-11-20T22:42:18.511254323Z 
+2026-11-20T22:42:18.511272035Z ═══ Final Results ═════════════════════════════════════════════
+2026-11-20T22:42:18.511275054Z 📊 Final results (after filtering + sorting):
+2026-11-20T22:42:18.511277133Z      1. 🎬 The.Twilight.Zone.1960.S02E06.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP [NinjaCentral]
+2026-11-20T22:42:18.511279249Z      2. 🎬 The.Twilight.Zone.1960.S02E06.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv [NinjaCentral]
+2026-11-20T22:42:18.511281302Z      3. 📦 The.Twilight.Zone.1960.S02.1080p.BluRay.x264-aAF [NinjaCentral]
+2026-11-20T22:42:18.511287279Z      4. 🎬 The.Twilight.Zone.1960.S02E06.1080p.BluRay.x264-aAF.mkv [NinjaCentral]
+2026-11-20T22:42:18.511289303Z      5. 🎬 The.Twilight.Zone.1959-S02E06-The.Eye.of.the.Beholder.1080p.BluRay.x265.ImE [NinjaCentral]
+2026-11-20T22:42:18.511291113Z      6. 🎬 The.Twilight.Zone.1960.S02E06.1080p.BluRay.x265-RARBG [NinjaCentral]
+2026-11-20T22:42:18.511293099Z      7. 📦 The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE] [NinjaCentral]
+2026-11-20T22:42:18.511295154Z      8. 🎬 The.Twilight.Zone.1960.S02E06.720p.BluRay.x264-aAF [NinjaCentral]
+2026-11-20T22:42:18.511297122Z      9. 🎬 The Twilight Zone 1960 S02E06 720p BluRay x265 HEVC 2CH-MRN [NinjaCentral]
+2026-11-20T22:42:18.511299116Z     10. 📦 The.Twilight.Zone.S01-S05.1959-1964.DVDRip.XviD-TVA [NinjaCentral]
+2026-11-20T22:42:18.511301081Z     11. 📦 The Twilight Zone (1959) Season 1 Complete x265 EN subs [NinjaCentral]
+2026-11-20T22:42:18.511303091Z     12. 📦 The Twilight Zone (1959) Season 2 Complete x265 EN subs [NinjaCentral]
+2026-11-20T22:42:18.511305827Z     13. 📦 The Twilight Zone 1959-1964 S02 [NinjaCentral]
+2026-11-20T22:42:18.511307827Z     14. 📦 The.Twilight.Zone.S02.1080p.BluRay.DDP.2.0.x265-edge2020 [NinjaCentral]
+2026-11-20T22:42:18.511309643Z     15. 📦 The Twilight Zone S02 1080p AMZN WEB-DL DD 2 0 H 264-playWEB [NinjaCentral]
+2026-11-20T22:42:18.511311667Z     16. 📦 The Twilight Zone S02 720p AMZN WEB-DL DD 2 0 H 264-playWEB [NinjaCentral]
+2026-11-20T22:42:18.511516748Z 🔍 Smart batch 1/2: checking 3 NZB(s) across 1 provider(s)...
+2026-11-20T22:42:19.219773013Z   [health-check] NZB contains password metadata
+2026-11-20T22:42:19.222042698Z   [b3c56d6111df14200245de227] 45 files (0 video, 45 archive)
+2026-11-20T22:42:19.222204146Z   [b3c56d6111df14200245de227] Checking archive: b3c56d6111df14200245de227bfc3c0d
+2026-11-20T22:42:19.222219351Z   [b3c56d6111df14200245de227] 🔍 Inspecting archive header...
+2026-11-20T22:42:19.319544447Z   [[N3wZ] \1SRCBO185405\::[P] 2 files (1 video, 0 archive) [MKV]
+2026-11-20T22:42:19.321529960Z   [[N3wZ] \1SRCBO185405\::[P] Checking video: The.Twilight.Zone.1960.S02E06.1080p.BluRay.REMUX.AVC.FLAC.2.0-NOGRP.mkv
+2026-11-20T22:42:19.321557082Z   [[N3wZ] \1SRCBO185405\::[P] Checking 3 segments across 1 provider(s)
+2026-11-20T22:42:20.463765402Z   [[PRiVATE]-[WtFnZb]-[aaf-t] 1450 files (0 video, 1363 archive)
+2026-11-20T22:42:20.463951059Z   [[PRiVATE]-[WtFnZb]-[aaf-t] Checking archive: aaf-tz.s02e01.1080p.rar
+2026-11-20T22:42:20.463979814Z   [[PRiVATE]-[WtFnZb]-[aaf-t] 🔍 Inspecting archive header...
+2026-11-20T22:42:20.466910908Z   [b3c56d6111df14200245de227] → Blocked: Archive header unreadable
+2026-11-20T22:42:21.178770481Z   [[N3wZ] \1SRCBO185405\::[P] Result: 0/3 found ()
+2026-11-20T22:42:21.178786081Z   [[N3wZ] \1SRCBO185405\::[P] → Blocked: 3/3 missing
+2026-11-20T22:42:21.200608625Z   [[PRiVATE]-[WtFnZb]-[aaf-t] → Blocked: Archive header unreadable
+2026-11-20T22:42:21.200800253Z [KF-STEP] {"step":"health_batch","ms":2689,"ok":true,"t":"2026-11-20T22:42:21.200Z","ref":"tt0052520:2:6","count":3,"checked":3,"indexers":["NinjaCentral"]}
+2026-11-20T22:42:21.200815825Z   🚫 The.Twilight.Zone.1960.S02E06.1080p.BluRay.REMUX.AVC.FLAC.2....
+2026-11-20T22:42:21.200833622Z   🚫 The.Twilight.Zone.1960.S02E06.1080p.BluRay.REMUX.AVC.FLAC.2....
+2026-11-20T22:42:21.200837967Z   🚫 The.Twilight.Zone.1960.S02.1080p.BluRay.x264-aAF...
+2026-11-20T22:42:21.200854306Z ⏳ Smart mode: 0/1 healthy after batch 1, continuing...
+2026-11-20T22:42:21.200905318Z 🔍 Smart batch 2/2: checking 3 NZB(s) across 1 provider(s)...
+2026-11-20T22:42:21.666675431Z   [86a9614b3ccc99b150972af6b] 14 files (0 video, 9 archive)
+2026-11-20T22:42:21.666717444Z   [86a9614b3ccc99b150972af6b] Checking archive: 86a9614b3ccc99b150972af6b528e78f.part01.rar
+2026-11-20T22:42:21.666791589Z   [86a9614b3ccc99b150972af6b] 🔍 Inspecting archive header...
+2026-11-20T22:42:21.765805677Z   [The.Twilight.Zone.1959-S0] 25 files (0 video, 16 archive)
+2026-11-20T22:42:21.765834862Z   [The.Twilight.Zone.1959-S0] Checking archive: The.Twilight.Zone.1959-S02E06-The.Eye.of.the.Beholder.1080p.BluRay.x265.ImE.part01.rar
+2026-11-20T22:42:21.765837109Z   [The.Twilight.Zone.1959-S0] 🔍 Inspecting archive header...
+2026-11-20T22:42:21.858815064Z   [The.Twilight.Zone.1960.S0] 2 files (1 video, 0 archive) [MKV]
+2026-11-20T22:42:21.858838940Z   [The.Twilight.Zone.1960.S0] Checking video: The.Twilight.Zone.1960.S02E06.1080p.BluRay.x264-aAF.mkv
+2026-11-20T22:42:21.858842599Z   [The.Twilight.Zone.1960.S0] Checking 3 segments across 1 provider(s)
+2026-11-20T22:42:22.440949521Z   [86a9614b3ccc99b150972af6b] → Blocked: Archive header unreadable
+2026-11-20T22:42:22.543263335Z   [The.Twilight.Zone.1959-S0] → Blocked: Archive header unreadable
+2026-11-20T22:42:23.783858454Z   [The.Twilight.Zone.1960.S0] Result: 0/3 found ()
+2026-11-20T22:42:23.783886029Z   [The.Twilight.Zone.1960.S0] → Blocked: 3/3 missing
+2026-11-20T22:42:23.783931041Z [KF-STEP] {"step":"health_batch","ms":2583,"ok":true,"t":"2026-11-20T22:42:23.783Z","ref":"tt0052520:2:6","count":3,"checked":3,"indexers":["NinjaCentral"]}
+2026-11-20T22:42:23.783951771Z   🚫 The.Twilight.Zone.1960.S02E06.1080p.BluRay.x265-RARBG...
+2026-11-20T22:42:23.783960088Z   🚫 The.Twilight.Zone.1959-S02E06-The.Eye.of.the.Beholder.1080p....
+2026-11-20T22:42:23.783973355Z   🚫 The.Twilight.Zone.1960.S02E06.1080p.BluRay.x264-aAF.mkv...
+2026-11-20T22:42:23.783989198Z ⚠️ Smart mode: no healthy result found after checking
+2026-11-20T22:42:23.785158158Z 🚫 Filtered out 6 blocked/error NZB(s)
+2026-11-20T22:42:23.795017589Z 🎟️ /stream hit: kind=user_pick filename=The Twilight Zone S02E06 q=[t] ua=Python-urllib/3.14
+2026-11-20T22:42:23.795329215Z 🎯 User-pick attempt: userPickFallback=fallback-chain, sk=c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt0052520:2:6, fbg=none
+2026-11-20T22:42:23.795395519Z 🆕 Starting new stream preparation: The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]
+2026-11-20T22:42:23.795417123Z 
+2026-11-20T22:42:23.795419079Z 🎬 Preparing stream (AltMount): The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE] (selecting (?:S02(?:[. _-]?E\d+|-\d{1,2})*(?:[. _-]?E06|-06)(?!\d)|\b1960[. _-]?11[. _-]?11\b)) [series] ⏱️ no limit
+2026-11-20T22:42:23.795543181Z   📥 Downloading NZB from indexer: http://host.docker.internal:1340/ninjacentral/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY2...
+2026-11-20T22:42:24.899526477Z   ✅ NZB downloaded (4483659 bytes)
+2026-11-20T22:42:24.901980270Z [KF-STEP] {"step":"nzb_fetch","source":"NinjaCentral","ms":1106,"ok":true,"t":"2026-11-20T22:42:24.901Z","title":"The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]"}
+2026-11-20T22:42:24.904735327Z [KF-STEP] {"step":"unscramble","source":"NinjaCentral","ms":3,"ok":true,"t":"2026-11-20T22:42:24.904Z","title":"The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]","wait_ms":0,"result":"not-scrambled","parts":0}
+2026-11-20T22:42:24.908933721Z   📤 Sending Source to AltMount (waits up to 300s)
+2026-11-20T22:42:26.438483410Z [KF-STEP] {"step":"import_wait","source":"NinjaCentral","ms":1530,"ok":false,"t":"2026-11-20T22:42:26.438Z","title":"The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]","includes_upload":true}
+2026-11-20T22:42:20.466892270Z   [b3c56d6111df14200245de227] ⚠️ Archive inspection failed (Newshosting): Article not found: 430 No Such Article
+2026-11-20T22:42:21.200599733Z   [[PRiVATE]-[WtFnZb]-[aaf-t] ⚠️ Archive inspection failed (Newshosting): Article not found: 430 No Such Article
+2026-11-20T22:42:22.440905496Z   [86a9614b3ccc99b150972af6b] ⚠️ Archive inspection failed (Newshosting): Article not found: 430 No Such Article
+2026-11-20T22:42:22.543269488Z   [The.Twilight.Zone.1959-S0] ⚠️ Archive inspection failed (Newshosting): Article not found: 430 No Such Article
+2026-11-20T22:42:26.441733720Z ❌ Stream failed [1/1] The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]: AltMount could not process the Source: {"error":{"code":"INTERNAL_SERVER_ERROR","details":"","message":"fast-fail segment check failed: no regular files were successfully processed (all files failed validation)"},"success":false}
+2026-11-20T22:42:26.441984243Z ❌ All 1 candidate(s) exhausted, serving failure video
+

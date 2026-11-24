@@ -585,6 +585,10 @@
       "match": [
         {
           "rules": 1,
+          "sign": "check miss | import_wait not ok | *all files failed validation*"
+        },
+        {
+          "rules": 1,
           "sign": "fallback | import_wait not ok | *all files failed validation*"
         }
       ],
@@ -611,6 +615,10 @@
       "whose": "KaijuFlow",
       "status": "fixed awaiting proof",
       "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *all files failed validation*"
+        },
         {
           "rules": 1,
           "sign": "fallback | import_wait not ok | *all files failed validation*"
@@ -647,6 +655,10 @@
       "whose": "KaijuFlow",
       "status": "fixed awaiting proof",
       "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *all files failed validation*"
+        },
         {
           "rules": 1,
           "sign": "fail | import_wait not ok | *all files failed validation*"

@@ -7,6 +7,8 @@ whose: KaijuFlow
 status: fixed awaiting proof
 match:
   - rules: 1
+    sign: "check miss | import_wait not ok | *all files failed validation*"
+  - rules: 1
     sign: "fallback | import_wait not ok | *all files failed validation*"
   - rules: 1
     sign: "fail | import_wait not ok | *all files failed validation*"
@@ -80,3 +82,4 @@ The chain (read-error, original uploaded, AltMount refusal) is proved by the log
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft A1). Read-errors also show in the archived 2026-11-13 baseline (Inception's second pick, 197 parts; Dune, 190 parts); what those plays did next was not traced, so they are not in `seen`.
+- 2026-11-24: a `check miss` sign added (#283): the Source passed its Play-time check before AltMount refused it, so Diagnosis fingerprints the failure as a check miss when the play still ended in video (a fallback that hides a check miss, README "Not signs").

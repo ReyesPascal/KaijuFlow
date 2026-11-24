@@ -1,0 +1,98 @@
+{
+ "format": 1,
+ "check": "2026-11-23T190950Z-grouped-219",
+ "kind": "run",
+ "title": [
+  "series",
+  "tt5180504:1:1",
+  "The Witcher S01E01",
+  "popular-episode",
+  null
+ ],
+ "label": "The Witcher S01E01",
+ "id": "tt5180504:1:1",
+ "kept_because": "fallback",
+ "outcome": {
+  "label": "The Witcher S01E01",
+  "id": "tt5180504:1:1",
+  "kind": "popular-episode",
+  "sources": 86,
+  "release": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB",
+  "video": true,
+  "checked": [
+   {
+    "release": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-CRYBABIES",
+    "ok": false,
+    "status": "blocked"
+   },
+   {
+    "release": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB",
+    "ok": true,
+    "status": "verified_stored"
+   },
+   {
+    "release": "The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB",
+    "ok": true,
+    "status": "verified_stored"
+   },
+   {
+    "release": "The Witcher - S01E01 - The End's Beginning WEBDL-2160p",
+    "ok": false,
+    "status": "blocked"
+   },
+   {
+    "release": "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested",
+    "ok": true,
+    "status": "verified"
+   }
+  ],
+  "fallbacks": 1,
+  "check_misses": [
+   {
+    "release": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB",
+    "reason": ""
+   }
+  ],
+  "start_s": 11.26,
+  "title_to_video": null,
+  "slow": false,
+  "outcome": "played",
+  "why": ""
+ },
+ "t_start": "2026-11-23T19:12:12.663Z",
+ "t_end": "2026-11-23T19:12:31.826Z",
+ "commit": "9fb31a2d356e3262a0c455aab2b9bab22e5d050f",
+ "head": "9fb31a2d356e3262a0c455aab2b9bab22e5d050f",
+ "dirty": false,
+ "dev_switch": {
+  "setting": false,
+  "step_lines": 0,
+  "of": 17
+ },
+ "failed_sources": [
+  {
+   "release": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-CRYBABIES",
+   "failed": "check",
+   "status": "blocked",
+   "nzb": null
+  },
+  {
+   "release": "The Witcher - S01E01 - The End's Beginning WEBDL-2160p",
+   "failed": "check",
+   "status": "blocked",
+   "nzb": null
+  },
+  {
+   "release": "The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB",
+   "failed": "import",
+   "status": null,
+   "nzb": null
+  }
+ ],
+ "altmount_nzbs": [],
+ "answers": {
+  "list": "answers",
+  "kept": 0,
+  "not_stored": []
+ }
+}

@@ -7,6 +7,8 @@ whose: unknown
 status: open
 match:
   - rules: 1
+    sign: "check miss | import_wait not ok | *all files failed validation*"
+  - rules: 1
     sign: "fallback | import_wait not ok | *all files failed validation*"
 confirm:
   - clue: unscramble-read-error
@@ -53,3 +55,4 @@ None yet. [unscramble-read-error](unscramble-read-error.md)'s fix (#245) keeps s
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft D1).
+- 2026-11-24: a `check miss` sign added (#283): the Source passed its Play-time check before AltMount refused it, so Diagnosis fingerprints the failure as a check miss when the play still ended in video (a fallback that hides a check miss, README "Not signs").

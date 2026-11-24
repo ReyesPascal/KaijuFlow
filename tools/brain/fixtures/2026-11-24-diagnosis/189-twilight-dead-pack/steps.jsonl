@@ -1,0 +1,12 @@
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 290, "ok": true, "t": "2026-11-20T22:42:17.404Z", "ref": "tt0052520:2:6", "page": 1}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 376, "ok": true, "t": "2026-11-20T22:42:17.490Z", "ref": "tt0052520:2:6", "page": 1}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 407, "ok": true, "t": "2026-11-20T22:42:17.520Z", "ref": "tt0052520:2:6", "page": 1}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 371, "ok": true, "t": "2026-11-20T22:42:17.880Z", "ref": "tt0052520:2:6", "page": 2}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 489, "ok": true, "t": "2026-11-20T22:42:18.025Z", "ref": "tt0052520:2:6", "page": 2}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 424, "ok": true, "t": "2026-11-20T22:42:18.321Z", "ref": "tt0052520:2:6", "page": 3}
+{"step": "indexer_page", "source": "NinjaCentral", "ms": 393, "ok": true, "t": "2026-11-20T22:42:18.437Z", "ref": "tt0052520:2:6", "page": 3}
+{"step": "health_batch", "ms": 2689, "ok": true, "t": "2026-11-20T22:42:21.200Z", "ref": "tt0052520:2:6", "count": 3, "checked": 3, "indexers": ["NinjaCentral"]}
+{"step": "health_batch", "ms": 2583, "ok": true, "t": "2026-11-20T22:42:23.783Z", "ref": "tt0052520:2:6", "count": 3, "checked": 3, "indexers": ["NinjaCentral"]}
+{"step": "nzb_fetch", "source": "NinjaCentral", "ms": 1106, "ok": true, "t": "2026-11-20T22:42:24.901Z", "title": "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]"}
+{"step": "unscramble", "source": "NinjaCentral", "ms": 3, "ok": true, "t": "2026-11-20T22:42:24.904Z", "title": "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]", "wait_ms": 0, "result": "not-scrambled", "parts": 0}
+{"step": "import_wait", "source": "NinjaCentral", "ms": 1530, "ok": false, "t": "2026-11-20T22:42:26.438Z", "title": "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]", "includes_upload": true}
