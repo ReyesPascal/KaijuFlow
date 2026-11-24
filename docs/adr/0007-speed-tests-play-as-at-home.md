@@ -1,5 +1,7 @@
 # Speed tests give every app one try, on new titles, judged on fails then title to video
 
+**Superseded** by [ADR 0010](0010-testing-plays-as-a-real-viewer-watches.md) (2026-11-24): testing plays as a real viewer watches, judged on fails.
+
 A speed test plays an easy list and a hard list of titles no side has played before, new every test. Every app gets one try per title, with no retries for anyone (AltMount direct's fallback stays off, as in #142; KaijuFlow and Usenet Ultimate show the failure video), and is judged first on fails (a play whose top pick does not play on its one try) and then on title to video (one clock from asking for the title until video). Decided by the owner on 2026-11-15 after Test 1; amended twice the same day (below).
 
 **Superseded in part** by spec #183 (2026-11-20, below): runs measure KaijuFlow with AltMount alone, against its own previous run on one fixed recording, and a fallback counts as played. What still holds: fails first, then title to video.
