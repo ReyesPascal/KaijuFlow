@@ -12,6 +12,8 @@ import casebook
 import clues
 import diagnosis
 import evidence
+from test_evidence import run_failed_check
+from test_quickcheck import CheckWorld, check_cfg, read, run_check
 from test_settings import tempdir
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -163,6 +165,27 @@ class StoredFailuresTest(unittest.TestCase):
                 self.assertIn('"code":"<code>"', f['fingerprint'])
                 self.assertNotIn('INTERNAL_SERVER_ERROR', f['fingerprint'])
         self.assertEqual(diagnosis.refingerprint(root, diagnosis.load_rules(path)), [])  # the same version: nothing to do
+
+
+class AfterACheckTest(unittest.TestCase):
+    def test_a_check_with_a_failure_runs_diagnosis_by_itself_and_its_report_says_what_it_found(self):
+        code, out, folder, world = run_failed_check(self)
+        summary = json.loads(read(folder, diagnosis.STORED))
+        [play] = summary['plays']
+        self.assertEqual(play['evidence'], 'evidence/01-the-witcher-s01e01')
+        [f] = play['failures']
+        self.assertEqual(f['says'], answers(READ_ERROR)[0]['says'])
+        self.assertTrue(os.path.exists(os.path.join(folder, play['evidence'], diagnosis.STORED)))
+        report = read(folder, 'report.md')
+        self.assertIn('## Diagnosis\n\n1 failure: 0 new, 1 matched, 1 proved, 0 unexplained; open Case logs: none kept yet.\n\n'
+                      f'- The Witcher S01E01: {HHWEB}: {f["says"]}.\n', report)
+
+    def test_a_check_with_no_failure_diagnoses_nothing(self):
+        cfg = check_cfg(self)
+        code, out = run_check(cfg, CheckWorld())
+        folder = os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check')
+        self.assertFalse(os.path.exists(os.path.join(folder, diagnosis.STORED)))
+        self.assertIn('## Diagnosis\n\nNone: no play failed or fell back.\n', read(folder, 'report.md'))
 
 
 if __name__ == '__main__':

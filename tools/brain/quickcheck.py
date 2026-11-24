@@ -14,6 +14,7 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
+import diagnosis  # noqa: E402
 import pool  # noqa: E402
 
 QUICK_KINDS = {'popular-film': 2, 'rare-film': 1, 'popular-episode': 1, 'rare-episode': 1}  # the 5 titles' kinds (draw.KINDS)
@@ -424,6 +425,7 @@ def render_report(check, outcomes):
     lines.append(f"{_s(statistics.median(times))} (median of {_plural(len(times), 'play')} with the right video; the list plus "
                  'the start, the Browse pause left out).' if times else 'None: no play gave the right video.')
     lines += played_line(check)
+    lines += [''] + diagnosis.report_section(check.get('diagnosis'), check.get('diagnosis_error'))
     tickets = ticket_texts(check, outcomes)
     if tickets:
         lines += ['', '## Tickets to file', '']

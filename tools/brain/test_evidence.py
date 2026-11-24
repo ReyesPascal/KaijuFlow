@@ -146,7 +146,7 @@ class FailedPlayEvidenceTest(unittest.TestCase):
         raw = json.loads(read(self.folder, 'raw.json'))
         self.assertEqual([o.get('evidence') for o in raw['outcomes']], ['evidence/01-the-witcher-s01e01', None, None, None, None])
         self.assertNotIn('evidence', raw['visits'][1])  # a play that went fine keeps only what a check keeps today
-        self.assertEqual(sorted(os.listdir(self.folder)), ['evidence', 'logs', 'meta.json', 'raw.json', 'report.md', 'settings.json',
+        self.assertEqual(sorted(os.listdir(self.folder)), ['diagnosis.json', 'evidence', 'logs', 'meta.json', 'raw.json', 'report.md', 'settings.json',
                                                            'titles.json'])
 
     def test_it_says_what_it_is_for_whom_and_why_it_was_kept(self):

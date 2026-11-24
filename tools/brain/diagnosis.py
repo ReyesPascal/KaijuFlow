@@ -363,3 +363,41 @@ def refingerprint(root, rules=None, entries=None, library=None):
                     plays.append(dict(d, path=folder))
             summarize(run_dir, plays, rules)
     return changed
+
+
+# --------------------------------------------------------------------------- after a check, and its report
+
+def after_check(run_dir, runs_root, entries=None, library=None, rules=None):
+    """What a check runs by itself at its end when a play left an evidence folder: every stored failure under the runs
+    root fingerprinted again if the masking rules changed, then this check's plays diagnosed. The summary, or None when
+    the check left no evidence folder."""
+    if not evidence_folders(run_dir):
+        return None
+    rules = load_rules() if rules is None else rules
+    entries = load_index() if entries is None else entries
+    refingerprint(runs_root, rules, entries, library)
+    return diagnose_check(run_dir, entries, library, rules)
+
+
+def _plural(n, word):
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def report_section(summary, error=None):
+    """The check report's Diagnosis section (story 57): the numbers, then one line per failure."""
+    lines = ['## Diagnosis', '']
+    if error:
+        return lines + [f'Diagnosis could not run: {error}.']
+    if not summary:
+        return lines + ['None: no play failed or fell back.']
+    c = summary['counts']
+    lines.append(f"{_plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
+                 f"{c['unexplained']} unexplained; open Case logs: none kept yet.")
+    lines.append('')
+    for p in summary['plays']:
+        if p.get('error'):
+            lines.append(f"- {p.get('label') or p['evidence']}: its evidence folder could not be read: {p['error']}.")
+        for f in p['failures']:
+            source = f"{f['release']}: " if f.get('release') else ''
+            lines.append(f"- {p.get('label') or p['evidence']}: {source}{f['says']}.")
+    return lines
