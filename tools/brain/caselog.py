@@ -304,7 +304,10 @@ def _hypothesis(log, n):
     return h
 
 
-WRITES = ('observation', 'hypothesis', 'result')
+WRITES = ('observation', 'hypothesis', 'result', 'research', 'ticket', 'ask', 'pause', 'conclude')
+ASKS = ('live go', 'login')  # what only the owner can give (spec #279, story 47)
+NEXT = ('research', 'clue', 'ticket', 'owner', 'capture')  # what a stuck case does next: never nothing (story 44)
+TICKET = re.compile(r'^(#\d+|https://github\.com/\S+/(issues|pull)/\d+)$')
 
 
 def add(cases, cid, write):
@@ -328,6 +331,37 @@ def add(cases, cid, write):
         item = _note(log, 'hypotheses', {'says': says, 'refuted_if': refuted_if, 'quotes': quotes, 'status': OPEN,
                                          'result': None}, 'agent')
         line = f"hypothesis {item['n']} written"
+    elif kind == 'research':
+        item = _note(log, 'research', {'question': _text(write, 'question', 'research names its question'),
+                                       'source': _text(write, 'source', 'research names where it looked (a link or a file)'),
+                                       'found': _text(write, 'found', 'research says what it found'),
+                                       'used': bool(write.get('used'))}, 'agent')
+        line = f"research {item['n']} written"
+    elif kind == 'ticket':
+        ref = _text(write, 'ref', 'a ticket is named by its number (#123) or its link')
+        if not TICKET.match(ref):
+            raise Refused('a ticket is named by its number (#123) or its link')
+        item = _note(log, 'tickets', {'ref': ref, 'fact': _text(write, 'fact', 'a ticket says what KaijuFlow should record')},
+                     'agent')
+        line = f"ticket {item['n']} written"
+    elif kind == 'ask':
+        if write.get('kind') not in ASKS:
+            raise Refused('a Case log comes to the owner only for what only they can give: a live go or a login (kind)')
+        item = _note(log, 'asks', {'kind': write['kind'], 'what': _text(write, 'what', 'an ask says what is needed')}, 'agent')
+        line = f"ask {item['n']} written: tell the owner in one line (kf-alert)"
+    elif kind == 'pause':
+        if len(log['hypotheses']) < 2:
+            raise Refused(f"keep several hypotheses at once: this Case log has {len(log['hypotheses'])}")
+        nxt = write.get('next')
+        if not isinstance(nxt, dict) or nxt.get('do') not in NEXT or not str(nxt.get('what') or '').strip():
+            raise Refused(f"a stuck case keeps going: say what comes next (next.do: {', '.join(NEXT)})")
+        if nxt['do'] == 'owner' and not log['asks']:
+            raise Refused('the next step is the owner only after an ask (a live go or a login)')
+        item = _note(log, 'attempts', {'occurrence': None, 'ran': [], 'skipped': [],
+                                       'next': {'do': nxt['do'], 'what': nxt['what'].strip()}}, 'agent')
+        line = f"attempt {item['n']} paused; next: {nxt['do']}"
+    elif kind == 'conclude':
+        raise Refused('conclude is not built yet')
     else:
         h = _hypothesis(log, write.get('hypothesis'))
         now = write.get('now')

@@ -134,7 +134,8 @@ KF_LOG = 'logs/kaijuflow-test.log'
 STATUS_503 = '2026-11-24T06:00:46.966105433Z    Status: 503'
 
 
-class ClaimsCheckedTest(unittest.TestCase):
+class CaseWrites(unittest.TestCase):
+    """A Case log opened for Inception's empty list (no Casebook entry matches it), and the agent's `case add`."""
     def setUp(self):
         self.root, self.run_dir, self.cases, _ = after(self, (INDEXER_DOWN,))
         [self.id] = logs(self.cases)
@@ -144,6 +145,9 @@ class ClaimsCheckedTest(unittest.TestCase):
         with open(path, 'w') as f:
             json.dump(write, f)
         return case_cmd(self.cases, 'add', self.id, path)
+
+
+class ClaimsCheckedTest(CaseWrites):
 
     def test_a_claim_whose_quote_the_evidence_holds_is_written(self):
         n = len(logs(self.cases)[self.id]['observations']) + 1
@@ -182,7 +186,7 @@ class ClaimsCheckedTest(unittest.TestCase):
             ({'write': 'hypothesis', 'says': 'the stand-in lost its answer', 'refuted_if': '',
               'quotes': [{'occurrence': 1, 'file': KF_LOG, 'text': STATUS_503}]},
              'a hypothesis says what result would refute it (refuted_if)'),
-            ({'write': 'guess', 'says': 'x'}, 'no write named guess (observation, hypothesis, result)'),
+            ({'write': 'guess', 'says': 'x'}, 'no write named guess (observation, hypothesis, result, research, ticket, ask, pause, conclude)'),
         ]:
             with self.subTest(why=why):
                 code, out = self.add(write)
@@ -200,6 +204,47 @@ class ClaimsCheckedTest(unittest.TestCase):
                          ('holds', 'the answers kept for the play hold this search', 'the store kept no answer'))
         self.assertEqual(self.add({'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'x', 'quotes': q}),
                          (1, 'refused: this Case log has no hypothesis 2\n'))
+
+
+class NeverGivesUpTest(CaseWrites):
+    Q = [{'occurrence': 1, 'file': KF_LOG, 'text': STATUS_503}]
+
+    def hypotheses(self, n):
+        for i in range(n):
+            self.assertEqual(self.add({'write': 'hypothesis', 'says': f'cause {i + 1}', 'refuted_if': 'a test says no',
+                                       'quotes': self.Q})[0], 0)
+
+    def test_research_and_a_ticket_for_a_new_fact_are_kept_and_counted(self):
+        self.assertEqual(self.add({'write': 'research', 'question': 'When does the stand-in answer 503?',
+                                   'source': 'tools/brain/indexer_standin.py', 'found': 'a miss in replay mode is a 503',
+                                   'used': True}), (0, f'{self.id}: research 1 written\n'))
+        self.assertEqual(self.add({'write': 'ticket', 'ref': '#999', 'fact': 'the stand-in names the missed request'}),
+                         (0, f'{self.id}: ticket 1 written\n'))
+        log = logs(self.cases)[self.id]
+        self.assertEqual((log['research'][0]['used'], log['tickets'][0]['ref']), (True, '#999'))
+        self.assertEqual(self.add({'write': 'ticket', 'ref': 'soon', 'fact': 'x'}),
+                         (1, 'refused: a ticket is named by its number (#123) or its link\n'))
+
+    def test_the_owner_is_asked_only_for_what_only_they_can_give(self):
+        self.assertEqual(self.add({'write': 'ask', 'kind': 'live go', 'what': 'play Inception again live'})[0], 0)
+        self.assertEqual(self.add({'write': 'ask', 'kind': 'login', 'what': 'the second provider'})[0], 0)
+        self.assertEqual(self.add({'write': 'ask', 'kind': 'opinion', 'what': 'which cause do you think?'}),
+                         (1, 'refused: a Case log comes to the owner only for what only they can give: a live go or a '
+                             'login (kind)\n'))
+
+    def test_a_pause_keeps_several_hypotheses_and_says_what_comes_next(self):
+        nxt = {'do': 'research', 'what': "read the stand-in's replay code"}
+        self.hypotheses(1)
+        self.assertEqual(self.add({'write': 'pause', 'next': nxt}),
+                         (1, 'refused: keep several hypotheses at once: this Case log has 1\n'))
+        self.hypotheses(1)
+        self.assertEqual(self.add({'write': 'pause'}),
+                         (1, 'refused: a stuck case keeps going: say what comes next (next.do: research, clue, ticket, '
+                             'owner, capture)\n'))
+        self.assertEqual(self.add({'write': 'pause', 'next': {'do': 'owner', 'what': 'wait'}}),
+                         (1, 'refused: the next step is the owner only after an ask (a live go or a login)\n'))
+        self.assertEqual(self.add({'write': 'pause', 'next': nxt}), (0, f'{self.id}: attempt 2 paused; next: research\n'))
+        self.assertEqual(logs(self.cases)[self.id]['attempts'][-1]['next'], nxt)
 
 
 if __name__ == '__main__':
