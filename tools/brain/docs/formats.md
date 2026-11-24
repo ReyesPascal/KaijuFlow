@@ -181,7 +181,7 @@ The field is called the list, not the kind: kind already means film or series he
 
 ## The title draw and the ledger (`draw.py`)
 
-Every real-use check plays new titles (ADR 0010, #269). `python3 -I tools/brain/draw.py titles --check "<check>" --kinds popular-film=3,popular-episode=2 --out <titles.json>` draws them from TMDB, with the metadata key it reads from KaijuFlow's test copy (as `pool.py check-ids` does) and never prints. It prints one line per title (`popular-film: The Odyssey (tt33764258)`), then `done in N s`.
+Every real-use check plays new titles (ADR 0010, #269). `python3 -I tools/brain/draw.py titles --check "<check>" --kinds popular-film=3,popular-episode=2 --out <titles.json>` draws them from TMDB, with the metadata key it reads from KaijuFlow's test copy (as `pool.py check-ids` does) and never prints. It prints one line per title (`popular-film: Avatar Aang: The Last Airbender (tt18259538)`), then `done in N s`.
 
 **Kinds.** A title is chosen by its kind only, never by hand and never by whether it will play:
 
@@ -200,8 +200,8 @@ From each kind's list the draw takes a page of the first 25 (500 titles) at rand
 
 ```json
 [
-  ["movie", "tt33764258", "The Odyssey", "popular-film", "2026-07-17"],
-  ["series", "tt2359704:2:9", "JoJo's Bizarre Adventure S02E09", "anime", "2014-02-28"]
+  ["movie", "tt18259538", "Avatar Aang: The Last Airbender", "popular-film", "2026-07-24"],
+  ["series", "tt7899522:1:30", "GeGeGe no Kitaro S01E30", "anime", "2018-10-28"]
 ]
 ```
 
@@ -210,7 +210,7 @@ From each kind's list the draw takes a page of the first 25 (500 titles) at rand
 ```json
 {"about": "...",
  "titles": [
-  {"id": "tt33764258", "type": "movie", "label": "The Odyssey", "kind": "popular-film", "date": "2026-07-17", "check": "quick 2026-11-25", "when": "2026-11-25T10:00:00+00:00"}
+  {"id": "tt18259538", "type": "movie", "label": "Avatar Aang: The Last Airbender", "kind": "popular-film", "date": "2026-07-24", "check": "quick 2026-11-25", "when": "2026-11-25T10:00:00+00:00"}
  ]}
 ```
 
