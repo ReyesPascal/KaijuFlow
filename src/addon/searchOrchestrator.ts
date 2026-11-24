@@ -423,7 +423,7 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
     ) {
       const retryIndexers = enabledIndexers.filter(i => !timedOutIndexers.has(i.name));
       if (retryIndexers.length === 0 && enabledIndexers.length > 0) {
-        slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
+        slog(`⚠️  Every indexer timed out in the main search, skipping alias-title fallback`);
       }
       if (retryIndexers.length > 0) {
         // When TVDB has an aired date for the targeted episode, use the
@@ -488,7 +488,7 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
     ) {
       const retryIndexers = enabledIndexers.filter(i => !timedOutIndexers.has(i.name));
       if (retryIndexers.length === 0 && enabledIndexers.length > 0) {
-        slog(`⚠️  No text-method indexers, skipping absolute-episode fallback`);
+        slog(`⚠️  Every indexer timed out in the main search, skipping absolute-episode fallback`);
       }
       if (retryIndexers.length > 0) {
         // Three-tier source chain: TVDB canonical → TVDB cumulative → Cinemeta cumulative → per-season E{episode}.
@@ -554,7 +554,7 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
     if (results.length === 0 && additionalTitles?.length && enabledIndexers.length > 0 && !parallelAltEnabled) {
       const altIndexers = enabledIndexers.filter(i => !timedOutIndexers.has(i.name));
       if (altIndexers.length === 0 && enabledIndexers.length > 0) {
-        slog(`⚠️  No text-method indexers, skipping alt-title retry`);
+        slog(`⚠️  Every indexer timed out in the main search, skipping alt-title retry`);
       }
       for (const altTitle of additionalTitles) {
         if (altIndexers.length === 0) break;

@@ -141,7 +141,7 @@ export class ProwlarrSearcher {
     if (allResults.length === 0 && additionalTitles?.length && !this.timedOut && !skipSequentialAlt) {
       const allIndexerIds = allTextIndexerIds;
       if (allIndexerIds.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alt-title retry`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alt-title retry`);
       }
       if (allIndexerIds.length > 0) {
         for (const altTitle of additionalTitles) {
@@ -159,7 +159,7 @@ export class ProwlarrSearcher {
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.aliasTitleFallback !== false && searchAliases?.length) {
       const allIndexerIds = allTextIndexerIds;
       if (allIndexerIds.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alias-title fallback`);
       }
       if (allIndexerIds.length > 0) {
         const aliasPromises = searchAliases.map((alias) => {
@@ -269,7 +269,7 @@ export class ProwlarrSearcher {
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true && !!additionalTitles?.length;
     const animeFanoutEnabled = !!isAnime && !!additionalTitles?.length && !parallelAltEnabled;
     const includeMultiSeasonPacks = config.searchConfig?.includeMultiSeasonPacks ?? true;
-    // Mirrors the gates inside runTitleSearchTV: SxxExx text query needs a text-method indexer,
+    // Mirrors the gates inside runTitleSearchTV: SxxExx text query needs an indexer asked by name,
     // pack work needs at least one pack feature enabled (and episodesInSeason for season packs).
     const hasAnyTextWork = textMethodIds.length > 0
       || (packIndexerIds.length > 0 && (
@@ -277,7 +277,7 @@ export class ProwlarrSearcher {
         || (!!config.searchConfig?.includeSeasonPacks && !!episodesInSeason)
       ));
 
-    // Canonical text + packs flow. epIndexerIds = text-method only (canonical
+    // Canonical text + packs flow. epIndexerIds = asked by name only (canonical
     // SxxExx text query); packIndexerIds = text + ID-method (pack queries are
     // text-by-nature regardless of an indexer's primary method).
     const canonicalTextPromise = hasAnyTextWork && title
@@ -331,10 +331,10 @@ export class ProwlarrSearcher {
 
     // Canonical absolute-episode fallback (and per-title in parallel/anime mode).
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.absoluteEpisodeFallback !== false) {
-      // Absolute-episode is a text-shaped query; restrict to text-method indexers (mirrors movie-path alias fallback).
+      // Absolute-episode is a text-shaped query; restrict to indexers asked by name (mirrors movie-path alias fallback).
       const allIndexerIds = textMethodIds;
       if (allIndexerIds.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping absolute-episode fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping absolute-episode fallback`);
       }
       if (allIndexerIds.length > 0) {
         const titlesToRetry = (parallelAltEnabled || animeFanoutEnabled) && additionalTitles?.length
@@ -348,10 +348,10 @@ export class ProwlarrSearcher {
 
     // Alias-title fallback: TVDB substring shortcuts (with date-numbered variant for daily/talk shows).
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.aliasTitleFallback !== false && searchAliases?.length) {
-      // Alias query is text-shaped; restrict to text-method indexers.
+      // Alias query is text-shaped; restrict to indexers asked by name.
       const allIndexerIds = textMethodIds;
       if (allIndexerIds.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alias-title fallback`);
       }
       if (allIndexerIds.length > 0) {
         const useDateScheme = typeof episodeAired === 'string' && /^\d{4}-\d{2}-\d{2}/.test(episodeAired);
