@@ -1,6 +1,7 @@
 """Indexer allowance (spec #77, ticket #87): how much of each indexer's daily limit is used since its last reset.
 
-The limits file sits next to the key file, outside the repo (format: tools/brain/limits.example.json, tools/brain/README.md).
+The limits sit in each indexer's entry of the key file, outside the repo (#302; format: tools/brain/indexers.example.json;
+written by `testbed.py indexer add`). Only the limit fields are read here, never a key.
 Counted per indexer, since its last reset:
   - the stand-in's recorded requests: RECORD and ERROR lines of every record folder's logs/standin.log ("t=" is the epoch ms);
     an "api" request is a search, an "nzb" request is a download. HIT lines are replays and cost the indexer nothing.
@@ -18,21 +19,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I lea
 import brainreport as br  # noqa: E402
 import runs  # noqa: E402
 
-LIMITS_FILE = 'limits.json'
 ROLLING = 'rolling-24h'
 DEFAULT_LIVE_STATS = os.path.expanduser('~/usenet-stack/usenet-ultimate_config/stats.json')
 KINDS = ('search', 'download')
 KIND_NAMES = {'search': 'searches', 'download': 'downloads'}
 CAVEAT = ('This counts this machine only, and each copy of Usenet Ultimate keeps only its latest hundred searches '
           'and its latest hundred downloads, so on a busy day the real use can be higher.')
-COLUMNS = ('Columns: Used = requests counted since the indexer last reset; Limit = the daily limit from your limits file; '
+COLUMNS = ('Columns: Used = requests counted since the indexer last reset; Limit = the daily limit from the key file; '
            'Left = Limit minus Used.')
+ADD_COMMAND = 'python3 -I tools/brain/testbed.py indexer add {slug} --stash <entry> --searches <n> --downloads <n>'
+LIMIT_FIELDS = ('search_per_day', 'download_per_day', 'reset', 'timezone')
 
 
 def limits_path(cfg):
-    """Next to the key file."""
-    key = cfg.get('key_file') or os.path.join(cfg['test_dir'], 'indexers.json')
-    return os.path.join(os.path.dirname(key), LIMITS_FILE)
+    """The key file: --key-file, else the test folder's indexers.json. The limits live in its entries (#302)."""
+    return cfg.get('key_file') or os.path.join(cfg['test_dir'], 'indexers.json')
+
+
+def add_command(slug='<slug>'):
+    """The command that writes an indexer's entry, its limits with it."""
+    return ADD_COMMAND.format(slug=slug)
 
 
 def norm(name):
@@ -49,21 +55,27 @@ def _whole(n):
 
 
 def load_limits(path):
-    """({normalized name: {'name', 'search', 'download', 'reset', 'timezone'}}, problem sentence or None)."""
+    """({normalized name: {'name', 'search', 'download', 'reset', 'timezone'}}, problem sentence or None), read from the
+    key file's entries (#302). An entry with no limit field in it has no limits (left out); no sentence holds a key."""
     if not os.path.exists(path):
-        return None, (f'There is no limits file yet: fill in {path} (an example is in tools/brain/limits.example.json) '
-                      'so the daily limits can be checked.')
+        return None, (f'There is no key file yet at {path}, so the daily limits cannot be checked: add each indexer with '
+                      f'{add_command()}.')
     data = br.read_json(path)
     if not isinstance(data, dict) or not isinstance(data.get('indexers'), dict):
-        return None, f'The limits file {path} has no "indexers" list: fix it (an example is in tools/brain/limits.example.json).'
+        return None, f'The key file {path} has no "indexers" list: add each indexer with {add_command()}.'
     out = {}
     for name, v in data['indexers'].items():
         v = v if isinstance(v, dict) else {}
+        if not any(k in v for k in LIMIT_FIELDS):
+            continue
         search, down, reset = v.get('search_per_day'), v.get('download_per_day'), v.get('reset', ROLLING)
         if not _whole(search) or not _whole(down) or (reset != ROLLING and _reset_time(reset) is None):
-            return None, (f'The limits file {path} has a wrong entry for {name}: it needs search_per_day and download_per_day '
-                          f'(whole numbers) and reset ("{ROLLING}" or a clock time like "04:00").')
+            return None, (f'The key file {path} has wrong limits for {name}: it needs search_per_day and download_per_day '
+                          f'(whole numbers) and reset ("{ROLLING}" or a clock time like "04:00"); write them with '
+                          f'{add_command(name)}.')
         out[norm(name)] = {'name': name, 'search': search, 'download': down, 'reset': reset, 'timezone': v.get('timezone', 'UTC')}
+    if not out:
+        return None, f'The key file {path} has no daily limits for any indexer: add them with {add_command()}.'
     return out, None
 
 
@@ -168,7 +180,7 @@ def table(limits, used):
 
 
 def _compute(cfg, now, stats_files):
-    """(limits, used, problem): the limits file read and the counts added up."""
+    """(limits, used, problem): the key file's limits read and the counts added up."""
     limits, problem = load_limits(limits_path(cfg))
     if problem:
         return None, None, problem
@@ -178,7 +190,7 @@ def _compute(cfg, now, stats_files):
 
 
 def usage_lines(cfg, now=None, stats_files=None):
-    """The `usage` command's text, one string per line. A missing limits file gives the one sentence."""
+    """The `usage` command's text, one string per line. Limits that cannot be read give the one sentence."""
     limits, used, problem = _compute(cfg, now or datetime.datetime.now(datetime.timezone.utc), stats_files)
     if problem:
         return [problem]
@@ -187,7 +199,7 @@ def usage_lines(cfg, now=None, stats_files=None):
 
 def left(cfg, now=None, stats_files=None):
     """({normalized name: {'search': n, 'download': n}} left since each indexer's last reset, None) or (None, the problem
-    sentence when the limits file cannot be used). What a real-use check's preflight holds against what it may ask (#270)."""
+    sentence when the key file's limits cannot be used). What a real-use check's preflight holds against what it may ask (#270)."""
     limits, used, problem = _compute(cfg, now or datetime.datetime.now(datetime.timezone.utc), stats_files)
     if problem:
         return None, problem

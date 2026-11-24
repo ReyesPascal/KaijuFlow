@@ -772,6 +772,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 BUILD_INPUTS = ('Dockerfile', '.dockerignore', '.gitattributes', 'package.json', 'package-lock.json', 'tsconfig.json',
                 'src', 'ui', 'scripts/docker-entrypoint.sh')
 # The settings every test copy is expected to have (sort and filter rules); the preflight compares each copy with it (#109).
+# The copies whose indexers the preflight checks: KaijuFlow alone, since it searches and AltMount only streams; the test
+# copy of AltMount has its indexers switched off and the preflight does not read them (#302).
+INDEXER_SIDES = ('kaijuflow',)
 EXPECTED_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
 
 
@@ -796,7 +799,8 @@ class PreflightFailed(Exception):
 
 
 def read_key_file(path):
-    """(state, indexer slugs) of the key file. Only the indexer names are read, so new per-indexer settings do no harm.
+    """(state, switched-on indexer slugs) of the key file. Only the names and switches are read, so new per-indexer settings
+    do no harm; an entry with "enabled": false is switched off (testbed.py indexer off, #302), one with no switch is on.
 
     state: 'missing', 'open' (readable by others), 'unreadable' or 'ok'.
     """
@@ -810,7 +814,7 @@ def read_key_file(path):
     names = data.get('indexers') if isinstance(data, dict) else None
     if not isinstance(names, dict):
         return 'unreadable', []
-    return 'ok', sorted(str(k) for k in names)
+    return 'ok', sorted(str(k) for k, v in names.items() if not (isinstance(v, dict) and v.get('enabled') is False))
 
 
 def _list(items):
@@ -1017,13 +1021,13 @@ def preflight(mode, cfg, io, seen=None):
 
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
     titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
-    indexer_sides = testbed.SETTINGS_SIDES
+    indexer_sides = INDEXER_SIDES
     unreadable = [s for s in indexer_sides if rep['indexers'].get(s) is None]
     for s in unreadable:
         problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder.")
     readable = [s for s in indexer_sides if s not in unreadable]
 
-    # 2. (record and check) the key file names exactly the indexers every test copy has switched on
+    # 2. (record and check) the key file switches on exactly the indexers KaijuFlow has switched on
     if mode in ('record', 'check'):
         path = _key_path(cfg)
         state, key = io.key_state(path)
@@ -1036,9 +1040,9 @@ def preflight(mode, cfg, io, seen=None):
         else:
             differ = [f'{titles[s]} switches on {_list(rep["enabled"][s])}' for s in readable if rep['enabled'][s] != key]
             if differ:
-                problems.append(f'The key file names {_list(key)}, but ' + '; '.join(differ) + ': make them the same.')
+                problems.append(f'The key file switches on {_list(key)}, but ' + '; '.join(differ) + ': make them the same.')
 
-    # 3. every indexer address in every test copy is the indexer stand-in's (explained once, in the first sentence)
+    # 3. every indexer address in KaijuFlow is the indexer stand-in's (explained once, in the first sentence)
     what = ' (the local program that replays recorded indexer answers)'
     for s in readable:
         for r in rep['indexers'][s]:
@@ -1166,7 +1170,7 @@ def preflight(mode, cfg, io, seen=None):
         left, problem = io.allowance_left()
         want = quickcheck.need(cfg.get('check_titles') or sum(quickcheck.QUICK_KINDS.values()))
         if problem:
-            problems.append(problem)  # the limits file is missing or wrong: the sentence says what to fill in
+            problems.append(problem)  # the key file's limits are missing or wrong: the sentence names the command
         else:
             # Every title is searched on every indexer, so each needs the check's searches; the Walk's grabs are shared
             # (at most 30 per title in all, from whichever indexer has the Source), so the indexers together must hold the
@@ -1175,7 +1179,8 @@ def preflight(mode, cfg, io, seen=None):
             for slug in sorted({slug for s in readable for slug in rep['enabled'][s]}):
                 have = left.get(allowance.norm(slug))
                 if have is None:
-                    problems.append(f'The limits file has no entry for {slug}, so its allowance cannot be checked: add one.')
+                    problems.append(f'The key file has no daily limits for {slug}, so its allowance cannot be checked: add them '
+                                    f'({allowance.add_command(slug)}).')
                     continue
                 downloads[slug] = have['download']
                 for kind in allowance.KINDS:

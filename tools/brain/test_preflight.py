@@ -429,10 +429,36 @@ class PreflightTest(unittest.TestCase):
         code, text = run_command('run', self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
-    def test_copies_must_agree_on_enabled_indexers(self):
-        # KaijuFlow's AltMount copy has DrunkenSlug switched off; the key file and KaijuFlow use it
-        self.cfg = make_cfg(make_copies(self, altkf_off=('drunkenslug',)))
-        self.assert_stops('record', self.world(), 'AltMount KaijuFlow', 'drunkenslug')
+    def test_altmounts_indexers_are_ignored_switched_off(self):
+        # #302: KaijuFlow searches and AltMount only streams, so its test copy has every indexer off, pointing anywhere
+        self.cfg = make_cfg(make_copies(self, altkf_off=('ninjacentral', 'drunkenslug'),
+                                        altkf_url=lambda s: 'https://api.real-indexer.example/api?apikey=' + SECRET))
+        record(self.cfg)
+        for mode in ('record', 'run'):
+            code, text = run_command(mode, self.cfg, self.world())
+            self.assertEqual(code, 0, text)
+            self.assertNotIn(SECRET, text)
+
+    def test_altmounts_indexers_are_ignored_switched_on_too(self):
+        self.cfg = make_cfg(make_copies(self, altkf_off=('drunkenslug',), altkf_url=lambda s: 'https://elsewhere.example/api'))
+        code, text = run_command('record', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
+    def test_the_key_file_and_kaijuflow_must_agree_on_the_switched_on_indexers(self):
+        self.cfg = make_cfg(make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'),
+                                        key_slugs=('ninjacentral', 'drunkenslug')))
+        self.assert_stops('record', self.world(), 'KaijuFlow', 'switches on ninjacentral', 'drunkenslug')
+
+    def test_an_indexer_switched_off_in_both_the_key_file_and_kaijuflow_passes(self):
+        td = make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'))
+        path = os.path.join(td, 'indexers.json')
+        with open(path, 'w') as f:
+            json.dump({'indexers': {'ninjacentral': {'url': 'u', 'apikey': SECRET},
+                                    'drunkenslug': {'url': 'u', 'apikey': SECRET, 'enabled': False}}}, f)
+        os.chmod(path, 0o600)
+        self.cfg = make_cfg(td)
+        code, text = run_command('record', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
 
     def test_indexer_address_must_be_the_standins(self):
         td = make_copies(self, url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else

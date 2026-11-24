@@ -7,6 +7,13 @@
     python3 -I tools/brain/testbed.py apply <copy> [--expected FILE]   back up one copy's config, write the expected settings
         (tools/brain/expected-settings.json) into it and print each setting that changed (ticket #163; the owner's go)
     python3 -I tools/brain/testbed.py read-settings [side]   the settings reader's output as JSON, secrets as ***
+    python3 -I tools/brain/testbed.py indexer add <slug> --stash <entry> --searches <n> --downloads <n> [--drop o]
+        [--reset rolling-24h|HH:MM] [--timezone ZONE] [--name NAME]   add an indexer, or write it again (#302): its key from
+        the owner's stash into the key file with its daily limits, its stand-in address into KaijuFlow's config
+    python3 -I tools/brain/testbed.py indexer on|off|remove <slug>   switch it, or remove it, in both
+    python3 -I tools/brain/testbed.py indexer list   names, switches and limits
+        Every indexer write backs each changed file up into backups/, switches the test copy of AltMount's indexers off,
+        and prints no key or address.
 
 Sides: altmount-kf (KaijuFlow's AltMount copy, the Backend) and kaijuflow (its health/dead caches): the one setup a run
 plays (#185). The other test copies of the runs before #185 (Usenet Ultimate, NzbDAV, AltMount direct) stay stopped and
@@ -267,7 +274,7 @@ def _secret_strings(obj, name="", every=False):
         yield obj
 
 
-KEY_FILE_PLAIN = {"name", "host", "port", "ssl", "url", "connections", "slug"}  # as backup.sh skips them
+KEY_FILE_PLAIN = {"name", "host", "port", "ssl", "url", "connections", "slug", "reset", "timezone", "drop_params"}  # as backup.sh skips them
 
 
 def secret_values(test_dir):
@@ -703,6 +710,232 @@ def outside_named(flat, names):
     return {k: v for k, v in flat.items() if not any(k == n or k.startswith((n + ".", n + "[")) for n in names)}
 
 
+# --------------------------------------------------------------------------- the indexer command (#302)
+
+KEY_FILE = "indexers.json"  # the stand-in's key file in the test folder: real addresses, keys and each indexer's limits
+STANDIN_API_KEY = "stand-in"  # what KaijuFlow sends the stand-in, which drops it and sends the real key (indexer_standin.py)
+KF_COPIED = ("pagination", "maxPages", "timeoutEnabled", "timeout")  # a new KaijuFlow entry takes these from the first one
+SLUG = re.compile(r"[a-z0-9][a-z0-9-]*$")
+ALLOWANCE_RESET = "rolling-24h"
+INDEXER_USAGE = ("Usage: testbed.py indexer add <slug> --stash <entry> --searches <n a day> --downloads <n a day> "
+                 "[--reset rolling-24h|HH:MM] [--timezone ZONE] [--drop <parameter>]... [--name <shown name>]\n"
+                 "       testbed.py indexer on|off|remove <slug>\n"
+                 "       testbed.py indexer list")
+
+
+class IndexerError(ValueError):
+    """A plain sentence for the owner; nothing has been written."""
+
+
+def stash_dir():
+    return os.environ.get("STASH_DIR") or os.path.expanduser("~/.stash")
+
+
+def stash_entry(name, folder=None):
+    """The text of a stash entry, found as the stash command finds it: the exact name, or the only one containing it."""
+    folder = folder or stash_dir()
+    want = name.lower()
+    try:
+        names = sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n)))
+    except OSError:
+        raise IndexerError("there is no stash at %s" % folder)
+    hits = [want] if want in names else [n for n in names if want in n]
+    if len(hits) != 1:
+        raise IndexerError("no stash entry matches %r (the entries: %s)" % (name, ", ".join(names) or "none") if not hits
+                           else "%r matches several stash entries (%s): name one" % (name, ", ".join(hits)))
+    return hits[0], _read_text(os.path.join(folder, hits[0])) or ""
+
+
+def stash_indexer(text, entry):
+    """(address, key) of an indexer from its stash entry: the value after "API key:" and the first word after "API URL:",
+    the address without a trailing /api (the stand-in adds it). Never puts a value in an error."""
+    key = url = None
+    for line in text.splitlines():
+        label, sep, value = line.partition(":")
+        if not sep:
+            continue
+        label = label.lower()
+        if "api key" in label and key is None:
+            key = value.strip().split()[0] if value.strip() else None
+        elif ("api url" in label or label.strip() == "url") and url is None and value.strip():
+            url = value.strip().split()[0]
+    if not key:
+        raise IndexerError("the stash entry %r has no \"API key:\" line" % entry)
+    if not url or not re.match(r"https?://[^/\s]+", url):
+        raise IndexerError("the stash entry %r has no \"API URL:\" line with an http(s) address" % entry)
+    url = url.rstrip("/")
+    if url.endswith("/api"):
+        url = url[:-4]
+    return url, key
+
+
+def _limits_text(e):
+    if "search_per_day" not in e:
+        return "no daily limits"
+    zone = " %s" % e["timezone"] if e.get("timezone") else ""
+    return "%s searches and %s downloads a day (reset %s%s)" % (e["search_per_day"], e["download_per_day"], e.get("reset", ALLOWANCE_RESET), zone)
+
+
+def _summary(slug, e, verb):
+    drop = "; dropped parameters: %s" % ", ".join(e["drop_params"]) if e.get("drop_params") else ""
+    return "%s: %s, %s; %s%s." % (slug, verb, "on" if e.get("enabled", True) else "off", _limits_text(e), drop)
+
+
+def _parse_add(args):
+    opts, drop, i = {}, [], 0
+    names = {"--stash": "stash", "--searches": "searches", "--downloads": "downloads", "--reset": "reset",
+             "--timezone": "timezone", "--name": "name", "--drop": "drop"}
+    while i < len(args):
+        flag = args[i]
+        if flag not in names or i + 1 >= len(args):
+            raise IndexerError("%s is not a setting of indexer add (or has no value)" % flag)
+        if names[flag] == "drop":
+            drop.append(args[i + 1])
+        else:
+            opts[names[flag]] = args[i + 1]
+        i += 2
+    for need in ("stash", "searches", "downloads"):
+        if need not in opts:
+            raise IndexerError("indexer add needs --%s" % need)
+    for kind in ("searches", "downloads"):
+        if not re.fullmatch(r"\d+", opts[kind]):
+            raise IndexerError("--%s needs a whole number" % kind)
+    reset = opts.get("reset", ALLOWANCE_RESET)
+    if reset != ALLOWANCE_RESET and not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", reset):
+        raise IndexerError('--reset needs "%s" or a clock time like "04:00"' % ALLOWANCE_RESET)
+    opts["reset"], opts["drop"] = reset, drop
+    return opts
+
+
+def _kf_index(entries, slug):
+    """The position of the slug's entry in KaijuFlow's indexers (its address is the stand-in's /<slug>), or None."""
+    return next((n for n, e in enumerate(entries) if isinstance(e, dict) and standin_slug(_bare(e.get("url", ""))) == slug), None)
+
+
+def _altmount_off(text):
+    """AltMount's config.yaml with every newznab indexer switched off: only `enabled: true` lines whose flipping changes
+    exactly one stremio.indexers.newsnab[n].enabled setting are changed, so nothing else can be touched."""
+    lines = text.splitlines()
+    before = br.flatten_yaml(text)
+    for n, line in enumerate(lines):
+        if not re.fullmatch(r"\s*(- )?enabled:\s*true\s*", line):
+            continue
+        tried = lines[:n] + [line.replace("true", "false")] + lines[n + 1:]
+        after = br.flatten_yaml("\n".join(tried) + "\n")
+        changed = [k for k in set(before) | set(after) if before.get(k) != after.get(k)]
+        if len(changed) == 1 and re.fullmatch(r"stremio\.indexers\.newsnab\[\d+\]\.enabled", changed[0]):
+            lines, before = tried, after
+    return "\n".join(lines) + "\n"
+
+
+def _write_private(path, text):
+    """Writes a key file readable only by its owner, as the preflight wants it."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.chmod(path, 0o600)
+
+
+def indexer_command(test_dir, args, stamp=None):
+    """Runs `indexer add|on|off|remove|list`; returns the lines to print (names, switches and limits only: never a key or
+    an address). Everything is worked out before anything is written; each file that changes is backed up first into the
+    test folder's backups/. Every write also switches the test copy of AltMount's indexers off (once: then it is off).
+    IndexerError (nothing written) when the command cannot be done."""
+    if not args or args[0] not in ("add", "on", "off", "remove", "list"):
+        raise IndexerError("choose add, on, off, remove or list\n" + INDEXER_USAGE)
+    verb = args[0]
+    key_path = os.path.join(test_dir, KEY_FILE)
+    kf_path = os.path.join(test_dir, JSON_CONFIGS["kaijuflow"])
+    am_path = os.path.join(test_dir, CONFIG_FILES["altmount-kf"])
+    key_text = _read_text(key_path)
+    keys = json.loads(key_text) if key_text else {"indexers": {}}
+    if not isinstance(keys, dict) or not isinstance(keys.get("indexers"), dict):
+        raise IndexerError('the key file %s has no "indexers" list' % key_path)
+    kf_text = _read_text(kf_path)
+    if kf_text is None:
+        raise IndexerError("KaijuFlow's config %s cannot be read" % JSON_CONFIGS["kaijuflow"])
+    kf = json.loads(kf_text)
+    kf_list = kf.setdefault("indexers", [])
+    if verb == "list":
+        out = []
+        for slug in sorted(set(keys["indexers"]) | {standin_slug(_bare(e.get("url", ""))) for e in kf_list if isinstance(e, dict)} - {None}):
+            e, n = keys["indexers"].get(slug), _kf_index(kf_list, slug)
+            where = "key file %s" % ("on" if e.get("enabled", True) else "off") if isinstance(e, dict) else "not in the key file"
+            where += ", KaijuFlow %s" % (("on" if kf_list[n].get("enabled") else "off") if n is not None else "has none")
+            out.append("%s: %s; %s." % (slug, where, _limits_text(e) if isinstance(e, dict) else "no daily limits"))
+        return out or ["No indexers yet: add one with testbed.py indexer add."]
+    if len(args) < 2 or not SLUG.match(args[1]):
+        raise IndexerError("name the indexer by its slug (lower-case letters, digits and dashes)\n" + INDEXER_USAGE)
+    slug, n = args[1], _kf_index(kf_list, args[1])
+    entry = keys["indexers"].get(slug)
+    if verb == "add":
+        opts = _parse_add(args[2:])
+        entry_name, text = stash_entry(opts["stash"])
+        url, key = stash_indexer(text, entry_name)
+        new = {"url": url, "apikey": key, "enabled": True}
+        if opts["drop"]:
+            new["drop_params"] = opts["drop"]
+        new.update(search_per_day=int(opts["searches"]), download_per_day=int(opts["downloads"]), reset=opts["reset"])
+        if opts.get("timezone"):
+            new["timezone"] = opts["timezone"]
+        keys["indexers"][slug] = new
+        if n is None:
+            first = next((e for e in kf_list if isinstance(e, dict)), {})
+            kf_list.append({"name": opts.get("name") or slug, "url": "http://%s:%d/%s/api" % (STANDIN_HOST, STANDIN_PORT, slug),
+                            "apiKey": STANDIN_API_KEY, "enabled": True, **{k: first[k] for k in KF_COPIED if k in first}})
+        else:
+            kf_list[n]["enabled"] = True
+            if opts.get("name"):
+                kf_list[n]["name"] = opts["name"]
+        said = _summary(slug, new, "added" if entry is None else "written again")
+    else:
+        if entry is None and n is None:
+            raise IndexerError("%s is in neither the key file nor KaijuFlow's config: add it with testbed.py indexer add %s ..." % (slug, slug))
+        if verb in ("on", "off") and (entry is None or n is None):
+            raise IndexerError("%s is %s: add it with testbed.py indexer add %s ..." % (
+                slug, "not in the key file" if entry is None else "not in KaijuFlow's config", slug))
+        if verb == "remove":
+            keys["indexers"].pop(slug, None)
+            if n is not None:
+                kf_list.pop(n)
+            said = "%s: removed." % slug
+        else:
+            entry["enabled"] = kf_list[n]["enabled"] = verb == "on"
+            said = _summary(slug, entry, "switched " + verb)
+    am_text = _read_text(am_path)
+    writes = [("standin", key_path, key_text, json.dumps(keys, indent=2) + "\n", KEY_FILE),
+              ("kaijuflow", kf_path, kf_text, json.dumps(kf, indent=2, ensure_ascii=False) + "\n", JSON_CONFIGS["kaijuflow"])]
+    if am_text is not None:
+        writes.append(("altmount-kf", am_path, am_text, _altmount_off(am_text), CONFIG_FILES["altmount-kf"]))
+    stamp = stamp or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    out = [said]
+    for side, path, was, now, rel in writes:
+        if was is not None and json_same(was, now, rel):
+            continue
+        if was is not None:
+            out.append("%s backed up to %s." % (rel, _backup(test_dir, side, path, stamp)))
+        if side == "standin":
+            _write_private(path, now)
+        else:
+            with open(path, "w") as f:
+                f.write(now)
+        if side == "altmount-kf":
+            out.append("AltMount's test copy: its indexers are switched off (KaijuFlow searches; AltMount only streams).")
+    if len(out) == 1:
+        out.append("Nothing changed: the files already say so.")
+    return out
+
+
+def json_same(was, now, rel):
+    """Whether a file's new text says what the old one said (JSON compared as data, so a rewrite in another layout is no change)."""
+    if rel.endswith(".json"):
+        try:
+            return json.loads(was) == json.loads(now)
+        except ValueError:
+            return False
+    return was.rstrip("\n") == now.rstrip("\n")
+
+
 def main(argv):
     test_dir = os.environ.get("TEST_DIR", DEFAULT_TEST_DIR)
     if len(argv) >= 3 and argv[1] == "apply":
@@ -711,6 +944,13 @@ def main(argv):
             print("\n".join(apply_expected(test_dir, argv[2], expected)))
         except ValueError as e:
             print("Nothing applied: %s." % e)
+            return 1
+        return 0
+    if len(argv) >= 2 and argv[1] == "indexer":
+        try:
+            print("\n".join(indexer_command(test_dir, argv[2:])))
+        except ValueError as e:  # IndexerError, or a file that is not JSON: nothing was written
+            print("Nothing changed: %s." % e)
             return 1
         return 0
     if len(argv) >= 2 and argv[1] == "settings":

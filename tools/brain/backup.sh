@@ -17,7 +17,7 @@ for f in "$HOME"/kaijuflow-test/*.json; do
   python3 -I - "$f" "$store" "$notes/brain-runs" <<'PY'
 import json, os, sys
 src, *dirs = sys.argv[1:]
-skip = {"name", "host", "port", "ssl", "url", "connections", "slug"}
+skip = {"name", "host", "port", "ssl", "url", "connections", "slug", "reset", "timezone", "drop_params"}
 def walk(o, k=""):
     if isinstance(o, dict):
         for kk, v in o.items(): yield from walk(v, kk)

@@ -257,6 +257,24 @@ class RealPartsTest(unittest.TestCase):
         self.assertTrue(all(len(v) >= 6 for v in values))
         self.assertEqual(evidence.scrub(f'login {SECRET} and apikey=abc123', values), 'login *** and apikey=***')
 
+    def test_the_key_files_limits_and_settings_are_not_secrets(self):
+        # #302: the limits live in the key file's entries; "rolling-24h" or a time zone scrubbed out of the kept logs would
+        # be noise, and backup.sh would refuse every backup that names them
+        td = make_copies(self)
+        path = os.path.join(td, 'indexers.json')
+        with open(path) as f:
+            data = json.load(f)
+        data['indexers']['ninjacentral'].update(search_per_day=2000, download_per_day=450, reset='rolling-24h',
+                                                timezone='Europe/Amsterdam', drop_params=['format-xyz'], enabled=True)
+        with open(path, 'w') as f:
+            json.dump(data, f)
+        values = brainrun.RealIO({'test_dir': td}).secret_values()
+        self.assertIn(SECRET, values)
+        for plain in ('rolling-24h', 'Europe/Amsterdam', 'format-xyz'):
+            self.assertNotIn(plain, values)
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backup.sh')) as f:
+            self.assertIn('"reset", "timezone", "drop_params"', f.read())
+
     def test_only_altmounts_failed_nzbs_are_read_from_its_test_copy(self):
         td = make_copies(self)
         failed = os.path.join(td, 'altmount-kf', 'config', '.nzbs', 'failed', 'kaijuflow')
