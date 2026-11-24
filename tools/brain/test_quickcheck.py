@@ -1027,16 +1027,35 @@ class CheckPreflightTest(unittest.TestCase):
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
         self.assertIn("Setup is right for a check", text)
-        self.assertIn("idle (1-minute load below 1.00)", text)
         self.assertIn("the indexer allowance holds the check's requests", text)
 
-    def test_a_check_needs_the_key_file_and_an_idle_machine(self):
+    def test_a_check_needs_the_key_file(self):
         os.chmod(os.path.join(self.td, 'indexers.json'), 0o644)
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg, load=2.5))
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('can be read by others', text)
-        self.assertIn('load average is 2.50', text)
         self.assertNotIn(SECRET, text)
+
+    def test_a_quick_check_does_not_wait_for_an_idle_machine_and_keeps_the_load(self):
+        seen = {}
+        self.assertEqual(brainrun.preflight('check', self.cfg, FakeWorld(self.cfg, load=2.5), seen), [])
+        self.assertEqual(seen['load'], 2.5)  # the record keeps the load either way (#303)
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg, load=2.5))
+        self.assertEqual(code, 0, text)
+        self.assertNotIn('idle', text)
+
+    def test_a_full_check_needs_an_idle_machine(self):
+        code, text = run_command('check', dict(self.cfg, full_check=True), FakeWorld(self.cfg, load=2.5))
+        self.assertEqual(code, 1, text)
+        self.assertIn('load average is 2.50', text)
+        code, text = run_command('check', dict(self.cfg, full_check=True), FakeWorld(self.cfg))
+        self.assertEqual(code, 0, text)
+        self.assertIn('idle (1-minute load below 1.00)', text)
+
+    def test_a_full_check_under_a_standing_go_does_not_wait_for_an_idle_machine_and_keeps_the_load(self):
+        cfg, seen = dict(self.cfg, full_check=True, standing_go=True), {}
+        self.assertEqual(brainrun.preflight('check', cfg, FakeWorld(cfg, load=2.5), seen), [])
+        self.assertEqual(seen['load'], 2.5)
 
     def test_too_little_allowance_left_refuses_a_check(self):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
@@ -1059,7 +1078,7 @@ class CheckPreflightTest(unittest.TestCase):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (59, 100)})
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
-        self.assertIn('drunkenslug has 59 searches left today, and the check may need 60', text)
+        self.assertIn('drunkenslug has 59 searches left today, and the check may need 61', text)  # 60 for the titles, 1 for the caps request (#303)
 
     def test_a_drill_down_asks_for_one_titles_allowance(self):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
