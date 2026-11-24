@@ -491,7 +491,8 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
     diagnosis.json."""
     if not evidence_folders(run_dir):
         book = casebook.FOLDER if book is None else book
-        return {'scoreboard': score(run_dir, runs_root, {}, library, book, cases)}
+        return {'scoreboard': score(run_dir, runs_root, {}, library, book, cases),
+                'open_cases': None if cases is None else caselog.count_open(cases)}
     if usenet is not None:
         live_clues(run_dir, usenet)
     book = casebook.FOLDER if book is None else book
@@ -531,7 +532,8 @@ def report_section(summary, error=None):
     if error:
         return lines + [f'Diagnosis could not run: {error}.']
     if not summary or 'counts' not in summary:
-        lines.append('None: no play failed or fell back.')
+        open_ = (summary or {}).get('open_cases')
+        lines.append('None: no play failed or fell back' + ('.' if open_ is None else f'; open Case logs: {open_}.'))
         return lines + ([''] + scoreboard.report_lines(summary['scoreboard']) if (summary or {}).get('scoreboard') else [])
     c = summary['counts']
     open_ = summary.get('open_cases')

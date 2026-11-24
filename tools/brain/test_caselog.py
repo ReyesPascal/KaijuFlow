@@ -152,6 +152,18 @@ class NewMaskingRulesAndCaseLogsTest(unittest.TestCase):
         self.assertEqual(logs(self.cases)[self.id]['rules'], rules['version'])
 
 
+class NoFailureTest(unittest.TestCase):
+    def test_a_check_with_no_failure_says_the_open_case_logs_too(self):
+        root, run_dir, cases, _ = after(self, (INDEXER_DOWN,))  # one Case log left open
+        quiet = os.path.join(root, '2026-11-25T070000Z-quick-check')
+        os.makedirs(quiet)
+        summary = diagnosis.after_check(quiet, root, cases=cases)
+        lines = diagnosis.report_section(summary)
+        self.assertEqual(lines[:3], ['## Diagnosis', '', 'None: no play failed or fell back; open Case logs: 1.'])
+        self.assertTrue(any(line.startswith('Clues: ') for line in lines))
+        self.assertFalse(os.path.exists(os.path.join(quiet, diagnosis.STORED)))
+
+
 class NeverRepeatsAClueTest(unittest.TestCase):
     def setUp(self):
         self.root, self.run_dir, self.cases, _ = after(self, (INDEXER_DOWN,))
