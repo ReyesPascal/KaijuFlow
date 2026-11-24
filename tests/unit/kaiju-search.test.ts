@@ -52,6 +52,13 @@ function guidOf(indexer: string, release: string, byName: string[]): string {
   return i >= 0 ? `${indexer}-n${i}` : `${indexer}-id-${release.length}`;
 }
 
+/** Run a search with its console output kept off the test runner's stdout (a search logs a lot). */
+async function quiet<T>(fn: () => Promise<T>): Promise<T> {
+  let out: T | undefined;
+  await captureLogs(async () => { out = await fn(); });
+  return out as T;
+}
+
 const servers: http.Server[] = [];
 async function listen(server: http.Server): Promise<string> {
   servers.push(server);
@@ -79,7 +86,7 @@ test('every indexer is asked by ID and by name at once; a Source found both ways
   configData.indexers = [{ name: 'Ninja', url, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q', 'imdbid'], tvSearchParams: ['q'] } }];
 
   const t0 = Date.now();
-  const results = await indexManagerSearch(matrix);
+  const results = await quiet(() => indexManagerSearch(matrix));
   assert.ok(Date.now() - t0 < 1400, 'both ways were asked at once: the fake answered as soon as it had seen both');
 
   assert.deepEqual(asked.map(a => [a.t, a.ids, a.q]).sort(), [['movie', { imdbid: '0133093' }, undefined], ['search', {}, 'The Matrix 1999']]);
@@ -96,7 +103,7 @@ test('the ID search asks with every ID the indexer supports; an indexer whose ca
     { name: 'Both', url: both, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q', 'imdbid', 'tmdbid'], tvSearchParams: [] } },
     { name: 'Plain', url: plain, apiKey: 'k', enabled: true },
   ];
-  const results = await indexManagerSearch({ ...matrix, animeResolvedIds: { tmdbId: '603' } });
+  const results = await quiet(() => indexManagerSearch({ ...matrix, animeResolvedIds: { tmdbId: '603' } }));
 
   const idAsks = asked.filter(a => a.t === 'movie').map(a => [a.indexer, a.ids]).sort();
   assert.deepEqual(idAsks, [['Both', { imdbid: '0133093' }], ['Both', { tmdbid: '603' }], ['Plain', { imdbid: '0133093' }]]);
@@ -114,7 +121,7 @@ test('a name search keeps a release the strict rule passes though the loose rule
   const wrong = 'Jack.Reacher.Never.Go.Back.2016.1080p.BluRay.x264-SPARKS';
   const url = await listen(fakeIndexer('Ninja', [], {}, [reacher, wrong], asked));
   configData.indexers = [{ name: 'Ninja', url, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q'], tvSearchParams: ['q'] } }];
-  const results = await indexManagerSearch({ type: 'series', imdbId: 'tt9288030', title: 'Reacher', year: '2022', season: 1, episode: 1, isAnime: false, additionalTitles: [] });
+  const results = await quiet(() => indexManagerSearch({ type: 'series', imdbId: 'tt9288030', title: 'Reacher', year: '2022', season: 1, episode: 1, isAnime: false, additionalTitles: [] }));
   assert.deepEqual(asked.map(a => [a.t, a.q]), [['search', 'Reacher S01E01']], 'caps that list no ID: asked by name only');
   assert.deepEqual(results.map(r => r.title), [reacher]);
 });
