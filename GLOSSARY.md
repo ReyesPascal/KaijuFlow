@@ -69,7 +69,7 @@ The health check run when a Source is clicked rather than before the stream list
 _Avoid_: lazy check, on-demand check, deferred check, list-time check (deleted)
 
 **Best entry**:
-The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source. The search down the list is its **Walk**.
+The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source. The search down the list is its **Walk**. The Walk tries the sure Sources first, then the maybes, each group in list order (Search Flow, #282); the list a viewer sees keeps its own sort.
 _Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a list)
 
 **Walk**:
@@ -151,7 +151,7 @@ A real-use check of 20 new titles (half popular, half rare or older, about half 
 _Avoid_: long run, soak test
 
 **Drill-down**:
-Playing one failed title again, live, after a fix, to prove the fix: a single title, not a new check.
+Playing one failed title again, live, after a fix, to prove the fix: a single title, not a new check. It plays the title as a Quick check plays one, keeps its evidence folder however it went, runs the suspected cause's confirming test on it, and marks the Casebook entry *proved fixed* (it played with no failure) or *reopened* (a failure appeared). The command a fix ticket names: `brainrun.py drill --title <imdb id> [--episode S01E02]`.
 _Avoid_: rerun, tuning test
 
 **Check miss**:
@@ -229,3 +229,29 @@ _Avoid_: aborted run, cancelled run, null run (null is the cap rule's result)
 **Archived run**:
 A run from before the like-for-like rules, kept in the `archive/` folder of the runs root as a record. It is never the baseline, never compared with, and never on the Speed Check page.
 _Avoid_: old run, deleted run (nothing is deleted)
+
+### Diagnosis (spec #279)
+
+**Diagnosis**:
+The one system that finds, proves and learns why a play in a check went wrong, run by itself after every check with a failure: it gathers the evidence folder, fingerprints the failure, looks it up in the Casebook, proves or rules out every lead with Clues, works an unknown failure through a Case log until it is solved, and proves the fix with a Drill-down. A cause is named only when its confirming test passes on this failure's own evidence; a look-alike with no confirming test is "suspected", never "found". Its recording is dev only, behind the dev switch (`devDiagnostics`, on in the test copies only).
+_Avoid_: debugging (by hand), triage, root-cause tool
+
+**Casebook**:
+The known causes of failed plays, one readable file per cause in a fixed format (what the viewer saw, signs, cause, how it was proved, ruled out, fix, history), with an index generated from the files that the programs read. A match in it only orders the leads; it never names a cause by itself. A proved KaijuFlow cause files its own fix ticket; one that is not KaijuFlow's gets a workaround. A failure that proves a cause already proved fixed is a *comeback*, and reopens its entry (`tools/brain/docs/formats.md`, "Fixing").
+_Avoid_: known-error database, FAQ, list of bugs
+
+**Clue**:
+One small reusable yes/no test that answers a single question from the evidence or from a live read-only look at Usenet or AltMount (are all the articles there? what reason did AltMount give? did Unscramble rename the volumes?). A cause's confirming test is a recipe of Clues; a new Clue is built only for a truly new question, and none is ever deleted.
+_Avoid_: probe, check (a check plays titles), test (unqualified)
+
+**Case log**:
+The record of a failure with no proved cause yet: every observation, hypothesis (with the result that would refute it), Clue run and result, so a later attempt starts from what was tried and never runs a Clue twice. The diagnosing agent, started by the check, works it; every claim it writes must quote evidence that holds it. A concluded cause is *probable* until the failure is repeated at will (a Drill-down or a replay), then *proved*; it is written up as a Casebook entry.
+_Avoid_: ticket (a ticket is for a fix), notes, incident
+
+**Kaiju Search**:
+KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer's capabilities list: IMDb, TMDB, TVDB, TVmaze; IMDb when they are unknown, none when they list no ID) and by name (the title's other names too) at once, the answers merged and each Source listed once with the ways that found it, then sorted by Search Flow. There is nothing to set: no search method. It ships in the release; it learns in dev.
+_Avoid_: Ultimate text search, search method, text search (one way of asking only)
+
+**Search Flow**:
+What Kaiju Search does with each result: the loose rule (the inherited name match) decides what stays, and nothing the strict rule passes is dropped (#282); the strict rule (the right title, with only seen tags between the name and the year or episode) only sorts, never removes, into **sure** (passes strict) and **maybe** (loose only); **extra proof** makes a maybe sure (#286): the ID search returned it too, the video file name inside its NZB fits (read when the Play-time check fetches it), its own runtime fits the title's or its size is a sure Source's, or it fits another TMDB/TVDB name of the title. No proof makes sure a name that says another year, season or episode. Best tries sure Sources first. A maybe that played the right title offers its **odd word** (the one word that kept the strict rule from passing it) as a new allowed word, with that release as proof.
+_Avoid_: Name rule, name filter, strict filter

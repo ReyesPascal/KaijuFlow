@@ -18,10 +18,10 @@ Works for `record` too (a play that does not play reads `does not play`). Never 
 - Real-use checks (spec #268, ADR 0010): a quick check (`brainrun.py check --quick`) and a drill-down have a standing go (owner, 2026-11-24): run them without asking, the allowance check and the cap rule still applying. A full check needs the owner's go each time. A check asks the live indexer, so it spends real requests ([rules.md](docs/rules.md#real-use-checks-270-spec-268-adr-0010)).
 - A test touches only the test copies. This machine has no live stacks (Usenet Ultimate, NzbDAV, AltMount); if they are rebuilt, no test ever touches them.
 - A run measures one setup, KaijuFlow with its AltMount copy (`kaijuflow-test`, `altmount-kf-test`), with untouched indexer answers. The baseline (#189) played one try per title: Ultimate Fallback was off for AltMount until #190. Since #190 KaijuFlow's fallback is the Play-time check, and a round plays the Best entry on top of its list ([rules.md](docs/rules.md#what-a-run-is-185)). The Usenet Ultimate, NzbDAV and AltMount direct test copies are no part of a run: they stay stopped and are kept, never deleted, configs included. Since #187 `testbed.py` and `compose.test.yaml` no longer know them; stopping one that is still up is a live step and needs the owner's go: `docker stop uu-test nzbdav-test altmount-addon-test`.
-- Only NinjaCentral is used, on every side: DrunkenSlug is switched off in the test copies but left in place; delete nothing. The default key file `~/kaijuflow-test/indexers.json` holds NinjaCentral only, so never pass `--key-file`.
+- NinjaCentral and DrunkenSlug are both switched on, on every side (owner, 2026-11-24: "turn drunkenslug on"); altHUB stays off but in place; delete nothing. The default key file `~/kaijuflow-test/indexers.json` holds both, so never pass `--key-file`; DrunkenSlug's key is also in the owner's stash (`drunkenslug`). Limits: NinjaCentral 2000 searches and 450 downloads a day, DrunkenSlug 1000 and 100.
 - Every run waits the Browse pause between a title's list and its play ([rules.md](docs/rules.md#browse-pause-205)).
 - Every record and every run is made plugged in (#262): the preflight refuses a machine on battery, and a run keeps its power state and CPU probe in `meta.json` `machine`, so two runs' machines can be compared.
-- Cap rule: if an indexer says "limit reached", the pass stops and its result is null; the work waits for NinjaCentral's reset, and DrunkenSlug is never switched on to finish it. The allowance is in `~/kaijuflow-test/limits.json` (step 1).
+- Cap rule: if an indexer says "limit reached", the pass stops and its result is null; the work waits for that indexer's reset. The allowance is in `~/kaijuflow-test/limits.json` (step 1).
 - KaijuFlow's AltMount copy is capped at 25 connections, and its caps and KaijuFlow's add up to at most the provider limit (100); the preflight checks the sum.
 - Every run is recorded (its own run folder and an INDEX.md row; the run command does this), and its report opens with what changed since the last run.
 - Archived runs are never compared with (#144): every run from before the like-for-like rules (#142) sits in `~/kaijuflow-notes/brain-runs/archive/`, the 2026-11-13 baseline included. #127 is the first like-for-like baseline, so its report says "No earlier run to compare with: this is the first one." Recordings stay in the runs root: indexer answers do not depend on the setups' settings.
@@ -38,7 +38,16 @@ timeout 1h python3 -I tools/brain/brainrun.py check --quick --rebuild-image > ch
 grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' check.log
 ```
 
-About 10 minutes: the preflight for a check (key file, idle, plugged in, allowance), 5 new titles drawn, one reset, then one press of Best per title on the live indexer. `EXIT 0` pass, `4` fail, `2` the cap rule stopped it (no verdict), `130` stopped, `1` a setup problem. Read the folder's `report.md`, file its ticket texts (one per fail and check miss), then back up with `tools/brain/backup.sh`.
+About 10 minutes: the preflight for a check (key file, idle, plugged in, allowance), 5 new titles drawn, one reset, then one press of Best per title on the live indexer. `EXIT 0` pass, `4` fail, `2` the cap rule stopped it (no verdict), `130` stopped, `1` a setup problem. Read the folder's `report.md`, file its ticket texts (one per fail and check miss), then back up with `tools/brain/backup.sh`. Diagnosis files the fix ticket of a proved KaijuFlow cause by itself (`fix-tickets/` in the folder; the report's Diagnosis section names it, #288); `--tickets-dry-run` writes the text only. Then `python3 -I tools/brain/diagnosis.py record <folder>` in a worktree puts the check's occurrences, comebacks and filed tickets on the Casebook, for review.
+
+## A drill-down
+
+```
+timeout 30m python3 -I tools/brain/brainrun.py drill --title tt5180504 --episode S01E01 > drill.log 2>&1; echo "EXIT $?" >> drill.log
+grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' drill.log
+```
+
+The command a fix ticket names (#272), once its fix is merged (rebuild the image with `--rebuild-image` when the fix is in it). It plays that one title as a quick check plays a title (the preflight for one title, one reset, one press of Best on the live indexer, the same verdict, report and exit codes), never draws one and never adds it to the ledger. Its play always keeps an evidence folder; Diagnosis runs on it, the suspected cause's recipe of Clues runs on its failures, and the report's Drill-down section says what each entry is marked: **proved fixed** (it played with no failure), **reopened** (a failure, the cause again or a new one), or not marked (no fix to prove, or no confirming test that runs). `--entry <id>` names an entry besides the ones proved on the title before. Then `python3 -I tools/brain/diagnosis.py record <folder>` in a worktree writes the marks on the entries (status and History), for review; a KaijuFlow cause it proved again then gets its new fix ticket from `diagnosis.py fix <folder>`. `--full` (watched with a skip) comes with the full check's watch (#271).
 
 ## The recipe
 

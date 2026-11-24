@@ -296,9 +296,6 @@ export function updateSettings(settings: {
     configData.searchConfig = settings.searchConfig;
     configData.includeSeasonPacks = settings.searchConfig.includeSeasonPacks;
   }
-  if (settings.useTextSearch !== undefined) {
-    configData.useTextSearch = settings.useTextSearch;
-  }
   if (settings.includeSeasonPacks !== undefined) {
     configData.includeSeasonPacks = settings.includeSeasonPacks;
   }
@@ -387,8 +384,12 @@ export function updateSettings(settings: {
       JSON.stringify(configData.ultimateFallback?.healthCheckIndexers ?? {}) !== prevHcIndexersJson;
   }
 
-  // A page loaded before a setting was deleted may still send it (the list-time checks, Auto-queue, backups): it is not saved.
-  dropDeletedSettings({ healthChecks: configData.healthChecks, ultimateFallback: configData.ultimateFallback });
+  // A page loaded before a setting was deleted may still send it (the list-time checks, Auto-queue, backups, the search
+  // methods): it is not saved.
+  dropDeletedSettings({
+    healthChecks: configData.healthChecks, ultimateFallback: configData.ultimateFallback, searchConfig: configData.searchConfig,
+    indexers: configData.indexers, syncedIndexers: configData.syncedIndexers,
+  });
 
   // Enforce minimum cacheTTL when auto play is enabled
   if ((configData.autoPlay?.enabled ?? true) && configData.cacheTTL < 9000) {

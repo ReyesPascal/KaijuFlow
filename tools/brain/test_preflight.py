@@ -725,7 +725,7 @@ class ExpectedSettingsFileTest(unittest.TestCase):
 
     def committed(self):
         entries = brainrun.load_expected_settings()
-        self.assertEqual([e['copies'] for e in entries], [['kaijuflow'], ['kaijuflow']])  # the one setup (#187)
+        self.assertEqual([e['copies'] for e in entries], [['kaijuflow']] * 3)  # the one setup (#187); the third entry is the dev switch (#280)
         return entries[0]['settings']
 
     def test_the_committed_file_holds_kaijuflows_fallback_on_as_the_play_time_check(self):
@@ -733,8 +733,26 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {  # #190: the Play-time check's settings
             'ultimateFallback.enabled': True, 'ultimateFallback.candidateCount': 3, 'ultimateFallback.preferenceMode': 'priority',
             'ultimateFallback.whenToResolve': 'on-results',  # the Head start (#206, "On Search"); the attempts cap is gone (#228)
-            # every indexer on Ultimate Text Search, the shipped default a real-use check plays (#270)
-            **{f'indexers[*].{kind}SearchMethod': ['text'] for kind in ('movie', 'tv', 'animeMovie', 'animeTv')}}))
+            # no search method: Kaiju Search asks every indexer by ID and by name, with nothing to set (#285)
+        }))
+
+    def test_the_committed_file_holds_the_dev_switch_on_in_kaijuflows_test_copy(self):
+        entry = brainrun.load_expected_settings()[2]  # #280: the test copies record what a release does not
+        self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {'devDiagnostics': True}))
+
+    def test_a_kaijuflow_copy_without_the_dev_switch_on_stops_with_one_sentence(self):
+        td = make_copies(self)
+        path = os.path.join(td, 'config', 'config.json')
+        with open(path) as f:
+            config = json.load(f)
+        del config['devDiagnostics']
+        with open(path, 'w') as f:
+            json.dump(config, f)
+        cfg = make_cfg(td)
+        write_expected(td, [{'copies': ['kaijuflow'], 'settings': {'devDiagnostics': True}}])
+        code, text = run_command('record', cfg, FakeWorld(cfg))
+        self.assertEqual(code, 1, text)
+        self.assertIn('KaijuFlow has no devDiagnostics setting, but the expected settings file', text)
 
     def test_a_kaijuflow_copy_with_its_fallback_off_stops_with_one_sentence(self):
         td = make_copies(self, kf_fallback=False)

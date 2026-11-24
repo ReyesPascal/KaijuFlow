@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?> 
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+<channel>
+<atom:link href="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvYXBpP2NhdD01MDAwJmV4dGVuZGVkPTEmcT1UaGUlMjBXaXRjaGVyJTIwUzAxRTAxJnQ9c2VhcmNoJmFwaWtleT17S0VZfQ" rel="self" type="application/rss+xml" />
+<title>NinjaCentral</title>
+<description>NinjaCentral Feed</description>
+<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEv</link>
+<language>en-gb</language>
+<webMaster>admin@ninjacentral.co.za (NinjaCentral)</webMaster>
+<category></category>
+<image>
+	<url>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvdGVtcGxhdGVzL25pbmphL2ltYWdlcy9uaW5qYS1ib3JkZXJlZC5wbmc</url>
+	<title>NinjaCentral</title>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEv</link>
+	<description>Visit NinjaCentral - Home of the NZB Harvester</description>
+</image>
+
+<newznab:response offset="0" total="157" />
+<item>
+	<title>The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy8zOGNiMGUzZmRiODE0NWQzNjkzZWZhY2UzM2Q4NTllZA</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzM4Y2IwZTNmZGI4MTQ1ZDM2OTNlZmFjZTMzZDg1OWVkLm56YiZpPTk0MDkyJnI9e0tFWX0</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy8zOGNiMGUzZmRiODE0NWQzNjkzZWZhY2UzM2Q4NTllZCNjb21tZW50cw</comments> 	
+	<pubDate>Thu, 16 Apr 2026 03:02:41 +0200</pubDate> 
+	<category>TV &gt; UHD</category> 	
+	<description>The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzM4Y2IwZTNmZGI4MTQ1ZDM2OTNlZmFjZTMzZDg1OWVkLm56YiZpPTk0MDkyJnI9e0tFWX0" length="8639687104" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5045" />
+		<newznab:attr name="size" value="8639687104" />
+	<newznab:attr name="guid" value="38cb0e3fdb8145d3693eface33d859ed" />
+	<newznab:attr name="sha1" value="1d969b5a0496650c35cff10743bc703f2aee2d61" />
+	<newznab:attr name="files" value="54" />
+	<newznab:attr name="poster" value="mne.NHtjz0m80NJs@UKxbahA0.iUl" />
+	<newznab:attr name="season" value="S01" />
+	<newznab:attr name="episode" value="E01" />
+	<newznab:attr name="tvtitle" value="The Witcher" />
+	<newznab:attr name="tvairdate" value="Fri, 20 Dec 2019 00:00:00 +0100" />
+	<newznab:attr name="grabs" value="34" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Thu, 16 Apr 2026 03:00:05 +0200" />
+	<newznab:attr name="group" value="alt.binaries.sleazemovies" />
+
+</item>
+<item>
+	<title>The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy8xODVjNjc4YjU2NjlhNTIzMmM1ZTc5MTU3OWMyMzA5MQ</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzE4NWM2NzhiNTY2OWE1MjMyYzVlNzkxNTc5YzIzMDkxLm56YiZpPTk0MDkyJnI9e0tFWX0</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy8xODVjNjc4YjU2NjlhNTIzMmM1ZTc5MTU3OWMyMzA5MSNjb21tZW50cw</comments> 	
+	<pubDate>Tue, 27 Jun 2023 12:47:04 +0200</pubDate> 
+	<category>TV &gt; UHD</category> 	
+	<description>The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzE4NWM2NzhiNTY2OWE1MjMyYzVlNzkxNTc5YzIzMDkxLm56YiZpPTk0MDkyJnI9e0tFWX0" length="10034520451" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5045" />
+		<newznab:attr name="size" value="10034520451" />
+	<newznab:attr name="guid" value="185c678b5669a5232c5e791579c23091" />
+	<newznab:attr name="sha1" value="1b35f04cb1db4211ff632f99cd0edd6c392e7c19" />
+	<newznab:attr name="files" value="83" />
+	<newznab:attr name="poster" value="182755048243450187dd3ca48dca14f1 &lt;MfDk1amqpuwTW9@GKf7dzaxgJxYis.CB&gt;" />
+	<newznab:attr name="season" value="S01" />
+	<newznab:attr name="episode" value="E01" />
+	<newznab:attr name="tvtitle" value="The Witcher" />
+	<newznab:attr name="tvairdate" value="Fri, 20 Dec 2019 00:00:00 +0100" />
+	<newznab:attr name="grabs" value="27" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Tue, 27 Jun 2023 12:41:41 +0200" />
+	<newznab:attr name="group" value="alt.binaries.mom" />
+
+</item>
+
+</channel>
+</rss>

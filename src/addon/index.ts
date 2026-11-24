@@ -29,8 +29,10 @@ import { config } from '../config/index.js';
 import { clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { sessionKeyOf, makePlayContext, type PlayContext } from '../play/playContext.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
-import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
+import { kaijuSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
+import { flowTitleOf, markSources, type FlowTitle } from '../parsers/searchFlow.js';
+import { waysOf } from './kaijuSearch.js';
 import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
 import { recall } from '../play/sourceMemory.js';
@@ -83,13 +85,13 @@ export function buildSearchCacheKey(manifestKey: string, type: string, id: strin
   if (cfg.indexManager === 'prowlarr' || cfg.indexManager === 'nzbhydra') {
     const syncedEnabled = (cfg.syncedIndexers || []).filter(i => i.enabledForSearch);
     const syncedFingerprint = syncedEnabled
-      .map(i => `${i.id}:${type === 'movie' ? i.movieSearchMethod : i.tvSearchMethod}`)
+      .map(i => `${i.id}:${waysOf(type === 'movie' ? 'movie' : 'tv', i.capabilities).join('+')}`)
       .join(',');
     return `${manifestKey}:stream:${type}:${id}:${cfg.indexManager}:${syncedFingerprint}${packsSuffix}${easynewsSuffix}${aliasFbSuffix}`;
   }
   const enabledIndexers = cfg.indexers.filter(i => i.enabled);
   const methodsFingerprint = enabledIndexers
-    .map(i => `${i.name}:${type === 'movie' ? (i.movieSearchMethod || ['imdb']).join('+') : (i.tvSearchMethod || ['imdb']).join('+')}`)
+    .map(i => `${i.name}:${waysOf(type === 'movie' ? 'movie' : 'tv', i.caps).join('+')}`)
     .join(',');
   return `${manifestKey}:stream:${type}:${id}:${methodsFingerprint}${packsSuffix}${easynewsSuffix}${aliasFbSuffix}`;
 }
@@ -174,6 +176,8 @@ async function resolveTitleAndBuildSearchCtx(args: {
     titleYear: titleInfo.titleYear,
     searchAliases: titleInfo.searchAliases,
     episodeAired: titleInfo.episodeAired,
+    knownNames: titleInfo.knownNames,
+    runtime: titleInfo.runtime,
     animeResolvedIds: animeResolved ? { tmdbId: animeResolved.tmdbId, tvdbId: animeResolved.tvdbId } : undefined,
     tvdbIdFromRequest,
   };
@@ -330,11 +334,11 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
     };
 
     // === SHARED: Process from raw results → streams (filter, sort, build) ===
-    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
+    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number; flow?: FlowTitle }) => {
       // The play context (#246): made once here, stored with the list's fallback group, read by every play of it.
       const play = makePlayContext({
         manifestKey: requestManifestKey, type, imdbId, season, episode,
-        aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason,
+        aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason, flow: titleMeta.flow,
       });
 
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
@@ -370,7 +374,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
 
     // Check cache first (cacheTTL of 0 means disabled)
     if (config.cacheEnabled && config.cacheTTL > 0) {
-      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number } }>(cacheKey);
+      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number; flow?: FlowTitle } }>(cacheKey);
       if (cached) {
         console.log(`💾 Cache hit for ${type} ${imdbId}`);
 
@@ -379,7 +383,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
         // Re-apply filters and sort, and build streams with current settings
         const { streams, fallbackCandidates, play } = await processFromRaw(
           cached.rawResults, cached.deprioritizedPacks || [],
-          { episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime }
+          { episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime, flow: cached._meta.flow }
         );
 
         startHeadStart(fallbackCandidates, play);
@@ -404,10 +408,8 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
       type, imdbId, season, episode, animeId, animeResolved, tvdbIdFromRequest,
     });
 
-    const [indexManagerResults, easynewsResults] = await Promise.all([
-      indexManagerSearch(searchCtx),
-      easynewsSearch(searchCtx),
-    ]);
+    // Kaiju Search (#285): every indexer by ID and by name, and EasyNews, at once.
+    const { indexer: indexManagerResults, easynews: easynewsResults } = await kaijuSearch(searchCtx);
     // Tag indexer/easynews results with origin so downstream code can route correctly.
     // (Searchers don't currently emit origin natively; we tag at orchestrator level.)
     const tagOrigin = (r: any, origin: 'indexer' | 'easynews'): any =>
@@ -421,13 +423,18 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
     console.log(`📊 Found ${allRawResults.length} total results (indexer: ${indexManagerResults.length}, easynews: ${easynewsResults.length})`);
 
     // === STEP 3: DEDUP + CONTENT-DEPENDENT PRE-FILTERING (cacheable) ===
-    const { results: rawResults, deprioritizedPacks } = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
+    const deduped = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
+    // Search Flow (#282): every Source marked sure or maybe, with why; Best's Walk tries the sure ones first. Cached
+    // with the marks.
+    const flowTitle = flowTitleOf(searchCtx);
+    const rawResults = markSources(deduped.results, flowTitle);
+    const deprioritizedPacks = markSources(deduped.deprioritizedPacks, flowTitle);
 
     // === STEP 4: FILTER, SORT, BUILD (user-preference-dependent; no health check, #191) ===
     const now = Date.now();
     const { streams, fallbackCandidates, play } = await processFromRaw(
       rawResults, deprioritizedPacks,
-      { episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime }
+      { episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime, flow: flowTitle }
     );
 
     // Cache raw results + deprioritized packs (filters, sorts and marks reapply on cache hits).
@@ -436,7 +443,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
       cache.set(cacheKey, {
         rawResults,
         deprioritizedPacks,
-        _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime },
+        _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime, flow: flowTitle },
       }, config.cacheTTL);
     } else if (skipEmptyCache && config.cacheEnabled && config.cacheTTL > 0) {
       console.log(`⏭️  Skipping cache write — 0 results for ${type} ${imdbId}`);

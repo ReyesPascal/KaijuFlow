@@ -53,6 +53,23 @@ export async function performHealthCheck(
   searchExitIp?: string,
   onCircuitAbort?: () => void
 ): Promise<HealthCheckResult> {
+  // The video file the check picked, named on every answer (Search Flow's extra proof reads it, #286).
+  const seen: { videoName?: string } = {};
+  const result = await checkNzb(nzbUrl, providers, userAgent, options, seen, pool, indexerName, searchExitIp, onCircuitAbort);
+  return seen.videoName ? { ...result, videoName: seen.videoName } : result;
+}
+
+async function checkNzb(
+  nzbUrl: string,
+  providers: UsenetProvider[],
+  userAgent: string,
+  options: HealthCheckOptions,
+  seen: { videoName?: string },
+  pool?: NntpConnectionPool,
+  indexerName?: string,
+  searchExitIp?: string,
+  onCircuitAbort?: () => void
+): Promise<HealthCheckResult> {
   // Create a short label for log lines so parallel checks can be distinguished
   // Updated after NZB parsing to use the actual content base name
   let nzbLabel = (() => {
@@ -114,6 +131,7 @@ export async function performHealthCheck(
       episodeOnly = wanted !== undefined && videoFiles.length > 1;
       fileToCheck = wanted ?? videoFiles[0];
       fileType = 'video';
+      seen.videoName = extractFilename(fileToCheck.subject);
     } else if (archiveFiles.length > 0) {
       fileToCheck = findFirstArchivePart(archiveFiles) || archiveFiles[0];
       fileType = 'archive';

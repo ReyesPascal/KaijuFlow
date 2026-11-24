@@ -13,7 +13,9 @@
 
 import { Router } from 'express';
 import axios from 'axios';
-import type { Config, SyncedIndexer } from '../types.js';
+import type { Config, IndexerCaps, SyncedIndexer } from '../types.js';
+import { capsOfReply } from '../parsers/newznabClient.js';
+import { CAPS_VERSION } from '../config/capsMigration.js';
 import { matchIndexerLogo } from '../utils/indexerHelpers.js';
 
 interface IntegrationDeps {
@@ -69,44 +71,17 @@ export function createIntegrationRoutes(deps: IntegrationDeps): Router {
           'Season': 'season', 'Ep': 'ep', 'ImdbTitle': 'imdbtitle', 'ImdbYear': 'imdbyear',
           'Genre': 'genre', 'Year': 'year', 'RId': 'rid',
         };
-        const movieSearchParams = (caps?.movieSearchParams || []).map((p: string) => paramMap[p] || p.toLowerCase());
-        const tvSearchParams = (caps?.tvSearchParams || []).map((p: string) => paramMap[p] || p.toLowerCase());
-        const capabilities = { movieSearchParams, tvSearchParams };
-
-        // Determine best available method for each search type
-        const bestMovie = movieSearchParams.includes('imdbid') ? 'imdb'
-          : movieSearchParams.includes('tmdbid') ? 'tmdb' : 'text';
-        const bestTv = tvSearchParams.includes('imdbid') ? 'imdb'
-          : tvSearchParams.includes('tvdbid') ? 'tvdb'
-          : tvSearchParams.includes('tvmazeid') ? 'tvmaze' : 'text';
-
-        // Validate existing methods are still supported, otherwise auto-correct
-        const movieMethodMap: Record<string, string> = { imdb: 'imdbid', tmdb: 'tmdbid', tvdb: 'tvdbid' };
-        const tvMethodMap: Record<string, string> = { imdb: 'imdbid', tvdb: 'tvdbid', tvmaze: 'tvmazeid' };
-        type MovieMethod = 'imdb' | 'tmdb' | 'tvdb' | 'text';
-        type TvMethod = 'imdb' | 'tvdb' | 'tvmaze' | 'text';
-        const prevMovie = prev?.movieSearchMethod;
-        const prevTv = prev?.tvSearchMethod;
-        const prevMovieArr = Array.isArray(prevMovie) ? prevMovie : prevMovie ? [prevMovie] : null;
-        const prevTvArr = Array.isArray(prevTv) ? prevTv : prevTv ? [prevTv] : null;
-        const movieSearchMethod: MovieMethod[] = prevMovieArr
-          ? prevMovieArr.filter(m => m === 'text' || movieSearchParams.includes(movieMethodMap[m] || ''))
-          : [bestMovie as MovieMethod];
-        const tvSearchMethod: TvMethod[] = prevTvArr
-          ? prevTvArr.filter(m => m === 'text' || tvSearchParams.includes(tvMethodMap[m] || ''))
-          : [bestTv as TvMethod];
-        if (movieSearchMethod.length === 0) movieSearchMethod.push(bestMovie as MovieMethod);
-        if (tvSearchMethod.length === 0) tvSearchMethod.push(bestTv as TvMethod);
+        // No caps in Prowlarr's answer: unknown (the IMDb fallback), not "no ID" (kaijuSearch.idWaysOf)
+        const toParams = (ps: string[] | undefined) => ps?.map((p: string) => paramMap[p] || p.toLowerCase());
+        const capabilities = caps
+          ? { version: CAPS_VERSION, movieSearchParams: toParams(caps.movieSearchParams), tvSearchParams: toParams(caps.tvSearchParams) }
+          : prev?.capabilities;
 
         return {
           id: i.id.toString(),
           name: i.name,
           enabledForSearch: prev?.enabledForSearch ?? true,
-          movieSearchMethod,
-          tvSearchMethod,
-          animeMovieSearchMethod: prev?.animeMovieSearchMethod ?? ['text'],
-          animeTvSearchMethod: prev?.animeTvSearchMethod ?? ['text'],
-          capabilities,
+          capabilities, // the IDs Kaiju Search asks it by (#285)
           logo,
         };
       });
@@ -216,16 +191,10 @@ export function createIntegrationRoutes(deps: IntegrationDeps): Router {
       }
 
       // 3. Parse aggregate capabilities from caps response
-      let aggregateCaps: { movieSearchParams: string[]; tvSearchParams: string[] } | undefined;
+      let aggregateCaps: IndexerCaps | undefined; // no <searching> block: unknown, so Kaiju Search asks by IMDb
       try {
         const { parseStringPromise } = await import('xml2js');
-        const parsed = await parseStringPromise(capsData);
-        const searching = parsed?.caps?.searching?.[0];
-        const extractParams = (el: any) => (el?.$?.supportedParams || '').split(',').filter(Boolean);
-        aggregateCaps = {
-          movieSearchParams: extractParams(searching?.['movie-search']?.[0]),
-          tvSearchParams: extractParams(searching?.['tv-search']?.[0]),
-        };
+        aggregateCaps = capsOfReply(await parseStringPromise(capsData));
       } catch (err: any) {
         console.warn(`NZBHydra sync: failed to parse caps (${err.message})`);
       }
@@ -238,37 +207,11 @@ export function createIntegrationRoutes(deps: IntegrationDeps): Router {
           const prev = existing.get(i.name);
           const capabilities = aggregateCaps || prev?.capabilities;
 
-          const mp = capabilities?.movieSearchParams || [];
-          const tp = capabilities?.tvSearchParams || [];
-          const bestMovie = mp.includes('imdbid') ? 'imdb' : mp.includes('tmdbid') ? 'tmdb' : 'text';
-          const bestTv = tp.includes('imdbid') ? 'imdb' : tp.includes('tvdbid') ? 'tvdb' : tp.includes('tvmazeid') ? 'tvmaze' : 'text';
-
-          type MovieMethod = 'imdb' | 'tmdb' | 'tvdb' | 'text';
-          type TvMethod = 'imdb' | 'tvdb' | 'tvmaze' | 'text';
-          const movieMethodMap: Record<string, string> = { imdb: 'imdbid', tmdb: 'tmdbid', tvdb: 'tvdbid' };
-          const tvMethodMap: Record<string, string> = { imdb: 'imdbid', tvdb: 'tvdbid', tvmaze: 'tvmazeid' };
-          const prevMovie = prev?.movieSearchMethod;
-          const prevTv = prev?.tvSearchMethod;
-          const prevMovieArr = Array.isArray(prevMovie) ? prevMovie : prevMovie ? [prevMovie] : null;
-          const prevTvArr = Array.isArray(prevTv) ? prevTv : prevTv ? [prevTv] : null;
-          const movieSearchMethod: MovieMethod[] = prevMovieArr
-            ? (capabilities ? prevMovieArr.filter(m => m === 'text' || mp.includes(movieMethodMap[m] || '')) : prevMovieArr)
-            : [bestMovie as MovieMethod];
-          const tvSearchMethod: TvMethod[] = prevTvArr
-            ? (capabilities ? prevTvArr.filter(m => m === 'text' || tp.includes(tvMethodMap[m] || '')) : prevTvArr)
-            : [bestTv as TvMethod];
-          if (movieSearchMethod.length === 0) movieSearchMethod.push(bestMovie as MovieMethod);
-          if (tvSearchMethod.length === 0) tvSearchMethod.push(bestTv as TvMethod);
-
           return {
             id: i.name,
             name: i.name,
             enabledForSearch: prev?.enabledForSearch ?? true,
-            movieSearchMethod,
-            tvSearchMethod,
-            animeMovieSearchMethod: prev?.animeMovieSearchMethod ?? ['text'],
-            animeTvSearchMethod: prev?.animeTvSearchMethod ?? ['text'],
-            capabilities,
+            capabilities, // the IDs Kaiju Search asks it by (#285)
             logo: matchIndexerLogo(i.name),
           };
         });

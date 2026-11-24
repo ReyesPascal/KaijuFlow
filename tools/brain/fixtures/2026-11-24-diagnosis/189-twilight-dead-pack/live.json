@@ -1,0 +1,25 @@
+{
+ "t": "2026-11-24T10:51:54.218Z",
+ "clues": {
+  "articles-missing": {
+   "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]": {
+    "answer": "yes",
+    "facts": [
+     "STAT of 10 of 44106 articles of 337 files (par2 left out): 10 missing (430 when asked twice), 0 other answers; the sweep stopped once 10 had not answered 223",
+     "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE].part001.rar: 10 of the 10 articles asked missing"
+    ]
+   }
+  },
+  "segment-crc-bad": {
+   "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]": {
+    "answer": "can't tell",
+    "facts": [
+     "BODY of articles 1, 66, 131 of The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE].part129.rar (131 articles), checked in memory and dropped",
+     "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE].part129.rar article 1: answer 430, not read",
+     "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE].part129.rar article 66: answer 430, not read",
+     "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE].part129.rar article 131: answer 430, not read"
+    ]
+   }
+  }
+ }
+}

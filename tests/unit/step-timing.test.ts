@@ -54,10 +54,10 @@ test('lines never carry an API key or a URL query', async () => {
   assert.doesNotMatch(logs, /apikey|https?:\/\//i);
 });
 
-test('parseStepLine ignores other log lines, and the step names are the agreed ones (health_batch went with the list-time check, #191; the play\'s two events came with #242; the list\'s steps with #249)', () => {
+test('parseStepLine ignores other log lines, and the step names are the agreed ones (health_batch went with the list-time check, #191; the play\'s two events came with #242; the list\'s steps with #249; the dev switch\'s search lines with #285)', () => {
   assert.equal(parseStepLine('Searching x'), null);
   assert.deepEqual([...STEP_NAMES], ['indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed',
-    'list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start']);
+    'list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start', 'search']);
 });
 
 test('timeStepSync logs once per call, also when the work throws, and passes the result through (#249)', async () => {

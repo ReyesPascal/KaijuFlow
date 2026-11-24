@@ -14,6 +14,8 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
+import diagnosis  # noqa: E402
+import drill  # noqa: E402
 import pool  # noqa: E402
 
 QUICK_KINDS = {'popular-film': 2, 'rare-film': 1, 'popular-episode': 1, 'rare-episode': 1}  # the 5 titles' kinds (draw.KINDS)
@@ -133,7 +135,10 @@ def _episode_start(rel, j):
 
 
 def right_title(release, title, names=()):
-    """(True, '') when the release name played is the drawn title, else (False, why). `title` is the draw's
+    """(True, '') when the release name played is the drawn title, else (False, why). KaijuFlow's Search Flow holds a
+    copy of this rule (`strictMatch`, src/parsers/searchFlow.ts, #282): both are tested on the shared table of real
+    release names (tests/fixtures/release-names/table.tsv), so a change here (a tag allowed, a why reworded) goes into
+    both copies and the table. `title` is the draw's
     [type, id, label, kind, date]; `names` are other names of it (TMDB's original and alternative titles), tried when the
     label's name does not fit.
 
@@ -178,6 +183,21 @@ def right_title(release, title, names=()):
     if seasons:
         return False, f'it is a pack of season {min(seasons)}, not season {season}'
     return False, f'it names no season or episode (S{season:02d}E{episode:02d} wanted)'
+
+
+def odd_word(release, title, names=()):
+    """The one word that keeps the strict rule from passing a release of the right title, with where it stands:
+    ('ce', 'between the name and the year') for Pulp.Fiction.CE.1994. None when no single word does (the release
+    passes already, or more than one word stands in the way, as another name of the title does). A maybe that played
+    the right title offers it as a new allowed word (#286, spec #279 story 72)."""
+    rel = words(release)
+    if right_title(release, title, names)[0]:
+        return None
+    where = 'between the name and the year' if title[0] == 'movie' else 'between the name and the season or episode'
+    for i, word in enumerate(rel):
+        if right_title(' '.join(rel[:i] + rel[i + 1:]), title, names)[0]:
+            return word, where
+    return None
 
 
 def tmdb_names(get, title):
@@ -262,7 +282,8 @@ def judge(visit, names=lambda: ()):
            'release': played.get('title') if played else None, 'video': video, 'checked': checked,
            'fallbacks': len(failed),
            'check_misses': [{'release': f.get('title'), 'reason': f.get('reason') or ''} for f in failed if f.get('title') in passed],
-           'start_s': play.get('first_byte_s') if video else None, 'title_to_video': None, 'slow': False}
+           'start_s': play.get('first_byte_s') if video else None, 'title_to_video': None, 'slow': False,
+           'allowed_word': None}
 
     def end(outcome, why):
         return {**out, 'outcome': outcome, 'why': why}
@@ -278,12 +299,23 @@ def judge(visit, names=lambda: ()):
         if not played:
             return end(FAIL, "video came, but KaijuFlow's log names no release played, so the right title cannot be told")
         ok, why = right_title(played['title'], visit['title'])
+        other = []
         if not ok and why.startswith('the name'):  # another name of the title may fit
-            other = names()
-            if other is None:
+            got = names()
+            if got is None:
                 why += "; TMDB's other names of the title could not be read"
             else:
+                other = got
                 ok, why = right_title(played['title'], visit['title'], other)
+        # A maybe (#286): the release name does not show the title, but the video file KaijuFlow played does (its played
+        # line's `video`, dev switch on). It played the right title, and offers its odd word as a new allowed word.
+        file = played.get('video')
+        if not ok and why.startswith('the name') and file and right_title(file, visit['title'], other)[0]:
+            ok = True
+            odd = odd_word(played['title'], visit['title'], other)
+            if odd:
+                out['allowed_word'] = {'word': odd[0], 'where': odd[1], 'release': played['title'], 'video': file,
+                                       'proof': played.get('proof')}
         if not ok:
             return end(FAIL, f"the wrong title played: {played['title']} ({why})")
         out['slow'] = play['first_byte_s'] > SLOW_PLAY_S  # a slow play is the right video, late
@@ -317,10 +349,6 @@ def _s(x):
     return f'{x:.2f} s'
 
 
-def _plural(n, word, many=None):
-    return f"{n} {word if n == 1 else many or word + 's'}"
-
-
 def no_verdict_text(check):
     """Why a check has no verdict, in one sentence."""
     status = check.get('status')
@@ -339,8 +367,8 @@ def headline(check, outcomes):
         return no_verdict_text(check)
     fails = [o for o in outcomes if o['outcome'] == FAIL]
     if v == 'pass':
-        return f"Pass: 0 fails in {_plural(len(outcomes), 'title')}."
-    return f"Fail: {len(fails)} of {_plural(len(outcomes), 'title')} failed (" + '; '.join(o['label'] for o in fails) + ').'
+        return f"Pass: 0 fails in {br.plural(len(outcomes), 'title')}."
+    return f"Fail: {len(fails)} of {br.plural(len(outcomes), 'title')} failed (" + '; '.join(o['label'] for o in fails) + ').'
 
 
 def check_said(c):
@@ -353,14 +381,20 @@ def checked_text(o):
     return ', '.join('%s (%s)' % (c['release'], check_said(c)) for c in o['checked']) or 'none'
 
 
+def check_name(check):
+    """`Quick check` or `Drill-down` (#272), as the report and its tickets name the check."""
+    return {'drill-down': 'Drill-down'}.get(check.get('kind'), 'Quick check')
+
+
 def ticket_texts(check, outcomes):
     """One ready-to-file ticket per fail and per check miss: [(title, body)]."""
-    where = f"Quick check `{check['folder']}` (commit {str(check.get('commit') or '?')[:7]}, {check['started']})"
+    name = check_name(check)
+    where = f"{name} `{check['folder']}` (commit {str(check.get('commit') or '?')[:7]}, {check['started']})"
     out = []
     for o in outcomes:
         tid, kind = o['id'], o['kind']
         if o['outcome'] == FAIL:
-            out.append((f"Quick check fail: {o['label']}",
+            out.append((f"{name} fail: {o['label']}",
                         f"{where}: pressing Best on **{o['label']}** (`{tid}`, {kind}) failed: {o['why']}.\n\n"
                         f"Release played: {o['release'] or 'none'}. Sources in the list: {o['sources']}; checked: "
                         f"{checked_text(o)}.\n\n"
@@ -382,16 +416,33 @@ def played_line(check):
     cut = sum(1 for v in visits if v.get('cut_by_limit'))
     if len(visits) >= drawn and not cut:
         return []
-    return [f"\nPlayed {len(visits)} of {_plural(drawn, 'title')}" + (f"; {cut} cut by the limit, not judged." if cut else '.')]
+    return [f"\nPlayed {len(visits)} of {br.plural(drawn, 'title')}" + (f"; {cut} cut by the limit, not judged." if cut else '.')]
+
+
+def allowed_word_lines(outcomes):
+    """The report's lines for the allowed words offered (#286): each with the play that offered it and its release, the
+    proof. Added through normal review, no extra owner OK (spec #279, Q27)."""
+    out = []
+    for o in outcomes:
+        a = o.get('allowed_word')
+        if not a:
+            continue
+        sure = f"; KaijuFlow made it sure by: {a['proof']}" if a.get('proof') else ''
+        out.append(f"- `{a['word']}` ({a['where']}), offered by {o['label']}: {a['release']} played the right title (its video "
+                   f"file {a['video']} fits{sure}). Added through normal review: the tag lists of both copies of the strict "
+                   'rule (tools/brain/quickcheck.py, src/parsers/searchFlow.ts) and a row in tests/fixtures/release-names/table.tsv.')
+    return out
 
 
 def render_report(check, outcomes):
     """report.md of a quick check: pass or fail and the fails first, then slow plays, check misses, fallbacks, nothing to
-    play, the typical title to video, and a ticket text for each fail and check miss. Totals only: no title by title, no
-    comparison with an earlier check."""
-    lines = [f"# Quick check {check['started']}", '', headline(check, outcomes), '']
+    play, the typical title to video, the allowed words offered (#286), and a ticket text for each fail and check miss.
+    Totals only: no title by title, no comparison with an earlier check."""
+    lines = [f"# {check_name(check)} {check['started']}", '', headline(check, outcomes), '']
     if verdict(check, outcomes) is None and not outcomes:
-        return '\n'.join(lines)
+        if check.get('kind') == drill.KIND:
+            lines += drill.report_lines(check.get('drill'), check.get('drill_error'))
+        return '\n'.join(lines) + '\n'
     fails = [o for o in outcomes if o['outcome'] == FAIL]
     if fails:
         lines += ['## Fails', ''] + [f"- {o['label']}: {o['why']}." for o in fails] + ['']
@@ -404,9 +455,9 @@ def render_report(check, outcomes):
     fell = [o for o in outcomes if o['fallbacks']]
     lines += ['', '## Fallbacks', '']
     if fell:
-        lines.append(f"{_plural(sum(o['fallbacks'] for o in fell), 'fallback')} in {_plural(len(fell), 'title')}; "
+        lines.append(f"{br.plural(sum(o['fallbacks'] for o in fell), 'fallback')} in {br.plural(len(fell), 'title')}; "
                      f"{sum(1 for o in fell if o['video'])} of them ended in video.")
-        lines += [f"- {o['label']}: {_plural(o['fallbacks'], 'fallback')}, {'ended in video' if o['video'] else 'no video'}." for o in fell]
+        lines += [f"- {o['label']}: {br.plural(o['fallbacks'], 'fallback')}, {'ended in video' if o['video'] else 'no video'}." for o in fell]
     else:
         lines.append('Fallbacks not tested this time: no play fell back.')
     nothing = [o for o in outcomes if o['outcome'] == NOTHING]
@@ -418,9 +469,13 @@ def render_report(check, outcomes):
         lines.append('None.')
     times = [o['title_to_video'] for o in outcomes if o['outcome'] == PLAYED and o['title_to_video'] is not None]
     lines += ['', '## Typical title to video', '']
-    lines.append(f"{_s(statistics.median(times))} (median of {_plural(len(times), 'play')} with the right video; the list plus "
+    lines.append(f"{_s(statistics.median(times))} (median of {br.plural(len(times), 'play')} with the right video; the list plus "
                  'the start, the Browse pause left out).' if times else 'None: no play gave the right video.')
     lines += played_line(check)
+    lines += ['', '## Allowed words offered', ''] + (allowed_word_lines(outcomes) or ['None.'])
+    lines += [''] + diagnosis.report_section(check.get('diagnosis'), check.get('diagnosis_error'))
+    if check.get('kind') == drill.KIND:
+        lines += [''] + drill.report_lines(check.get('drill'), check.get('drill_error'))
     tickets = ticket_texts(check, outcomes)
     if tickets:
         lines += ['', '## Tickets to file', '']

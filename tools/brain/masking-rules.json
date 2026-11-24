@@ -1,0 +1,23 @@
+{
+ "about": "The masking rules of Diagnosis's fingerprint (#283, spec #279; tools/brain/docs/formats.md, 'Fingerprint'). Raise version on any change: every stored failure is then fingerprinted again (diagnosis.py refingerprint), and every occurrence records the version it was matched with.",
+ "version": 2,
+ "never_a_sign": {
+  "about": "What differs between occurrences of one cause, so it is never part of a fingerprint: each value the evidence names is replaced by its placeholder before the masks run, longest first.",
+  "title": "<title>",
+  "indexer": "<indexer>",
+  "release": "<release>",
+  "job": "<job>"
+ },
+ "masks": [
+  {"name": "address", "pattern": "https?://\\S+", "with": "<url>"},
+  {"name": "time", "pattern": "\\b\\d{4}-\\d\\d-\\d\\d[T ]\\d\\d:\\d\\d(:\\d\\d(\\.\\d+)?)?(Z|[+-]\\d\\d:?\\d\\d)?", "with": "<time>"},
+  {"name": "uuid", "pattern": "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b", "with": "<id>"},
+  {"name": "hash", "pattern": "\\b[0-9a-fA-F]{12,}\\b", "with": "<id>"},
+  {"name": "path", "pattern": "(?<![\\w<])/[\\w.\\-]+(/[\\w.\\-\\[\\]()]+)+", "with": "<path>"},
+  {"name": "size", "pattern": "\\b\\d+(\\.\\d+)?\\s?(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB|bytes)\\b", "with": "<size>"},
+  {"name": "timing", "pattern": "\\b\\d+(\\.\\d+)?\\s?(ms|s|sec|secs|seconds|min|minutes)\\b", "with": "<timing>"},
+  {"name": "source order", "pattern": "#\\d+|\\[\\d+/\\d+\\]", "with": "<order>"},
+  {"name": "status code", "pattern": "\\b[1-5]\\d\\d\\b(?!\\.\\d)", "keep": true},
+  {"name": "number", "pattern": "(?<![A-Za-z])\\d+(\\.\\d+)?(?![A-Za-z])", "with": "<n>"}
+ ]
+}

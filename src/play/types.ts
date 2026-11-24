@@ -27,6 +27,12 @@ export interface FallbackCandidate {
    *  hash, never the raw IP) so post-restart grabs still verify against the
    *  search-time IP. */
   searchExitIp?: string;
+  /** Search Flow's mark (#282): sure (passes the strict name rule) or maybe (the loose rule kept it alone), and why.
+   *  Best's Walk tries the sure Sources first. Absent in a group saved before Search Flow. */
+  flow?: 'sure' | 'maybe';
+  flowWhy?: string;
+  /** The extra proof that made a maybe sure (#286): at list time, or the Play-time check's (the NZB's video file). */
+  proof?: string;
 }
 
 export interface FallbackGroup {

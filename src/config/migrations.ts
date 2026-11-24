@@ -6,20 +6,19 @@
  *  - Legacy single-provider health check → providers array
  *  - Legacy Tor → disabled
  *  - Legacy gluetunUrl/proxyMode:'gluetun' → proxyUrl/proxyMode:'http'
- *  - Legacy search settings → searchConfig
- *  - Global search methods → per-indexer
- *  - Single-string search methods → arrays
+ *  - searchConfig seeded on a fresh install
  *  - Single-string zyclops backbone → array
  *  - One-time filter/sort reset (v1.3.0)
  *  - Stream display age/bitrate injection
  *  - Auto play minimum cache TTL enforcement
- *  - Global useTextSearchForAnime → per-indexer anime search methods
+ *  - Deleted settings dropped (deletedSettingsMigration.ts), the search methods among them (#285)
  */
 
 import 'dotenv/config';
 import crypto from 'crypto';
 import { configData, saveConfigFile } from './schema.js';
 import { migratePlaySettings } from './playSettingsMigration.js';
+import { migrateLegacyCaps } from './capsMigration.js';
 import { dropDeletedSettings, DELETED_ENV } from './deletedSettingsMigration.js';
 import { migrateToHeadStart } from './headStartMigration.js';
 
@@ -101,16 +100,12 @@ if (configData.searchConfig !== undefined && configData.searchConfig.includeMult
   console.log('✅ Series Packs default OFF for users upgrading from before Series Packs existed');
 }
 
-// Migrate legacy useTextSearch / includeSeasonPacks to searchConfig.
-// Fresh installs land here (no prior searchConfig); seed Series Packs defaults
-// (master ON, Complete keyword) so headless users get the same behavior as
-// users who open the UI. Upgrading users (with existing searchConfig) hit the
-// migration above instead and get Series Packs OFF.
+// Seed searchConfig on a fresh install (no prior searchConfig) with the Series Packs defaults (master ON, Complete
+// keyword) so headless users get the same behavior as users who open the UI. Upgrading users (with existing
+// searchConfig) hit the migration above instead and get Series Packs OFF. There is no search method to seed: every
+// indexer is asked by ID and by name at once (Kaiju Search, #285).
 if (configData.searchConfig === undefined) {
-  const method = configData.useTextSearch ? 'text' as const : 'imdb' as const;
   configData.searchConfig = {
-    movieSearchMethod: method,
-    tvSearchMethod: method,
     includeSeasonPacks: configData.includeSeasonPacks ?? true,
     includeMultiSeasonPacks: true,
     seriesPackKeywords: [],
@@ -118,47 +113,7 @@ if (configData.searchConfig === undefined) {
     seriesPackAdditionalPages: 1,
   };
   saveConfigFile(configData);
-  console.log(`✅ Migrated search settings to searchConfig (method=${method})`);
-}
-
-// Migrate global search methods to per-indexer settings
-if (configData.indexers.length > 0 && configData.indexers.some(i => !i.movieSearchMethod)) {
-  const globalMovie = configData.searchConfig?.movieSearchMethod || 'imdb';
-  const globalTv = configData.searchConfig?.tvSearchMethod || 'imdb';
-  for (const indexer of configData.indexers) {
-    if (!indexer.movieSearchMethod) indexer.movieSearchMethod = [globalMovie] as any;
-    if (!indexer.tvSearchMethod) indexer.tvSearchMethod = [globalTv] as any;
-  }
-  saveConfigFile(configData);
-  console.log(`✅ Migrated global search methods (movie=${globalMovie}, tv=${globalTv}) to ${configData.indexers.length} indexer(s)`);
-}
-
-// Migrate single-string search methods to arrays
-if (configData.indexers.some(i => i.movieSearchMethod && !Array.isArray(i.movieSearchMethod))) {
-  for (const indexer of configData.indexers) {
-    if (indexer.movieSearchMethod && !Array.isArray(indexer.movieSearchMethod)) {
-      indexer.movieSearchMethod = [indexer.movieSearchMethod] as any;
-    }
-    if (indexer.tvSearchMethod && !Array.isArray(indexer.tvSearchMethod)) {
-      indexer.tvSearchMethod = [indexer.tvSearchMethod] as any;
-    }
-  }
-  saveConfigFile(configData);
-  console.log(`✅ Migrated single-string search methods to arrays for ${configData.indexers.length} indexer(s)`);
-}
-
-// Migrate single-string synced indexer search methods to arrays
-if (configData.syncedIndexers?.some((i: any) => i.movieSearchMethod && !Array.isArray(i.movieSearchMethod))) {
-  for (const indexer of configData.syncedIndexers || []) {
-    if ((indexer as any).movieSearchMethod && !Array.isArray((indexer as any).movieSearchMethod)) {
-      (indexer as any).movieSearchMethod = [(indexer as any).movieSearchMethod];
-    }
-    if ((indexer as any).tvSearchMethod && !Array.isArray((indexer as any).tvSearchMethod)) {
-      (indexer as any).tvSearchMethod = [(indexer as any).tvSearchMethod];
-    }
-  }
-  saveConfigFile(configData);
-  console.log(`✅ Migrated single-string synced indexer search methods to arrays`);
+  console.log('✅ Seeded search settings (searchConfig)');
 }
 
 // Migrate single-string zyclops backbone to array
@@ -206,31 +161,6 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
     configData.cacheTTL = 9000;
     saveConfigFile(configData);
     console.log('✅ Set search cache to 2.5 hours (minimum for auto play)');
-  }
-}
-
-// Ensure all indexers have anime search method defaults
-{
-  const useText = (configData as any).searchConfig?.useTextSearchForAnime;
-  let migrated = false;
-  for (const indexer of configData.indexers) {
-    if (!(indexer as any).animeMovieSearchMethod) {
-      // If global useTextSearchForAnime was explicitly false, inherit from normal methods; otherwise default to text
-      (indexer as any).animeMovieSearchMethod = (useText === false) ? ((indexer as any).movieSearchMethod || ['text']) : ['text'];
-      (indexer as any).animeTvSearchMethod = (useText === false) ? ((indexer as any).tvSearchMethod || ['text']) : ['text'];
-      migrated = true;
-    }
-  }
-  for (const indexer of (configData as any).syncedIndexers || []) {
-    if (!indexer.animeMovieSearchMethod) {
-      indexer.animeMovieSearchMethod = (useText === false) ? (indexer.movieSearchMethod || ['text']) : ['text'];
-      indexer.animeTvSearchMethod = (useText === false) ? (indexer.tvSearchMethod || ['text']) : ['text'];
-      migrated = true;
-    }
-  }
-  if (migrated) {
-    saveConfigFile(configData);
-    console.log('✅ Set anime search method defaults for indexers');
   }
 }
 
@@ -389,16 +319,24 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
 }
 
 // Deleted settings go from an old config (the one drop list, deletedSettingsMigration.ts): the list-time
-// Smart and Fixed checks (#191), Auto-queue (#226) and backups (#192). Runs after the single-provider
+// Smart and Fixed checks (#191), Auto-queue (#226), backups (#192) and the search methods (#285). Runs after the single-provider
 // migration above, which still writes some of them.
 {
   if (dropDeletedSettings(configData as unknown as Record<string, unknown>)) {
     saveConfigFile(configData);
-    console.log('✅ Removed deleted settings: the list-time health checks (#191), Auto-queue (#226), backups (#192)');
+    console.log('✅ Removed deleted settings: the list-time health checks (#191), Auto-queue (#226), backups (#192), the search methods (#285)');
   }
   const ignored = DELETED_ENV.filter(name => process.env[name] !== undefined && process.env[name] !== '');
   if (ignored.length > 0) {
     console.warn(`⚠️  Deprecated env vars set but ignored: ${ignored.join(', ')}. A Source is always checked when it is played, only the Source being played is prepared, and a failed list entry walks the whole list.`);
+  }
+}
+
+// Caps saved before they were marked read (#285, review of #279): their empty lists meant unknown, not "no ID".
+{
+  if (migrateLegacyCaps(configData as unknown as Record<string, unknown>)) {
+    saveConfigFile(configData);
+    console.log('✅ Indexer caps saved before #279 read again: an empty list is unknown (asked by IMDb)');
   }
 }
 

@@ -8,6 +8,7 @@ import { Router } from 'express';
 import type { Config, UsenetIndexer } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { checkZyclopsUrlConflict } from '../utils/indexerHelpers.js';
+import { dropDeletedSettings } from '../config/deletedSettingsMigration.js';
 
 /**
  * Validate timeoutEnabled/timeout fields on an indexer payload.
@@ -68,7 +69,7 @@ export function createIndexerRoutes(deps: IndexerDeps): Router {
 
   router.post('/', (req, res) => {
     try {
-      const { name, url: rawUrl, apiKey, website, logo, movieSearchMethod, tvSearchMethod, animeMovieSearchMethod, animeTvSearchMethod, caps, zyclops, pagination, maxPages, timeoutEnabled, timeout } = req.body;
+      const { name, url: rawUrl, apiKey, website, logo, caps, zyclops, pagination, maxPages, timeoutEnabled, timeout } = req.body;
 
       if (!name || !rawUrl || !apiKey) {
         return res.status(400).json({ error: 'Name, URL, and API key are required' });
@@ -91,7 +92,7 @@ export function createIndexerRoutes(deps: IndexerDeps): Router {
       if (zyclops?.enabled) {
         console.log(`\u{1F916} Adding indexer ${name} with Zyclops enabled (backbone: ${zyclops.backbone?.join(',') || 'none'}, provider_host: ${zyclops.providerHosts || 'none'})`);
       }
-      const indexer = addIndexer({ name, url, apiKey, website, logo, movieSearchMethod, tvSearchMethod, animeMovieSearchMethod, animeTvSearchMethod, caps, zyclops, pagination, maxPages, timeoutEnabled, timeout });
+      const indexer = addIndexer({ name, url, apiKey, website, logo, caps, zyclops, pagination, maxPages, timeoutEnabled, timeout });
       res.status(201).json(indexer);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -102,6 +103,8 @@ export function createIndexerRoutes(deps: IndexerDeps): Router {
     try {
       const { name } = req.params;
       const updates = req.body;
+      // A page loaded before the search methods went (#285) may still send them: they are not saved.
+      dropDeletedSettings({ indexers: [updates] });
 
       if (updates.name !== undefined && !updates.name.trim()) {
         return res.status(400).json({ error: 'Name cannot be empty' });

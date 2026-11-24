@@ -5,7 +5,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { configData } from '../../src/config/index.ts';
-import { requireHealthySource } from '../../src/play/playTimeCheck.ts';
+import { requireHealthySource, checkSource } from '../../src/play/playTimeCheck.ts';
 import { parseStepLine } from '../../src/utils/stepTiming.ts';
 import { captureLogs } from './capture-logs.ts';
 import { nzbWithNews } from './health-nzb.ts';
@@ -63,4 +63,24 @@ test('with no enabled health-check provider nothing is handed over, and the Sour
   assert.notEqual(error.isBadSource, true);
   assert.match(error.message, /No health-check provider/);
   assert.deepEqual([steps[0].ok, steps[0].status, steps[0].title], [false, 'error', 'Unchecked.Movie.2026']);
+});
+
+// Search Flow's extra proof (#286): the video file name inside a Source's NZB is read when the Play-time check fetches
+// it. The check names it (`videoName`); with the dev switch on its play_check line carries it (`video`).
+test('the check names the video file inside the NZB; with the dev switch on its play_check line carries it', async () => {
+  const { url, provider } = await nzbWithNews([{ name: 'Joker.2019.1080p.WEB-DL.DD5.1.H264.mkv', segs: 3 }]);
+  useProviders([provider]);
+  const savedDev = configData.devDiagnostics;
+  try {
+    configData.devDiagnostics = true;
+    let result: Awaited<ReturnType<typeof checkSource>> | undefined;
+    const logs = await captureLogs(async () => { result = await checkSource({ nzbUrl: url, title: 'Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs', indexerName: 'Parity' }); });
+    assert.equal(result?.videoName, 'Joker.2019.1080p.WEB-DL.DD5.1.H264.mkv');
+    assert.equal(playChecks(logs)[0].video, 'Joker.2019.1080p.WEB-DL.DD5.1.H264.mkv');
+    configData.devDiagnostics = false;
+    const off = await captureLogs(async () => { await checkSource({ nzbUrl: url, title: 'Joker', indexerName: 'Parity' }); });
+    assert.equal(playChecks(off)[0].video, undefined, 'with the switch off the line is a release\'s');
+  } finally {
+    configData.devDiagnostics = savedDev;
+  }
 });

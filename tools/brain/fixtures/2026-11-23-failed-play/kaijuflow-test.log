@@ -1,0 +1,548 @@
+2026-11-23T19:12:12.670093845Z 
+2026-11-23T19:12:12.670171390Z 
+2026-11-23T19:12:12.670182939Z ╔══════════════════════════════════════════════════════════════════════
+2026-11-23T19:12:12.670197796Z ║  🔍 Searching for series tt5180504 S1E1 [newznab]
+2026-11-23T19:12:12.670207098Z ╚══════════════════════════════════════════════════════════════════════
+2026-11-23T19:12:12.670227345Z 
+2026-11-23T19:12:12.670234477Z ═══ Title Resolution ══════════════════════════════════════════
+2026-11-23T19:12:12.793491774Z 🎯 Resolved tt5180504 → "The Witcher" (2019, Poland, Hungary, United States, United Kingdom) [S1: 8 episodes] [Action, Adventure, Drama] [57min]
+2026-11-23T19:12:12.793563487Z 🔗 Using cached TVDB token
+2026-11-23T19:12:12.931522661Z 🔗 TVDB remoteid result: series id=362696 name="The Witcher" (2019) aliases=1
+2026-11-23T19:12:12.931601708Z 🔗 Using cached TVDB token
+2026-11-23T19:12:13.027242853Z 🔗 TVDB episode count: tt5180504 S01 → 8 episodes (60min) [The End's Beginning] [abs E1] [aired 2019-12-20]
+2026-11-23T19:12:13.027311896Z 📌 Title: "The Witcher" (2019) [Poland, Hungary, United States, United Kingdom] — 8 eps in season
+2026-11-23T19:12:13.027507977Z 🔗 Using cached TVDB token
+2026-11-23T19:12:13.117069376Z 🔗 TVDB remoteid result: series id=362696 name="The Witcher" (2019) aliases=1
+2026-11-23T19:12:13.117451036Z 🎯 TVDB title resolved: tt5180504 → "The Witcher"
+2026-11-23T19:12:13.118818784Z 🔗 Using cached TVDB token
+2026-11-23T19:12:13.284084540Z 
+2026-11-23T19:12:13.284132250Z ═══ Search Setup ══════════════════════════════════════════════
+2026-11-23T19:12:13.284139742Z 📋 Newznab search methods: text across 1 indexer(s)
+2026-11-23T19:12:13.284144539Z    NinjaCentral: text
+2026-11-23T19:12:13.760006805Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":472,"ok":true,"t":"2026-11-23T19:12:13.759Z","ref":"tt5180504:1:1","page":1}
+2026-11-23T19:12:13.818981330Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":533,"ok":true,"t":"2026-11-23T19:12:13.818Z","ref":"tt5180504:1:1","page":1}
+2026-11-23T19:12:14.176098845Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":325,"ok":true,"t":"2026-11-23T19:12:14.175Z","ref":"tt5180504:1:1","page":2}
+2026-11-23T19:12:14.282755112Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":468,"ok":true,"t":"2026-11-23T19:12:14.282Z","ref":"tt5180504:1:1","page":2}
+2026-11-23T19:12:14.734403965Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":435,"ok":true,"t":"2026-11-23T19:12:14.733Z","ref":"tt5180504:1:1","page":3}
+2026-11-23T19:12:14.830652530Z 
+2026-11-23T19:12:14.830677305Z ═══ NinjaCentral ════════════════════════════════════════════════
+2026-11-23T19:12:14.830680412Z   ┌─ TV text search S1E1 
+2026-11-23T19:12:14.830682137Z   │   ┌─ TV text search [NinjaCentral] "The Witcher S01E01" 
+2026-11-23T19:12:14.830683918Z   │   │ 🔍 [NinjaCentral] TV text search for: The Witcher S01E01
+2026-11-23T19:12:14.830685655Z   │   │ 🔍 Searching NinjaCentral: http://host.docker.internal:1340/ninjacentral/api [timeout=15s]
+2026-11-23T19:12:14.830692852Z   │   │    Query: "The Witcher S01E01", Category: 5000
+2026-11-23T19:12:14.830694494Z   │   │ ✅ Response received (200), parsing...
+2026-11-23T19:12:14.830696016Z   │   │    📦 Found 100 results (total: 157)
+2026-11-23T19:12:14.830697491Z   │   │    📄 Fetching page 2 (offset 100)...
+2026-11-23T19:12:14.830698922Z   │   │    📄 Page 2: +57 (total so far: 157)
+2026-11-23T19:12:14.830700384Z   │   │    🎯 [NinjaCentral] Title filter: 157 → 78 (removed 79 mismatches)
+2026-11-23T19:12:14.830701949Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E01.Episode.1.EAC3.5.1.1080p.WEBRip.x265-iVy [KOTixkHoM2]
+2026-11-23T19:12:14.830703586Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E01 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.830705236Z   │   │       ✂️  The Witcher Blood Origin S01E01 Of Ballads Brawlers and Bloodied Blades 1080p NF WEB-DL DDP5 1 Atmos H 264-NINJACENTRAL
+2026-11-23T19:12:14.830706850Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E01.Episode.1.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.830718472Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E01.Episode.1.540p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.830720306Z   │   │       ✂️  [1 9] - 'The.Witcher.A.Look.Inside.The.Episodes.S01E01.Episode.1.EAC3.5.1.1080p.WEBRip.x265-iVy.par2'
+2026-11-23T19:12:14.830721938Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.830723501Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.830725017Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.830726516Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.830728068Z   │   │       ✂️  The Witcher - Blood Origin (2022) - S01E01 - Of Ballads Brawlers and Bloodied Blades - [NF WEBDL-1080p AAC 5.1] [399987]-FLUX
+2026-11-23T19:12:14.830731026Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE-S8xw
+2026-11-23T19:12:14.830732638Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.DV.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.830734201Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.830735698Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.1080p.WEB.H264-FLAME
+2026-11-23T19:12:14.830737191Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.720p.WEB.H264-FLAME
+2026-11-23T19:12:14.830738696Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE
+2026-11-23T19:12:14.830754121Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.of.Ballads.Brawlers.and.Bloodied.Blades.480p.NF.WEB-DL.AAC5.1.H.264-FFG
+2026-11-23T19:12:14.830767119Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01
+2026-11-23T19:12:14.830776556Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.2160p.NF.WEB-DL.DUAL.DDP5.1.Atmos.HDR-DV.H.265-Telly
+2026-11-23T19:12:14.830803116Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.2160p.NF.WEB-DL.DUAL.DDP5.1.Atmos.H.265-Telly
+2026-11-23T19:12:14.830808487Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.2160p.NF.WEB-DL.DDPA5.1.DV.HEVC-COPiUM
+2026-11-23T19:12:14.830815826Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.2160p.NF.WEB-DL.DDPA5.1.HEVC-COPiUM
+2026-11-23T19:12:14.830818827Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.of.Ballads.Brawlers.and.Bloodied.Blades.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-COPIUM
+2026-11-23T19:12:14.830834985Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.2160p.NF.WEB-DL.DDP5.1.Atmos.H.265-COPiUM
+2026-11-23T19:12:14.830842177Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.iTALiAN.1080p.WEB.H264-NTROPiC
+2026-11-23T19:12:14.830852804Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.iTALiAN.720p.WEB.H264-NTROPiC
+2026-11-23T19:12:14.830860281Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.of.Ballads.Brawlers.and.Bloodied.Blades.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-COPIUM
+2026-11-23T19:12:14.830874286Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.x265-ZMNT
+2026-11-23T19:12:14.830880227Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.720p.x265-ZMNT.mkv
+2026-11-23T19:12:14.830895457Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.of.Ballads.Brawlers.and.Bloodied.Blades.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.830907222Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.1080p.NF.WEB-DL.DDP5.1.HDR.HEVC-NTb
+2026-11-23T19:12:14.830920258Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.830935979Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.of.Ballads.Brawlers.and.Bloodied.Blades.1080p.NF.WEB-DL.DDP5.1.HDR.HEVC-NTb
+2026-11-23T19:12:14.830942380Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.1080p.NF.WEB-DL.DDP5.1.DoVi.HEVC-NTb
+2026-11-23T19:12:14.830966097Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.720p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.830969343Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.of.Ballads.Brawlers.and.Bloodied.Blades.720p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.830983401Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.of.Ballads.Brawlers.and.Bloodied.Blades.1080p.NF.WEB-DL.DDP5.1.DoVi.HEVC-NTb
+2026-11-23T19:12:14.830993120Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.WEBRip.x264-ION10_mp4
+2026-11-23T19:12:14.831011891Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.FRENCH.720p.WEB.x264-HiggsBoson
+2026-11-23T19:12:14.831021713Z   │   │       ✂️  The.Witcher.Blood.Origin.2022.S01E01.Of.Ballads,.Brawlers,.and.Bloodied.Blades.1080p.NF.Webrip.x265.10bit.EAC3.5.1.Atmos.GokiTAoE
+2026-11-23T19:12:14.831035673Z   │   │       ✂️  The.Witcher .Blood.Origin S01E01 Of.Ballads,.Brawlers,.and.Bloodied.Blades
+2026-11-23T19:12:14.831045518Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.1080p.NF.WEB-DL.DDP5.1.x264-STC
+2026-11-23T19:12:14.831063832Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.MULTI.1080p.WEB.x264-HiggsBoson
+2026-11-23T19:12:14.831070578Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.MULTI.1080p.WEB.x264-HiggsBoson
+2026-11-23T19:12:14.831083124Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.XviD-AFG
+2026-11-23T19:12:14.831101436Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE
+2026-11-23T19:12:14.831103518Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.x265-ELiTE
+2026-11-23T19:12:14.831124470Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.720p.x265-T0PAZ
+2026-11-23T19:12:14.831129959Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.Of.Ballads.Brawlers.and.Bloodied.Blades.720p.NF.WEB-DL.DDP5.1.Atmos.H.264-SMURF.mkv
+2026-11-23T19:12:14.831143848Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.480p.x264-RUBiK
+2026-11-23T19:12:14.831166346Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE
+2026-11-23T19:12:14.831171215Z   │   │       ✂️  The.Witcher.2022.S01E01.MULTi.1080p.WEB.H264-N0WAY
+2026-11-23T19:12:14.831184831Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.x265-ELiTE
+2026-11-23T19:12:14.831195329Z   │   │       ✂️  The.Witcher.Herkunft.des.Blutes.S01E01.GERMAN.DL.1080P.WEB.X264-WAYNE
+2026-11-23T19:12:14.831209156Z   │   │       ✂️  The.Witcher.Herkunft.des.Blutes.S01E01.German.DL.720p.WEB.x264-WvF
+2026-11-23T19:12:14.831219890Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.480p.x264-RUBiK
+2026-11-23T19:12:14.831233648Z   │   │       ✂️  The.Witcher.Herkunft.des.Blutes.S01E01.German.DL.720p.WEB.x264-WvF
+2026-11-23T19:12:14.831244303Z   │   │       ✂️  The.Witcher.Herkunft.des.Blutes.S01E01.German.DL.720p.WEB.x264-WvF
+2026-11-23T19:12:14.831258541Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.HEVC.x265-MeGusta
+2026-11-23T19:12:14.831291110Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE
+2026-11-23T19:12:14.831378275Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.XviD-AFG
+2026-11-23T19:12:14.831411085Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.NF.WEB-DL.DDP5.1.Atmos.H.264-SMURF
+2026-11-23T19:12:14.831417804Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.AAC.MP4-Mobile
+2026-11-23T19:12:14.831435350Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.H264-TRUFFLE
+2026-11-23T19:12:14.831447707Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE
+2026-11-23T19:12:14.831464558Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE
+2026-11-23T19:12:14.831475181Z   │   │       ✂️  The.Witcher.2002.S01E01.DVD.REMUX
+2026-11-23T19:12:14.831490324Z   │   │       ✂️  The.Witcher.2002.S01E01.DVD.REMUX
+2026-11-23T19:12:14.831500967Z   │   │       ✂️  The.Witcher.2002.S01E01.DVD.REMUX
+2026-11-23T19:12:14.831517674Z   │   │       ✂️  the.witcher.us.s01e01.1080p
+2026-11-23T19:12:14.831528250Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264
+2026-11-23T19:12:14.831546397Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E01.720p.NF.WEB-DL.DDP5.1.H.264
+2026-11-23T19:12:14.831557152Z   │   │       ✂️  the.witcher.1x01.ita.webmux.x264-novarip
+2026-11-23T19:12:14.831570809Z   │   │       ✂️  the.witcher.1x01.ita.1080p.webmux.dd5.1.x264-novarip
+2026-11-23T19:12:14.831582006Z   │   │       ✂️  The.Witcher.US.S01E01.1080p.HEVC.X265-MeGusta
+2026-11-23T19:12:14.831598015Z   │   │       ✂️  The.Witcher.US.S01E01.1080p.HEVC.x265-MeGusta
+2026-11-23T19:12:14.831609087Z   │   │       ✂️  The.Witcher.US.S01E01.1080p.WEBRip.x264-ASCENDANCE
+2026-11-23T19:12:14.831638254Z   │   │       ✂️  The.Witcher.US.S01E01.INTERNAL.1080p.WEB.x264-STRiFE
+2026-11-23T19:12:14.831643073Z   │   └─
+2026-11-23T19:12:14.831660810Z   └─
+2026-11-23T19:12:14.831676792Z   ┌─ Pack queries 
+2026-11-23T19:12:14.831692827Z   │   ┌─ Season pack: The Witcher S01 
+2026-11-23T19:12:14.831708770Z   │   │ 🔍 Searching NinjaCentral: http://host.docker.internal:1340/ninjacentral/api [timeout=15s]
+2026-11-23T19:12:14.831720080Z   │   │    Query: "The Witcher S01", Category: 5000
+2026-11-23T19:12:14.831733531Z   │   │ ✅ Response received (200), parsing...
+2026-11-23T19:12:14.831745600Z   │   │    📦 Found 100 results (total: 1083)
+2026-11-23T19:12:14.831761484Z   │   │    📄 Fetching page 2 (offset 100)...
+2026-11-23T19:12:14.831773191Z   │   │    📄 Page 2: +100 (total so far: 200)
+2026-11-23T19:12:14.831792237Z   │   │    📄 Fetching page 3 (offset 200)...
+2026-11-23T19:12:14.831798752Z   │   │    📄 Page 3: +100 (total so far: 300)
+2026-11-23T19:12:14.831820612Z   │   │    📦 [NinjaCentral] Season pack filter: 300 → 12 (removed 288 mismatches)
+2026-11-23T19:12:14.831826090Z   │   │       ✂️  The Witcher S01E07 Before a Fall 2160p NF WEB-DL DDP5 1 Atmos HEVC-HHWEB
+2026-11-23T19:12:14.831844170Z   │   │       ✂️  The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB
+2026-11-23T19:12:14.831855161Z   │   │       ✂️  The Witcher S01E07 Before a Fall 2160p NF WEB-DL DD 5 1 Atmos H 265-playWEB
+2026-11-23T19:12:14.831872703Z   │   │       ✂️  The Witcher S01E04 Of Banquets Bastards and Burials 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB
+2026-11-23T19:12:14.831882277Z   │   │       ✂️  The Witcher S01E03 Betrayer Moon 2160p NF WEB-DL DD 5 1 Atmos H 265-playWEB
+2026-11-23T19:12:14.831897427Z   │   │       ✂️  The Witcher S01E05 Bottled Appetites 2160p NF WEB-DL DD 5 1 Atmos H 265-playWEB
+2026-11-23T19:12:14.831908441Z   │   │       ✂️  The Witcher S01E08 Much More 2160p NF WEB-DL DD 5 1 Atmos H 265-playWEB
+2026-11-23T19:12:14.831923097Z   │   │       ✂️  The Witcher S01E06 Rare Species 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB
+2026-11-23T19:12:14.831935986Z   │   │       ✂️  The Witcher S01E05 Bottled Appetites 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB
+2026-11-23T19:12:14.831953155Z   │   │       ✂️  The Witcher Blood Origin S01 1080p NF WEB-DL DDP5 1 Atmos DV H 265-GRiMM
+2026-11-23T19:12:14.831964794Z   │   │       ✂️  The Witcher Blood Origin S01 1080p NF WEB-DL DDP5 1 Atmos HDR H 265-GRiMM
+2026-11-23T19:12:14.831983028Z   │   │       ✂️  The Witcher Blood Origin S01 2022 Complete 1080p Netflix WEB-DL AVC DDP 5 1 Atmos-DBTV
+2026-11-23T19:12:14.831993270Z   │   │       ✂️  The.Witcher.S01E08.Much.More.1080p.NF.WEB-DL.DDP5.1.x264-NTG
+2026-11-23T19:12:14.832014005Z   │   │       ✂️  The.Witcher.S01E05.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832024964Z   │   │       ✂️  The.Witcher.S01E03.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832041046Z   │   │       ✂️  The.Witcher.S01E06.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832052038Z   │   │       ✂️  The.Witcher.S01E02.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832071251Z   │   │       ✂️  The.Witcher.S01E07.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832081990Z   │   │       ✂️  The.Witcher.S01E01.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832098321Z   │   │       ✂️  The.Witcher.S01E04.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832108528Z   │   │       ✂️  The.Witcher.S01E08.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832126143Z   │   │       ✂️  The.Witcher.S01E08.2160p.WEB.h265-BETTY-FTP
+2026-11-23T19:12:14.832136615Z   │   │       ✂️  The.Witcher.S01E07.2160p.WEB.h265-BETTY-FTP
+2026-11-23T19:12:14.832153289Z   │   │       ✂️  The.Witcher.S01E06.2160p.WEB.h265-BETTY-FTP
+2026-11-23T19:12:14.832163674Z   │   │       ✂️  The.Witcher.S01E08.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832182883Z   │   │       ✂️  The.Witcher.S01E08.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832194854Z   │   │       ✂️  The.Witcher.S01E04.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832204225Z   │   │       ✂️  The.Witcher.S01E07.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832217702Z   │   │       ✂️  The.Witcher.S01E06.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832226125Z   │   │       ✂️  The.Witcher.S01E06.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832236461Z   │   │       ✂️  The.Witcher.S01E07.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832241175Z   │   │       ✂️  The.Witcher.S01E02.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832275517Z   │   │       ✂️  The.Witcher.S01E03.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832287075Z   │   │       ✂️  The.Witcher.S01E05.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832291077Z   │   │       ✂️  The.Witcher.S01E03.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832302645Z   │   │       ✂️  The.Witcher.S01E01.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832306855Z   │   │       ✂️  The.Witcher.S01E01.2160p.WEB.h265-BETTY
+2026-11-23T19:12:14.832310518Z   │   │       ✂️  The Witcher - S01E06 - Rare Species WEBDL-2160p
+2026-11-23T19:12:14.832313548Z   │   │       ✂️  The Witcher - S01E05 - Bottled Appetites WEBDL-2160p
+2026-11-23T19:12:14.832321798Z   │   │       ✂️  The Witcher - S01E03 - Betrayer Moon WEBDL-2160p
+2026-11-23T19:12:14.832330604Z   │   │       ✂️  The Witcher - S01E08 - Much More WEBDL-2160p
+2026-11-23T19:12:14.832346674Z   │   │       ✂️  The Witcher - S01E07 - Before a Fall WEBDL-2160p
+2026-11-23T19:12:14.832349217Z   │   │       ✂️  The Witcher - S01E02 - Four Marks WEBDL-2160p
+2026-11-23T19:12:14.832369357Z   │   │       ✂️  The Witcher - S01E01 - The End's Beginning WEBDL-2160p
+2026-11-23T19:12:14.832375572Z   │   │       ✂️  The Witcher 2019 S01E01 1080p NF WEB-DL DDP5 1 AV1-Vialle
+2026-11-23T19:12:14.832389258Z   │   │       ✂️  The.Witcher.(2019).S01E07.(1080p.NF.WEB-DL.DDP5.1.AV1).-.Vialle.mkv
+2026-11-23T19:12:14.832399033Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E04.Episode.4.EAC3.5.1.1080p.WEBRip.x265-iVy [L9RDI1WXGi]
+2026-11-23T19:12:14.832403617Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E01.Episode.1.EAC3.5.1.1080p.WEBRip.x265-iVy [KOTixkHoM2]
+2026-11-23T19:12:14.832414591Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E08.Episode.8.EAC3.5.1.1080p.WEBRip.x265-iVy [5zznolrCgR]
+2026-11-23T19:12:14.832427542Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E06.Episode.6.EAC3.5.1.1080p.WEBRip.x265-iVy [wgebTPp1sk]
+2026-11-23T19:12:14.832442335Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E07.Episode.7.EAC3.5.1.1080p.WEBRip.x265-iVy [93DA8sGZWo]
+2026-11-23T19:12:14.832450425Z   │   │       ✂️  The.Witcher.S01E08.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832458518Z   │   │       ✂️  The.Witcher.S01E07.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832469812Z   │   │       ✂️  The.Witcher.S01E06.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832477096Z   │   │       ✂️  The.Witcher.S01E01.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832495407Z   │   │       ✂️  The.Witcher.S01E05.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832500870Z   │   │       ✂️  The.Witcher.S01E02.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832510253Z   │   │       ✂️  The.Witcher.S01E03.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832528738Z   │   │       ✂️  The.Witcher.S01E04.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.832532785Z   │   │       ✂️  The Witcher Bestiary Season 1 Part 2 2021 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832541951Z   │   │       ✂️  The Witcher Bestiary Season 1 Part 1 2021 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832548732Z   │   │       ✂️  The Witcher Bestiary Season 1 Part 1 2021 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832565895Z   │   │       ✂️  The Witcher Bestiary Season 1 Part 2 2021 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832569840Z   │   │       ✂️  The.Witcher.S01E01.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.832578389Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01.1080p.NF.WEBRip.DDP5.1.x264-NTb
+2026-11-23T19:12:14.832589970Z   │   │       ✂️  The.Witcher.S01E06.WEB4k.OPUS.VFF.ENG.720p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.832601761Z   │   │       ✂️  The.Witcher.S01E02.WEB4k.OPUS.VFF.ENG.720p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.832612902Z   │   │       ✂️  The Witcher Bestiary Season 1 Part 1 2021 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832623148Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E01 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832636058Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E02 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832640295Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E03 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832649129Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E04 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832656562Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E05 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832671074Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E06 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832682186Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E07 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832692672Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E08 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.832702853Z   │   │       ✂️  The.Witcher.Blood.Origin.S01.720p.NF.WEB-DL.DDP5.1.Atmos.H.264.HUN.ENG-PTHD
+2026-11-23T19:12:14.832713587Z   │   │       ✂️  The Witcher Blood Origin S01E01 Of Ballads Brawlers and Bloodied Blades 1080p NF WEB-DL DDP5 1 Atmos H 264-NINJACENTRAL
+2026-11-23T19:12:14.832722073Z   │   │       ✂️  The Witcher Blood Origin S01E02 Of Dreams Defiance and Desperate Deeds 1080p NF WEB-DL DDP5 1 Atmos H 264-NINJACENTRAL
+2026-11-23T19:12:14.832748728Z   │   │       ✂️  The Witcher Blood Origin S01E03 Of Warriors Wakes and Wondrous Worlds 1080p NF WEB-DL DDP5 1 Atmos H 264-NINJACENTRAL
+2026-11-23T19:12:14.832761251Z   │   │       ✂️  The Witcher Blood Origin S01E04 Of Mages Malice and Monstrous Mayhem 1080p NF WEB-DL DDP5 1 Atmos H 264-NINJACENTRAL
+2026-11-23T19:12:14.832773238Z   │   │       ✂️  The.Witcher.S01E01.The.Ends.Beginning.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832778238Z   │   │       ✂️  The.Witcher.S01E02.Four.Marks.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832789141Z   │   │       ✂️  The.Witcher.S01E03.Betrayer.Moon.1080p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832802244Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832806224Z   │   │       ✂️  The.Witcher.S01E05.Bottled.Appetites.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832814707Z   │   │       ✂️  The.Witcher.S01E06.Rare.Species.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832826823Z   │   │       ✂️  The.Witcher.S01E07.Before.a.Fall.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832831682Z   │   │       ✂️  The.Witcher.S01E08.Much.More.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.832843306Z   │   │       ✂️  The.Witcher.S01E08.iNTERNAL.1080p.WEB.X264-AMRAP-FTP
+2026-11-23T19:12:14.832864928Z   │   │       ✂️  The.Witcher.S01E07.iNTERNAL.1080p.WEB.X264-AMRAP-FTP
+2026-11-23T19:12:14.832866668Z   │   │       ✂️  The.Witcher.S01E06.iNTERNAL.1080p.WEB.X264-AMRAP-FTP
+2026-11-23T19:12:14.832877945Z   │   │       ✂️  The.Witcher.S01E05.iNTERNAL.1080p.WEB.X264-AMRAP-FTP
+2026-11-23T19:12:14.832881795Z   │   │       ✂️  The.Witcher.S01E08.Viel.mehr.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832890726Z   │   │       ✂️  The.Witcher.S01E07.Vor.dem.Fall.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832901767Z   │   │       ✂️  The.Witcher.S01E06.Seltene.Arten.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832906843Z   │   │       ✂️  The.Witcher.S01E05.Aufgestaute.Begehren.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832921950Z   │   │       ✂️  The.Witcher.S01E04.Bankette.Bastarde.und.Begraebnisse.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832933545Z   │   │       ✂️  The.Witcher.S01E03.Verraetermord.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832945793Z   │   │       ✂️  The.Witcher.S01E02.Vier.Mark.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832949939Z   │   │       ✂️  The.Witcher.S01E01.Des.Endes.Anfang.GERMAN.AC3.1080p.WebDL.x265-w00t
+2026-11-23T19:12:14.832965384Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E05 Episode 5 1080p NF WEB-DL DDP5 1 H 264-NTb
+2026-11-23T19:12:14.832983403Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E04 Episode 4 1080p NF WEB-DL DDP5 1 H 264-NTb
+2026-11-23T19:12:14.832994948Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E06 Episode 6 1080p NF WEB-DL DDP5 1 H 264-NTb
+2026-11-23T19:12:14.833019531Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E03 Episode 3 1080p NF WEB-DL DDP5 1 H 264-NTb
+2026-11-23T19:12:14.833032914Z   │   │       ✂️  The Witcher A Look Inside the Episodes S01E08 Episode 8 1080p NF WEB-DL DDP5 1 H 264-NTb
+2026-11-23T19:12:14.833049032Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E08.Episode.8.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833062083Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E07.Episode.7.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833078704Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E06.Episode.6.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833091792Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E05.Episode.5.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833111351Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E04.Episode.4.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833130502Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E02.Episode.2.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833135411Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E03.Episode.3.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833156571Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E01.Episode.1.1080p.NF.WEB-DL.DDP5.1.H.264-NTb
+2026-11-23T19:12:14.833165554Z   │   │       ✂️  The.Witcher.S01E01.The.Ends.Beginning.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833187536Z   │   │       ✂️  The.Witcher.S01E02.Four.Marks.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833198710Z   │   │       ✂️  The.Witcher.S01E03.Betrayer.Moon.1080p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833216863Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833225365Z   │   │       ✂️  The.Witcher.S01E05.Bottled.Appetites.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833242397Z   │   │       ✂️  The.Witcher.S01E06.Rare.Species.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833250919Z   │   │       ✂️  The.Witcher.S01E07.Before.a.Fall.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833272287Z   │   │       ✂️  The.Witcher.S01E08.Much.More.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833286745Z   │   │       ✂️  The.Witcher.-.Blood.Origin.(2022).S01.(2160p.NF.WEB-DL.Hybrid.H265.DV.HDR.DDP.Atmos.5.1.English.-.HONE)
+2026-11-23T19:12:14.833303326Z   │   │       ✂️  The.Witcher.S01E02.Four.Marks.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833314447Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833332687Z   │   │       ✂️  The.Witcher.S01E01.The.Ends.Beginning.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833343168Z   │   │       ✂️  The Witcher S01E02 Four Marks 720p NF WEB-DL AAC5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.833365141Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833382123Z   │   │       ✂️  The.Witcher.S01E01.The.Ends.Beginning.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833392204Z   │   │       ✂️  The Witcher S01E04 Of Banquets Bastards and Burials 720p NF WEB-DL AAC5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.833398382Z   │   │       ✂️  The Witcher S01E01 The Ends Beginning 720p NF WEB-DL AAC5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.833420822Z   │   │       ✂️  The.Witcher.S01E01.The.Ends.Beginning.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833422802Z   │   │       ✂️  The.Witcher.S01E02.Four.Marks.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833432052Z   │   │       ✂️  The.Witcher.S01E03.Betrayer.Moon.1080p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833442335Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833461511Z   │   │       ✂️  The.Witcher.S01E05.Bottled.Appetites.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833470117Z   │   │       ✂️  The.Witcher.S01E06.Rare.Species.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833473144Z   │   │       ✂️  The.Witcher.S01E07.Before.a.Fall.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833482941Z   │   │       ✂️  The.Witcher.S01E08.Much.More.720p.NF.WEB-DL.AAC5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833487522Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E01.Episode.1.540p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833494415Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E02.Episode.2.480p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833510575Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E03.Episode.3.480p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833522576Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E04.Episode.4.480p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833529998Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E05.Episode.5.540p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833544689Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E06.Episode.6.480p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833552778Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E07.Episode.7.480p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833566293Z   │   │       ✂️  The.Witcher.A.Look.Inside.the.Episodes.S01E08.Episode.8.480p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833570188Z   │   │       ✂️  The.Witcher.S01E06.Rare.Species.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833583369Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833587181Z   │   │       ✂️  The.Witcher.S01E03.Betrayer.Moon.1080p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833599076Z   │   │       ✂️  The Witcher S01E06 Rare Species 720p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.833611308Z   │   │       ✂️  The Witcher S01E04 Of Banquets Bastards and Burials 720p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.833626424Z   │   │       ✂️  The Witcher S01E03 Betrayer Moon 1080p NF WEB-DL DDP5 1 H 264-NINJACENTRAL
+2026-11-23T19:12:14.833630887Z   │   │       ✂️  The.Witcher.S01E01.The.Ends.Beginning.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833641149Z   │   │       ✂️  The.Witcher.S01E02.Four.Marks.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833647700Z   │   │       ✂️  The.Witcher.S01E03.Betrayer.Moon.1080p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833661310Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833676338Z   │   │       ✂️  The.Witcher.S01E05.Bottled.Appetites.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833682271Z   │   │       ✂️  The.Witcher.S01E06.Rare.Species.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833695674Z   │   │       ✂️  The.Witcher.S01E07.Before.a.Fall.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833699774Z   │   │       ✂️  The.Witcher.S01E08.Much.More.720p.NF.WEB-DL.DDP5.1.H.264-NINJACENTRAL
+2026-11-23T19:12:14.833709029Z   │   │       ✂️  The.Witcher.S01E08.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833716671Z   │   │       ✂️  The.Witcher.S01E07.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833723235Z   │   │       ✂️  The.Witcher.S01E06.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833736510Z   │   │       ✂️  The.Witcher.S01E02.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833744455Z   │   │       ✂️  The.Witcher.S01E05.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833757738Z   │   │       ✂️  The.Witcher.S01E05.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833768691Z   │   │       ✂️  The.Witcher.S01E03.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833783537Z   │   │       ✂️  The.Witcher.S01E02.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833788101Z   │   │       ✂️  The.Witcher.S01E07.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833799440Z   │   │       ✂️  The.Witcher.S01E04.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833801902Z   │   │       ✂️  The.Witcher.S01E01.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833816796Z   │   │       ✂️  The.Witcher.S01E06.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833822930Z   │   │       ✂️  The.Witcher.S01E08.GERMAN.DL.1080p.WEB.X264-FENDT
+2026-11-23T19:12:14.833835017Z   │   │       ✂️  [1 9] - 'The.Witcher.A.Look.Inside.The.Episodes.S01E04.Episode.4.EAC3.5.1.1080p.WEBRip.x265-iVy.par2'
+2026-11-23T19:12:14.833852233Z   │   │       ✂️  [1 9] - 'The.Witcher.A.Look.Inside.The.Episodes.S01E01.Episode.1.EAC3.5.1.1080p.WEBRip.x265-iVy.par2'
+2026-11-23T19:12:14.833856653Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E06.Episode.6.EAC3.5.1.1080p.WEBRip.x265-iVy
+2026-11-23T19:12:14.833866424Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E03.Episode.3.EAC3.5.1.1080p.WEBRip.x265-iVy
+2026-11-23T19:12:14.833876251Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01E02.Episode.2.EAC3.5.1.1080p.WEBRip.x265-iVy
+2026-11-23T19:12:14.833882551Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833891343Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833897254Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E04.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833914327Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E02.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833929527Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833939212Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833955020Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E02.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833967006Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E04.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833980883Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E04.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833983628Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E04.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.833998344Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834015717Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834019548Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E02.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834029727Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834031936Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E02.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834049388Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.HDR.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834053859Z   │   │       ✂️  The.Witcher.S01E08.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834064705Z   │   │       ✂️  The.Witcher.S01E07.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834075342Z   │   │       ✂️  The.Witcher.S01E06.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834089048Z   │   │       ✂️  The.Witcher.S01E04.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834099671Z   │   │       ✂️  The.Witcher.S01E03.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834101621Z   │   │       ✂️  The.Witcher.S01E05.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834117224Z   │   │       ✂️  The.Witcher.S01E01.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834121205Z   │   │       ✂️  The.Witcher.S01E02.German.AC3.DL.1080p.WebRip.x265-FuN
+2026-11-23T19:12:14.834129483Z   │   │       ✂️  The.Witcher.2019.S01E06.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834134214Z   │   │       ✂️  The.Witcher.2019.S01E08.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834148800Z   │   │       ✂️  The.Witcher.2019.S01E05.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834152642Z   │   │       ✂️  The.Witcher.2019.S01E01.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834164701Z   │   │       ✂️  The.Witcher.2019.S01E02.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834173397Z   │   │       ✂️  The.Witcher.2019.S01E03.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834184012Z   │   │       ✂️  The.Witcher.2019.S01E07.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834194967Z   │   │       ✂️  The.Witcher.2019.S01E04.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE
+2026-11-23T19:12:14.834202112Z   │   │       ✂️  The.Witcher.S01E06.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834217262Z   │   │       ✂️  The.Witcher.S01E04.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834225230Z   │   │       ✂️  The.Witcher.S01E05.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834230146Z   │   │       ✂️  The.Witcher.S01E01.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834234354Z   │   │       ✂️  The.Witcher.S01E02.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834243526Z   │   │       ✂️  The.Witcher.S01E03.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834255471Z   │   │       ✂️  The.Witcher.S01E07.WEB4k.OPUS.VFF.ENG.1080p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834260978Z   │   │       ✂️  The.Witcher.A.Look.Inside.The.Episodes.S01.1080p.NF.WEBRip.DDP5.1.x264-NTb
+2026-11-23T19:12:14.834270741Z   │   │       ✂️  The.Witcher.S01E06.WEB4k.OPUS.VFF.ENG.720p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834288126Z   │   │       ✂️  The.Witcher.S01E07.WEB4k.OPUS.VFF.ENG.720p.x265.10Bits.T0M.mkv
+2026-11-23T19:12:14.834293001Z   │   │       ✂️  The.Witcher.Blood.Origin.S01.2160p.NF.WEB-DL.DDP5.1.Atmos.H.265-COPiUM
+2026-11-23T19:12:14.834297178Z   │   │       ✂️  The Witcher S01E05 Bottled Appetites WEBRip 1080p DD 5 1 H265-d3g
+2026-11-23T19:12:14.834303022Z   │   │       ✂️  The Witcher S01E08 Much More WEBRip 1080p DD 5 1 H265-d3g
+2026-11-23T19:12:14.834313190Z   │   │       ✂️  The Witcher S01E03 Betrayer Moon WEBRip 1080p DD 5 1 H265-d3g
+2026-11-23T19:12:14.834324860Z   │   │       ✂️  The Witcher S01E04 Of Banquets Bastards and Burials WEBRip 1080p DD 5 1 H265-d3g
+2026-11-23T19:12:14.834330019Z   │   │       ✂️  The Witcher S01E06 Rare Species WEBRip 1080p DD 5 1 H265-d3g
+2026-11-23T19:12:14.834352282Z   │   │       ✂️  The.Witcher.S01E07.Before.a.Fall.WEBRip.1080p.DD.5.1.H265-d3g
+2026-11-23T19:12:14.834368071Z   │   │       ✂️  The Witcher S01E07 Before a Fall WEBRip 1080p DD 5 1 H265-d3g
+2026-11-23T19:12:14.834372255Z   │   │       ✂️  The.Witcher.S01E05.Bottled.Appetites.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834386729Z   │   │       ✂️  The.Witcher.S01E06.Rare.Species.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834397695Z   │   │       ✂️  The.Witcher.S01E04.Of.Banquets.Bastards.and.Burials.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834407954Z   │   │       ✂️  The.Witcher.S01E03.Betrayer.Moon.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834410155Z   │   │       ✂️  The.Witcher.S01E08.Much.More.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834428825Z   │   │       ✂️  The.Witcher.S01E02.Four.Marks.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834433469Z   │   │       ✂️  The.Witcher.S01E01.The.Ends.Beginning.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834437362Z   │   │       ✂️  The.Witcher.S01E07.Before.a.Fall.WEBRip.1080p.DD+5.1.H265-d3g
+2026-11-23T19:12:14.834447377Z   │   │       ✂️  The.Witcher.Blood.Origin.S01.WEBRip.AAC.5.1.1080p.x265-SiQ
+2026-11-23T19:12:14.834456724Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.of.Warriors.Wakes.and.Wondrous.Worlds.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-COPIUM
+2026-11-23T19:12:14.834469815Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E02.of.Dreams.Defiance.and.Desperate.Deeds.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-COPIUM
+2026-11-23T19:12:14.834480036Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E04.of.Mages.Malice.and.Monstrous.Mayhem.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-COPIUM
+2026-11-23T19:12:14.834488430Z   │   │       ✂️  The Witcher (2019) (362696) - S01E01 - [WEBDL-1080p] [Sonarr]
+2026-11-23T19:12:14.834493183Z   │   │       ✂️  The Witcher (2019) - S01E02 - Four Marks - [NF WEBDL-1080p AAC 2.0] [362696]-NTG
+2026-11-23T19:12:14.834505505Z   │   │       ✂️  The Witcher (2019) - S01E03 - Betrayer Moon - [Movio Profile 1 1 5 WEBDL-1080p AAC 5.1] [EN+HI] [362696]-Gangsta
+2026-11-23T19:12:14.834510112Z   │   │       ✂️  The Witcher (2019) (362696) - S01E04 - [WEBDL-1080p] [Sonarr]
+2026-11-23T19:12:14.834520027Z   │   │       ✂️  The Witcher (2019) (362696) - S01E07 - [WEBDL-1080p] [Sonarr]
+2026-11-23T19:12:14.834527601Z   │   │       ✂️  The Witcher (2019) (362696) - S01E08 - [WEBDL-1080p] [Sonarr]
+2026-11-23T19:12:14.834595354Z   │   │       ✂️  The Witcher (2019) - S01E06 - Rare Species - [NF WEBDL-1080p AAC 2.0] [362696]-NTG
+2026-11-23T19:12:14.834621938Z   │   │       ✂️  The Witcher - Blood Origin (2022) - S01E02 - Of Dreams Defiance and Desperate Deeds - [NF WEBDL-1080p AAC 5.1] [399987]-FLUX
+2026-11-23T19:12:14.834624940Z   │   │       ✂️  The Witcher - Blood Origin (2022) - S01E01 - Of Ballads Brawlers and Bloodied Blades - [NF WEBDL-1080p AAC 5.1] [399987]-FLUX
+2026-11-23T19:12:14.834626858Z   │   │       ✂️  The Witcher - Blood Origin (2022) - S01E04 - Of Mages Malice and Monstrous Mayhem - [NF WEBDL-1080p AAC 5.1] [399987]-FLUX
+2026-11-23T19:12:14.834641383Z   │   │       ✂️  The Witcher - Blood Origin (2022) - S01E03 - Of Warriors Wakes and Wondrous Worlds - [NF WEBDL-1080p AAC 5.1] [399987]-FLUX
+2026-11-23T19:12:14.834645819Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.1080p.WEB.h264-TRUFFLE-S8xw
+2026-11-23T19:12:14.834654024Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.DV.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834657011Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.POLISH.DV.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834679344Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.POLISH.HDR.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834682130Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E02.POLISH.HDR.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834699319Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834703977Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.POLISH.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834713534Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.1080p.WEB.H264-FLAME
+2026-11-23T19:12:14.834716498Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E01.POLISH.720p.WEB.H264-FLAME
+2026-11-23T19:12:14.834727456Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E03.POLISH.720p.WEB.H264-FLAME
+2026-11-23T19:12:14.834730090Z   │   │       ✂️  The.Witcher.Blood.Origin.S01E02.POLISH.720p.WEB.H264-FLAME
+2026-11-23T19:12:14.834744000Z   │   │       ✂️  The.Witcher.S01E01.MULTI.DV.2160p.WEB.H265-HiggsBoson
+2026-11-23T19:12:14.834748405Z   │   │       ✂️  The.Witcher.S01E06.POLISH.DV.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834765214Z   │   │       ✂️  The.Witcher.S01E08.POLISH.DV.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834767649Z   │   │       ✂️  The.Witcher.S01E07.POLISH.DV.2160p.WEB.H265-FLAME
+2026-11-23T19:12:14.834787879Z   │   │       ✂️  The.Witcher.S01E04.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834792202Z   │   │       ✂️  The.Witcher.S01E01.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834796249Z   │   │       ✂️  The.Witcher.S01E05.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834799840Z   │   │       ✂️  The.Witcher.S01E06.GERMAN.DL.DV.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834813537Z   │   │       ✂️  The.Witcher.S01E06.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834815970Z   │   │       ✂️  The.Witcher.S01E08.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834857849Z   │   │       ✂️  The.Witcher.S01E07.GERMAN.DL.DV.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834862156Z   │   │       ✂️  The.Witcher.S01E07.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT
+2026-11-23T19:12:14.834872225Z   │   │       ✂️  The.Witcher.S01E01.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834874754Z   │   │       ✂️  The.Witcher.S01E06.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834891005Z   │   │       ✂️  The.Witcher.S01E04.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834895689Z   │   │       ✂️  The.Witcher.S01E08.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834904854Z   │   │       ✂️  The.Witcher.S01E08.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834908765Z   │   │       ✂️  The.Witcher.S01E06.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834919397Z   │   │       ✂️  The.Witcher.S01E07.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834922854Z   │   │       ✂️  The.Witcher.S01E05.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834936830Z   │   │       ✂️  The.Witcher.S01E04.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834946661Z   │   │       ✂️  The.Witcher.S01E03.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834957173Z   │   │       ✂️  The.Witcher.S01E01.DV.2160p.WEB.h265-EDITH
+2026-11-23T19:12:14.834961925Z   │   │       ✂️  The.Witcher.S01E03.MULTI.DV.2160p.WEB.H265-HiggsBoson
+2026-11-23T19:12:14.834981789Z   │   │       ✂️  The.Witcher.S01E04.MULTI.DV.2160p.WEB.H265-HiggsBoson
+2026-11-23T19:12:14.834986640Z   │   │    📦 [NinjaCentral] Found 12 season packs
+2026-11-23T19:12:14.834995283Z   │   └─
+2026-11-23T19:12:14.834998858Z   │   ┌─ Series-pack keyword queries 
+2026-11-23T19:12:14.835014812Z   │   │ 📦 [NinjaCentral] Series-pack: skipped (no keywords selected)
+2026-11-23T19:12:14.835023483Z   │   └─
+2026-11-23T19:12:14.835033691Z   └─
+2026-11-23T19:12:14.835035926Z 
+2026-11-23T19:12:14.835136934Z 
+2026-11-23T19:12:14.835149009Z ═══ Results Processing ════════════════════════════════════════
+2026-11-23T19:12:14.835164929Z 📊 Found 90 total results (indexer: 90, easynews: 0)
+2026-11-23T19:12:14.836590254Z 🔁 Indexer-content dedup: removed 1 duplicate(s) [NinjaCentral: 1] (89 remaining)
+2026-11-23T19:12:14.836608404Z    ✂️  "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested" [NinjaCentral]
+2026-11-23T19:12:14.836680313Z 🎯 Filtered 3 by max file size (86 remaining)
+2026-11-23T19:12:15.002813754Z 📊 Returning 86 streams after filtering
+2026-11-23T19:12:15.002845050Z 
+2026-11-23T19:12:15.002847160Z ═══ Final Results ═════════════════════════════════════════════
+2026-11-23T19:12:15.002851094Z 📊 Final results (after filtering + sorting):
+2026-11-23T19:12:15.002852693Z      1. 🎬 The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB [NinjaCentral]
+2026-11-23T19:12:15.002854382Z      2. 🎬 The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB [NinjaCentral]
+2026-11-23T19:12:15.002855982Z      3. 🎬 The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-CRYBABIES [NinjaCentral]
+2026-11-23T19:12:15.002857612Z      4. 🎬 The Witcher - S01E01 - The End's Beginning WEBDL-2160p [NinjaCentral]
+2026-11-23T19:12:15.002859200Z      5. 🎬 The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested [NinjaCentral]
+2026-11-23T19:12:15.002860781Z      6. 🎬 The.Witcher.2019.S01E01.2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English-HONE [NinjaCentral]
+2026-11-23T19:12:15.002862329Z      7. 📦 The.Witcher.(2019).S01.(2160p.NF.WEB-DL.H265.SDR.DDP.Atmos.5.1.English.-.HONE) [NinjaCentral]
+2026-11-23T19:12:15.002863892Z      8. 🎬 The.Witcher.S01E01.DV.2160p.WEB.h265-EDITH [NinjaCentral]
+2026-11-23T19:12:15.002865399Z      9. 🎬 The.Witcher.S01E01.HDR.2160p.WEB.h265-EDITH [NinjaCentral]
+2026-11-23T19:12:15.002866927Z     10. 🎬 The.Witcher.S01E01.MULTI.DV.2160p.WEB.H265-HiggsBoson [NinjaCentral]
+2026-11-23T19:12:15.002868423Z     11. 🎬 The.Witcher.S01E01.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT [NinjaCentral]
+2026-11-23T19:12:15.002884058Z     12. 🎬 The.Witcher.S01E01.HDR.2160p.WEB.h265-EDITH [NinjaCentral]
+2026-11-23T19:12:15.002885758Z     13. 🎬 The.Witcher.S01E01.DV.2160p.WEB.h265-EDITH [NinjaCentral]
+2026-11-23T19:12:15.002887310Z     14. 🎬 The.Witcher.S01E01.GERMAN.DL.HDR.2160p.WEB.h265-SAUERKRAUT [NinjaCentral]
+2026-11-23T19:12:15.002888880Z     15. 🎬 The.Witcher.S01E01.2160p.WEB.h265-BETTY [NinjaCentral]
+2026-11-23T19:12:15.002890402Z     16. 🎬 The.Witcher.S01E01.2160p.WEB.h265-BETTY [NinjaCentral]
+2026-11-23T19:12:15.002891916Z     17. 🎬 The.Witcher.S01E01.2160p.WEB.h265-BETTY [NinjaCentral]
+2026-11-23T19:12:15.002893428Z     18. 📦 The.Witcher.S01.2160p.WEB.h265-BETTY [NinjaCentral]
+2026-11-23T19:12:15.002894968Z     19. 🎬 The.Witcher.S01E01.HDR.2160p.WEBRip.x265-iNSPiRiT [NinjaCentral]
+2026-11-23T19:12:15.002896675Z     20. 🎬 The.Witcher.S01E01.GERMAN.DL.2160p.HDR.WEBRiP.H265-TSCC [NinjaCentral]
+2026-11-23T19:12:15.002898235Z     21. 🎬 The.Witcher.S01E01.GERMAN.DL.2160p.HDR.WEBRiP.H265-TSCC [NinjaCentral]
+2026-11-23T19:12:15.002901410Z     22. 🎬 The.Witcher.S01E01.The.Ends.Beginning.1080p.NF.WEB-DL.Multi.DD+5.1.H264-NINJACENTRAL [NinjaCentral]
+2026-11-23T19:12:15.002903135Z     23. 🎬 The.Witcher.S01E01.The.Ends.Beginning.1080p.NF.WEB-DL.DDP5.1.x264-NTG [NinjaCentral]
+2026-11-23T19:12:15.002904742Z     24. 🎬 The.Witcher.S01E01.The.Ends.Beginning.1080p.NF.WEB-DL.DDP5.1.x264-GLUE [NinjaCentral]
+2026-11-23T19:12:15.002906320Z     25. 🎬 The.Witcher.S01E01.The.Ends.Beginning.1080p.NF.WEB-DL.HDR.DDP5.1.Atmos.H.265 [NinjaCentral]
+2026-11-23T19:12:15.002907897Z     26. 🎬 The Witcher (2019) (362696) - S01E01 - [WEBDL-1080p] [Sonarr] [NinjaCentral]
+2026-11-23T19:12:15.002909440Z     27. 🎬 The.Witcher.S01E01.The.Ends.Beginning.1080p.NF.WEB-DL.DDP5.1.x264-NTG [NinjaCentral]
+2026-11-23T19:12:15.002911365Z     28. 📦 The.Witcher.S01.NF.1080p.WEB-DL.DDP5.1.Multi.H264-PrimeFix [NinjaCentral]
+2026-11-23T19:12:15.002912951Z     29. 📦 The.Witcher.S01.1080p.Web-DL.x264-OFT [NinjaCentral]
+2026-11-23T19:12:15.002914458Z     30. 📦 The.Witcher.S01.1080p.Web-DL.x264-OFT [NinjaCentral]
+2026-11-23T19:12:15.002916005Z    ... and 56 more
+2026-11-23T19:12:15.070777295Z 🔄 Created fallback group d765ce46-4aa with 86 candidates
+2026-11-23T19:12:15.227823176Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] Head start: checking Best's Sources before a press
+2026-11-23T19:12:15.227864873Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] Starting — 86 candidate(s), pool size 3, list order, wait times: priority (movies=30s, tv=15s, pack=30s)
+2026-11-23T19:12:15.232765538Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] No library hits in pool — launching grab chain + health checks + Backend prepare
+2026-11-23T19:12:16.236409334Z   [health-check] NZB contains password metadata
+2026-11-23T19:12:16.239524057Z   [28sOVLcvbQOhXviegEX8So5zQ] 54 files (0 video, 54 archive)
+2026-11-23T19:12:16.239577197Z   [28sOVLcvbQOhXviegEX8So5zQ] Checking archive: 28sOVLcvbQOhXviegEX8So5zQ1aN47vK.7z.001
+2026-11-23T19:12:16.239598457Z   [28sOVLcvbQOhXviegEX8So5zQ] 🔍 Inspecting archive header...
+2026-11-23T19:12:16.324730824Z   [31d9d1ed623242d8db809aa98] 83 files (0 video, 72 archive)
+2026-11-23T19:12:16.324795899Z   [31d9d1ed623242d8db809aa98] Checking archive: 31d9d1ed623242d8db809aa98e59e76e.part01.rar
+2026-11-23T19:12:16.324798269Z   [31d9d1ed623242d8db809aa98] 🔍 Inspecting archive header...
+2026-11-23T19:12:16.490750010Z   [7a870da9cbcc480a075cde6a2] 83 files (0 video, 74 archive)
+2026-11-23T19:12:16.490779950Z   [7a870da9cbcc480a075cde6a2] Checking archive: 7a870da9cbcc480a075cde6a2bd4dbd5.10
+2026-11-23T19:12:16.490782757Z   [7a870da9cbcc480a075cde6a2] 🔍 Inspecting archive header...
+2026-11-23T19:12:16.994494383Z   [28sOVLcvbQOhXviegEX8So5zQ] [7z] Fetching end metadata (11712 segments across all parts)...
+2026-11-23T19:12:17.292842887Z   [7a870da9cbcc480a075cde6a2] Archive: rar5, encrypted=false, compression=stored, 1 files [MKV]
+2026-11-23T19:12:17.292889405Z   [7a870da9cbcc480a075cde6a2]   files: EHCofwzog5VpqoeZpZYe9MGyqFnA.mkv
+2026-11-23T19:12:17.293097544Z   [7a870da9cbcc480a075cde6a2] Checking 3 segments across 1 provider(s)
+2026-11-23T19:12:17.295330592Z   [31d9d1ed623242d8db809aa98] → Blocked: Archive header unreadable
+2026-11-23T19:12:17.295342474Z [KF-STEP] {"step":"play_check","source":"NinjaCentral","ms":1048,"ok":false,"t":"2026-11-23T19:12:17.295Z","ref":"tt5180504:1:1","title":"The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-CRYBABIES","status":"blocked"}
+2026-11-23T19:12:17.295392755Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] ❌ #3 not healthy (Archive header unreadable) — The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.H.265-CRYBABIES
+2026-11-23T19:12:17.377641254Z   [7a870da9cbcc480a075cde6a2] Result: 3/3 found (Newshosting (3/3))
+2026-11-23T19:12:17.377699773Z   [7a870da9cbcc480a075cde6a2] → Verified: stored archive
+2026-11-23T19:12:17.377704648Z [KF-STEP] {"step":"play_check","source":"NinjaCentral","ms":1048,"ok":true,"t":"2026-11-23T19:12:17.377Z","ref":"tt5180504:1:1","title":"The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB","status":"verified_stored"}
+2026-11-23T19:12:17.377710294Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] 🚀 Submitting #1 The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB [NinjaCentral] to the Backend
+2026-11-23T19:12:17.377713805Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #1] 🆕 Starting new stream preparation: The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB
+2026-11-23T19:12:17.377887209Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #1]   💾 Using cached NZB from health check (1258534 bytes)
+2026-11-23T19:12:17.379410371Z [KF-STEP] {"step":"nzb_fetch","source":"NinjaCentral","ms":2,"ok":true,"t":"2026-11-23T19:12:17.379Z","ref":"tt5180504:1:1","title":"The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB"}
+2026-11-23T19:12:18.355121323Z   [health-check] NZB contains password metadata
+2026-11-23T19:12:18.358423249Z   [77xqi1dTncaRE1vJZc492U] 113 files (0 video, 98 archive)
+2026-11-23T19:12:18.358445234Z   [77xqi1dTncaRE1vJZc492U] Checking archive: 77xqi1dTncaRE1vJZc492U.7z.001
+2026-11-23T19:12:18.358447843Z   [77xqi1dTncaRE1vJZc492U] 🔍 Inspecting archive header...
+2026-11-23T19:12:19.503441766Z   [77xqi1dTncaRE1vJZc492U] [7z] Fetching end metadata (10062 segments across all parts)...
+2026-11-23T19:12:20.286525224Z 🎟️ /stream hit: kind=UF filename=ultimate-fallback q=[t] ua=Python-urllib/3.14
+2026-11-23T19:12:20.286799225Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] Best pressed: a play now, no newer list request stops it
+2026-11-23T19:12:20.354970212Z   [7z] Tail fetched: 25/11712 segs, 17525492B decoded. nextHeaderOffset=8373058222, nextHeaderSize=38. endData first16=1706f1c2b912f3010980ec00070b0100
+2026-11-23T19:12:20.355031345Z   [7z] Decoding lzma1 metadata (236 packed → 1766 unpacked, from tail buffer)...
+2026-11-23T19:12:20.356477791Z   [28sOVLcvbQOhXviegEX8So5zQ] [7z] End metadata: 4 files, encrypted=false
+2026-11-23T19:12:20.356943935Z   [28sOVLcvbQOhXviegEX8So5zQ] Archive: 7z, encrypted=false, compression=stored, 4 files [MKV]
+2026-11-23T19:12:20.356956360Z   [28sOVLcvbQOhXviegEX8So5zQ]   files: The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB, The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB, The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB.mkv
+2026-11-23T19:12:20.357194064Z   [28sOVLcvbQOhXviegEX8So5zQ] Multi-part: sampling across 3 parts
+2026-11-23T19:12:20.357205882Z   [28sOVLcvbQOhXviegEX8So5zQ] Checking 3 segments across 1 provider(s)
+2026-11-23T19:12:24.621002454Z   [28sOVLcvbQOhXviegEX8So5zQ] Result: 3/3 found (Newshosting (3/3))
+2026-11-23T19:12:24.621045134Z   [28sOVLcvbQOhXviegEX8So5zQ] → Verified: stored archive
+2026-11-23T19:12:24.621058754Z [KF-STEP] {"step":"play_check","source":"NinjaCentral","ms":8488,"ok":true,"t":"2026-11-23T19:12:24.620Z","ref":"tt5180504:1:1","title":"The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB","status":"verified_stored"}
+2026-11-23T19:12:26.150495236Z [KF-STEP] {"step":"unscramble","source":"NinjaCentral","ms":8769,"ok":true,"t":"2026-11-23T19:12:26.150Z","ref":"tt5180504:1:1","title":"The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB","wait_ms":0,"result":"read-error","parts":74}
+2026-11-23T19:12:26.150577793Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #1]   🧩 Unscramble skipped (read-error, 74 parts, 8769 ms): uploading the original NZB
+2026-11-23T19:12:26.154513893Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #1]   📤 Sending Source to AltMount (waits up to 7s)
+2026-11-23T19:12:29.254869096Z   [7z] Tail fetched: 25/10062 segs, 17357508B decoded. nextHeaderOffset=7170161264, nextHeaderSize=52. endData first16=1706f180f95fab010980f000070b0100
+2026-11-23T19:12:29.255918513Z   [77xqi1dTncaRE1vJZc492U] [7z] End metadata: 0 files, encrypted=true
+2026-11-23T19:12:29.255943208Z   [77xqi1dTncaRE1vJZc492U] Archive: 7z, encrypted=true, compression=compressed, 0 files
+2026-11-23T19:12:29.255948578Z   [77xqi1dTncaRE1vJZc492U] → Blocked: Encrypted archive (password in NZB)
+2026-11-23T19:12:29.256046991Z [KF-STEP] {"step":"play_check","source":"NinjaCentral","ms":10977,"ok":false,"t":"2026-11-23T19:12:29.255Z","ref":"tt5180504:1:1","title":"The Witcher - S01E01 - The End's Beginning WEBDL-2160p","status":"blocked"}
+2026-11-23T19:12:29.256057382Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] ❌ #4 not healthy (Encrypted archive (password in NZB)) — The Witcher - S01E01 - The End's Beginning WEBDL-2160p
+2026-11-23T19:12:29.892459259Z   [The.Witcher.S01E01.2160p.] 9 files (1 video, 0 archive) [MKV]
+2026-11-23T19:12:29.893040999Z   [The.Witcher.S01E01.2160p.] Checking video: 3YuT.mkv
+2026-11-23T19:12:29.893066501Z   [The.Witcher.S01E01.2160p.] Checking 3 segments across 1 provider(s)
+2026-11-23T19:12:29.947709057Z   [The.Witcher.S01E01.2160p.] Result: 3/3 found (Newshosting (3/3))
+2026-11-23T19:12:29.947770462Z   [The.Witcher.S01E01.2160p.] → Verified
+2026-11-23T19:12:29.947783812Z [KF-STEP] {"step":"play_check","source":"NinjaCentral","ms":94,"ok":true,"t":"2026-11-23T19:12:29.947Z","ref":"tt5180504:1:1","title":"The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested","status":"verified"}
+2026-11-23T19:12:30.256095744Z [KF-STEP] {"step":"import_wait","source":"NinjaCentral","ms":4101,"ok":false,"t":"2026-11-23T19:12:30.255Z","ref":"tt5180504:1:1","title":"The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB","includes_upload":true}
+2026-11-23T19:12:30.257169020Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #1] ❌ Failed: AltMount could not process the Source: {"error":{"code":"INTERNAL_SERVER_ERROR","details":"","message":"no files were successfully processed (all files failed validation)"},"success":false}
+2026-11-23T19:12:30.257238687Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] ❌ Prepare failed for #1 The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB
+2026-11-23T19:12:30.257548698Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] 🚀 Submitting #2 The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB [NinjaCentral] to the Backend
+2026-11-23T19:12:30.257574102Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #2] 🆕 Starting new stream preparation: The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB
+2026-11-23T19:12:30.257758692Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #2]   💾 Using cached NZB from health check (1097598 bytes)
+2026-11-23T19:12:30.259832029Z [KF-STEP] {"step":"nzb_fetch","source":"NinjaCentral","ms":2,"ok":true,"t":"2026-11-23T19:12:30.259Z","ref":"tt5180504:1:1","title":"The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB"}
+2026-11-23T19:12:30.261063287Z [KF-STEP] {"step":"unscramble","source":"NinjaCentral","ms":1,"ok":true,"t":"2026-11-23T19:12:30.260Z","ref":"tt5180504:1:1","title":"The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB","wait_ms":0,"result":"not-scrambled","parts":0}
+2026-11-23T19:12:30.264855701Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #2]   📤 Sending Source to AltMount (waits up to 15s)
+2026-11-23T19:12:31.467408433Z [KF-STEP] {"step":"import_wait","source":"NinjaCentral","ms":1203,"ok":true,"t":"2026-11-23T19:12:31.467Z","ref":"tt5180504:1:1","title":"The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB","includes_upload":true,"job":"11"}
+2026-11-23T19:12:31.467460798Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #2]   ✅ AltMount prepared the Source (streamable)
+2026-11-23T19:12:31.475066385Z [KF-STEP] {"step":"first_byte","source":"NinjaCentral","ms":7,"ok":true,"t":"2026-11-23T19:12:31.474Z","ref":"tt5180504:1:1","title":"The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB","job":"11"}
+2026-11-23T19:12:31.475715487Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] [prepare #2] ✅ Stream ready: The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB
+2026-11-23T19:12:31.475730569Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] ✅ Resolved in 16.2s — The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB [NinjaCentral]
+2026-11-23T19:12:31.475985092Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] 📦 Container locked: MKV (from primary #2, videoPath: /complete/kaijuflow/The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB.mkv)
+2026-11-23T19:12:31.476017220Z 👑 Ultimate-Fallback [c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1] 📦 No more grabs: only the Source being played is prepared — draining; free library hits still captured
+2026-11-23T19:12:31.483055838Z 👑 Lobby: serving Ultimate-Fallback result for c309076c-9dcd-4ba3-bd6d-cae75b6148bc:series:tt5180504:1:1
+2026-11-23T19:12:31.483075729Z 👑 Best plays: The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB
+2026-11-23T19:12:31.483080668Z   📡 Dual-Stage Proxy 302 streaming: /complete/kaijuflow/The Witcher S01E01 The Ends Beginning 2160p NF WEB-DL DD 5 1 Atmos DoVi HDR H 265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB/The_Witcher_S01E01_The_Ends_Beginning_2160p_NF_WEB-DL_DD_5_1_Atmos_DoVi_HDR_H_265-playWEB.mkv (7.8 GB)
+2026-11-23T19:12:31.496705997Z   📊 Streaming : 7 requests, 0 disconnects in last 30s
+2026-11-23T19:12:17.295291068Z   [31d9d1ed623242d8db809aa98] ⚠️ Archive inspection failed (Newshosting): Article not found: 430 No Such Article
+

@@ -1,0 +1,56 @@
+---
+id: no-extension-file-passed
+title: A file with no extension passed the health check, and AltMount accepts only listed extensions.
+kind: check miss
+step: play_check
+whose: KaijuFlow
+status: open
+match:
+  - rules: 1
+    sign: "check miss | import_wait not ok | *does not match allowed extensions*"
+  - rules: 1
+    sign: "fallback | import_wait not ok | *does not match allowed extensions*"
+confirm:
+  - clue: check-passed-source
+    answer: yes
+  - clue: nzb-file-without-extension
+    answer: yes
+  - clue: altmount-extension-refused
+    answer: yes
+fix: none yet
+seen:
+  - check: 2026-11-23T183239Z-baseline-218
+    title: The Witcher S01E01
+    play: cold 1 (a backup prepare, AltMount queue item 27)
+    date: 2026-11-23
+---
+
+## What the viewer saw
+
+Nothing that time: it was a backup prepare beside a play that had already started. Had it been the played Source, a fallback or a fail.
+
+## Signs
+
+- KaijuFlow's log: `{"step":"play_check",...,"title":"The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested","status":"verified"}`, then `📦 #5 Backup match (MKV)` and `❌ Failed: AltMount could not process the Source: ... "message":"file 'The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.H…`.
+- AltMount's log: `level=WARN msg="File does not match allowed extensions" filename=The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested`, then `Processing failed ... error="file '...' does not match allowed extensions (allowed: [.mkv ...])"`.
+
+## Cause
+
+The NZB's one file is named like the release, with no extension. The check passed it as video; AltMount accepts only listed extensions. ADR 0009 says an NZB with no file the check can name is blocked, so the check's naming rule seems to accept this name.
+
+## How it was proved
+
+The refusal is proved by both logs. Why the check passed it is suspected only, from the `verified` status (the check's code was not read). The confirming test is the recipe in `confirm`: the check passed the Source, its NZB's file has no extension, and AltMount refused the extension. Its Clues are not built yet.
+
+## Ruled out
+
+- 2026-11-24 (#283): *the NZB's file has no extension*, as the NZB gives it. The recorded NZB of this release (recording `kf-189`, `ninjacentral/84604e3baa8c….body`) holds 9 files; its video is `3YuT.mkv` (1872 segments, named in the subject's quotes), the others `The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested.vol-01.par2` and the like. AltMount's refusal names the file `The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested`, with no extension, so that name came from elsewhere (the subject's release name, or the PAR2 set's file names; not checked). The Clue `nzb-file-without-extension` is not built: on this NZB it would answer no, so the cause needs another look (a Case log, #285) before its recipe can prove it.
+
+## Fix
+
+None yet; no ticket names it. The backup prepare that reached it was removed by #192, so it can only hurt now if such a Source is played.
+
+## History
+
+- 2026-11-24: converted from the casebook sweep (draft A12); it was new in that sweep. It is not counted in that run's fallbacks.
+- 2026-11-24: the recorded NZB checked by hand (#283): its video file is `3YuT.mkv`; see Ruled out. Its Clues check-passed-source and altmount-extension-refused are built; nzb-file-without-extension is not, so a look-alike is *suspected*.

@@ -5,6 +5,8 @@
  * `docker logs`: the tag `[KF-STEP] ` followed by a single-line JSON object.
  * Fields: step, source, ms, ok, t (end time, ISO), then ref / title / extras.
  * Lines never carry URLs or keys: callers pass names and numbers only.
+ * The dev switch (#280, the `devDiagnostics` setting, off in a release): with it on, every line ends with `dev: true`,
+ * and diagnostic lines and fields are written only while `devSwitchOn()`; with it off, the lines are exactly a release's.
  * Format reference: the "Step lines" section of tools/brain/README.md.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -15,6 +17,8 @@ export const STEP_NAMES = [
   'indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed',
   // The stream list's own steps (#249): the whole request (`list`, with the process trace), then its parts.
   'list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start',
+  // Kaiju Search's lines, dev switch only (#285): one per indexer and way of asking, and one when strict alone leaves nothing.
+  'search',
 ] as const;
 export type StepName = (typeof STEP_NAMES)[number];
 
@@ -30,6 +34,18 @@ export interface StepFields {
 
 const refStore = new AsyncLocalStorage<string>();
 
+let devSwitch: () => boolean = () => false;
+
+/** Read the dev switch through `read` (config/index.ts binds the setting); off until it is bound. */
+export function bindDevSwitch(read: () => boolean): void {
+  devSwitch = read;
+}
+
+/** Whether the dev switch is on: every diagnostic line and field goes behind it (#280). */
+export function devSwitchOn(): boolean {
+  return devSwitch() === true;
+}
+
 /** Run `fn` with a request reference (the Stremio id) added to every step line inside it. */
 export function withStepRef<T>(ref: string, fn: () => T): T {
   return refStore.run(ref, fn);
@@ -40,6 +56,7 @@ export function logStep(fields: StepFields & { ms: number }): void {
   const { step, source, ms, ok = true, title, ...extra } = fields;
   const ref = refStore.getStore();
   const rec: Record<string, unknown> = { step, source, ms: Math.round(ms), ok, t: new Date().toISOString(), ref, title, ...extra };
+  if (devSwitchOn()) rec.dev = true;
   console.log(`${STEP_LOG_TAG} ${JSON.stringify(rec)}`);
 }
 
@@ -76,8 +93,11 @@ export function timeStepSync<T>(fields: StepFields, fn: () => T, after?: (result
  * a Source failed for the play, with KaijuFlow's reason. The brain tools learn a visit's top pick and why it failed
  * only from these lines (brainreport.read_play), so the console lines beside them can be reworded freely.
  */
-export function logPlayed(title: string, source: string | undefined): void {
-  logStep({ step: 'played', source: source || undefined, title, ms: 0 });
+export function logPlayed(title: string, source: string | undefined, dev: { flow?: string; proof?: string; video?: string } = {}): void {
+  // With the dev switch on (#280), Search Flow's mark of the Source played and the name of its video file (#286): the
+  // quick check reads them to offer an allowed word.
+  const extra = devSwitchOn() ? Object.fromEntries(Object.entries(dev).filter(([, v]) => v)) : {};
+  logStep({ step: 'played', source: source || undefined, title, ms: 0, ...extra });
 }
 
 export function logPlayFailed(title: string, source: string | undefined, err: unknown): void {

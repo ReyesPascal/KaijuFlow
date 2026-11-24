@@ -48,6 +48,9 @@ export const config: Config = {
   get addonEnabled() {
     return configData.addonEnabled !== false;
   },
+  get devDiagnostics() {
+    return configData.devDiagnostics === true;
+  },
   get indexers() {
     return configData.indexers;
   },
@@ -141,11 +144,6 @@ export const config: Config = {
       ...(junkFilterEnv !== undefined && { junkFilter: junkFilterEnv }),
       ...(cacheEmptyResultsEnv !== undefined && { cacheEmptyResults: cacheEmptyResultsEnv }),
     };
-  },
-  get useTextSearch() {
-    // Backward compat: derive from searchConfig
-    const sc = configData.searchConfig;
-    return sc ? (sc.movieSearchMethod === 'text' || sc.tvSearchMethod === 'text') : (configData.useTextSearch || false);
   },
   get includeSeasonPacks() {
     return configData.searchConfig?.includeSeasonPacks ?? configData.includeSeasonPacks ?? true;

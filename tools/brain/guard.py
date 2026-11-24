@@ -10,6 +10,8 @@ config folders live; a search from a folder holding it (`grep -r x ~`, `find / -
 the call's `cwd` and the `cd`s before it on the line. Merely naming a key file or `uu/config` is allowed
 (`grep limits.json tools/brain/docs/formats.md`), and so are `ls`, `cd`, `du`, `df`, `stat`, `mkdir` on the test
 folder or a folder holding it.
+One narrow exception (#280): AltMount's failed NZBs, `altmount-kf/config/.nzbs/failed/**/<name>.nzb` (and `ls`/`stat` of
+that folder), may be read, as the given path and with links resolved; the rest of that config folder stays refused.
 Allowed: the brain tools (`tools/brain/*.py|sh`, `npm run check:brain`: runs, preflights, applying expected settings
 and `testbed.py read-settings`, the settings with secrets as ***) and every unrelated command. A command line is cut at
 `;`, `&&`, `||`, `|`, `$(` and backticks; each piece is judged alone, so a brain tool does not excuse a read chained
@@ -39,6 +41,9 @@ REDIRECT = re.compile(r'^\d*[<>]+&?')
 OPEN_FOLDER = {'ls', 'cd', 'du', 'df', 'stat', 'mkdir'}  # commands that name a folder without reading a file in it
 SEARCH = {'find', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'tree', 'tar', 'zip', 'rsync', 'cp'}  # a bare `/` counts for these only
 SAFE_SUBFOLDERS = ('store', 'backups')
+# The one narrow exception inside a test copy's config folder (#280, spec #279): the NZBs AltMount moves there when an
+# import fails (`/config/.nzbs/failed/<category>/<release>.nzb` in its container), kept as evidence. They hold no key.
+FAILED_NZBS = ('altmount-kf', 'config', '.nzbs', 'failed')
 
 SETTINGS_HINT = ('use `python3 -I tools/brain/testbed.py read-settings [side]`, which prints every test copy\'s settings '
                  'with secrets as ***; runs and preflights go through tools/brain/brainrun.py')
@@ -59,15 +64,30 @@ def _resolve(value, cwd):
     return os.path.normpath(os.path.join(cwd, os.path.expandvars(os.path.expanduser(value))))
 
 
-def _place(path):
-    """'secret' (inside the test folder, outside store/ and backups/), 'folder' (the test folder or one holding it) or None."""
+def failed_nzb(rel, folder_ok=False):
+    """Whether `rel`, a path inside the test folder, is one of AltMount's failed NZBs (#280): a `.nzb` file under
+    FAILED_NZBS, or, when `folder_ok` (a command that only names a folder: ls, stat), that folder or one under it."""
+    parts = os.path.normpath(rel).split(os.sep)
+    if tuple(parts[:len(FAILED_NZBS)]) != FAILED_NZBS or '..' in parts:
+        return False
+    return (len(parts) > len(FAILED_NZBS) and parts[-1].endswith('.nzb')) or folder_ok
+
+
+def _place(path, folder_ok=False):
+    """'secret' (inside the test folder, outside store/ and backups/ and not one of AltMount's failed NZBs), 'folder' (the
+    test folder or one holding it) or None. The path as given and with links resolved must both pass."""
+    places = set()
     for p in {path, os.path.realpath(path)}:
         for d in test_dirs():
             if p.startswith(d + os.sep):
-                return None if p[len(d) + 1:].split(os.sep)[0] in SAFE_SUBFOLDERS else 'secret'
+                rel = p[len(d) + 1:]
+                if rel.split(os.sep)[0] not in SAFE_SUBFOLDERS and not failed_nzb(rel, folder_ok):
+                    places.add('secret')
+                break
             if p == d or d.startswith(p.rstrip(os.sep) + os.sep):
-                return 'folder'
-    return None
+                places.add('folder')
+                break
+    return 'secret' if 'secret' in places else ('folder' if places else None)
 
 
 def _names_test_folder(segment, command):
@@ -81,6 +101,8 @@ def _names_test_folder(segment, command):
     for m in re.finditer('(?:' + '|'.join(spellings) + r')(?![\w.-])', segment):
         tail = segment[m.end():]
         if tail.startswith('/'):
+            if failed_nzb(re.match(r'/([^\s"\';|&<>]*)', tail).group(1), command in OPEN_FOLDER):
+                continue  # one of AltMount's failed NZBs, still judged with its links resolved (_reaches_test_folder)
             if re.match(r'/([^/\s"\']*)', tail).group(1) not in SAFE_SUBFOLDERS:
                 return True
         elif command not in OPEN_FOLDER:  # the folder itself, e.g. `grep -r x ~/kaijuflow-test`
@@ -106,7 +128,7 @@ def _reaches_test_folder(words, cwd):
             continue  # `cut -d /`, `a / b` or a `//` comment line in a heredoc (each heredoc line is judged as a command)
         if not word:
             continue
-        place = _place(_resolve(word, cwd))
+        place = _place(_resolve(word, cwd), command in OPEN_FOLDER)
         if place == 'secret' or (place == 'folder' and command not in OPEN_FOLDER):
             return True
     return False

@@ -15,7 +15,7 @@ let nextImdb = 1000001;
 
 /**
  * Offer movie Sources for a new title, in list order (same quality, sizes going down, so KaijuFlow's sort keeps
- * this order). Each spec: { tag, kind: 'healthy' | 'dead' | 'gone' | 'rejected' | 'never-ready' | 'first-byte-400' | 'scrambled-rar4' | 'disc-image' }
+ * this order). Each spec: { tag, file? (its video file's name, a healthy one's), kind: 'healthy' | 'dead' | 'gone' | 'rejected' | 'never-ready' | 'first-byte-400' | 'scrambled-rar4' | 'disc-image' }
  * ('gone': the indexer answers 404 to every grab of it; 'first-byte-400': AltMount answers 400 to its first byte).
  * Returns { id, sources: [{ tag, title, media }] }.
  */
@@ -25,7 +25,7 @@ function offerMovie({ backend, indexer }, specs) {
     const title = `KaijuFlow.PlayTime.${spec.tag}.2026.2160p.WEB-DL.H265-GRP`;
     const media = mediaFor(spec.tag);
     const kind = spec.kind ?? 'healthy';
-    const link = kind === 'healthy' ? backend.addMovie(spec.tag, title, media)
+    const link = kind === 'healthy' ? backend.addMovie(spec.tag, title, media, spec.file ? { file: spec.file } : {})
       : kind === 'dead' ? backend.addMovie(spec.tag, title, media, { dead: true })
       : kind === 'gone' ? backend.addGone(spec.tag)
       : kind === 'rejected' ? backend.addRejected(spec.tag, title)
@@ -754,6 +754,51 @@ export const playTimeScenarios = [
           w.news.slow('order-slow-', 0);
         }
       });
+    },
+  },
+  {
+    // Search Flow (#282): Best tries the sure Sources (the strict name rule passes them) before the maybe ones. The
+    // maybe stays in the list, above the sure one where the sort puts it (`CE` between the name and the year is no
+    // tag the strict rule allows; the indexer found it by ID, which no name rule drops); Best plays the sure one.
+    id: 'best-tries-a-sure-source-before-a-maybe-above-it',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'flow-sure-CE' }, { tag: 'flow-sure' }]);
+      w.cinemeta.add(id, { name: 'KaijuFlow PlayTime flow-sure', year: '2026' });
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      assert.equal(streams.slice(1).map(entryTitle).join(' | '), sources.map(s => s.title).join(' | '), 'both Sources listed, the maybe on top');
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the sure Source');
+      assert.equal(w.backend.submitted[before], 'flow-sure', 'the sure Source is the first AltMount gets');
+    },
+  },
+  {
+    // Search Flow's extra proof (#286): the video file name inside a maybe's NZB, read when the Play-time check fetches
+    // it, makes the maybe sure. The maybe (`CE` between the name and the year; found by ID) holds a video file whose
+    // name fits the title; with the dev switch on, the played line says it was made sure by it and names the file.
+    id: 'a-maybe-whose-nzb-video-file-fits-is-sure',
+    async run(w) {
+      const file = 'KaijuFlow.PlayTime.flow-proof.2026.2160p.WEB-DL.H265-GRP.mkv';
+      const { id, sources } = offerMovie(w, [{ tag: 'flow-proof-CE', file }]);
+      w.cinemeta.add(id, { name: 'KaijuFlow PlayTime flow-proof', year: '2026' });
+      const saved = w.configData.devDiagnostics;
+      w.configData.devDiagnostics = true;
+      try {
+        const { result: r, lines } = await withLogs(async lines => {
+          const streams = await w.list('movie', id);
+          await bestDone(lines, id);
+          return play(streams[0].url);
+        });
+        assert.equal(r.status, 200, 'Best plays');
+        assertBytes(r.body, sources[0].media, 'Best plays the maybe');
+        const steps = stepsOf(lines);
+        assert.deepEqual(steps.filter(s => s.step === 'play_check' && s.title === sources[0].title).map(s => s.video), [file], 'the check names the NZB\'s video file');
+        assert.deepEqual(steps.filter(s => s.step === 'played').map(s => [s.title, s.flow, s.proof, s.video]),
+          [[sources[0].title, 'sure', 'nzb video', file]], 'played: sure by the NZB\'s video file');
+      } finally {
+        w.configData.devDiagnostics = saved;
+      }
     },
   },
   {

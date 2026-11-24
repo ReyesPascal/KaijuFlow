@@ -20,8 +20,11 @@ import './migrations.js';
 export { config, getTvRemakeFiltering, getTvAllowMultiEpisode } from './accessors.js';
 import { config as loadedConfig } from './accessors.js';
 import { bindHealthCheckConnectionCap } from '../health/nntpConnection.js';
+import { bindDevSwitch } from '../utils/stepTiming.js';
 // Every health-check connection (a Play-time check's, Unscramble's) follows the connection cap setting.
 bindHealthCheckConnectionCap(() => loadedConfig.healthChecks?.maxTotalConnections);
+// Every step line follows the dev switch (#280): with it on, each line says so.
+bindDevSwitch(() => loadedConfig.devDiagnostics);
 
 // 4. Indexer CRUD
 export { getIndexers, addIndexer, updateIndexer, deleteIndexer, reorderIndexers, reorderSyncedIndexers } from './indexerCrud.js';

@@ -5,9 +5,10 @@ import { useEffect, useRef } from 'react';
 import { Plus, X, Eye, EyeOff, Settings, Search, CheckCircle, XCircle, Save } from 'lucide-react';
 import clsx from 'clsx';
 import indexerPresets from '../../indexerPresets.json';
-import type { IndexerCaps, IndexerPreset, NewIndexerForm } from '../../types';
+import type { IndexerPreset, NewIndexerForm } from '../../types';
 import { normalizeNewznabUrl } from '../../utils/normalizeNewznabUrl';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../../constants';
+import { KaijuSearchWays } from '../shared/KaijuSearchWays';
 
 const INDEXER_PRESETS: IndexerPreset[] = indexerPresets;
 
@@ -28,11 +29,6 @@ interface AddIndexerModalProps {
   setTestQuery: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   handlePresetChange: (presetName: string) => void;
   discoverCaps: (url: string, apiKey: string, target: 'new' | 'edit') => void;
-  getAvailableMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableAnimeMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableAnimeTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  renderMethodLabel: (m: { value: string; label: string }) => React.ReactNode;
   handleTestIndexer: (indexerName: string) => void;
   handleAddIndexer: () => void;
 }
@@ -54,11 +50,6 @@ export function AddIndexerModal({
   setTestQuery,
   handlePresetChange,
   discoverCaps,
-  getAvailableMovieMethods,
-  getAvailableTvMethods,
-  getAvailableAnimeMovieMethods,
-  getAvailableAnimeTvMethods,
-  renderMethodLabel,
   handleTestIndexer,
   handleAddIndexer,
 }: AddIndexerModalProps) {
@@ -78,7 +69,7 @@ export function AddIndexerModal({
   return (
     <div className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => {
       onClose();
-      setNewIndexer({ name: '', url: '', apiKey: '', website: '', logo: '', movieSearchMethod: ['text'], tvSearchMethod: ['text'], animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'], caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS });
+      setNewIndexer({ name: '', url: '', apiKey: '', website: '', logo: '', caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS });
       setSelectedPreset('');
       setTestResults(prev => { const next = { ...prev }; delete next['__new__']; return next; });
       setTestQuery(prev => { const next = { ...prev }; delete next['__new__']; return next; });
@@ -93,7 +84,7 @@ export function AddIndexerModal({
             <button
               onClick={() => {
                 onClose();
-                setNewIndexer({ name: '', url: '', apiKey: '', website: '', logo: '', movieSearchMethod: ['text'], tvSearchMethod: ['text'], animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'], caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS });
+                setNewIndexer({ name: '', url: '', apiKey: '', website: '', logo: '', caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS });
                 setSelectedPreset('');
                 setTestResults(prev => { const next = { ...prev }; delete next['__new__']; return next; });
                 setTestQuery(prev => { const next = { ...prev }; delete next['__new__']; return next; });
@@ -192,11 +183,11 @@ export function AddIndexerModal({
             </div>
           </div>
 
-          {/* Search Method (per-indexer, shown after URL + API key entered) */}
+          {/* Kaiju Search (#285): what it is asked by, shown after URL + API key entered */}
           {newIndexer.url && newIndexer.apiKey && (
             <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-slate-300">Search Method</div>
+                <div className="text-sm font-medium text-slate-300">Search</div>
                 <button
                   onClick={() => discoverCaps(newIndexer.url, newIndexer.apiKey, 'new')}
                   disabled={capsLoading === 'new'}
@@ -206,97 +197,14 @@ export function AddIndexerModal({
                 </button>
               </div>
               {!newIndexer.caps && capsLoading !== 'new' && (
-                <p className="text-xs text-slate-500">Click "Discover Capabilities" to detect supported search methods, or select manually.</p>
+                <p className="text-xs text-slate-500">Click "Discover Capabilities" to detect the IDs it can be searched by.</p>
               )}
               {newIndexer.caps && (
                 <p className="text-xs text-green-400/70">
-                  Capabilities discovered: Movie [{newIndexer.caps.movieSearchParams.join(', ')}] TV [{newIndexer.caps.tvSearchParams.join(', ')}]
+                  Capabilities discovered: Movie [{newIndexer.caps.movieSearchParams?.join(', ') ?? 'unknown'}] TV [{newIndexer.caps.tvSearchParams?.join(', ') ?? 'unknown'}]
                 </p>
               )}
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Movies</label>
-                <div className="flex flex-wrap gap-3">
-                  {getAvailableMovieMethods(newIndexer.caps).map(m => (
-                    <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newIndexer.movieSearchMethod.includes(m.value)}
-                        onChange={(e) => setNewIndexer(prev => {
-                          const updated = e.target.checked
-                            ? [...prev.movieSearchMethod, m.value]
-                            : prev.movieSearchMethod.filter(v => v !== m.value);
-                          return { ...prev, movieSearchMethod: updated.length > 0 ? updated : prev.movieSearchMethod };
-                        })}
-                        className="accent-blue-500"
-                      />
-                      {renderMethodLabel(m)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">TV Shows</label>
-                <div className="flex flex-wrap gap-3">
-                  {getAvailableTvMethods(newIndexer.caps).map(m => (
-                    <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newIndexer.tvSearchMethod.includes(m.value)}
-                        onChange={(e) => setNewIndexer(prev => {
-                          const updated = e.target.checked
-                            ? [...prev.tvSearchMethod, m.value]
-                            : prev.tvSearchMethod.filter(v => v !== m.value);
-                          return { ...prev, tvSearchMethod: updated.length > 0 ? updated : prev.tvSearchMethod };
-                        })}
-                        className="accent-blue-500"
-                      />
-                      {renderMethodLabel(m)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Anime Movies</label>
-                <div className="flex flex-wrap gap-3">
-                  {getAvailableAnimeMovieMethods(newIndexer.caps).map(m => (
-                    <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newIndexer.animeMovieSearchMethod.includes(m.value)}
-                        onChange={(e) => setNewIndexer(prev => {
-                          const updated = e.target.checked
-                            ? [...prev.animeMovieSearchMethod, m.value]
-                            : prev.animeMovieSearchMethod.filter(v => v !== m.value);
-                          return { ...prev, animeMovieSearchMethod: updated.length > 0 ? updated : prev.animeMovieSearchMethod };
-                        })}
-                        className="accent-blue-500"
-                      />
-                      {renderMethodLabel(m)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Anime TV Shows</label>
-                <div className="flex flex-wrap gap-3">
-                  {getAvailableAnimeTvMethods(newIndexer.caps).map(m => (
-                    <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newIndexer.animeTvSearchMethod.includes(m.value)}
-                        onChange={(e) => setNewIndexer(prev => {
-                          const updated = e.target.checked
-                            ? [...prev.animeTvSearchMethod, m.value]
-                            : prev.animeTvSearchMethod.filter(v => v !== m.value);
-                          return { ...prev, animeTvSearchMethod: updated.length > 0 ? updated : prev.animeTvSearchMethod };
-                        })}
-                        className="accent-blue-500"
-                      />
-                      {renderMethodLabel(m)}
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <KaijuSearchWays caps={newIndexer.caps} />
             </div>
           )}
 

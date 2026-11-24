@@ -1,0 +1,765 @@
+{
+  "generated_by": "python3 -I tools/brain/casebook.py index, from the entry files; never edit by hand",
+  "entries": [
+    {
+      "id": "altmount-heap-pressure",
+      "file": "altmount-heap-pressure.md",
+      "title": "AltMount warns its live heap is pressing on its Go memory limit; no play has been tied to it.",
+      "kind": "slow play",
+      "step": "import_wait",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in import_wait*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "altmount-heap-warning",
+          "answer": "yes"
+        },
+        {
+          "clue": "import-wait-long",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 2,
+      "first_seen": "2026-11-20",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "bare-disc-image-passed",
+      "file": "bare-disc-image-passed.md",
+      "title": "A bare disc image passed the health check, and AltMount does not play disc images.",
+      "kind": "check miss",
+      "step": "health_batch",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *no files with allowed extensions found*"
+        },
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *no files with allowed extensions found*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "check-passed-source",
+          "answer": "yes"
+        },
+        {
+          "clue": "nzb-largest-file-disc-image",
+          "answer": "yes"
+        },
+        {
+          "clue": "altmount-no-allowed-extension",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 2,
+      "first_seen": "2026-11-13",
+      "last_seen": "2026-11-13"
+    },
+    {
+      "id": "busy-machine",
+      "file": "busy-machine.md",
+      "title": "A busy machine (agents building beside the run) slowed the cold lists.",
+      "kind": "slow play",
+      "step": "list",
+      "whose": "test-only",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "machine-busy-at-start",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 1,
+      "first_seen": "2026-11-21",
+      "last_seen": "2026-11-21"
+    },
+    {
+      "id": "compressed-7z-passed",
+      "file": "compressed-7z-passed.md",
+      "title": "A compressed 7z passed the health check as playable, and AltMount streams only stored 7z.",
+      "kind": "check miss",
+      "step": "health_batch",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *Only uncompressed files are supported*"
+        },
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *Only uncompressed files are supported*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 2,
+      "first_seen": "2026-11-15",
+      "last_seen": "2026-11-15"
+    },
+    {
+      "id": "eeaao-slow-start",
+      "file": "eeaao-slow-start.md",
+      "title": "Everything Everywhere All at Once starts slowly, with no fallback, and nobody knows why.",
+      "kind": "slow play",
+      "step": "play_check",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in play_check*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "play-check-slow-blocked",
+          "answer": "yes"
+        },
+        {
+          "clue": "import-wait-long",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 4,
+      "first_seen": "2026-11-23",
+      "last_seen": "2026-11-24"
+    },
+    {
+      "id": "first-title-after-reset-swings",
+      "file": "first-title-after-reset-swings.md",
+      "title": "The first title after a reset swings between 9 and 14 s on an idle machine.",
+      "kind": "slow play",
+      "step": "list",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "first-visit-after-reset",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 1,
+      "first_seen": "2026-11-21",
+      "last_seen": "2026-11-21"
+    },
+    {
+      "id": "ghost-in-the-shell-no-sources",
+      "file": "ghost-in-the-shell-no-sources.md",
+      "title": "Ghost in the Shell has no Sources in any pass, and it is not known whether one exists.",
+      "kind": "nothing to play",
+      "step": "indexer_page",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "nothing to play | indexer_page ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "search-year-differs-from-id",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 3,
+      "first_seen": "2026-11-24",
+      "last_seen": "2026-11-24"
+    },
+    {
+      "id": "grab-429-dead-mark",
+      "file": "grab-429-dead-mark.md",
+      "title": "An indexer's 429 on the NZB grab marked a good Source dead for ever.",
+      "kind": "fail",
+      "step": "nzb_fetch",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "fail | nzb_fetch not ok | *429*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 1,
+      "first_seen": "2026-11-09",
+      "last_seen": "2026-11-09"
+    },
+    {
+      "id": "head-start-ran-on",
+      "file": "head-start-ran-on.md",
+      "title": "A Head start's work ran on into the next title and shared its connections.",
+      "kind": "slow play",
+      "step": "head_start",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in play_check*"
+        },
+        {
+          "rules": 1,
+          "sign": "fallback | import_wait not ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "other-title-steps-in-visit",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 1,
+      "first_seen": "2026-11-23",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "health-check-before-list",
+      "file": "health-check-before-list.md",
+      "title": "The health check ran before the list was sent, so cold lists were slow.",
+      "kind": "slow play",
+      "step": "health_batch",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "health-batch-inside-list",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 4,
+      "first_seen": "2026-11-10",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "indexer-download-limit",
+      "file": "indexer-download-limit.md",
+      "title": "An indexer at its download limit refused the NZB of a good Source.",
+      "kind": "fail",
+      "step": "nzb_fetch",
+      "whose": "indexer",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "fail | nzb_fetch not ok | *limit reached*"
+        },
+        {
+          "rules": 1,
+          "sign": "fallback | nzb_fetch not ok | *limit reached*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 6,
+      "first_seen": "2026-11-09",
+      "last_seen": "2026-11-09"
+    },
+    {
+      "id": "laptop-on-battery",
+      "file": "laptop-on-battery.md",
+      "title": "The laptop ran on battery, so KaijuFlow's own list work ran at a slow CPU's pace.",
+      "kind": "slow play",
+      "step": "list",
+      "whose": "test-only",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "machine-on-battery",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 2,
+      "first_seen": "2026-11-24",
+      "last_seen": "2026-11-24"
+    },
+    {
+      "id": "large-release-slow-import",
+      "file": "large-release-slow-import.md",
+      "title": "A large release took AltMount a long time to import while its news connections died.",
+      "kind": "slow play",
+      "step": "import_wait",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in import_wait*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "import-wait-long",
+          "answer": "yes"
+        },
+        {
+          "clue": "altmount-connection-died",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 2,
+      "first_seen": "2026-11-13",
+      "last_seen": "2026-11-13"
+    },
+    {
+      "id": "martian-refused-2026-11-09",
+      "file": "martian-refused-2026-11-09.md",
+      "title": "A Martian release was refused by AltMount on 2026-11-09, and why was not recorded.",
+      "kind": "check miss",
+      "step": "import_wait",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *all files failed validation*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 1,
+      "first_seen": "2026-11-09",
+      "last_seen": "2026-11-09"
+    },
+    {
+      "id": "mkv-name-folder-first-byte",
+      "file": "mkv-name-folder-first-byte.md",
+      "title": "A release name ending in .mkv made AltMount store a folder, and the first byte was refused.",
+      "kind": "fail",
+      "step": "first_byte",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "fail | first_byte not ok | *400*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 2,
+      "first_seen": "2026-11-10",
+      "last_seen": "2026-11-10"
+    },
+    {
+      "id": "no-extension-file-passed",
+      "file": "no-extension-file-passed.md",
+      "title": "A file with no extension passed the health check, and AltMount accepts only listed extensions.",
+      "kind": "check miss",
+      "step": "play_check",
+      "whose": "KaijuFlow",
+      "status": "open",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *does not match allowed extensions*"
+        },
+        {
+          "rules": 1,
+          "sign": "fallback | import_wait not ok | *does not match allowed extensions*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "check-passed-source",
+          "answer": "yes"
+        },
+        {
+          "clue": "nzb-file-without-extension",
+          "answer": "yes"
+        },
+        {
+          "clue": "altmount-extension-refused",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 1,
+      "first_seen": "2026-11-23",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "recording-missing-requests",
+      "file": "recording-missing-requests.md",
+      "title": "The Recording did not hold what KaijuFlow asked for, so the replay answered \"not recorded\".",
+      "kind": "fail",
+      "step": "nzb_fetch",
+      "whose": "test-only",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "fail | nzb_fetch not ok | *"
+        },
+        {
+          "rules": 1,
+          "sign": "nothing to play | indexer_page ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "standin-miss-for-visit",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 8,
+      "first_seen": "2026-11-10",
+      "last_seen": "2026-11-24"
+    },
+    {
+      "id": "run-played-wrong-title-list",
+      "file": "run-played-wrong-title-list.md",
+      "title": "A run was started without its title list, so it played titles its Recording does not hold.",
+      "kind": "nothing to play",
+      "step": "indexer_page",
+      "whose": "test-only",
+      "status": "open",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "nothing to play | indexer_page ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "titles-not-in-recording",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 1,
+      "first_seen": "2026-11-24",
+      "last_seen": "2026-11-24"
+    },
+    {
+      "id": "scrambled-rar-name-order",
+      "file": "scrambled-rar-name-order.md",
+      "title": "A Scrambled RAR set was sent to AltMount in name order, which is not its volume order.",
+      "kind": "fail",
+      "step": "import_wait",
+      "whose": "AltMount",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *all files failed validation*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 1,
+      "first_seen": "2026-11-09",
+      "last_seen": "2026-11-09"
+    },
+    {
+      "id": "scrambled-rar4-set",
+      "file": "scrambled-rar4-set.md",
+      "title": "A Scrambled RAR4 set went up out of order, because Unscramble reads RAR5 only.",
+      "kind": "fail",
+      "step": "unscramble",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *all files failed validation*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 1,
+      "first_seen": "2026-11-15",
+      "last_seen": "2026-11-15"
+    },
+    {
+      "id": "several-sources-prepared",
+      "file": "several-sources-prepared.md",
+      "title": "Auto-queue prepared several Sources at once, so prepares competed for connections and import slots.",
+      "kind": "slow play",
+      "step": "import_wait",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in import_wait*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "several-sources-prepared",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 2,
+      "first_seen": "2026-11-15",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "unchecked-dead-season-pack",
+      "file": "unchecked-dead-season-pack.md",
+      "title": "A dead season pack reached AltMount without a check (an Unchecked Source).",
+      "kind": "fail",
+      "step": "health_batch",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *fast-fail segment check failed*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "played-source-unchecked",
+          "answer": "yes"
+        },
+        {
+          "clue": "altmount-fast-fail-refused",
+          "answer": "yes"
+        },
+        {
+          "clue": "articles-missing",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 4,
+      "first_seen": "2026-11-20",
+      "last_seen": "2026-11-21"
+    },
+    {
+      "id": "unscramble-not-rar5-slow",
+      "file": "unscramble-not-rar5-slow.md",
+      "title": "Finding out a set needs no Unscramble cost a second of reading articles.",
+      "kind": "slow play",
+      "step": "unscramble",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in unscramble*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "unscramble-not-rar5-slow",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 3,
+      "first_seen": "2026-11-09",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "unscramble-read-cause-unknown",
+      "file": "unscramble-read-cause-unknown.md",
+      "title": "Why Unscramble's first-article reads fail is not known.",
+      "kind": "fallback",
+      "step": "unscramble",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *all files failed validation*"
+        },
+        {
+          "rules": 1,
+          "sign": "fallback | import_wait not ok | *all files failed validation*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "unscramble-read-error",
+          "answer": "yes"
+        },
+        {
+          "clue": "provider-read-failed",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 3,
+      "first_seen": "2026-11-21",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "unscramble-read-error",
+      "file": "unscramble-read-error.md",
+      "title": "Unscramble could not read a Scrambled RAR set, so the scrambled original went up and AltMount refused it.",
+      "kind": "fallback",
+      "step": "unscramble",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *all files failed validation*"
+        },
+        {
+          "rules": 1,
+          "sign": "fallback | import_wait not ok | *all files failed validation*"
+        },
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *all files failed validation*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "unscramble-read-error",
+          "answer": "yes"
+        },
+        {
+          "clue": "original-uploaded-after-unscramble",
+          "answer": "yes"
+        },
+        {
+          "clue": "altmount-missing-volumes",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 7,
+      "first_seen": "2026-11-21",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "unscramble-timeout-shared-connections",
+      "file": "unscramble-timeout-shared-connections.md",
+      "title": "Unscramble ran out of its 15 s because several Sources were prepared at once.",
+      "kind": "fail",
+      "step": "unscramble",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *all files failed validation*"
+        },
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *all files failed validation*"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "unscramble-timeout",
+          "answer": "yes"
+        },
+        {
+          "clue": "unscrambles-overlap",
+          "answer": "yes"
+        },
+        {
+          "clue": "altmount-missing-volumes",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 3,
+      "first_seen": "2026-11-13",
+      "last_seen": "2026-11-13"
+    },
+    {
+      "id": "walk-grabbed-down-the-list",
+      "file": "walk-grabbed-down-the-list.md",
+      "title": "After one failed grab the Walk grabbed far down the list, doubling with each failure.",
+      "kind": "slow play",
+      "step": "nzb_fetch",
+      "whose": "KaijuFlow",
+      "status": "fixed awaiting proof",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *most time in nzb_fetch*"
+        },
+        {
+          "rules": 1,
+          "sign": "fallback | nzb_fetch not ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "walk-grabs-over-cap",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 3,
+      "first_seen": "2026-11-23",
+      "last_seen": "2026-11-23"
+    },
+    {
+      "id": "warm-lists-slow-2026-11-13",
+      "file": "warm-lists-slow-2026-11-13.md",
+      "title": "Warm lists were as slow as cold ones on 2026-11-13, on KaijuFlow and Usenet Ultimate.",
+      "kind": "slow play",
+      "step": "health_batch",
+      "whose": "unknown",
+      "status": "open",
+      "match": [
+        {
+          "rules": 2,
+          "sign": "slow play | first_byte ok | *"
+        }
+      ],
+      "confirm": [
+        {
+          "clue": "health-batch-inside-list",
+          "answer": "yes"
+        }
+      ],
+      "occurrences": 3,
+      "first_seen": "2026-11-13",
+      "last_seen": "2026-11-13"
+    },
+    {
+      "id": "zero-size-season-pack-passed",
+      "file": "zero-size-season-pack-passed.md",
+      "title": "A season pack whose NZB sums to zero size passed the health check, and AltMount refused it.",
+      "kind": "check miss",
+      "step": "health_batch",
+      "whose": "KaijuFlow",
+      "status": "open",
+      "match": [
+        {
+          "rules": 1,
+          "sign": "check miss | import_wait not ok | *total size is zero*"
+        },
+        {
+          "rules": 1,
+          "sign": "fail | import_wait not ok | *total size is zero*"
+        }
+      ],
+      "confirm": "none (no evidence kept)",
+      "occurrences": 1,
+      "first_seen": "2026-11-09",
+      "last_seen": "2026-11-09"
+    }
+  ]
+}

@@ -16,6 +16,7 @@ import brainreport as br
 import brainrun
 import common
 import draw
+import fixing
 import pool
 import quickcheck as qc
 import testbed
@@ -36,6 +37,12 @@ def names():
             'reacher tv', 'inception cobol job', 'oppenheimer real story', 'avatar pandoras box', 'deadpool german', 'witcher us',
             'utopia uk', 'utopia au pack', 'got complete', 'akira special edition']
     return dict(zip(keys, lines))
+
+
+def shared_release_names():
+    """The shared release-name table (tests/fixtures/release-names/table.tsv, #282): one dict per row."""
+    head, *lines = read(HERE, '..', '..', 'tests', 'fixtures', 'release-names', 'table.tsv').rstrip('\n').split('\n')
+    return [dict(zip(head.split('\t'), line.split('\t'))) for line in lines]
 
 
 def read(*parts):
@@ -180,6 +187,16 @@ class RightTitleTest(unittest.TestCase):
                                                    'Married to Her Worst Enemy! S01E01', 'anime', '2024-01-07']),
                          (False, 'the name "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!" is not in it'))
         self.assertTrue(self.ok('7th time loop', ['series', 'tt1:1:1', '7th Time Loop S01E01', 'anime', '2024-01-07'])[0])
+
+    def test_every_row_of_the_shared_release_name_table_gets_its_strict_answer(self):
+        """The table KaijuFlow's Search Flow tests read too (tests/unit/search-flow.test.ts), so the two copies of the
+        rule give the same answers: `strict` is `pass` or the why."""
+        rows = shared_release_names()
+        self.assertGreaterEqual(len(rows), 60)
+        for row in rows:
+            title = [row['type'], 'tt1', row['label'], 'shared-table', row['date']]
+            ok, why = qc.right_title(row['release'], title, row['other'].split('|') if row['other'] else [])
+            self.assertEqual('pass' if ok else why, row['strict'], f"{row['release']} as {row['label']}")
 
     def test_episode_markers_no_recording_holds(self):
         """Invented names: no release in the recordings uses these markers."""
@@ -390,6 +407,63 @@ class ReportTest(unittest.TestCase):
                                                  'check stopped (the cap rule).')
 
 
+
+def table_release(release):
+    """The row of the shared release-name table for this release name."""
+    return next(r for r in shared_release_names() if r['release'] == release)
+
+
+class AllowedWordTest(unittest.TestCase):
+    """A maybe that played the right title offers its odd word as a new allowed word, with that release as proof (#286,
+    spec #279 story 72). The right title is told by the video file KaijuFlow played (its played line's `video`, dev switch
+    on) when the release name does not show it. Real release names from the shared table."""
+
+    PULP = ['movie', 'tt0110912', 'Pulp Fiction', 'popular-film', '1994-09-10']
+    PULP_CE = 'Pulp.Fiction.CE.1994.INTERNAL.DVDRip.XviD-SChiZO'  # `CE` between the name and the year: a maybe
+
+    def played(self, release, video=None, **kw):
+        line = {'step': 'played', 'title': release, 'source': 'NinjaCentral', 't': '2026-11-25T10:00:05.000Z', **kw}
+        return [{**line, 'video': video} if video else line]
+
+    def test_a_maybe_whose_video_file_fits_played_the_right_title_and_offers_its_odd_word_with_the_release(self):
+        self.assertEqual(table_release(self.PULP_CE)['right'], 'yes')
+        video = 'Pulp.Fiction.1994.INTERNAL.DVDRip.XviD-SChiZO.avi'
+        o = qc.judge(visit(title=self.PULP, steps=self.played(self.PULP_CE, video, flow='sure', proof='nzb video')), names=lambda: [])
+        self.assertEqual((o['outcome'], o['why']), ('played', ''))
+        self.assertEqual(o['allowed_word'], {'word': 'ce', 'where': 'between the name and the year', 'release': self.PULP_CE,
+                                             'video': video, 'proof': 'nzb video'})
+
+    def test_without_a_video_file_that_fits_the_maybe_is_the_wrong_title_and_offers_nothing(self):
+        o = qc.judge(visit(title=self.PULP, steps=self.played(self.PULP_CE)), names=lambda: [])
+        self.assertEqual(o['outcome'], 'fail')
+        self.assertIn('the wrong title played: Pulp.Fiction.CE.1994', o['why'])
+        self.assertIsNone(o['allowed_word'])
+        other = qc.judge(visit(title=self.PULP, steps=self.played(self.PULP_CE, 'Jackie.Brown.1997.DVDRip.avi')), names=lambda: [])
+        self.assertEqual((other['outcome'], other['allowed_word']), ('fail', None))
+
+    def test_a_right_release_with_more_than_one_odd_word_offers_none(self):
+        thief = 'Thief.Der.Einzelgaenger.1981.Directors.Cut.German.DL.1080p.BluRay.x264-CONTRiBUTiON'  # another name, not a tag
+        title = ['movie', 'tt0083190', 'Thief', 'rare-film', '1981-03-27']
+        o = qc.judge(visit(title=title, steps=self.played(thief, 'Thief.1981.German.DL.1080p.BluRay.x264-CONTRiBUTiON.mkv')),
+                     names=lambda: [])
+        self.assertEqual((o['outcome'], o['allowed_word']), ('played', None))
+
+    def test_a_release_the_strict_rule_passes_offers_nothing(self):
+        o = qc.judge(visit(steps=step_lines('kaijuflow-best-dead-first.txt')))
+        self.assertIsNone(o['allowed_word'])
+
+    def test_the_offered_word_is_in_the_checks_report_with_its_release(self):
+        offer = {'word': 'ce', 'where': 'between the name and the year', 'release': self.PULP_CE,
+                 'video': 'Pulp.Fiction.1994.INTERNAL.DVDRip.XviD-SChiZO.avi', 'proof': 'nzb video'}
+        text = qc.render_report(check_record(), [outcome('Pulp Fiction', release=self.PULP_CE, allowed_word=offer), outcome('B')])
+        self.assertIn('## Allowed words offered\n\n'
+                      '- `ce` (between the name and the year), offered by Pulp Fiction: Pulp.Fiction.CE.1994.INTERNAL.DVDRip.XviD-SChiZO '
+                      'played the right title (its video file Pulp.Fiction.1994.INTERNAL.DVDRip.XviD-SChiZO.avi fits; KaijuFlow made it '
+                      'sure by: nzb video). Added through normal review: the tag lists of both copies of the strict rule '
+                      '(tools/brain/quickcheck.py, src/parsers/searchFlow.ts) and a row in tests/fixtures/release-names/table.tsv.', text)
+        none = qc.render_report(check_record(), [outcome('A'), outcome('B')])
+        self.assertIn('## Allowed words offered\n\nNone.', none)
+
 # --------------------------------------------------------------------------- the check's run, in a fake world
 
 T0 = datetime.datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
@@ -399,6 +473,9 @@ DRAWN = [['movie', 'tt0000001', 'First Film', 'popular-film', '2020-05-01'],
          ['series', 'tt0000004:1:2', 'New Show S01E02', 'popular-episode', '2025-01-08'],
          ['series', 'tt0000005:2:1', 'Old Show S02E01', 'rare-episode', '2001-09-01']]
 BEST = {'name': 'KaijuFlow', 'title': 'KaijuFlow ▶ Best', 'url': 'http://localhost:1338/u/play/stream/ultimate-fallback?x=1'}
+
+
+ALTMOUNT = {'image': 'ghcr.io/kipsilabs/altmount:v0.4.0', 'id': 'sha256:5e1f'}  # AltMount's test copy (#287)
 
 
 class CheckWorld:
@@ -418,6 +495,28 @@ class CheckWorld:
 
     def takes(self, s):
         self.clock += datetime.timedelta(seconds=s)
+
+    def usenet(self):  # this world has no news server: the live Clues' connection is refused (#284)
+        raise OSError('no news server in this world')
+
+    def start_diagnosing_agent(self, cases, ids, run_dir):  # the agent a check starts on its unproved failures (#287)
+        self.calls.append(('diagnosing agent', list(ids)))
+        return 'herdr agent diag-test'
+
+    def alert(self, line):
+        self.calls.append(('alert', line))
+
+    def tracker(self):  # the issue tracker a check files its fix tickets with (#288): none open, each filing noted
+        world = self
+
+        class Tracker:
+            def find(self, text):
+                return None
+
+            def file(self, title, body):
+                world.calls.append(('file ticket', title))
+                return '#401', None
+        return Tracker()
 
     def now(self):
         return self.clock
@@ -440,6 +539,9 @@ class CheckWorld:
 
     def image_label(self):
         return 'img1'
+
+    def altmount_image(self):
+        return dict(ALTMOUNT)
 
     def draw_titles(self, check, kinds):
         self.calls.append(('draw', check.split(' ')[0], dict(kinds)))
@@ -517,6 +619,18 @@ class CheckWorld:
             raise ValueError('not a test container: ' + container)
         return '\n'.join(line for line in self.log if line[:24] >= since[:24]) if container == brainrun.KF_CONTAINER else ''
 
+    def secret_values(self):
+        return []
+
+    def check_answers(self):  # the check's store holds no answer here (FailedPlayWorld, test_evidence.py, fills one)
+        return None
+
+    def standin_lines(self):
+        return []
+
+    def altmount_file(self, path):
+        return None
+
     def title_names(self, title):
         if title[1] in self.other_names and self.other_names[title[1]] is None:
             raise pool.TmdbError('TMDB answered HTTP 503 to /find/' + title[1])  # as quickcheck.tmdb_names does
@@ -526,7 +640,7 @@ class CheckWorld:
 def check_cfg(case):
     root = tempdir(case)
     return dict(name='quick-check', runs_root=root, test_dir=os.path.join(root, 'td'), indexers=['ninjacentral'], browse_pause=5,
-                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u')
+                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u', cases=os.path.join(tempdir(case), 'cases'))
 
 
 def run_check(cfg, world):
@@ -739,6 +853,11 @@ class RealPartsTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual((seen['name'], seen['ledger'], seen['indexers']),
                          ('quick-check', os.path.join(self.root, 'titles-played.json'), ['drunkenslug', 'ninjacentral']))
+        self.assertFalse(seen['tickets_dry_run'])  # a check files its fix tickets (#288) ...
+        with mock.patch.object(brainrun, 'quick_check_command', side_effect=fake_check):
+            brainrun.main(['check', '--quick', '--test-dir', td, '--runs-root', self.root, '--tickets-dry-run'])
+        self.assertTrue(seen['tickets_dry_run'])  # ... unless it is a dry run
+        self.assertIsInstance(brainrun.RealIO(self.cfg).tracker(), fixing.GitHub)
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             brainrun.main(['check', '--quick', '--run', self.root])
 
@@ -781,10 +900,36 @@ class CheckPreflightTest(unittest.TestCase):
         self.assertNotIn(SECRET, text)
 
     def test_too_little_allowance_left_refuses_a_check(self):
-        self.used(450 - 149)  # 149 downloads left; 5 titles may need 150
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
+        self.used(450 - 149)  # 149 downloads left between the two; 5 titles may need 150
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
-        self.assertIn('ninjacentral has 149 downloads left today, and the check may need 150', text)
+        self.assertIn('The indexers have 149 downloads left today between them (drunkenslug 0, ninjacentral 149), '
+                      'and the check may need 150', text)
+
+    def test_the_walks_grabs_are_shared_so_downloads_count_once_across_the_indexers(self):
+        # owner's pick on #286, 2026-11-24: the Walk grabs at most 30 per title in all, from whichever indexer has the
+        # Source, so two indexers together must hold the check's downloads; neither needs all of them alone
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 100)})
+        self.used(450 - 60)  # ninjacentral 60 left, drunkenslug 100: 160 between them, 150 needed
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        self.assertEqual(code, 0, text)
+
+    def test_searches_still_count_per_indexer(self):
+        # every title is searched on every indexer, so each needs the check's searches itself
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (59, 100)})
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        self.assertEqual(code, 1, text)
+        self.assertIn('drunkenslug has 59 searches left today, and the check may need 60', text)
+
+    def test_a_drill_down_asks_for_one_titles_allowance(self):
+        self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
+        self.used(450 - 30)  # 30 downloads left: one title may need 30, five 150
+        code, text = run_command('check', dict(self.cfg, check_titles=1), FakeWorld(self.cfg))
+        self.assertEqual(code, 0, text)
+        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        self.assertIn('The indexers have 30 downloads left today between them (drunkenslug 0, ninjacentral 30), '
+                      'and the check may need 150', text)
 
     def test_a_missing_limits_file_or_entry_refuses_a_check(self):
         self.limits({'ninjacentral': (2000, 450)})
@@ -796,63 +941,62 @@ class CheckPreflightTest(unittest.TestCase):
         self.assertIn('There is no limits file yet', text)
 
 
-class SearchMethodRuleTest(unittest.TestCase):
-    """The expected settings' rule for every indexer (`indexers[*]`): Ultimate Text Search, the shipped default (#270)."""
+class IndexerRuleTest(unittest.TestCase):
+    """The expected settings' rule for every indexer (`indexers[*]`, #270), tried on a per-indexer setting (`timeout`)."""
 
-    def test_the_committed_file_holds_ultimate_text_search_and_on_search(self):
+    def test_the_committed_file_holds_on_search_and_no_search_method(self):
         wanted = {}
         for entry in brainrun.load_expected_settings():
             wanted.update(entry['settings'])
         self.assertEqual(wanted['ultimateFallback.whenToResolve'], 'on-results')  # "On Search" in the settings UI
-        for kind in ('movie', 'tv', 'animeMovie', 'animeTv'):
-            self.assertEqual(wanted[f'indexers[*].{kind}SearchMethod'], ['text'])
+        self.assertEqual([k for k in wanted if 'SearchMethod' in k], [])  # Kaiju Search has nothing to set (#285)
 
-    def test_an_indexer_on_another_search_method_is_named(self):
-        expected = [{'copies': ['kaijuflow'], 'settings': {'indexers[*].movieSearchMethod': ['text']}}]
-        have = {'kaijuflow': {'indexers[NinjaCentral].name': 'NinjaCentral', 'indexers[NinjaCentral].movieSearchMethod[0]': 'text',
-                              'indexers[altHUB].name': 'altHUB', 'indexers[altHUB].movieSearchMethod[0]': 'imdb'}}
+    def test_an_indexer_with_another_value_is_named(self):
+        expected = [{'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}}]
+        have = {'kaijuflow': {'indexers[NinjaCentral].name': 'NinjaCentral', 'indexers[NinjaCentral].timeout': 15,
+                              'indexers[altHUB].name': 'altHUB', 'indexers[altHUB].timeout': 8}}
         self.assertEqual(brainrun.setting_differences(expected, have), [
-            'KaijuFlow has indexers[altHUB].movieSearchMethod entry 1 set to "imdb", but the expected settings file says "text" '
-            "(the first entry that differs): change the test copy's config, or the file if the copy's value is the intended one."])
-        have['kaijuflow']['indexers[altHUB].movieSearchMethod[0]'] = 'text'
+            'KaijuFlow has indexers[altHUB].timeout set to 8, but the expected settings file says 15'
+            ": change the test copy's config, or the file if the copy's value is the intended one."])
+        have['kaijuflow']['indexers[altHUB].timeout'] = 15
         self.assertEqual(brainrun.setting_differences(expected, have), [])
 
-    def test_the_preflight_refuses_a_copy_whose_indexers_lack_the_search_method(self):
+    def test_the_preflight_refuses_a_copy_whose_indexers_lack_the_setting(self):
         td = make_copies(self)
         cfg = make_cfg(td)
         path = os.path.join(td, 'config', 'config.json')
         with open(path) as f:
             config = json.load(f)
-        del config['indexers'][0]['tvSearchMethod']
+        del config['indexers'][0]['timeout']
         with open(path, 'w') as f:
             json.dump(config, f)
         path = os.path.join(os.path.dirname(td), 'expected-settings.json')
         with open(cfg['expected_settings']) as f:
             data = json.load(f)
-        data['expected'].append({'copies': ['kaijuflow'], 'settings': {'indexers[*].tvSearchMethod': ['text']}})
+        data['expected'].append({'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}})
         with open(path, 'w') as f:
             json.dump(data, f)
         problems = brainrun.preflight('record', cfg, FakeWorld(cfg))
-        self.assertEqual([p.split(',')[0] for p in problems if 'SearchMethod' in p], ['KaijuFlow has no indexers[NinjaCentral].tvSearchMethod setting'])
+        self.assertEqual([p.split(',')[0] for p in problems if '.timeout' in p], ['KaijuFlow has no indexers[NinjaCentral].timeout setting'])
 
-    def test_apply_writes_the_method_into_every_indexer(self):
+    def test_apply_writes_the_setting_into_every_indexer(self):
         td = make_copies(self)
         path = os.path.join(td, 'config', 'config.json')
         with open(path) as f:
             config = json.load(f)
         for ix in config['indexers']:
-            ix.update(tvSearchMethod=['imdb'], movieSearchMethod=['imdb'])
+            ix.update(timeout=8, maxPages=2)
         with open(path, 'w') as f:
             json.dump(config, f)
         expected = os.path.join(os.path.dirname(td), 'e.json')
         with open(expected, 'w') as f:
-            json.dump({'expected': [{'copies': ['kaijuflow'], 'settings': {'indexers[*].tvSearchMethod': ['text']}}]}, f)
+            json.dump({'expected': [{'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}}]}, f)
         lines = testbed.apply_expected(td, 'kaijuflow', expected, stamp='20261125T100000Z')
         self.assertIn('KaijuFlow: 3 settings changed in config/config.json.', lines)
         with open(os.path.join(td, 'config', 'config.json')) as f:
             config = json.load(f)
-        self.assertEqual([ix['tvSearchMethod'] for ix in config['indexers']], [['text']] * 3)
-        self.assertEqual([ix['movieSearchMethod'] for ix in config['indexers']], [['imdb']] * 3)  # nothing else touched
+        self.assertEqual([ix['timeout'] for ix in config['indexers']], [15] * 3)
+        self.assertEqual([ix['maxPages'] for ix in config['indexers']], [2] * 3)  # nothing else touched
         self.assertEqual(testbed.apply_expected(td, 'kaijuflow', expected), [
             'KaijuFlow: nothing changed; config/config.json already holds the expected settings.'])
 

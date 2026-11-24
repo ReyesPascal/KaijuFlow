@@ -4,12 +4,13 @@
 import { useCallback, useEffect } from 'react';
 import { Settings, X, Eye, EyeOff, Search, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
-import type { Config, IndexerCaps, EditIndexerForm } from '../../types';
+import type { Config, EditIndexerForm } from '../../types';
 import { normalizeNewznabUrl } from '../../utils/normalizeNewznabUrl';
 import { useHoldRepeat } from '../../hooks/useHoldRepeat';
 import { TimeoutStepper } from '../shared/TimeoutStepper';
 import { PagesStepper } from '../shared/PagesStepper';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../../constants';
+import { KaijuSearchWays } from '../shared/KaijuSearchWays';
 
 interface EditIndexerModalProps {
   onClose: () => void;
@@ -25,11 +26,6 @@ interface EditIndexerModalProps {
   testQuery: Record<string, string>;
   setTestQuery: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   discoverCaps: (url: string, apiKey: string, target: 'new' | 'edit') => void;
-  getAvailableMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableAnimeMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableAnimeTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  renderMethodLabel: (m: { value: string; label: string }) => React.ReactNode;
   handleTestIndexer: (indexerName: string) => void;
   setDeleteConfirmation: React.Dispatch<React.SetStateAction<{ show: boolean; indexerName: string }>>;
   setExpandedIndexer: React.Dispatch<React.SetStateAction<string | null>>;
@@ -49,11 +45,6 @@ export function EditIndexerModal({
   testQuery,
   setTestQuery,
   discoverCaps,
-  getAvailableMovieMethods,
-  getAvailableTvMethods,
-  getAvailableAnimeMovieMethods,
-  getAvailableAnimeTvMethods,
-  renderMethodLabel,
   handleTestIndexer,
   setDeleteConfirmation,
   setExpandedIndexer,
@@ -211,10 +202,10 @@ export function EditIndexerModal({
             )}
           </div>
 
-          {/* Search Method (per-indexer) */}
+          {/* Kaiju Search (#285): what it is asked by; its capabilities decide the IDs */}
           <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-3 mt-4">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-slate-300">Search Method</div>
+              <div className="text-sm font-medium text-slate-300">Search</div>
               <button
                 onClick={() => discoverCaps(editForm.url, editForm.apiKey || config?.indexers.find(i => i.name === expandedIndexer)?.apiKey || '', 'edit')}
                 disabled={capsLoading === 'edit'}
@@ -225,93 +216,10 @@ export function EditIndexerModal({
             </div>
             {editForm.caps && (
               <p className="text-xs text-green-400/70">
-                Capabilities: Movie [{editForm.caps.movieSearchParams.join(', ')}] TV [{editForm.caps.tvSearchParams.join(', ')}]
+                Capabilities: Movie [{editForm.caps.movieSearchParams?.join(', ') ?? 'unknown'}] TV [{editForm.caps.tvSearchParams?.join(', ') ?? 'unknown'}]
               </p>
             )}
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Movies</label>
-              <div className="flex flex-wrap gap-3">
-                {getAvailableMovieMethods(editForm.caps).map(m => (
-                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editForm.movieSearchMethod.includes(m.value)}
-                      onChange={(e) => setEditForm(prev => {
-                        const updated = e.target.checked
-                          ? [...prev.movieSearchMethod, m.value]
-                          : prev.movieSearchMethod.filter(v => v !== m.value);
-                        return { ...prev, movieSearchMethod: updated.length > 0 ? updated : prev.movieSearchMethod };
-                      })}
-                      className="accent-blue-500"
-                    />
-                    {renderMethodLabel(m)}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">TV Shows</label>
-              <div className="flex flex-wrap gap-3">
-                {getAvailableTvMethods(editForm.caps).map(m => (
-                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editForm.tvSearchMethod.includes(m.value)}
-                      onChange={(e) => setEditForm(prev => {
-                        const updated = e.target.checked
-                          ? [...prev.tvSearchMethod, m.value]
-                          : prev.tvSearchMethod.filter(v => v !== m.value);
-                        return { ...prev, tvSearchMethod: updated.length > 0 ? updated : prev.tvSearchMethod };
-                      })}
-                      className="accent-blue-500"
-                    />
-                    {renderMethodLabel(m)}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Anime Movies</label>
-              <div className="flex flex-wrap gap-3">
-                {getAvailableAnimeMovieMethods(editForm.caps).map(m => (
-                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editForm.animeMovieSearchMethod.includes(m.value)}
-                      onChange={(e) => setEditForm(prev => {
-                        const updated = e.target.checked
-                          ? [...prev.animeMovieSearchMethod, m.value]
-                          : prev.animeMovieSearchMethod.filter(v => v !== m.value);
-                        return { ...prev, animeMovieSearchMethod: updated.length > 0 ? updated : prev.animeMovieSearchMethod };
-                      })}
-                      className="accent-blue-500"
-                    />
-                    {renderMethodLabel(m)}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Anime TV Shows</label>
-              <div className="flex flex-wrap gap-3">
-                {getAvailableAnimeTvMethods(editForm.caps).map(m => (
-                  <label key={m.value} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editForm.animeTvSearchMethod.includes(m.value)}
-                      onChange={(e) => setEditForm(prev => {
-                        const updated = e.target.checked
-                          ? [...prev.animeTvSearchMethod, m.value]
-                          : prev.animeTvSearchMethod.filter(v => v !== m.value);
-                        return { ...prev, animeTvSearchMethod: updated.length > 0 ? updated : prev.animeTvSearchMethod };
-                      })}
-                      className="accent-blue-500"
-                    />
-                    {renderMethodLabel(m)}
-                  </label>
-                ))}
-              </div>
-            </div>
+            <KaijuSearchWays caps={editForm.caps} />
           </div>
 
           {/* Test Search */}

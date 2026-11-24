@@ -42,11 +42,7 @@ export interface UsenetIndexer {
   enabled: boolean;  // Can turn indexers on/off
   website?: string;  // Website URL for getting API key
   logo?: string;     // Logo/favicon URL
-  movieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];   // Per-indexer movie search methods
-  tvSearchMethod?: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];    // Per-indexer TV search methods
-  animeMovieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];   // Per-indexer anime movie search methods
-  animeTvSearchMethod?: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];    // Per-indexer anime TV search methods
-  caps?: IndexerCaps;  // Discovered capabilities from ?t=caps
+  caps?: IndexerCaps;  // Discovered capabilities from ?t=caps: the IDs Kaiju Search asks it by (#285)
   pagination?: boolean; // Enable paginated search (default false)
   maxPages?: number;    // Max extra pages to fetch when pagination enabled (1-10, default 3)
   timeoutEnabled?: boolean; // Enable request timeout (default true)
@@ -56,8 +52,9 @@ export interface UsenetIndexer {
 
 // Discovered indexer capabilities from Newznab ?t=caps endpoint
 export interface IndexerCaps {
-  movieSearchParams: string[];   // e.g. ['q', 'imdbid', 'tmdbid']
-  tvSearchParams: string[];      // e.g. ['q', 'tvdbid', 'imdbid', 'season', 'ep']
+  version?: number;              // CAPS_VERSION once read by the reader that tells unknown from not available (capsMigration.ts)
+  movieSearchParams?: string[];  // e.g. ['q', 'imdbid', 'tmdbid']; [] when not available; undefined when unknown
+  tvSearchParams?: string[];     // e.g. ['q', 'tvdbid', 'imdbid', 'season', 'ep']; the same
 }
 
 // Zyclops health-check proxy configuration (per-indexer, Newznab mode only)
@@ -119,7 +116,6 @@ export interface SearchConfig {
   includeSeasonPacks?: boolean; // Include season packs in episode results (default true)
   seasonPackPagination?: boolean; // Enable pagination for season pack searches (default true)
   seasonPackAdditionalPages?: number;  // Additional pages for season pack searches (1-10)
-  useTextSearchForAnime?: boolean; // Override per-indexer search method to use text search for anime (Animation+Japan)
   skipAnimeTitleResolve?: boolean; // Skip TVDB/TMDB title resolution for anime (Animation+Japan) to avoid Japanese titles
   indexerPriorityDedup?: boolean;  // Deduplicate results across indexers, keeping only the copy from the highest-priority indexer (default false)
   urlDedup?: boolean;  // Remove duplicate results with identical download URLs (default true)
@@ -133,9 +129,6 @@ export interface SearchConfig {
   seriesPackKeywords?: string[];  // Each enabled keyword fires a '<Title> <Keyword>' indexer query to catch keyword-only releases without Sxx tokens. Empty array means no keyword queries fire. Allowed values come from SERIES_PACK_KEYWORDS.
   seriesPackPagination?: boolean;  // Enable pagination for series-pack queries (multi-season fanout + keyword queries). Independent of seasonPackPagination. (default true)
   seriesPackAdditionalPages?: number;  // Additional pages for series-pack queries (1-10).
-  // Legacy fields - migrated to per-indexer settings, kept for migration
-  movieSearchMethod?: 'imdb' | 'tmdb' | 'tvdb' | 'text';
-  tvSearchMethod?: 'imdb' | 'tvdb' | 'tvmaze' | 'text';
 }
 
 // Canonical chip values for seriesPackKeywords. Single source of truth shared
@@ -147,6 +140,8 @@ export type SeriesPackKeyword = typeof SERIES_PACK_KEYWORDS[number];
 // Our app configuration
 export interface Config {
   addonEnabled: boolean;
+  /** The dev switch (#280): diagnostic lines and fields, for the owner's test copies only; off in a release. */
+  devDiagnostics: boolean;
   indexers: UsenetIndexer[];
   cacheEnabled: boolean;
   cacheTTL: number;  // Cache time in seconds
@@ -154,8 +149,7 @@ export interface Config {
   proxyMode?: 'disabled' | 'http';  // Proxy mode for indexer requests
   proxyUrl?: string;           // HTTP proxy URL (e.g. http://localhost:8888)
   proxyIndexers?: Record<string, boolean>;  // Per-indexer proxy toggle
-  searchConfig?: SearchConfig; // Search method and ID service configuration
-  useTextSearch?: boolean;     // Legacy: use text queries instead of ID-based searches
+  searchConfig?: SearchConfig; // Search settings (packs, name fallbacks) and ID service configuration
   includeSeasonPacks?: boolean; // Legacy: include season packs in episode results
   cardOrder?: string[];        // Dashboard card order
   userAgents?: UserAgentConfig; // Custom user-agents for different request types
@@ -381,11 +375,7 @@ export interface SyncedIndexer {
   id: string;                       // Prowlarr numeric ID (as string) or NZBHydra indexer name
   name: string;                     // Display name from remote service
   enabledForSearch: boolean;        // Include in searches
-  movieSearchMethod: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
-  tvSearchMethod: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
-  animeMovieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
-  animeTvSearchMethod?: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
-  capabilities?: IndexerCaps;
+  capabilities?: IndexerCaps;       // The IDs Kaiju Search asks it by (#285)
   logo?: string;
   pagination?: boolean;             // Enable paginated search (default false)
   additionalPages?: number;         // Additional pages to fetch when pagination enabled (1-10, default 3)

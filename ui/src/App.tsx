@@ -145,50 +145,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Inline handler: renderMethodLabel ──────────────────────────────────
-  const renderMethodLabel = (m: { value: string; label: string }) => {
-    if (m.value === 'text') {
-      return (
-        <span className="bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent font-semibold">{m.label}</span>
-      );
-    }
-    return m.label;
-  };
-
-  // ── Inline handler: selectBestMethod ──────────────────────────────────
-  const selectBestMethod = (params: string[], searchType: 'movie' | 'tv'): string => {
-    if (!params || params.length === 0) return 'imdb';
-    if (params.includes('imdbid')) return 'imdb';
-    if (searchType === 'movie' && params.includes('tmdbid')) return 'tmdb';
-    if (params.includes('tvdbid')) return 'tvdb';
-    if (searchType === 'tv' && params.includes('tvmazeid')) return 'tvmaze';
-    return 'text';
-  };
-
-  // ── Inline handler: getAvailableMovieMethods ──────────────────────────
-  const getAvailableMovieMethods = (caps: IndexerCaps | null): { value: string; label: string }[] => {
-    const methods: { value: string; label: string }[] = [];
-    if (!caps || caps.movieSearchParams.includes('imdbid')) methods.push({ value: 'imdb', label: 'IMDB' });
-    if (caps?.movieSearchParams.includes('tmdbid')) methods.push({ value: 'tmdb', label: 'TMDB' });
-    if (caps?.movieSearchParams.includes('tvdbid')) methods.push({ value: 'tvdb', label: 'TVDB' });
-    methods.push({ value: 'text', label: 'Ultimate Text Search' });
-    return methods;
-  };
-
-  // ── Inline handler: getAvailableTvMethods ─────────────────────────────
-  const getAvailableTvMethods = (caps: IndexerCaps | null): { value: string; label: string }[] => {
-    const methods: { value: string; label: string }[] = [];
-    if (!caps || caps.tvSearchParams.includes('imdbid')) methods.push({ value: 'imdb', label: 'IMDB' });
-    if (caps?.tvSearchParams.includes('tvdbid')) methods.push({ value: 'tvdb', label: 'TVDB' });
-    if (caps?.tvSearchParams.includes('tvmazeid')) methods.push({ value: 'tvmaze', label: 'TVmaze' });
-    methods.push({ value: 'text', label: 'Ultimate Text Search' });
-    return methods;
-  };
-
-  // Anime methods use the same indexer capabilities as movie/TV
-  const getAvailableAnimeMovieMethods = getAvailableMovieMethods;
-  const getAvailableAnimeTvMethods = getAvailableTvMethods;
-
   // ── Inline handler: discoverCaps ──────────────────────────────────────
   const discoverCaps = async (url: string, apiKey: string, target: 'new' | 'edit') => {
     if (!url || !apiKey) return;
@@ -201,30 +157,12 @@ function App() {
       });
       if (res.ok) {
         const caps: IndexerCaps = await res.json();
-        const bestMovie = selectBestMethod(caps.movieSearchParams, 'movie');
-        const bestTv = selectBestMethod(caps.tvSearchParams, 'tv');
-        const availableMovieValues = getAvailableMovieMethods(caps).map(m => m.value);
-        const availableTvValues = getAvailableTvMethods(caps).map(m => m.value);
-        if (target === 'new') {
-          ac.setNewIndexer(prev => {
-            const movieFiltered = prev.movieSearchMethod.filter(m => availableMovieValues.includes(m));
-            const tvFiltered = prev.tvSearchMethod.filter(m => availableTvValues.includes(m));
-            const animeMovieFiltered = prev.animeMovieSearchMethod.filter(m => availableMovieValues.includes(m));
-            const animeTvFiltered = prev.animeTvSearchMethod.filter(m => availableTvValues.includes(m));
-            return { ...prev, caps, movieSearchMethod: movieFiltered.length > 0 ? movieFiltered : [bestMovie], tvSearchMethod: tvFiltered.length > 0 ? tvFiltered : [bestTv], animeMovieSearchMethod: animeMovieFiltered.length > 0 ? animeMovieFiltered : ['text'], animeTvSearchMethod: animeTvFiltered.length > 0 ? animeTvFiltered : ['text'] };
-          });
-        } else {
-          ac.setEditForm(prev => {
-            const movieFiltered = prev.movieSearchMethod.filter(m => availableMovieValues.includes(m));
-            const tvFiltered = prev.tvSearchMethod.filter(m => availableTvValues.includes(m));
-            const animeMovieFiltered = prev.animeMovieSearchMethod.filter(m => availableMovieValues.includes(m));
-            const animeTvFiltered = prev.animeTvSearchMethod.filter(m => availableTvValues.includes(m));
-            return { ...prev, caps, movieSearchMethod: movieFiltered.length > 0 ? movieFiltered : [bestMovie], tvSearchMethod: tvFiltered.length > 0 ? tvFiltered : [bestTv], animeMovieSearchMethod: animeMovieFiltered.length > 0 ? animeMovieFiltered : ['text'], animeTvSearchMethod: animeTvFiltered.length > 0 ? animeTvFiltered : ['text'] };
-          });
-        }
+        // Kaiju Search (#285) asks by every ID the caps list: nothing else to set.
+        if (target === 'new') ac.setNewIndexer(prev => ({ ...prev, caps }));
+        else ac.setEditForm(prev => ({ ...prev, caps }));
       }
     } catch {
-      // Caps discovery failed - user can still manually select methods
+      // Caps discovery failed: the indexer is asked by IMDb and by name
     }
     ac.setCapsLoading(null);
   };
@@ -240,10 +178,6 @@ function App() {
         apiKey: '',
         website: preset.website,
         logo: preset.logo,
-        movieSearchMethod: ['text'],
-        tvSearchMethod: ['text'],
-        animeMovieSearchMethod: ['text'],
-        animeTvSearchMethod: ['text'],
         caps: null,
         pagination: false,
         maxPages: 3,
@@ -279,7 +213,7 @@ function App() {
         body: JSON.stringify(ac.newIndexer),
       });
       if (response.ok) {
-        ac.setNewIndexer({ name: '', url: '', apiKey: '', website: '', logo: '', movieSearchMethod: ['text'], tvSearchMethod: ['text'], animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'], caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS });
+        ac.setNewIndexer({ name: '', url: '', apiKey: '', website: '', logo: '', caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS });
         ac.setTestResults(prev => { const next = { ...prev }; delete next['__new__']; return next; });
         ac.setTestQuery(prev => { const next = { ...prev }; delete next['__new__']; return next; });
         ac.setShowAddIndexer(false);
@@ -303,10 +237,6 @@ function App() {
       enabled: indexer.enabled,
       website: indexer.website || '',
       logo: indexer.logo || '',
-      movieSearchMethod: Array.isArray(indexer.movieSearchMethod) ? indexer.movieSearchMethod : [indexer.movieSearchMethod || 'text'],
-      tvSearchMethod: Array.isArray(indexer.tvSearchMethod) ? indexer.tvSearchMethod : [indexer.tvSearchMethod || 'text'],
-      animeMovieSearchMethod: Array.isArray(indexer.animeMovieSearchMethod) ? indexer.animeMovieSearchMethod : [indexer.animeMovieSearchMethod || 'text'],
-      animeTvSearchMethod: Array.isArray(indexer.animeTvSearchMethod) ? indexer.animeTvSearchMethod : [indexer.animeTvSearchMethod || 'text'],
       caps: indexer.caps || null,
       pagination: indexer.pagination === true,
       maxPages: indexer.maxPages ?? 3,
@@ -529,11 +459,6 @@ function App() {
           setTestQuery={ac.setTestQuery}
           handlePresetChange={handlePresetChange}
           discoverCaps={discoverCaps}
-          getAvailableMovieMethods={getAvailableMovieMethods}
-          getAvailableTvMethods={getAvailableTvMethods}
-          getAvailableAnimeMovieMethods={getAvailableAnimeMovieMethods}
-          getAvailableAnimeTvMethods={getAvailableAnimeTvMethods}
-          renderMethodLabel={renderMethodLabel}
           handleTestIndexer={handleTestIndexer}
           handleAddIndexer={handleAddIndexer}
         />
@@ -555,11 +480,6 @@ function App() {
           testQuery={ac.testQuery}
           setTestQuery={ac.setTestQuery}
           discoverCaps={discoverCaps}
-          getAvailableMovieMethods={getAvailableMovieMethods}
-          getAvailableTvMethods={getAvailableTvMethods}
-          getAvailableAnimeMovieMethods={getAvailableAnimeMovieMethods}
-          getAvailableAnimeTvMethods={getAvailableAnimeTvMethods}
-          renderMethodLabel={renderMethodLabel}
           handleTestIndexer={handleTestIndexer}
           setDeleteConfirmation={ac.setDeleteConfirmation}
           setExpandedIndexer={ac.setExpandedIndexer}
@@ -680,11 +600,6 @@ function App() {
           handleReorderSyncedIndexer={handleReorderSyncedIndexer}
           failedLogos={ac.failedLogos}
           setFailedLogos={ac.setFailedLogos}
-          getAvailableMovieMethods={getAvailableMovieMethods}
-          getAvailableTvMethods={getAvailableTvMethods}
-          getAvailableAnimeMovieMethods={getAvailableAnimeMovieMethods}
-          getAvailableAnimeTvMethods={getAvailableAnimeTvMethods}
-          renderMethodLabel={renderMethodLabel}
           setShowAddIndexer={ac.setShowAddIndexer}
           expandedIndexer={ac.expandedIndexer}
           setExpandedIndexer={ac.setExpandedIndexer}

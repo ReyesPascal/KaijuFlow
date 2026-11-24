@@ -5,15 +5,17 @@
  * NZBHydra aggregates internally — we send one request with optional
  * indexer name filters and get back standard Newznab RSS XML.
  *
- * Groups enabled synced indexers by their preferred search method,
- * makes one NZBHydra API call per unique method, and merges results.
+ * Kaiju Search (GLOSSARY, #285): groups enabled synced indexers by each way they are asked (the IDs their
+ * capabilities list, and by name), makes one NZBHydra API call per way, and merges results.
  */
 
+import { nameKeeps } from '../parsers/searchFlow.js';
+import { waysOf, foundBy } from '../addon/kaijuSearch.js';
 import axios from 'axios';
 import type { SyncedIndexer, NZBSearchResult } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { parseNewznabXmlWithMeta } from '../parsers/newznabClient.js';
-import { isTextSearchMatch, stripDiacritics, tagSeasonPack, runSeriesPackQueries, buildSeriesPackPaginationAdditionalPages, buildSeasonPackPaginationAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
+import { stripDiacritics, tagSeasonPack, runSeriesPackQueries, buildSeriesPackPaginationAdditionalPages, buildSeasonPackPaginationAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
 import { slog, withSubBuffer } from '../parsers/searchLogger.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
@@ -86,11 +88,10 @@ export class NzbhydraSearcher {
         slog(`⚠️  ${method} ID unavailable for ${indexerNames.length} indexer(s) — skipping`);
         continue;
       }
-      idTasks.push(withSubBuffer(`movie ${method} search × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)));
+      idTasks.push(withSubBuffer(`movie ${method} search × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)).then(r => foundBy(r, 'id')));
     }
 
-    // Movie text queries only run against indexers that opted into 'text' via movieSearchMethod.
-    // ID-method indexers stay on their ID endpoints; pack queries below keep the union intentionally.
+    // Movie name queries run against every indexer (Kaiju Search, #285).
     const allTextNames = [...new Set(textMethodNames)];
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true && !!additionalTitles?.length;
     const animeFanoutEnabled = !!isAnime && !!additionalTitles?.length && !parallelAltEnabled;
@@ -123,7 +124,7 @@ export class NzbhydraSearcher {
     if (allResults.length === 0 && additionalTitles?.length && !this.timedOut && !skipSequentialAlt) {
       const allNames = allTextNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alt-title retry`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alt-title retry`);
       }
       if (allNames.length > 0) {
         for (const altTitle of additionalTitles) {
@@ -140,7 +141,7 @@ export class NzbhydraSearcher {
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.aliasTitleFallback !== false && searchAliases?.length) {
       const allNames = allTextNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alias-title fallback`);
       }
       if (allNames.length > 0) {
         const aliasPromises = searchAliases.map((alias) => {
@@ -151,7 +152,7 @@ export class NzbhydraSearcher {
               apikey: this.apiKey, extended: '1', t: 'search', q, cat: '2000', indexers: allNames.join(','),
             };
             const r = await this.doSearch(params);
-            const f = r.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+            const f = r.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
             if (r.length !== f.length) slog(`   🎯 Alias "${alias}" filter: ${r.length} → ${f.length}`);
             return f;
           });
@@ -184,10 +185,10 @@ export class NzbhydraSearcher {
         apikey: this.apiKey, extended: '1', t: 'search', q, cat: '2000', indexers: indexerNames.join(','),
       };
       const results = await this.doSearch(params);
-      const filtered = results.filter(r => isTextSearchMatch(filterTitle, r.title, year, country, additionalFilterTitles, titleYear));
+      const filtered = results.filter(r => nameKeeps(filterTitle, r.title, year, country, additionalFilterTitles, titleYear));
       if (results.length !== filtered.length) {
         slog(`   🎯 Title filter: ${results.length} → ${filtered.length}`);
-        results.filter(r => !isTextSearchMatch(filterTitle, r.title, year, country, additionalFilterTitles, titleYear))
+        results.filter(r => !nameKeeps(filterTitle, r.title, year, country, additionalFilterTitles, titleYear))
           .forEach(r => slog(`      ✂️  ${r.title}`));
       }
       return filtered;
@@ -251,14 +252,14 @@ export class NzbhydraSearcher {
         slog(`⚠️  ${method} ID unavailable for ${indexerNames.length} indexer(s) — skipping`);
         continue;
       }
-      idTasks.push(withSubBuffer(`TV ${method} search S${season}E${episode} × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)));
+      idTasks.push(withSubBuffer(`TV ${method} search S${season}E${episode} × ${indexerNames.length} indexer(s)`, () => this.doSearch(params)).then(r => foundBy(r, 'id')));
     }
 
     const packIndexerNames = [...new Set([...textMethodNames, ...idSearchedNames])];
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true && !!additionalTitles?.length;
     const animeFanoutEnabled = !!isAnime && !!additionalTitles?.length && !parallelAltEnabled;
     const includeMultiSeasonPacks = config.searchConfig?.includeMultiSeasonPacks ?? true;
-    // Mirrors the gates inside runTitleSearchTV: SxxExx text query needs a text-method indexer,
+    // Mirrors the gates inside runTitleSearchTV: SxxExx text query needs an indexer asked by name,
     // pack work needs at least one pack feature enabled (and episodesInSeason for season packs).
     const hasAnyTextWork = textMethodNames.length > 0
       || (packIndexerNames.length > 0 && (
@@ -266,7 +267,7 @@ export class NzbhydraSearcher {
         || (!!config.searchConfig?.includeSeasonPacks && !!episodesInSeason)
       ));
 
-    // epIndexerNames = text-method only (canonical SxxExx text query);
+    // epIndexerNames = asked by name only (canonical SxxExx text query);
     // packIndexerNames = text + ID-method (pack queries are text-by-nature
     // regardless of an indexer's primary method).
     const canonicalTextPromise = hasAnyTextWork && title
@@ -316,10 +317,10 @@ export class NzbhydraSearcher {
     }
 
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.absoluteEpisodeFallback !== false) {
-      // Absolute-episode is a text-shaped query; restrict to text-method indexers (mirrors movie-path alias fallback).
+      // Absolute-episode is a text-shaped query; restrict to indexers asked by name (mirrors movie-path alias fallback).
       const allNames = textMethodNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping absolute-episode fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping absolute-episode fallback`);
       }
       if (allNames.length > 0) {
         const titlesToRetry = (parallelAltEnabled || animeFanoutEnabled) && additionalTitles?.length
@@ -332,10 +333,10 @@ export class NzbhydraSearcher {
     }
 
     if (allResults.length === 0 && !this.timedOut && config.searchConfig?.aliasTitleFallback !== false && searchAliases?.length) {
-      // Alias query is text-shaped; restrict to text-method indexers.
+      // Alias query is text-shaped; restrict to indexers asked by name.
       const allNames = textMethodNames;
       if (allNames.length === 0) {
-        slog(`⚠️  No text-method indexers, skipping alias-title fallback`);
+        slog(`⚠️  No indexer enabled for search to ask by name, skipping alias-title fallback`);
       }
       if (allNames.length > 0) {
         const useDateScheme = typeof episodeAired === 'string' && /^\d{4}-\d{2}-\d{2}/.test(episodeAired);
@@ -375,7 +376,7 @@ export class NzbhydraSearcher {
                 return normExpected.length > 0 && extractedNorm.startsWith(normExpected);
               });
             } else {
-              f = dateFiltered.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+              f = dateFiltered.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
             }
             if (dateFiltered.length !== f.length) slog(`   🎯 Alias "${alias}" filter: ${dateFiltered.length} → ${f.length}`);
             return f;
@@ -429,10 +430,10 @@ export class NzbhydraSearcher {
           apikey: this.apiKey, extended: '1', t: 'search', q: epQuery, cat: '5000', indexers: epIndexersCsv,
         };
         const r = await this.doSearch(params);
-        const f = r.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const f = r.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         if (r.length !== f.length) {
           slog(`   🎯 [NZBHydra] Title filter: ${r.length} → ${f.length}`);
-          r.filter(x => !isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear))
+          r.filter(x => !nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear))
             .forEach(x => slog(`      ✂️  ${x.title}`));
         }
         return f;
@@ -447,7 +448,7 @@ export class NzbhydraSearcher {
           apikey: this.apiKey, extended: '1', t: 'search', q: packQuery, cat: '5000', indexers: packIndexersCsv,
         };
         const packResults = await this.doSearch(params, spOverride);
-        const titleMatched = packResults.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const titleMatched = packResults.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         const packs = tagSeasonPack(titleMatched, season, episodesInSeason);
         if (packResults.length !== packs.length) {
           slog(`   📦 [NZBHydra] Season pack filter: ${packResults.length} → ${packs.length}`);
@@ -466,7 +467,7 @@ export class NzbhydraSearcher {
           apikey: this.apiKey, extended: '1', t: 'search', q: fanoutQuery, cat: '5000', indexers: packIndexersCsv,
         };
         const fanoutResults = await this.doSearch(params, fanoutOverride);
-        const fanoutMatched = fanoutResults.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const fanoutMatched = fanoutResults.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         const fanoutPacks = tagSeasonPack(fanoutMatched, season, episodesInSeason);
         if (fanoutResults.length !== fanoutPacks.length) {
           slog(`   📦 [NZBHydra] Multi-season fanout filter: ${fanoutResults.length} → ${fanoutPacks.length}`);
@@ -486,7 +487,7 @@ export class NzbhydraSearcher {
           return this.doSearch(params, seriesOverride);
         },
         title: queryTitle, season, episodesInSeason,
-        isTitleMatch: (rt) => isTextSearchMatch(filterTitle, rt, year, country, additionalFilterTitles, titleYear),
+        isTitleMatch: (rt) => nameKeeps(filterTitle, rt, year, country, additionalFilterTitles, titleYear),
         searchConfig: config.searchConfig,
         logPrefix: 'NZBHydra',
       })));
@@ -535,7 +536,7 @@ export class NzbhydraSearcher {
         return seasonTokens.length === 0 || seasonTokens.includes(season);
       };
       const filtered = results.filter(r =>
-        isTextSearchMatch(filterTitle, stripAbsEp(r.title), year, country, undefined, titleYear)
+        nameKeeps(filterTitle, stripAbsEp(r.title), year, country, undefined, titleYear)
         && seasonOk(r.title)
       );
       if (results.length !== filtered.length) {
@@ -632,13 +633,11 @@ export class NzbhydraSearcher {
     return pages.length > 0 ? Math.max(...pages) : 3;
   }
 
+  /** The indexers grouped by each way Kaiju Search asks them (#285): the IDs their capabilities list, and by name. */
   private groupByMethod(type: 'movie' | 'tv'): Map<string, string[]> {
     const groups = new Map<string, string[]>();
     for (const indexer of this.indexers.filter(i => i.enabledForSearch)) {
-      const methods = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      // For NZBHydra, we use indexer names (not numeric IDs) as the identifier
-      const methodArr = Array.isArray(methods) ? methods : [methods];
-      for (const method of methodArr) {
+      for (const method of waysOf(type, indexer.capabilities)) {
         if (!groups.has(method)) groups.set(method, []);
         if (!groups.get(method)!.includes(indexer.name)) groups.get(method)!.push(indexer.name);
       }

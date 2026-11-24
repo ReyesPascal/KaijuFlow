@@ -1,0 +1,48 @@
+{
+ "format": 1,
+ "check": "2026-11-24T060037Z-grouped-265",
+ "kind": "run",
+ "title": [
+  "movie",
+  "tt1375666",
+  "Inception",
+  "popular-movie",
+  null
+ ],
+ "label": "Inception",
+ "id": "tt1375666",
+ "kept_because": "fail",
+ "outcome": {
+  "label": "Inception",
+  "id": "tt1375666",
+  "kind": "popular-movie",
+  "sources": 0,
+  "release": null,
+  "video": false,
+  "checked": [],
+  "fallbacks": 0,
+  "check_misses": [],
+  "start_s": null,
+  "title_to_video": null,
+  "slow": false,
+  "outcome": "fail",
+  "why": "the list held no Source, and NinjaCentral did not answer its search (page 1)"
+ },
+ "t_start": "2026-11-24T06:00:46.348Z",
+ "t_end": "2026-11-24T06:00:46.971Z",
+ "commit": "fd19e62c5a1a0de5b9758db9d8584518c321d995",
+ "head": "a77e25fde1d1b0b68315e96c52ae7c12a21766a4",
+ "dirty": false,
+ "dev_switch": {
+  "setting": false,
+  "step_lines": 0,
+  "of": 6
+ },
+ "failed_sources": [],
+ "altmount_nzbs": [],
+ "answers": {
+  "list": "answers",
+  "kept": 0,
+  "not_stored": []
+ }
+}
