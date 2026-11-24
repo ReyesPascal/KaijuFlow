@@ -13,7 +13,7 @@ match:
 confirm:
   - clue: standin-miss-for-visit
     answer: yes
-fix: "#79, #229, #235 (PR #236), #240 and the top-up rule in tools/brain/docs/rules.md; #273 archives the replayed Recording"
+fix: "#79, #229, #235 (PR #236) and #240; #273 archives the replayed Recording"
 seen:
   - check: 2026-11-10 baseline (logs lost)
     title: warm rounds (40 misses)
@@ -64,7 +64,7 @@ A refusing indexer or a gone Source: the top-ups found the releases and they pla
 
 ## Fix
 
-#79 (a Recording covers a cold and a warm round), #229 (preflight refuses a Recording the last run missed), #235 (PR #236: misses of never-played releases are listed, not counted), #240 (a miss is a refusal, so it writes no dead mark), the top-up rule in `tools/brain/docs/rules.md`. #273 archives the replayed Recording altogether.
+#79 (a Recording covers a cold and a warm round), #229 (preflight refuses a Recording the last run missed), #235 (PR #236: misses of never-played releases are listed, not counted), #240 (a miss is a refusal, so it writes no dead mark). #273 archives the replayed Recording altogether.
 
 ## History
 
