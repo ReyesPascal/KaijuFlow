@@ -148,7 +148,7 @@ export interface Config {
   proxyMode?: 'disabled' | 'http';  // Proxy mode for indexer requests
   proxyUrl?: string;           // HTTP proxy URL (e.g. http://localhost:8888)
   proxyIndexers?: Record<string, boolean>;  // Per-indexer proxy toggle
-  searchConfig?: SearchConfig; // Search method and ID service configuration
+  searchConfig?: SearchConfig; // Search settings (packs, name fallbacks) and ID service configuration
   includeSeasonPacks?: boolean; // Legacy: include season packs in episode results
   cardOrder?: string[];        // Dashboard card order
   userAgents?: UserAgentConfig; // Custom user-agents for different request types

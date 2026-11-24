@@ -1,12 +1,12 @@
 /**
  * Prowlarr Searcher
  *
- * Uses two Prowlarr API endpoints depending on search method:
+ * Kaiju Search (GLOSSARY, #285) asks every indexer both ways, through two Prowlarr API endpoints:
  *
- * Text searches → GET /api/v1/search (aggregate endpoint)
+ * Name searches (`text`) → GET /api/v1/search (aggregate endpoint)
  *   Accepts: query, type, indexerIds[], categories[], limit, offset
  *   Returns: JSON array of results from all specified indexers
- *   One request covers all text-method indexers at once.
+ *   One request covers every indexer's name search at once.
  *
  * ID-based searches → GET /api/v1/indexer/{id}/newznab (per-indexer Newznab endpoint)
  *   Accepts: t (string), imdbid (string), tmdbid (int), tvdbid (int),
@@ -14,7 +14,7 @@
  *   Returns: Newznab XML (RSS with newznab:attr extensions)
  *   One request per indexer, parallelised with Promise.all().
  *
- * Indexers are grouped by their configured search method (imdb/tmdb/tvdb/text).
+ * Indexers are grouped by each way they are asked (`groupByMethod`): the IDs their capabilities list, and by name.
  * Each group uses the appropriate endpoint and parameters.
  */
 
