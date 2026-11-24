@@ -13,6 +13,7 @@ import sys
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import allowance  # noqa: E402
 import brainreport as br  # noqa: E402
 import diagnosis  # noqa: E402
 import drill  # noqa: E402
@@ -25,8 +26,8 @@ PLAY_TIMEOUT_S = 300  # how long the press is waited on: a slow play still shows
 # Walk's 30 grabs (#228).
 NEED_PER_TITLE = {'search': 12, 'download': 30}
 # the step lines a check keeps per visit (KaijuFlow's [KF-STEP]): each indexer page's answer, the search's filter count, the
-# Play-time check's, the play's
-KEPT_STEPS = ('indexer_page', 'list_filter', 'play_check', 'played', 'play_failed')
+# list going out, the Play-time check's, the play's
+KEPT_STEPS = ('indexer_page', 'list_filter', 'list', 'play_check', 'played', 'play_failed')
 
 PLAYED, FAIL, NOTHING = 'played', 'fail', 'nothing to play'
 
@@ -240,25 +241,48 @@ def visit_steps(steps, vid, since):
     return [s for s in steps if s.get('step') in KEPT_STEPS and s.get('ref') in (None, vid) and from_then(s)]
 
 
-def _empty_list(steps):
-    """(outcome, why) of a list with no Source. Nothing to play only when it is shown that nothing would have played:
-    every indexer page answered and KaijuFlow's `list_filter` line says what its search kept (its name match, junk strip
-    and remake filter done) and what its filters (dead marks, the user's) left: `the list held no Source: KaijuFlow's
-    search kept 12 Sources and its filters kept none`. An indexer that did not answer, or no `list_filter` line (the
-    list's handler failed), is a fail."""
-    down = [s for s in steps if s.get('step') == 'indexer_page' and not s.get('ok')]
-    if down:
-        d = down[0]
-        return FAIL, f"the list held no Source, and {d.get('source') or 'an indexer'} did not answer its search (page {d.get('page', '?')})"
+def _and(items):
+    """`A`, `A and B`, `A, B and C`."""
+    items = list(items)
+    return ', '.join(items[:-1]) + ' and ' + items[-1] if len(items) > 1 else ''.join(items)
+
+
+def _indexer_names(steps):
+    """{slug: the name KaijuFlow's lines give the indexer} (`ninjacentral` -> `NinjaCentral`), slugs as the key file's
+    (allowance.norm)."""
+    return {allowance.norm(s['source']): s['source'] for s in steps if s.get('step') == 'indexer_page' and s.get('source')}
+
+
+def down_indexers(steps, indexers=()):
+    """(asked, down): the switched-on indexers (`indexers`, slugs; else the ones the page lines name) and those of them no
+    page of which answered, by the name KaijuFlow's lines give them. One that has no page line at all was not heard from
+    either, so it is down too."""
+    names = _indexer_names(steps)
+    asked = [allowance.norm(i) for i in indexers] or list(names)
+    answered = {allowance.norm(s.get('source')) for s in steps if s.get('step') == 'indexer_page' and s.get('ok')}
+    return asked, [names.get(i, i) for i in asked if i not in answered]
+
+
+def _empty_list(steps, indexers=()):
+    """(outcome, why) of a list with no Source (#304, spec #298 stories 23 and 24). Every switched-on indexer down is
+    nothing to play: `indexers down: no switched-on indexer answered its search (NinjaCentral)`, never a fail. Else the
+    list is judged: nothing to play when KaijuFlow's `list_filter` line says what its search kept (its name match, junk
+    strip and remake filter done) and what its filters (dead marks, the user's) left, `the list held no Source:
+    KaijuFlow's search kept 12 Sources and its filters kept none`, naming any indexer that did not answer; no
+    `list_filter` line (the list's handler failed) is a fail."""
+    asked, down = down_indexers(steps, indexers)
+    if asked and len(down) == len(asked):
+        return NOTHING, f'indexers down: no switched-on indexer answered its search ({_and(down)})'
     f = next((s for s in steps if s.get('step') == 'list_filter'), None)
     if not f or f.get('results') is None:
         return FAIL, "the list held no Source, and KaijuFlow's log has no list_filter line, so it is not shown that nothing would play"
     n, kept = f['results'], f.get('kept') or 0
-    return NOTHING, (f"the list held no Source: KaijuFlow's search kept {n} Source{'' if n == 1 else 's'} and its filters "
-                     f"kept {kept or 'none'}")
+    why = (f"the list held no Source: KaijuFlow's search kept {n} Source{'' if n == 1 else 's'} and its filters "
+           f"kept {kept or 'none'}")
+    return NOTHING, why + (f'; {_and(down)} did not answer its search' if down else '')
 
 
-def judge(visit, names=lambda: ()):
+def judge(visit, names=lambda: (), indexers=()):
     """One visit's outcome: {'outcome': played | fail | nothing to play, 'why', 'release' (the release played, or None),
     'title_to_video', 'start_s', 'slow', 'fallbacks', 'video', 'check_misses': [{'release', 'reason'}],
     'checked': [{'release', 'ok', 'status'}]}.
@@ -266,7 +290,9 @@ def judge(visit, names=lambda: ()):
     `visit` is what the check saw: 'title' (the draw's five fields), 'list_status', 'list_s', 'sources' (Sources in the
     list, the Best entry left out), 'best' (whether the list had the Best entry), 'play' (common.play_stream's result for
     the press of Best, or None), 'steps' (visit_steps). `names()` gives the title's other names, asked for only when the
-    release played does not carry the label's name; None when TMDB could not be read (the fail then says so)."""
+    release played does not carry the label's name; None when TMDB could not be read (the fail then says so).
+    `indexers` are the check's switched-on indexers (slugs): a list is judged on what it held when one of them was down
+    and another answered, and is nothing to play, indexers down, only when every one of them was down."""
     steps = visit.get('steps') or []
     checked = [{'release': s.get('title'), 'ok': bool(s.get('ok')), 'status': s.get('status')} for s in steps if s['step'] == 'play_check']
     passed = {c['release'] for c in checked if c['ok']}
@@ -291,7 +317,7 @@ def judge(visit, names=lambda: ()):
     if visit.get('list_status') != 200:
         return end(FAIL, f"KaijuFlow's list did not come: {visit.get('note') or 'HTTP %s' % visit.get('list_status')}")
     if not visit.get('sources'):
-        return end(*_empty_list(steps))
+        return end(*_empty_list(steps, indexers))
     if not visit.get('best'):
         return end(FAIL, 'the list had no Best entry to press')
     if video:
@@ -328,6 +354,100 @@ def judge(visit, names=lambda: ()):
     if looked >= visit['sources']:
         return end(NOTHING, f"every Source KaijuFlow looked at failed its check ({looked} of {visit['sources']})")
     return end(FAIL, f"{no_video}, and only {looked} of {visit['sources']} Sources were checked")
+
+
+# --------------------------------------------------------------------------- what each indexer is worth
+
+def release_key(name):
+    """A release name as KaijuFlow's Release merge matches it (`releaseNameKey`, src/addon/kaijuSearch.ts, #299): lower
+    case, spaces, `.`, `-` and `_` gone."""
+    return re.sub(r'[\s._-]+', '', str(name or '').lower())
+
+
+def found_by_indexer(steps, vid, since):
+    """{indexer: [release names]} that each indexer's search found for one visit, from KaijuFlow's `search` lines (the
+    dev switch's, one per indexer and way, each Source with its name), from `since` (an ISO time) on. {} when there are
+    none (the dev switch off)."""
+    lo, out = br.parse_ts(since), {}
+    for s in steps:
+        if s.get('step') != 'search' or s.get('ref') != vid or not s.get('source'):
+            continue
+        try:
+            if br.parse_ts(s['t']) < lo:
+                continue
+        except (KeyError, TypeError, ValueError):
+            continue
+        names = out.setdefault(s['source'], [])
+        names += [r['release'] for r in s.get('results') or [] if r.get('release') and r['release'] not in names]
+    return out
+
+
+def requests_by_indexer(requests):
+    """{slug: {'search': n, 'download': n}} from the stand-in's requests ([(slug, kind, when)], allowance.requests_in)."""
+    out = {}
+    for slug, kind, _ in requests:
+        out.setdefault(slug, {'search': 0, 'download': 0})[kind] += 1
+    return out
+
+
+def _list_line(steps):
+    return next((s for s in steps if s.get('step') == 'list'), None)
+
+
+def indexer_rows(check, outcomes):
+    """One row per switched-on indexer (#304, spec #298 story 25), what it is worth: `searches` and `downloads` the
+    stand-in sent it (check['requests']), its pages' answer time (`typical_s` the median, `slowest_s`, None when none
+    answered; `not_answered`), `lists` (the lists KaijuFlow searched for, a cached one left out) and `without` (those it
+    sent before this indexer's last page came, or with no page of it at all), and `only_it`: the plays from a Release
+    only this indexer's search found, by the Release merge's name match (sizes are not in the lines), None when the
+    check has no search lines. `outcomes` are judge's, in judged(check)'s order."""
+    visits = judged(check)
+    steps = [s for v in visits for s in v.get('steps') or []]
+    names = _indexer_names(steps)
+    slugs = [allowance.norm(i) for i in check.get('indexers') or []] or list(names)
+    requests = check.get('requests') or {}
+    known = any(v.get('found') for v in visits)
+    only = {}
+    for v, o in zip(visits, outcomes):
+        if o['outcome'] != PLAYED or not o.get('release'):
+            continue
+        had = {allowance.norm(i) for i, rels in (v.get('found') or {}).items() if release_key(o['release']) in map(release_key, rels)}
+        if len(had) == 1:
+            slug = had.pop()
+            only[slug] = only.get(slug, 0) + 1
+    rows = []
+    for slug in slugs:
+        pages = [s for s in steps if s.get('step') == 'indexer_page' and allowance.norm(s.get('source')) == slug]
+        ms = [s.get('ms') or 0 for s in pages if s.get('ok')]
+        lists = without = 0
+        for v in visits:
+            line = _list_line(v.get('steps') or [])
+            if not line or line.get('cache') == 'hit':
+                continue
+            lists += 1
+            at = br.parse_ts(line['t'])
+            mine = [s for s in v['steps'] if s.get('step') == 'indexer_page' and allowance.norm(s.get('source')) == slug]
+            if not mine or max(br.parse_ts(s['t']) for s in mine) > at:
+                without += 1
+        rows.append({'indexer': names.get(slug, slug), 'searches': (requests.get(slug) or {}).get('search', 0),
+                     'downloads': (requests.get(slug) or {}).get('download', 0),
+                     'typical_s': round(statistics.median(ms) / 1000, 2) if ms else None,
+                     'slowest_s': round(max(ms) / 1000, 2) if ms else None, 'not_answered': len(pages) - len(ms),
+                     'lists': lists, 'without': without, 'only_it': only.get(slug, 0) if known else None})
+    return rows
+
+
+def indexer_lines(check, outcomes):
+    """The report's table of indexer_rows."""
+    out = ['| Indexer | Searches | Downloads | Answer time | Lists sent without it | Plays from a Release only it had |',
+           '|---|---|---|---|---|---|']
+    for r in indexer_rows(check, outcomes):
+        missed = f", {r['not_answered']} not answered" if r['not_answered'] else ''
+        answer = (f"{r['typical_s']:.2f} s typical, {r['slowest_s']:.2f} s slowest" if r['typical_s'] is not None
+                  else 'none answered') + missed
+        only = 'not known (no search lines: the dev switch was off)' if r['only_it'] is None else r['only_it']
+        out.append(f"| {r['indexer']} | {r['searches']} | {r['downloads']} | {answer} | {r['without']} of {r['lists']} | {only} |")
+    return out
 
 
 # --------------------------------------------------------------------------- the verdict and the report
@@ -472,6 +592,7 @@ def render_report(check, outcomes):
     lines.append(f"{_s(statistics.median(times))} (median of {br.plural(len(times), 'play')} with the right video; the list plus "
                  'the start, the Browse pause left out).' if times else 'None: no play gave the right video.')
     lines += played_line(check)
+    lines += ['', '## Indexers', ''] + indexer_lines(check, outcomes)
     lines += ['', '## Allowed words offered', ''] + (allowed_word_lines(outcomes) or ['None.'])
     lines += [''] + diagnosis.report_section(check.get('diagnosis'), check.get('diagnosis_error'))
     if check.get('kind') == drill.KIND:
