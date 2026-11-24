@@ -757,6 +757,23 @@ export const playTimeScenarios = [
     },
   },
   {
+    // Search Flow (#282): Best tries the sure Sources (the strict name rule passes them) before the maybe ones. The
+    // maybe stays in the list, above the sure one where the sort puts it (`CE` between the name and the year is no
+    // tag the strict rule allows; the indexer found it by ID, which no name rule drops); Best plays the sure one.
+    id: 'best-tries-a-sure-source-before-a-maybe-above-it',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'flow-sure-CE' }, { tag: 'flow-sure' }]);
+      w.cinemeta.add(id, { name: 'KaijuFlow PlayTime flow-sure', year: '2026' });
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      assert.equal(streams.slice(1).map(entryTitle).join(' | '), sources.map(s => s.title).join(' | '), 'both Sources listed, the maybe on top');
+      const r = await play(streams[0].url);
+      assert.equal(r.status, 200, 'Best plays');
+      assertBytes(r.body, sources[1].media, 'Best plays the sure Source');
+      assert.equal(w.backend.submitted[before], 'flow-sure', 'the sure Source is the first AltMount gets');
+    },
+  },
+  {
     // Best checks 3 Sources at a time, from the top down, until one is healthy or the list runs out (owner,
     // 2026-11-20; the attempts cap setting was deleted in #228, only the Walk's 30 grabs bound it); 3 is
     // candidateCount's default.
