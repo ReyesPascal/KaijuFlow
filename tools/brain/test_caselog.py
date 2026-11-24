@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import threading
 import unittest
@@ -563,8 +564,7 @@ class AgentStartsByItselfTest(unittest.TestCase):
         self.assertEqual(summary['agent'], {'started': None, 'error': 'OSError: herdr is not running', 'cases': [cid]})
 
 
-# What herdr answered on Brain, 2026-11-24 (tab list, pane list cut to its fields), and pane split's answer as kf-next
-# reads it.
+# What herdr answered on Brain, 2026-11-24 (tab list, pane list cut to its fields).
 TABS = ('{"id":"cli:tab:list","result":{"tabs":[{"agent_status":"done","focused":false,"label":"1","number":1,'
         '"pane_count":1,"tab_id":"w5:t1","workspace_id":"w5"},{"agent_status":"working","focused":true,"label":"agents",'
         '"number":3,"pane_count":5,"tab_id":"w5:t3","workspace_id":"w5"}],"type":"tab_list"}}')
@@ -572,57 +572,73 @@ PANES = ('{"id":"cli:pane:list","result":{"panes":[{"agent":"claude","agent_stat
          'KaijuFlow","focused":false,"pane_id":"w5:p0","tab_id":"w5:t1","workspace_id":"w5"},{"agent":"claude",'
          '"agent_status":"idle","cwd":"/home/brain/code/KaijuFlow","focused":true,"pane_id":"w5:pV","tab_id":"w5:t3",'
          '"workspace_id":"w5"}]}}')
-SPLIT = '{"id":"cli:pane:split","result":{"pane":{"pane_id":"w5:p12","tab_id":"w5:t3"}}}'
+# What herdr answered on Brain, 2026-11-24, to the rest (fixtures/2026-11-24-herdr/README.md): a claude agent started
+# in a new pane, prompted without --wait, waited on, sent Enter; and the errors of a wait that timed out, of an agent
+# that exited (Claude Code refused a folder it does not trust), of a name not found or taken.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-24-herdr', 'answers.json')) as f:
+    HERDR = json.load(f)
+CAPTURED_NAMES = ('kfcap-1124b', 'kfcap-nosuch', 'kfcap-1124')  # longest first
 
 
-# `agent wait` on Brain, 2026-11-24: an agent in the state asked for (its agent_info, on stdout), and one that was not
-# in it before the timeout (exit 1, the error on stderr). `agent prompt --wait` waits the same way, by default for the
-# turn's end (idle, done or blocked).
-TIMEOUT = '{"error":{"code":"timeout","message":"timed out waiting for agent status"},"id":"cli:agent:wait"}'
-STALLED = ('{"error":{"code":"agent_prompt_stalled","message":"agent did not start working after the prompt"},'
-           '"id":"cli:agent:prompt"}')
-
-
-def agent_info(name, status):
-    return ('{"id":"cli:agent:wait","result":{"agent":{"agent":"claude","agent_status":"%s","interactive_ready":true,'
-            '"name":"%s","pane_id":"w5:p12","tab_id":"w5:t3","workspace_id":"w5"},"type":"agent_info"}}' % (status, name))
+def herdr_answer(what, name=None, pane='w5:p12', status=None):
+    a = HERDR[what]
+    out, err = a['stdout'], a['stderr']
+    for captured in CAPTURED_NAMES:
+        out, err = out.replace(captured, name or captured), err.replace(captured, name or captured)
+    out = out.replace('w5:p1M', pane)
+    if status:
+        out = re.sub(r'"agent_status":"\w+"', f'"agent_status":"{status}"', out, count=1)
+    return mock.Mock(returncode=a['code'], stdout=out, stderr=err)
 
 
 class FakeHerdr:
-    """herdr as the launcher meets it: its list and split answers, and an agent with a state. A started agent is idle; a
-    prompt makes it working (or, `stall`, the prompt sits in its input box until Enter). `--wait` without `--until` waits
-    for the turn's end, which a diagnosing agent's turn never reaches within the timeout; `wait --until` answers at once
-    when the agent is in one of those states, else times out."""
-    def __init__(self, tabs=TABS, stall=False, never_works=False):
-        self.calls, self.tabs, self.stall, self.never_works, self.status = [], tabs, stall, never_works, None
+    """herdr as the launcher meets it, every answer one it gave on Brain: its list and split answers, and an agent with
+    a state. A started agent is idle; a prompt makes it working, unless it sits in the input box until Enter (`stall`)
+    or the agent exits (`exits`: Claude Code refused the folder). `--wait` without `--until` waits for the turn's end,
+    which a diagnosing agent's turn never reaches within the timeout; `wait --until` answers when the agent is in one of
+    those states, else times out."""
+    def __init__(self, tabs=TABS, stall=False, never_works=False, exits=False):
+        self.calls, self.tabs, self.stall, self.never_works, self.exits = [], tabs, stall, never_works, exits
+        self.status, self.names = None, set()
 
     def __call__(self, cmd, capture_output=True, text=True, timeout=None, check=False):
         self.calls.append(cmd)
-        if cmd[1:3] == ['agent', 'start']:
+        what = tuple(cmd[1:3])
+        if what == ('agent', 'start'):
+            if cmd[3] in self.names:
+                return herdr_answer('agent start, the name is taken', cmd[3])
+            self.names.add(cmd[3])
             self.status = 'idle'
-        elif cmd[1:3] == ['agent', 'prompt']:
-            if self.status is None:
-                return mock.Mock(returncode=1, stdout='', stderr='{"error":{"code":"agent_not_found"}}')
-            if not self.stall and not self.never_works:
+            return herdr_answer('agent start', cmd[3])
+        if what == ('agent', 'prompt'):
+            if cmd[3] not in self.names:
+                return herdr_answer('agent prompt, no such agent', cmd[3])
+            if self.exits:
+                self.status = 'gone'
+            elif not self.stall and not self.never_works:
                 self.status = 'working'
-            if '--wait' in cmd:
-                until = [cmd[i + 1] for i, a in enumerate(cmd) if a == '--until'] or ['idle', 'done', 'blocked']
-                if self.stall:
-                    return mock.Mock(returncode=1, stdout='', stderr=STALLED)
-                if self.status not in until:  # the turn goes on past the timeout
-                    return mock.Mock(returncode=1, stdout='', stderr=TIMEOUT.replace('agent:wait', 'agent:prompt'))
-            return mock.Mock(returncode=0, stdout='{"id":"cli:agent:prompt","result":{}}', stderr='')
-        elif cmd[1:3] == ['agent', 'send-keys']:
+            if '--wait' in cmd and self.status != 'idle':  # the turn goes on past the timeout
+                t = herdr_answer('agent wait, timeout', cmd[3])
+                return mock.Mock(returncode=1, stdout='', stderr=t.stderr.replace('agent:wait', 'agent:prompt'))
+            return herdr_answer('agent prompt', cmd[3])
+        if what == ('agent', 'send-keys'):
+            if self.status == 'gone':
+                return herdr_answer('agent send-keys, the agent exited', cmd[3])
             if self.stall and not self.never_works:
                 self.status, self.stall = 'working', False
-        elif cmd[1:3] == ['agent', 'wait']:
+            return herdr_answer('agent send-keys', cmd[3])
+        if what == ('agent', 'wait'):
+            if self.status == 'gone':
+                return herdr_answer('agent wait, the agent exited', cmd[3])
             until = [cmd[i + 1] for i, a in enumerate(cmd) if a == '--until'] or ['idle', 'done', 'blocked']
             if self.status not in until:
-                return mock.Mock(returncode=1, stdout='', stderr=TIMEOUT)
-            return mock.Mock(returncode=0, stdout=agent_info(cmd[3], self.status), stderr='')
-        out = {('tab', 'list'): self.tabs, ('pane', 'list'): PANES, ('pane', 'split'): SPLIT,
-               ('tab', 'create'): '{"id":"cli:tab:create","result":{}}'}.get(tuple(cmd[1:3]), '{"result":{}}')
-        if cmd[1:3] == ['tab', 'create']:
+                return herdr_answer('agent wait, timeout', cmd[3])
+            return herdr_answer('agent wait, working', cmd[3], status=self.status)
+        if what == ('pane', 'split'):
+            return herdr_answer('pane split')
+        out = {('tab', 'list'): self.tabs, ('pane', 'list'): PANES,
+               ('tab', 'create'): '{"id":"cli:tab:create","result":{}}'}.get(what, '{"result":{}}')
+        if what == ('tab', 'create'):
             self.tabs = TABS
         return mock.Mock(returncode=0, stdout=out, stderr='')
 
@@ -658,6 +674,11 @@ class LauncherTest(unittest.TestCase):
     def test_an_agent_that_never_takes_the_prompt_could_not_start(self):
         herdr = FakeHerdr(stall=True, never_works=True)
         with self.assertRaisesRegex(OSError, 'did not take the prompt'):
+            caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
+
+    def test_an_agent_that_exits_after_its_prompt_could_not_start(self):
+        herdr = FakeHerdr(exits=True)  # Claude Code asked whether to trust the folder; the prompt's Enter said no
+        with self.assertRaisesRegex(OSError, 'agent_not_ready'):
             caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
 
     def test_the_routine_the_prompt_names_is_there_and_names_every_write(self):
