@@ -10,7 +10,7 @@ import { getLatestVersions } from '../versionFetcher.js';
 import { proxyFetch, verifyProxyCircuit } from '../proxy.js';
 import { getCachedNzbContent, cacheNzbContent } from '../health/nzbContentCache.js';
 import { trackGrab } from '../statsTracker.js';
-import { sourceFailure } from './types.js';
+import { sourceFailure, isSourceFailure } from './types.js';
 
 /**
  * NZB grab shared by every Backend: cached copy or indexer download through
@@ -131,5 +131,18 @@ export async function grabNzb(
  */
 export async function walkGrab(nzbUrl: string, title: string, logPrefix = '', indexerName?: string, searchExitIp?: string, stop?: AbortSignal): Promise<void> {
   if (getCachedNzbContent(nzbUrl)) return;
-  cacheNzbContent(nzbUrl, await grabNzb(nzbUrl, title, undefined, logPrefix, indexerName, searchExitIp, stop));
+  try {
+    cacheNzbContent(nzbUrl, await grabNzb(nzbUrl, title, undefined, logPrefix, indexerName, searchExitIp, stop));
+  } catch (err) {
+    if (isSourceFailure(err)) (err as { badGrab?: boolean }).badGrab = true;
+    throw err;
+  }
+}
+
+/**
+ * A Source failure from the Walk's grab: the indexer says the link is gone, or its NZB is bad. Its dead mark is the
+ * Source's for every episode (GLOSSARY: Source memory).
+ */
+export function isBadGrab(err: unknown): boolean {
+  return isSourceFailure(err) && (err as { badGrab?: boolean }).badGrab === true;
 }
