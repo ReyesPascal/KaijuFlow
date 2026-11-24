@@ -480,9 +480,11 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
     cause's fix (fixing.after_check: a KaijuFlow cause's ticket, filed through `tracker` unless it is None, a dry run),
     and every failure with no proved cause put in its Case log under `cases`; when one of those logs is open,
     `agent(cases, ids, run_dir)` starts the diagnosing agent on them and `alert(line)` tells the owner in one line. The
-    summary, or None when the check left no evidence folder."""
+    summary; a check that left no evidence folder gets only its scoreboard (spec #279: after every check), and no
+    diagnosis.json."""
     if not evidence_folders(run_dir):
-        return None
+        book = casebook.FOLDER if book is None else book
+        return {'scoreboard': score(run_dir, runs_root, {}, library, book, cases)}
     if usenet is not None:
         live_clues(run_dir, usenet)
     book = casebook.FOLDER if book is None else book
@@ -525,8 +527,9 @@ def report_section(summary, error=None):
     lines = ['## Diagnosis', '']
     if error:
         return lines + [f'Diagnosis could not run: {error}.']
-    if not summary:
-        return lines + ['None: no play failed or fell back.']
+    if not summary or 'counts' not in summary:
+        lines.append('None: no play failed or fell back.')
+        return lines + ([''] + scoreboard.report_lines(summary['scoreboard']) if (summary or {}).get('scoreboard') else [])
     c = summary['counts']
     open_ = summary.get('open_cases')
     lines.append(f"{_plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "

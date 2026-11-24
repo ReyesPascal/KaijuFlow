@@ -337,7 +337,10 @@ class AfterACheckTest(unittest.TestCase):
         code, out = run_check(cfg, CheckWorld())
         folder = os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check')
         self.assertFalse(os.path.exists(os.path.join(folder, diagnosis.STORED)))
-        self.assertIn('## Diagnosis\n\nNone: no play failed or fell back.\n', read(folder, 'report.md'))
+        report = read(folder, 'report.md')
+        self.assertIn('## Diagnosis\n\nNone: no play failed or fell back.\n\nClues: the confirming tests ran 0', report)
+        self.assertIn('Fixes: ', report)  # the scoreboard after every check (spec #279)
+        self.assertIn('Failures per check by cause (the last 10 checks with a failure):', report)
 
 
 if __name__ == '__main__':
