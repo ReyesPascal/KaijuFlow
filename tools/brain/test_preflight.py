@@ -733,8 +733,8 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         self.assertEqual((entry['copies'], entry['settings']), (['kaijuflow'], {  # #190: the Play-time check's settings
             'ultimateFallback.enabled': True, 'ultimateFallback.candidateCount': 3, 'ultimateFallback.preferenceMode': 'priority',
             'ultimateFallback.whenToResolve': 'on-results',  # the Head start (#206, "On Search"); the attempts cap is gone (#228)
-            # every indexer on Ultimate Text Search, the shipped default a real-use check plays (#270)
-            **{f'indexers[*].{kind}SearchMethod': ['text'] for kind in ('movie', 'tv', 'animeMovie', 'animeTv')}}))
+            # no search method: Kaiju Search asks every indexer by ID and by name, with nothing to set (#285)
+        }))
 
     def test_the_committed_file_holds_the_dev_switch_on_in_kaijuflows_test_copy(self):
         entry = brainrun.load_expected_settings()[2]  # #280: the test copies record what a release does not

@@ -17,6 +17,8 @@ export const STEP_NAMES = [
   'indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed',
   // The stream list's own steps (#249): the whole request (`list`, with the process trace), then its parts.
   'list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start',
+  // Kaiju Search's lines, dev switch only (#285): one per indexer and way of asking, and one when strict alone leaves nothing.
+  'search',
 ] as const;
 export type StepName = (typeof STEP_NAMES)[number];
 

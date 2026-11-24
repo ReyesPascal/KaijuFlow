@@ -18,11 +18,13 @@
  * Each group uses the appropriate endpoint and parameters.
  */
 
+import { nameKeeps } from '../parsers/searchFlow.js';
+import { waysOf, foundBy } from '../addon/kaijuSearch.js';
 import axios from 'axios';
 import type { SyncedIndexer, NZBSearchResult, ProwlarrSearchResult } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { parseNewznabXmlWithMeta } from '../parsers/newznabClient.js';
-import { isTextSearchMatch, stripDiacritics, tagSeasonPack, runSeriesPackQueries, buildSeriesPackPaginationAdditionalPages, buildSeasonPackPaginationAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
+import { stripDiacritics, tagSeasonPack, runSeriesPackQueries, buildSeriesPackPaginationAdditionalPages, buildSeasonPackPaginationAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
 import { slog, withSubBuffer } from '../parsers/searchLogger.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
@@ -97,14 +99,13 @@ export class ProwlarrSearcher {
             continue;
           }
 
-          idSearches.push(withSubBuffer(`movie ${method} search "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)));
+          idSearches.push(withSubBuffer(`movie ${method} search "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)).then(r => foundBy(r, 'id')));
           idSearchedIndexerIds.push(indexerId);
         }
       }
     }
 
-    // Movie text queries only run against indexers that opted into 'text' via movieSearchMethod.
-    // ID-method indexers stay on their ID endpoints; pack queries below keep the union intentionally.
+    // Movie name queries run against every indexer (Kaiju Search, #285).
     const allTextIndexerIds = [...new Set(textMethodIds)];
     const parallelAltEnabled = config.searchConfig?.parallelAlternateTitleSearch === true && !!additionalTitles?.length;
     const animeFanoutEnabled = !!isAnime && !!additionalTitles?.length && !parallelAltEnabled;
@@ -166,7 +167,7 @@ export class ProwlarrSearcher {
           return withSubBuffer(`Alias fallback: "${query}"`, async () => {
             slog(`🔍 Query: "${query}"`);
             const r = await this.doAggregateSearch(allIndexerIds, 'search', query, ['2000']);
-            const f = r.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+            const f = r.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
             if (r.length !== f.length) slog(`   🎯 Alias "${alias}" filter: ${r.length} → ${f.length}`);
             return f;
           });
@@ -197,10 +198,10 @@ export class ProwlarrSearcher {
     return withSubBuffer(`movie text search "${queryTitle}"`, async () => {
       slog(`🔍 Query: "${query}"`);
       const results = await this.doAggregateSearch(indexerIds, 'search', query, ['2000']);
-      const filtered = results.filter(r => isTextSearchMatch(filterTitle, r.title, year, country, additionalFilterTitles, titleYear));
+      const filtered = results.filter(r => nameKeeps(filterTitle, r.title, year, country, additionalFilterTitles, titleYear));
       if (results.length !== filtered.length) {
         slog(`   🎯 Title filter: ${results.length} → ${filtered.length}`);
-        results.filter(r => !isTextSearchMatch(filterTitle, r.title, year, country, additionalFilterTitles, titleYear))
+        results.filter(r => !nameKeeps(filterTitle, r.title, year, country, additionalFilterTitles, titleYear))
           .forEach(r => slog(`      ✂️  ${r.title}`));
       }
       return filtered;
@@ -258,7 +259,7 @@ export class ProwlarrSearcher {
             continue;
           }
 
-          idSearches.push(withSubBuffer(`TV ${method} search S${season}E${episode} "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)));
+          idSearches.push(withSubBuffer(`TV ${method} search S${season}E${episode} "${indexerName}"`, () => this.doNewznabSearch(indexerId, indexerName, params, undefined, method)).then(r => foundBy(r, 'id')));
           idSearchedIndexerIds.push(indexerId);
         }
       }
@@ -387,7 +388,7 @@ export class ProwlarrSearcher {
                 return normExpected.length > 0 && extractedNorm.startsWith(normExpected);
               });
             } else {
-              f = dateFiltered.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+              f = dateFiltered.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
             }
             if (dateFiltered.length !== f.length) slog(`   🎯 Alias "${alias}" filter: ${dateFiltered.length} → ${f.length}`);
             return f;
@@ -438,10 +439,10 @@ export class ProwlarrSearcher {
       tasks.push(withSubBuffer(`TV text search "${queryTitle}"`, async () => {
         slog(`🔍 [Prowlarr] Query: "${epQuery}"`);
         const r = await this.doAggregateSearch(epIndexerIds, 'search', epQuery, ['5000']);
-        const f = r.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const f = r.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         if (r.length !== f.length) {
           slog(`   🎯 [Prowlarr] Title filter: ${r.length} → ${f.length}`);
-          r.filter(x => !isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear))
+          r.filter(x => !nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear))
             .forEach(x => slog(`      ✂️  ${x.title}`));
         }
         return f;
@@ -453,7 +454,7 @@ export class ProwlarrSearcher {
       const packQuery = stripDiacritics(`${queryTitle} S${s}`);
       tasks.push(withSubBuffer(`Season pack: ${packQuery}`, async () => {
         const packResults = await this.doAggregateSearch(packIndexerIds, 'search', packQuery, ['5000'], spOverride);
-        const titleMatched = packResults.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const titleMatched = packResults.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         const packs = tagSeasonPack(titleMatched, season, episodesInSeason);
         if (packResults.length !== packs.length) {
           slog(`   📦 [Prowlarr] Season pack filter: ${packResults.length} → ${packs.length}`);
@@ -469,7 +470,7 @@ export class ProwlarrSearcher {
       const fanoutQuery = stripDiacritics(`${queryTitle} S01`);
       tasks.push(withSubBuffer(`Multi-season fanout: ${fanoutQuery}`, async () => {
         const fanoutResults = await this.doAggregateSearch(packIndexerIds, 'search', fanoutQuery, ['5000'], fanoutOverride);
-        const fanoutMatched = fanoutResults.filter(x => isTextSearchMatch(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
+        const fanoutMatched = fanoutResults.filter(x => nameKeeps(filterTitle, x.title, year, country, additionalFilterTitles, titleYear));
         const fanoutPacks = tagSeasonPack(fanoutMatched, season, episodesInSeason);
         if (fanoutResults.length !== fanoutPacks.length) {
           slog(`   📦 [Prowlarr] Multi-season fanout filter: ${fanoutResults.length} → ${fanoutPacks.length}`);
@@ -484,7 +485,7 @@ export class ProwlarrSearcher {
       tasks.push(withSubBuffer(`Series-pack keyword queries (${queryTitle})`, () => runSeriesPackQueries({
         searchFn: (q) => this.doAggregateSearch(packIndexerIds, 'search', q, ['5000'], seriesOverride),
         title: queryTitle, season, episodesInSeason,
-        isTitleMatch: (rt) => isTextSearchMatch(filterTitle, rt, year, country, additionalFilterTitles, titleYear),
+        isTitleMatch: (rt) => nameKeeps(filterTitle, rt, year, country, additionalFilterTitles, titleYear),
         searchConfig: config.searchConfig,
         logPrefix: 'Prowlarr',
       })));
@@ -530,7 +531,7 @@ export class ProwlarrSearcher {
         return seasonTokens.length === 0 || seasonTokens.includes(season);
       };
       const filtered = results.filter(r =>
-        isTextSearchMatch(filterTitle, stripAbsEp(r.title), year, country, undefined, titleYear)
+        nameKeeps(filterTitle, stripAbsEp(r.title), year, country, undefined, titleYear)
         && seasonOk(r.title)
       );
       if (results.length !== filtered.length) {
@@ -747,12 +748,11 @@ export class ProwlarrSearcher {
     return pages.length > 0 ? Math.max(...pages) : 3;
   }
 
+  /** The indexers grouped by each way Kaiju Search asks them (#285): the IDs their capabilities list, and by name. */
   private groupByMethod(type: 'movie' | 'tv'): Map<string, string[]> {
     const groups = new Map<string, string[]>();
     for (const indexer of this.indexers.filter(i => i.enabledForSearch)) {
-      const methods = type === 'movie' ? indexer.movieSearchMethod : indexer.tvSearchMethod;
-      const methodArr = Array.isArray(methods) ? methods : [methods];
-      for (const method of methodArr) {
+      for (const method of waysOf(type, indexer.capabilities)) {
         if (!groups.has(method)) groups.set(method, []);
         if (!groups.get(method)!.includes(indexer.id)) groups.get(method)!.push(indexer.id);
       }

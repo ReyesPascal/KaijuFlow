@@ -1,7 +1,8 @@
 /**
  * Search Flow (GLOSSARY: Search Flow; spec #279, #282): what a title's list keeps and how sure each Source is.
  *
- * - The loose rule, the inherited `isTextSearchMatch`, decides what stays: the searchers drop what it does not fit.
+ * - The loose rule, the inherited `isTextSearchMatch`, decides what stays: the searchers drop what neither it nor the
+ *   strict rule fits (`nameKeeps`, #285), so a release the strict rule passes is never dropped.
  * - The strict rule, ported from the quick check's right-title rule (`tools/brain/quickcheck.py`, `right_title`,
  *   #278), only sorts, never removes: a Source that passes it is **sure**, one only the loose rule keeps is **maybe**.
  *   Results found by ID (which no name rule drops) are marked the same way.
@@ -11,6 +12,7 @@
  * names, `tests/fixtures/release-names/table.tsv`, so they cannot drift: change both or neither.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { isTextSearchMatch } from './titleMatching.js';
 
 /** A title as Search Flow judges a release against it. */
@@ -196,6 +198,50 @@ export function searchFlow(release: string, title: FlowTitle): FlowVerdict {
   return { flow: looseMatch(release, title) ? 'maybe' : 'dropped', why: strict.why };
 }
 
+/** A title's search as its name filters see it: the title, the indexer being asked (when one is), and with the dev
+ *  switch on the releases each indexer's name filter dropped, with why (`dropped`, keyed by indexer, '' when the
+ *  query went to several at once). */
+interface Searching { title: FlowTitle; indexer?: string; dropped?: Map<string, Map<string, string>> }
+
+const searching = new AsyncLocalStorage<Searching>();
+
+/** Run a title's search (Kaiju Search, #285) with its title known to every name filter inside it (`nameKeeps`); with
+ *  `record`, the releases they drop are kept for `droppedBy` (the dev switch's search lines). */
+export function withFlowTitle<T>(title: FlowTitle, fn: () => T, record = false): T {
+  return searching.run({ title, ...(record ? { dropped: new Map() } : {}) }, fn);
+}
+
+/** Run one indexer's queries inside a title's search, so what its name filter drops is put down to it. */
+export function withSearchIndexer<T>(indexer: string, fn: () => T): T {
+  const s = searching.getStore();
+  return s ? searching.run({ ...s, indexer }, fn) : fn();
+}
+
+/** The releases each indexer's name filter dropped in this search, with why ('' for a query to several at once);
+ *  empty unless the search records them. */
+export function droppedBy(): Map<string, Map<string, string>> {
+  return searching.getStore()?.dropped ?? new Map();
+}
+
+/**
+ * The searchers' name filter: Search Flow's keep. The loose rule with the searcher's own name for the query (its
+ * arguments are `isTextSearchMatch`'s), or the strict rule on the title being searched (`withFlowTitle`), so a
+ * release the strict rule passes is kept even where the loose rule would drop it. Outside a search, the loose rule.
+ */
+export function nameKeeps(name: string, release: string, year?: string, country?: string, otherNames?: string[], titleYear?: string): boolean {
+  if (isTextSearchMatch(name, release, year, country, otherNames, titleYear)) return true;
+  const s = searching.getStore();
+  if (s === undefined) return false;
+  const strict = strictMatch(release, s.title);
+  if (strict.ok) return true;
+  if (s.dropped) {
+    const key = s.indexer ?? '';
+    if (!s.dropped.has(key)) s.dropped.set(key, new Map());
+    s.dropped.get(key)!.set(release, strict.why);
+  }
+  return false;
+}
+
 /** What the list path knows of a title (its SearchContext), as Search Flow judges releases against it. */
 export function flowTitleOf(ctx: {
   type: string; title: string; year?: string; season?: number; episode?: number; country?: string; titleYear?: string;
@@ -211,7 +257,7 @@ export function flowTitleOf(ctx: {
 
 /**
  * Mark every Source of a title's list sure or maybe, with why (`flow`, `flowWhy`). Every Source in it has stayed: the
- * searchers dropped what the loose rule does not fit, and a result found by ID, which no name rule drops, is marked
+ * searchers dropped what Search Flow drops (`nameKeeps`), and a result found by ID, which no name rule drops, is marked
  * too; one neither rule fits by its name is a maybe that says so. New objects; the list's order is kept.
  */
 export function markSources<T extends { title: string }>(sources: T[], title: FlowTitle): (T & { flow: FlowMark['flow']; flowWhy: string })[] {

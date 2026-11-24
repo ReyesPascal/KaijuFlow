@@ -2,6 +2,7 @@
 //   Indexer management overlay — manages Newznab indexers, Prowlarr/NZBHydra sync,
 //   search settings (TMDB/TVDB keys, season packs, anime), EasyNews, and indexer priority dedup.
 
+import { KaijuSearchWays } from '../shared/KaijuSearchWays';
 import {
   Database,
   X,
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import clsx from 'clsx';
-import type { Config, Indexer, SyncedIndexer, IndexerCaps } from '../../types';
+import type { Config, Indexer, SyncedIndexer } from '../../types';
 import { SERIES_PACK_KEYWORDS } from '../../types';
 import { useHoldRepeat } from '../../hooks/useHoldRepeat';
 import { TimeoutStepper } from '../shared/TimeoutStepper';
@@ -166,12 +167,6 @@ interface IndexManagerOverlayProps {
   failedLogos: Set<string>;
   setFailedLogos: React.Dispatch<React.SetStateAction<Set<string>>>;
 
-  // Helper functions for search methods
-  getAvailableMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableAnimeMovieMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  getAvailableAnimeTvMethods: (caps: IndexerCaps | null) => { value: string; label: string }[];
-  renderMethodLabel: (m: { value: string; label: string }) => React.ReactNode;
 
   // Newznab indexer management
   setShowAddIndexer: React.Dispatch<React.SetStateAction<boolean>>;
@@ -302,11 +297,6 @@ export function IndexManagerOverlay({
   handleReorderSyncedIndexer,
   failedLogos,
   setFailedLogos,
-  getAvailableMovieMethods,
-  getAvailableTvMethods,
-  getAvailableAnimeMovieMethods,
-  getAvailableAnimeTvMethods,
-  renderMethodLabel,
   setShowAddIndexer,
   expandedIndexer,
   setExpandedIndexer,
@@ -427,7 +417,7 @@ export function IndexManagerOverlay({
               <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-4">
                 <div className="text-sm font-medium text-slate-300">Search Settings</div>
                 <p className="text-xs text-slate-500">
-                  Search method is configured per-indexer. API keys below are shared across all indexers that use TMDB or TVDB search. Providing these keys also improves Ultimate Text Search accuracy by resolving canonical titles (TMDB for movies, TVDB for TV), which often differ from what Stremio provides.
+                  Kaiju Search asks every indexer by name and by every ID it supports, at once; there is no search method to set. The API keys below let it ask by TMDB and TVDB IDs. Providing these keys also improves Ultimate Text Search accuracy by resolving canonical titles (TMDB for movies, TVDB for TV), which often differ from what Stremio provides.
                 </p>
 
                 {/* Ultimate Text Search Feature Highlight */}
@@ -466,7 +456,7 @@ export function IndexManagerOverlay({
                       </div>
                     </div>
                     <p className="text-xs text-amber-400/60 italic">
-                      Enable Ultimate Text Search per-indexer below. For best results pair with TMDB and TVDB API keys.
+                      Kaiju Search runs it on every indexer, beside the ID search. For best results pair with TMDB and TVDB API keys.
                     </p>
                   </div>
                 </div>
@@ -632,11 +622,11 @@ export function IndexManagerOverlay({
               {/* Anime — own card */}
               <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 p-4 space-y-4">
                 <div className="text-sm font-medium text-slate-300">Anime</div>
-                <div className="text-xs text-slate-500">Anime is detected automatically via the Fribb anime database or Cinemeta metadata. Configure anime search methods per-indexer below.</div>
+                <div className="text-xs text-slate-500">Anime is detected automatically via the Fribb anime database or Cinemeta metadata, and searched like any title: by name (its other names too) and by ID.</div>
                 <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
                   <div className="text-xs font-medium text-slate-400 mb-1">Supported Anime IDs</div>
                   <div className="text-xs text-slate-500">Kitsu · MAL · AniList · AniDB</div>
-                  <div className="text-xs text-slate-500 mt-1">Incoming anime IDs from metadata addons like AIOMetadata or Anime Kitsu are automatically resolved and mapped to the search methods configured per-indexer below.</div>
+                  <div className="text-xs text-slate-500 mt-1">Incoming anime IDs from metadata addons like AIOMetadata or Anime Kitsu are automatically resolved to the IDs Kaiju Search asks every indexer by.</div>
                 </div>
               </div>
 
@@ -1256,96 +1246,7 @@ export function IndexManagerOverlay({
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">Movie Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableMovieMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(Array.isArray(indexer.movieSearchMethod) ? indexer.movieSearchMethod : [indexer.movieSearchMethod]).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = Array.isArray(indexer.movieSearchMethod) ? indexer.movieSearchMethod : [indexer.movieSearchMethod];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ movieSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">TV Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableTvMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(Array.isArray(indexer.tvSearchMethod) ? indexer.tvSearchMethod : [indexer.tvSearchMethod]).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = Array.isArray(indexer.tvSearchMethod) ? indexer.tvSearchMethod : [indexer.tvSearchMethod];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ tvSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">Anime Movie Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableAnimeMovieMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(indexer.animeMovieSearchMethod || ['text']).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = indexer.animeMovieSearchMethod || ['text'];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ animeMovieSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">Anime TV Shows Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableAnimeTvMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(indexer.animeTvSearchMethod || ['text']).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = indexer.animeTvSearchMethod || ['text'];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ animeTvSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
+                            <KaijuSearchWays caps={indexer.capabilities} />
                             <div className="flex gap-4 text-xs">
                               <label className="flex items-center gap-1.5 text-slate-400 cursor-pointer">
                                 <input type="checkbox" checked={indexer.enabledForSearch} onChange={(e) => updateSynced({ enabledForSearch: e.target.checked })} className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800" />
@@ -1593,96 +1494,7 @@ export function IndexManagerOverlay({
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">Movie Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableMovieMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(Array.isArray(indexer.movieSearchMethod) ? indexer.movieSearchMethod : [indexer.movieSearchMethod]).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = Array.isArray(indexer.movieSearchMethod) ? indexer.movieSearchMethod : [indexer.movieSearchMethod];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ movieSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">TV Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableTvMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(Array.isArray(indexer.tvSearchMethod) ? indexer.tvSearchMethod : [indexer.tvSearchMethod]).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = Array.isArray(indexer.tvSearchMethod) ? indexer.tvSearchMethod : [indexer.tvSearchMethod];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ tvSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">Anime Movie Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableAnimeMovieMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(indexer.animeMovieSearchMethod || ['text']).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = indexer.animeMovieSearchMethod || ['text'];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ animeMovieSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-xs text-slate-400 mb-1 block">Anime TV Shows Search</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {getAvailableAnimeTvMethods(indexer.capabilities || null).map(m => (
-                                    <label key={m.value} className="flex items-center gap-1 text-xs text-slate-300 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={(indexer.animeTvSearchMethod || ['text']).includes(m.value as any)}
-                                        onChange={(e) => {
-                                          const current = indexer.animeTvSearchMethod || ['text'];
-                                          const updated = e.target.checked
-                                            ? [...current, m.value]
-                                            : current.filter(v => v !== m.value);
-                                          if (updated.length > 0) updateSynced({ animeTvSearchMethod: updated as any });
-                                        }}
-                                        className="accent-blue-500"
-                                      />
-                                      {renderMethodLabel(m)}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
+                            <KaijuSearchWays caps={indexer.capabilities} />
                             <div className="flex gap-4 text-xs">
                               <label className="flex items-center gap-1.5 text-slate-400 cursor-pointer">
                                 <input type="checkbox" checked={indexer.enabledForSearch} onChange={(e) => updateSynced({ enabledForSearch: e.target.checked })} className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800" />

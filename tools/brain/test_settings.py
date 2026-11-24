@@ -50,9 +50,6 @@ def rules(films=3000, episodes=1000):
 PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToResolve': 'on-results'}
 
 
-SEARCH_METHODS = {f'{kind}SearchMethod': ['text'] for kind in ('movie', 'tv', 'animeMovie', 'animeTv')}  # Ultimate Text Search (#270)
-
-
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 25),
                 url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None,
                 altkf_off=(), backup_host='backup.example', kf_rules=None, kf_fallback=True, host_ip=HOST_IP,
@@ -68,8 +65,8 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
     for rel, cap, own in (('config/config.json', kf_cap, kf_rules),):
         _put(os.path.join(td, rel), json.dumps({
             **(rules() if own is None else own),
-            'indexers': [{'name': NAMES[s], 'url': url(s), 'apiKey': SECRET, 'enabled': s in enabled, 'maxPages': 3, 'timeout': 15,
-                          **SEARCH_METHODS} for s in list(enabled) + list(disabled)],
+            'indexers': [{'name': NAMES[s], 'url': url(s), 'apiKey': SECRET, 'enabled': s in enabled, 'maxPages': 3, 'timeout': 15}
+                         for s in list(enabled) + list(disabled)],
             'healthChecks': {**({} if cap is None else {'maxTotalConnections': cap}),
                              'providers': [{'name': 'p', 'host': 'h', 'username': SECRET, 'password': SECRET}]},
             'searchConfig': {'seasonPackAdditionalPages': 2, 'seriesPackAdditionalPages': 2},

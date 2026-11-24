@@ -6,13 +6,14 @@
  * routing, season-pack detection, and text-match filtering.
  */
 
+import { nameKeeps, withSearchIndexer } from './searchFlow.js';
 import axios from 'axios';
 import { UsenetIndexer, NZBSearchResult, DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
 import { getAxiosProxyConfig, probeSearchExitIp } from '../proxy.js';
 import { parseNewznabXmlWithMeta } from './newznabClient.js';
-import { stripDiacritics, isTextSearchMatch, tagSeasonPack, normalizeTitle, extractTitleFromRelease, runSeriesPackQueries, buildSeriesPackPaginationMaxPages, buildSeasonPackPaginationMaxPages, extractSeasonTokens } from './titleMatching.js';
+import { stripDiacritics, tagSeasonPack, normalizeTitle, extractTitleFromRelease, runSeriesPackQueries, buildSeriesPackPaginationMaxPages, buildSeasonPackPaginationMaxPages, extractSeasonTokens } from './titleMatching.js';
 import { slog, withSubBuffer } from './searchLogger.js';
 import { timeIndexerPage } from '../utils/stepTiming.js';
 
@@ -212,10 +213,13 @@ export class UsenetSearcher {
     }
   }
 
-  async searchMovie(imdbId: string, title: string, year?: string, country?: string, externalId?: { idParam: string; idValue: string }, searchMethod?: string, additionalTitles?: string[], titleYear?: string): Promise<NZBSearchResult[]> {
+  async searchMovie(...args: Parameters<UsenetSearcher['askMovie']>): Promise<NZBSearchResult[]> {
+    return withSearchIndexer(this.indexer.name, () => this.askMovie(...args));
+  }
+
+  private async askMovie(imdbId: string, title: string, year?: string, country?: string, externalId?: { idParam: string; idValue: string }, searchMethod?: string, additionalTitles?: string[], titleYear?: string): Promise<NZBSearchResult[]> {
     try {
-      const methods = this.indexer.movieSearchMethod;
-      const method = searchMethod || (Array.isArray(methods) ? methods[0] : methods) || 'imdb';
+      const method = searchMethod || 'imdb'; // Kaiju Search (#285) names the way of every query
 
       // Text-based search
       if (method === 'text') {
@@ -223,9 +227,9 @@ export class UsenetSearcher {
         const query = stripDiacritics(year ? `${title} ${year}` : title);
         const results = await this.search(query, '2000'); // Category 2000 = Movies
         const before = results.length;
-        const filtered = results.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+        const filtered = results.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
         if (before !== filtered.length) {
-          const removed = results.filter(r => !isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+          const removed = results.filter(r => !nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
           slog(`   🎯 Title filter: ${before} → ${filtered.length} (removed ${removed.length} mismatches)`);
           removed.forEach(r => slog(`      ✂️  ${r.title}`));
         }
@@ -353,7 +357,11 @@ export class UsenetSearcher {
     }
   }
 
-  async searchTVShow(
+  async searchTVShow(...args: Parameters<UsenetSearcher['askTVShow']>): Promise<NZBSearchResult[]> {
+    return withSearchIndexer(this.indexer.name, () => this.askTVShow(...args));
+  }
+
+  private async askTVShow(
     imdbId: string,
     title: string,
     season: number,
@@ -368,8 +376,7 @@ export class UsenetSearcher {
     options?: { numberingScheme?: 'seasonal' | 'absolute' | 'date'; absoluteEp?: number; airedDate?: string; includePacks?: boolean },
   ): Promise<NZBSearchResult[]> {
     try {
-      const tvMethods = this.indexer.tvSearchMethod;
-      const method = searchMethod || (Array.isArray(tvMethods) ? tvMethods[0] : tvMethods) || 'imdb';
+      const method = searchMethod || 'imdb'; // Kaiju Search (#285) names the way of every query
 
       // Text-based search
       if (method === 'text') {
@@ -464,7 +471,7 @@ export class UsenetSearcher {
               return seasonTokens.length === 0 || seasonTokens.includes(season);
             };
             const matches = (r: NZBSearchResult) =>
-              isTextSearchMatch(title, matchTitle(r.title), year, country, additionalTitles, titleYear)
+              nameKeeps(title, matchTitle(r.title), year, country, additionalTitles, titleYear)
               && seasonOk(r.title);
             filtered = results.filter(matches);
             removed = results.filter(r => !matches(r));
@@ -483,7 +490,7 @@ export class UsenetSearcher {
             slog(`🔍 [${this.indexer.name}] Season pack search for: ${packQuery}`);
             const packResults = await this.search(packQuery, '5000', seasonPackPagination);
             const packBefore = packResults.length;
-            const titleMatched = packResults.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+            const titleMatched = packResults.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
             const filteredPacks = tagSeasonPack(titleMatched, season, episodesInSeason);
             if (packBefore !== filteredPacks.length) {
               const keptLinks = new Set(filteredPacks.map(p => p.link));
@@ -504,7 +511,7 @@ export class UsenetSearcher {
           tasks.push(withSubBuffer(`Multi-season fanout [${this.indexer.name}]: ${fanoutQuery}`, async () => {
             slog(`🔍 [${this.indexer.name}] Multi-season fanout query: ${fanoutQuery}`);
             const fanoutResults = await this.search(fanoutQuery, '5000', fanoutPagination);
-            const fanoutMatched = fanoutResults.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+            const fanoutMatched = fanoutResults.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
             const fanoutPacks = tagSeasonPack(fanoutMatched, season, episodesInSeason);
             if (fanoutResults.length !== fanoutPacks.length) {
               slog(`   📦 [${this.indexer.name}] Multi-season fanout filter: ${fanoutResults.length} → ${fanoutPacks.length}`);
@@ -521,7 +528,7 @@ export class UsenetSearcher {
           tasks.push(withSubBuffer(`Series-pack keyword queries [${this.indexer.name}]`, () => runSeriesPackQueries({
             searchFn: (q) => this.search(q, '5000', seriesPagination),
             title, season, episodesInSeason,
-            isTitleMatch: (rt) => isTextSearchMatch(title, rt, year, country, additionalTitles, titleYear),
+            isTitleMatch: (rt) => nameKeeps(title, rt, year, country, additionalTitles, titleYear),
             searchConfig: config.searchConfig,
             logPrefix: this.indexer.name,
           })));
@@ -668,7 +675,7 @@ export class UsenetSearcher {
         slog(`🔍 [${this.indexer.name}] Season pack search for: ${packQuery}`);
         packTasks.push((async () => {
           const packResults = await this.search(packQuery, '5000', seasonPackPagination);
-          const titleMatched = packResults.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+          const titleMatched = packResults.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
           const filteredPacks = tagSeasonPack(titleMatched, season, episodesInSeason);
           if (packResults.length !== filteredPacks.length) {
             const keptLinks = new Set(filteredPacks.map(p => p.link));
@@ -688,7 +695,7 @@ export class UsenetSearcher {
         slog(`🔍 [${this.indexer.name}] Multi-season fanout query: ${fanoutQuery}`);
         packTasks.push((async () => {
           const fanoutResults = await this.search(fanoutQuery, '5000', fanoutPagination);
-          const fanoutMatched = fanoutResults.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+          const fanoutMatched = fanoutResults.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
           const fanoutPacks = tagSeasonPack(fanoutMatched, season, episodesInSeason);
           if (fanoutResults.length !== fanoutPacks.length) {
             slog(`   📦 [${this.indexer.name}] Multi-season fanout filter: ${fanoutResults.length} → ${fanoutPacks.length}`);
@@ -702,7 +709,7 @@ export class UsenetSearcher {
         packTasks.push(runSeriesPackQueries({
           searchFn: (q) => this.search(q, '5000', buildSeriesPackPaginationMaxPages(config.searchConfig)),
           title, season, episodesInSeason,
-          isTitleMatch: (rt) => isTextSearchMatch(title, rt, year, country, additionalTitles, titleYear),
+          isTitleMatch: (rt) => nameKeeps(title, rt, year, country, additionalTitles, titleYear),
           searchConfig: config.searchConfig,
           logPrefix: this.indexer.name,
         }));
@@ -734,7 +741,11 @@ export class UsenetSearcher {
    * fire concurrently with episode-method searches rather than inline. Returns
    * the union of all matching packs across the three pack-query types.
    */
-  async searchTVShowPacks(
+  async searchTVShowPacks(...args: Parameters<UsenetSearcher['askTVShowPacks']>): Promise<NZBSearchResult[]> {
+    return withSearchIndexer(this.indexer.name, () => this.askTVShowPacks(...args));
+  }
+
+  private async askTVShowPacks(
     title: string,
     season: number,
     episodesInSeason: number | undefined,
@@ -758,7 +769,7 @@ export class UsenetSearcher {
       const packQuery = stripDiacritics(`${title} S${s}`);
       packTasks.push(withSubBuffer(`Season pack: ${packQuery}`, async () => {
         const packResults = await this.search(packQuery, '5000', seasonPackPagination);
-        const titleMatched = packResults.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+        const titleMatched = packResults.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
         const filteredPacks = tagSeasonPack(titleMatched, season, episodesInSeason);
         if (packResults.length !== filteredPacks.length) {
           const keptLinks = new Set(filteredPacks.map(p => p.link));
@@ -777,7 +788,7 @@ export class UsenetSearcher {
       const fanoutQuery = stripDiacritics(`${title} S01`);
       packTasks.push(withSubBuffer(`Multi-season fanout: ${fanoutQuery}`, async () => {
         const fanoutResults = await this.search(fanoutQuery, '5000', fanoutPagination);
-        const fanoutMatched = fanoutResults.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+        const fanoutMatched = fanoutResults.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
         const fanoutPacks = tagSeasonPack(fanoutMatched, season, episodesInSeason);
         if (fanoutResults.length !== fanoutPacks.length) {
           slog(`   📦 [${this.indexer.name}] Multi-season fanout filter: ${fanoutResults.length} → ${fanoutPacks.length}`);
@@ -791,7 +802,7 @@ export class UsenetSearcher {
       packTasks.push(withSubBuffer(`Series-pack keyword queries`, () => runSeriesPackQueries({
         searchFn: (q) => this.search(q, '5000', buildSeriesPackPaginationMaxPages(config.searchConfig)),
         title, season, episodesInSeason,
-        isTitleMatch: (rt) => isTextSearchMatch(title, rt, year, country, additionalTitles, titleYear),
+        isTitleMatch: (rt) => nameKeeps(title, rt, year, country, additionalTitles, titleYear),
         searchConfig: config.searchConfig,
         logPrefix: this.indexer.name,
       })));
