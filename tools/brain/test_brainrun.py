@@ -72,9 +72,10 @@ class FakeIO(Copies):
     LIST_S, START_S, SEEKS_S = 2.0, 1.5, 0.5  # a visit whose top pick plays takes the three together: 4 s
     FAILED_PLAY_S = 10.0                      # a top pick that fails gives up after this long: the visit takes 12 s
 
-    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=(), load=0.4):
+    def __init__(self, limit_at_visit=None, marker=None, commit='c1', settings=None, fail_http_for=None, up=(), load=0.4, machine=None):
         Copies.__init__(self, up)
         self.load = load
+        self.machine = machine or {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance', 'cpu_probe_ms': 950}
         self.calls, self.clock, self.visits = [], datetime.datetime(2026, 11, 10, 18, 0, 0, tzinfo=UTC), 0
         self.limit_at_visit, self._marker, self.commit = limit_at_visit, marker, commit
         self.settings = settings or {'kaijuflow': {'healthChecks.sampleCount': 3, 'altmountApiKey': '***'}}
@@ -103,10 +104,11 @@ class FakeIO(Copies):
         return self.commit
 
     def preflight(self, mode, seen=None):
-        """As the real preflight: a run's preflight hands back the load it judged (`load`)."""
+        """As the real preflight: a run's preflight hands back the load and the machine it judged (`load`, `machine`)."""
         self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
         if mode == 'run' and seen is not None:
             seen['load'] = self.load
+            seen['machine'] = dict(self.machine)
         return list(getattr(self, 'problems', []))
 
     def snapshot(self):
@@ -266,6 +268,11 @@ class RunTest(unittest.TestCase):
         run = brainrun.run_all(make_cfg(self.tmp), io)
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['start_load'], 0.43)
 
+    def test_run_record_keeps_the_machine_the_preflight_judged(self):
+        machine = {'power': 'ac', 'governor': 'performance', 'cpu_probe_ms': 1012}
+        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(machine=machine))
+        self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['machine'], machine)
+
     def test_sides_exactly_the_named_ones(self):
         run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
         self.assertEqual({v['side'] for v in run['visits']}, {'kaijuflow'})
@@ -291,6 +298,17 @@ class RunTest(unittest.TestCase):
         self.assertIn('healthChecks.sampleCount: 3 -> 5', idx)
         rep = read(os.path.join(root, os.path.basename(run2['dir']), 'report.md'))
         self.assertIn('healthChecks.sampleCount: 3 -> 5', rep.split('Steps every side shares')[0])
+
+    def test_the_report_opens_with_the_machine_and_holds_it_against_the_previous_runs(self):
+        run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
+        io2 = FakeIO(machine={'power': 'battery', 'governor': 'powersave', 'cpu_probe_ms': 1140})
+        io2.clock += datetime.timedelta(minutes=5)
+        run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
+        head = read(os.path.join(run2['dir'], 'report.md')).split('Steps every side shares')[0]
+        self.assertIn('Machine: on battery, CPU probe 1140 ms (governor powersave).', head)
+        self.assertIn('- Machine: previous run plugged in, CPU probe 950 ms (governor powersave, energy preference performance); '
+                      'this run on battery, CPU probe 1140 ms (governor powersave): the probe 20% slower', head)
+        self.assertNotIn('Machine:', ' '.join(run1['changes']))  # the first run has nothing to hold it against
 
     def test_a_run_is_judged_against_the_previous_run_on_its_recording(self):
         run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
@@ -2001,3 +2019,55 @@ class NeverComparedTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ListCpuTest(unittest.TestCase):
+    """The runner's CPU readings around a list request (#249): each test container's cgroup and the whole machine."""
+
+    def test_cpu_used_between_two_readings_in_ms(self):
+        before = {'kaijuflow_ms': 1_000_000, 'altmount_ms': 5_000_000, 'machine_ms': 70_000}
+        after = {'kaijuflow_ms': 1_250_400, 'altmount_ms': 4_000_000, 'machine_ms': 71_230}
+        self.assertEqual(brainrun.cpu_used(before, after), {'kaijuflow_ms': 250, 'altmount_ms': None, 'machine_ms': 1230},
+                         'a reading that went back (a restart) says nothing')
+        self.assertEqual(brainrun.cpu_used({}, after), {'kaijuflow_ms': None, 'altmount_ms': None, 'machine_ms': None})
+
+    def test_container_cpu_is_read_from_its_cgroup_and_looked_up_again_after_a_reset(self):
+        if True:
+            root = tempdir(self)
+            ids = iter(['aaa', 'bbb'])
+            calls = []
+
+            def run(cmd, **kw):
+                calls.append(cmd)
+                return mock.Mock(returncode=0, stdout=next(ids) + '\n')
+            os.makedirs(os.path.join(root, 'docker-bbb.scope'))
+            with open(os.path.join(root, 'docker-bbb.scope', 'cpu.stat'), 'w') as f:
+                f.write('usage_usec 43176\nuser_usec 29486\n')
+            brainrun._container_ids.pop('kaijuflow-test', None)
+            self.assertEqual(brainrun._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
+            self.assertEqual(len(calls), 2, 'the first id had no cgroup: looked up again')
+            self.assertEqual(brainrun._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
+            self.assertEqual(len(calls), 2, 'the id is kept')
+            brainrun._container_ids.pop('kaijuflow-test', None)
+        with self.assertRaises(ValueError):
+            brainrun._container_cpu_us('some-other-container')
+
+    def test_machine_busy_leaves_out_idle_and_iowait(self):
+        if True:
+            d = tempdir(self)
+            p = os.path.join(d, 'stat')
+            with open(p, 'w') as f:
+                f.write('cpu  100 5 50 1000 40 3 2 0 0 0\ncpu0 1 2 3 4\n')
+            self.assertEqual(brainrun._machine_busy_ms(p), (100 + 5 + 50 + 3 + 2) * 10)
+            self.assertIsNone(brainrun._machine_busy_ms(os.path.join(d, 'none')))
+
+    def test_a_visit_keeps_the_list_cpu_its_http_gave(self):
+        sample = iter([{'kaijuflow_ms': 0, 'altmount_ms': 0, 'machine_ms': 0},
+                       {'kaijuflow_ms': 90_000, 'altmount_ms': 10_000, 'machine_ms': 400}])
+        with mock.patch.object(brainrun, 'cpu_sample', lambda: next(sample)), \
+                mock.patch.object(common, 'get', return_value=(200, {}, b'{"streams": []}', {'ready': 0.2, 'total': 0.3})):
+            io = brainrun.RealIO({'test_dir': '/nonexistent'})
+            with mock.patch.object(brainrun, 'list_base', return_value='http://x'):
+                out = io.visit_http('kaijuflow', 'movie', 'tt1', 1)
+        self.assertEqual(out['list_cpu'], {'kaijuflow_ms': 90, 'altmount_ms': 10, 'machine_ms': 400})
+        self.assertEqual(out['list_s'], 0.3)

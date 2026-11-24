@@ -178,6 +178,45 @@ class DiffTest(unittest.TestCase):
         self.assertIn('one-page side: yes -> no', '\n'.join(br.diff_runs(old_one_page, new)))
 
 
+class MachineTest(unittest.TestCase):
+    """The machine a run ran on (meta.json `machine`, #262) in its report: the opening facts and "What changed"."""
+
+    base = DiffTest.base
+    plugged = {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance', 'cpu_probe_ms': 1000}
+
+    def test_the_power_state_and_the_probe_are_listed_against_the_previous_run(self):
+        prev = dict(self.base, machine=self.plugged)
+        cur = dict(self.base, machine=dict(self.plugged, power='battery', cpu_probe_ms=1240), started='2026-11-10T19:00:00Z')
+        out = br.diff_runs(prev, cur)
+        self.assertIn('Machine: previous run plugged in, CPU probe 1000 ms (governor powersave, energy preference performance); '
+                      'this run on battery, CPU probe 1240 ms (governor powersave, energy preference performance): the probe 24% slower', out)
+
+    def test_a_faster_probe_and_the_same_probe_are_said_so(self):
+        prev = dict(self.base, machine=self.plugged)
+        faster = '\n'.join(br.diff_runs(prev, dict(self.base, machine=dict(self.plugged, cpu_probe_ms=800))))
+        self.assertIn('this run plugged in, CPU probe 800 ms (governor powersave, energy preference performance): the probe 20% faster', faster)
+        same = '\n'.join(br.diff_runs(prev, dict(self.base, machine=dict(self.plugged, cpu_probe_ms=1004))))
+        self.assertIn('CPU probe 1004 ms (governor powersave, energy preference performance): the probe the same', same)
+
+    def test_a_run_from_before_with_no_machine_shows_no_difference(self):
+        for prev, cur in ((self.base, dict(self.base, machine=self.plugged)), (dict(self.base, machine=self.plugged), self.base),
+                          (dict(self.base, machine=None), dict(self.base, machine=self.plugged))):
+            out = br.diff_runs(prev, cur)
+            self.assertEqual([x for x in out if 'Machine' in x or 'probe' in x], [], out)
+            self.assertTrue(out[0].startswith('Nothing changed'), out)
+
+    def test_a_policy_that_could_not_be_read_is_left_out_of_the_words(self):
+        self.assertEqual(br.machine_text({'power': 'ac', 'cpu_probe_ms': 990}), 'plugged in, CPU probe 990 ms')
+
+    def test_the_report_opens_with_the_machine(self):
+        run = runs_fixture()
+        run['machine'] = dict(self.plugged, power='battery')
+        head = br.render_report(run, []).split('## What changed')[0]
+        self.assertIn('Machine: on battery, CPU probe 1000 ms (governor powersave, energy preference performance).', head)
+        run['machine'] = None
+        self.assertNotIn('Machine', br.render_report(run, []).split('## What changed')[0])
+
+
 class ScrubTest(unittest.TestCase):
     def test_only_real_secret_fields_are_masked(self):
         flat = br.flatten({'bypass_x': 'on', 'maxUsers': 5, 'max_users': 6, 'keepAlive': 1, 'keywords': 'a', 'passes': 2,
@@ -1260,3 +1299,49 @@ def video(side, lst, secs, phase='cold'):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def list_lines(vid, t, ms=120, sort=40, groups=3):
+    """A list request's step lines as KaijuFlow writes them (#249), ending at time t."""
+    base = {'ok': True, 't': t, 'ref': vid}
+    return [dict(base, step='list_filter', ms=30, results=10, kept=8), dict(base, step='list_sort', ms=sort),
+            dict(base, step='fallback_group', ms=5, candidates=8, groups=groups), dict(base, step='list_build', ms=20, streams=9),
+            dict(base, step='head_start', ms=1),
+            dict(base, step='list', ms=ms, cache='hit', streams=9, cpu_ms=150, gc_ms=12, gc_n=2, loop_max_ms=8,
+                 loop_p99_ms=4, elu=0.93, heap_mb=210)]
+
+
+class ListWorkTest(unittest.TestCase):
+    """The list's own work (#249): KaijuFlow's list lines are kept by ref, and the report shows them with the CPU readings."""
+
+    def test_list_lines_are_kept_by_ref_inside_the_visit_window(self):
+        visit = {'id': 'tt1', 't_start': '2026-11-10T18:00:00Z', 'tries': []}
+        mine = list_lines('tt1', '2026-11-10T18:00:00.500Z')
+        other = list_lines('tt2', '2026-11-10T18:00:00.600Z')
+        late = list_lines('tt1', '2026-11-10T18:10:00.000Z')
+        kept = br.attribute_steps(visit, mine + other + late, end=br.parse_ts('2026-11-10T18:05:00Z'))
+        self.assertEqual(sorted(s['step'] for s in kept), sorted(br.LIST_STEPS))
+        self.assertTrue(all(s['ref'] == 'tt1' and s['t'].startswith('2026-11-10T18:00:00') for s in kept))
+
+    def test_report_shows_medians_per_round_and_every_warm_list(self):
+        run = runs_fixture()
+        for v in run['visits']:
+            if v['side'] == 'kaijuflow':
+                slow = v['phase'] == 'warm' and v['round'] == 2
+                v['steps'] = list_lines('tt1', '2026-11-10T18:00:01Z', ms=900 if slow else 120, sort=600 if slow else 40)
+                v['list_cpu'] = {'kaijuflow_ms': 160, 'altmount_ms': 75, 'machine_ms': 980}
+        text = br.render_report(run, [])
+        start = text.index("## The list's own work")
+        end = text.find('\n## ', start)
+        section = text[start:end if end > 0 else None]
+        rows = [r for r in section.split('\n') if r.startswith('| KaijuFlow |')]
+        self.assertEqual(len(rows), 4, 'one row per round of the side that wrote list lines')
+        warm2 = next(r for r in rows if '| Warm 2 |' in r)
+        self.assertEqual(warm2.split(' | ')[2:7], ['5000', '900', '30', '600', '20'])
+        self.assertIn('| 0.93 | 210 | 160 | 75 | 980 |', warm2)
+        self.assertIn('Every warm list:', section)
+        self.assertEqual(sum(1 for r in section.split('\n') if r.startswith('| Matrix | KaijuFlow | Warm')), 2)
+        self.assertIn('- **Group write**:', section)
+
+    def test_a_run_without_list_lines_has_no_such_section(self):
+        self.assertNotIn("The list's own work", br.render_report(runs_fixture(), []))

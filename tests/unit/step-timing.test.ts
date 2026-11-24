@@ -2,7 +2,7 @@
 // Run: npm run test:unit
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { logStep, timeStep, timeIndexerPage, withStepRef, parseStepLine, STEP_NAMES, logPlayFailed } from '../../src/utils/stepTiming.ts';
+import { logStep, timeStep, timeIndexerPage, withStepRef, parseStepLine, STEP_NAMES, logPlayFailed, timeStepSync } from '../../src/utils/stepTiming.ts';
 import { captureLogs } from './capture-logs.ts';
 
 const stepLines = (logs: string) => logs.split('\n').filter(l => l.includes('[KF-STEP]'));
@@ -54,9 +54,21 @@ test('lines never carry an API key or a URL query', async () => {
   assert.doesNotMatch(logs, /apikey|https?:\/\//i);
 });
 
-test('parseStepLine ignores other log lines, and the step names are the agreed ones (health_batch went with the list-time check, #191; the play\'s two events came with #242)', () => {
+test('parseStepLine ignores other log lines, and the step names are the agreed ones (health_batch went with the list-time check, #191; the play\'s two events came with #242; the list\'s steps with #249)', () => {
   assert.equal(parseStepLine('Searching x'), null);
-  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed']);
+  assert.deepEqual([...STEP_NAMES], ['indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed',
+    'list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start']);
+});
+
+test('timeStepSync logs once per call, also when the work throws, and passes the result through (#249)', async () => {
+  let out = 0;
+  const logs = await captureLogs(async () => {
+    out = timeStepSync({ step: 'list_build' }, () => 7, n => ({ streams: n }));
+    assert.throws(() => timeStepSync({ step: 'head_start' }, () => { throw new Error('boom'); }), /boom/);
+  });
+  const recs = stepLines(logs).map(l => parseStepLine(l)!);
+  assert.equal(out, 7);
+  assert.deepEqual(recs.map(r => [r.step, r.ok, r.streams]), [['list_build', true, 7], ['head_start', false, undefined]]);
 });
 
 test('a play_failed line gives the reason without an address or a file path (#242)', async () => {
