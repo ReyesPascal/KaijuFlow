@@ -27,8 +27,9 @@ At a **stopping point** this session hands the work to a fresh one, so the owner
 **Stopping points:**
 - a timed run is checked, backed up, reported, and its result is on its ticket (#218, #219, each halving run);
 - a PR merges and its ticket closes, outside a parallel build;
-- a `/retro`'s fixes are merged.
+- a `/retro`'s fixes are merged;
+- in an `implement-spec` build whose plan says so (the spec's "Building it", for example #279's): after a wave of tickets has merged into the integration branch and the handoff note is pushed, and after a review round's fix-up is pushed. The task is the plan's resume command (`kf-next --raw "/mattpocock-skills:implement-spec #<spec> (resume from the handoff note)"`); the builder panes carry on across the handoff, and the new session re-arms `panewatch.py` and finds them by the names in the note.
 
-**Never at:** the middle of a run or a record; a question to the owner or a `kf-alert` still open; a parallel build (`implement-spec`), whose watcher and merges live in that session; between grilling, `/to-spec` and `/to-tickets`.
+**Never at:** the middle of a run or a record; the middle of a merge; a question to the owner or a `kf-alert` still open; a parallel build (`implement-spec`) whose plan does not say so, since its watcher and merges live in that session; between grilling, `/to-spec` and `/to-tickets`.
 
 **The step:** update the handoff note's "Next command", commit it and push `~/kaijuflow-notes` (straight to its `main`: no branch, PR or CI), then run `~/.local/bin/kf-next "<task>"`, where `<task>` is the words after `/kf` in "Next command" (for example `phase 2 of #183`). The task starts on its own only when a plan already gives the go for it (#183's phase 2 standing go). When the next step needs the owner instead, do not hand off: stop and `kf-alert` them. `kf-next` refuses uncommitted changes in the repo or a note not pushed to kaijuflow-notes' `origin/main`; it opens the new session in a pane beside this one, checks its turn started, and closes this pane 20 s later. On a refusal or a failed start, this pane stays: say why in one line and stop.

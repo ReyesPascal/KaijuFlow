@@ -229,3 +229,29 @@ _Avoid_: aborted run, cancelled run, null run (null is the cap rule's result)
 **Archived run**:
 A run from before the like-for-like rules, kept in the `archive/` folder of the runs root as a record. It is never the baseline, never compared with, and never on the Speed Check page.
 _Avoid_: old run, deleted run (nothing is deleted)
+
+### Diagnosis (spec #279)
+
+**Diagnosis**:
+The one system that finds, proves and learns why a play in a check went wrong, run by itself after every check with a failure: it gathers the evidence folder, fingerprints the failure, looks it up in the Casebook, proves or rules out every lead with Clues, works an unknown failure through a Case log until it is solved, and proves the fix with a Drill-down. A cause is named only when its confirming test passes on this failure's own evidence; a look-alike with no confirming test is "suspected", never "found". Its recording is dev only, behind the dev switch (`devDiagnostics`, on in the test copies only).
+_Avoid_: debugging (by hand), triage, root-cause tool
+
+**Casebook**:
+The known causes of failed plays, one readable file per cause in a fixed format (what the viewer saw, signs, cause, how it was proved, ruled out, fix, history), with an index generated from the files that the programs read. A match in it only orders the leads; it never names a cause by itself.
+_Avoid_: known-error database, FAQ, list of bugs
+
+**Clue**:
+One small reusable yes/no test that answers a single question from the evidence or from a live read-only look at Usenet or AltMount (are all the articles there? what reason did AltMount give? did Unscramble rename the volumes?). A cause's confirming test is a recipe of Clues; a new Clue is built only for a truly new question, and none is ever deleted.
+_Avoid_: probe, check (a check plays titles), test (unqualified)
+
+**Case log**:
+The record of a failure with no proved cause yet: every observation, hypothesis (with the result that would refute it), Clue run and result, so a later attempt starts from what was tried. It stays open until the cause is proved, and then becomes a Casebook entry.
+_Avoid_: ticket (a ticket is for a fix), notes, incident
+
+**Kaiju Search**:
+KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer supports: IMDb, TMDB, TVDB, TVmaze) and by name (the title's other names too) at once, the answers merged and each Source listed once, then sorted by Search Flow. It ships in the release; it learns in dev.
+_Avoid_: Ultimate text search, search method, text search (one way of asking only)
+
+**Search Flow**:
+What Kaiju Search does with each result: the loose rule (the inherited name match) decides what stays; the strict rule (the right title, with only seen tags between the name and the year or episode) only sorts, never removes, into **sure** (passes strict) and **maybe** (loose only); extra proof (the ID search returned it too, the video file name inside the NZB fits, runtime or size fits, another TMDB/TVDB name fits) makes a maybe sure. Best tries sure Sources first.
+_Avoid_: Name rule, name filter, strict filter
