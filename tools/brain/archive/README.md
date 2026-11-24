@@ -16,7 +16,7 @@
 
 Kept elsewhere, as they were:
 
-- **The Recordings** `kf-189` and `kf-265` (and `baseline`): the stand-in store `~/kaijuflow-test/store/`, backed up in `~/kaijuflow-notes/recordings/` by `../backup.sh`. Never deleted.
+- **The Recordings** `kf-189` and `kf-265` (and `baseline`) were **deleted** on the owner's word (2026-11-24, #312: "i want them there, dont want old recordings"), from the stand-in store `~/kaijuflow-test/store/` and from their copies in `~/kaijuflow-notes/recordings/`; nothing live needs them, and `../backup.sh` no longer mirrors a store. To get one back for a revived command: `git -C ~/kaijuflow-notes show a633296:recordings/<name>/...`, or check out `recordings/` at commit `a633296` and copy it to `~/kaijuflow-test/store/`.
 - **Old run folders**: `~/kaijuflow-notes/brain-runs/archive/` (#144), and the timed runs of 2026-11-13 to 2026-11-24 in the runs root.
 - **Shared parts still in use**: the stand-in (`../indexer_standin.py`; a check runs it in record mode, its replay mode was the Recording's), the run report and step-line readers (`../brainreport.py`), `../runs.py`, and the preflight's record and run modes (`brainrun.preflight`), which only this archive uses.
 

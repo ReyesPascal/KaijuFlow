@@ -1380,7 +1380,7 @@ def write_check_ending(cfg, io, check, started, logbuf):
     check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t), indexers=check['indexers'])
                          for v in quickcheck.judged(check)]
     # what the stand-in sent each indexer, for the report's indexer table (#304)
-    check['requests'] = quickcheck.requests_by_indexer(allowance.requests_in(os.path.join(run_dir, 'logs', 'standin.log')))
+    check['requests'] = quickcheck.requests_of(run_dir)
     save_evidence(io, check, every=check['kind'] == drill.KIND)  # a Drill-down keeps its play's folder however it went
     try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
         # section says if it could not

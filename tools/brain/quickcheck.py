@@ -437,17 +437,28 @@ def indexer_rows(check, outcomes):
     return rows
 
 
+INDEXER_HEADS = ('Indexer', 'Searches', 'Downloads', 'Answer time', 'Lists sent without it', 'Plays from a Release only it had')
+
+
+def indexer_cells(row):
+    """One indexer_rows row as the table's cells (text), the report's and the Speed Check page's (checkpage.py)."""
+    missed = f", {row['not_answered']} not answered" if row['not_answered'] else ''
+    answer = (f"{row['typical_s']:.2f} s typical, {row['slowest_s']:.2f} s slowest" if row['typical_s'] is not None
+              else 'none answered') + missed
+    only = 'not known (no search lines: the dev switch was off)' if row['only_it'] is None else str(row['only_it'])
+    return [row['indexer'], str(row['searches']), str(row['downloads']), answer, f"{row['without']} of {row['lists']}", only]
+
+
 def indexer_lines(check, outcomes):
     """The report's table of indexer_rows."""
-    out = ['| Indexer | Searches | Downloads | Answer time | Lists sent without it | Plays from a Release only it had |',
-           '|---|---|---|---|---|---|']
-    for r in indexer_rows(check, outcomes):
-        missed = f", {r['not_answered']} not answered" if r['not_answered'] else ''
-        answer = (f"{r['typical_s']:.2f} s typical, {r['slowest_s']:.2f} s slowest" if r['typical_s'] is not None
-                  else 'none answered') + missed
-        only = 'not known (no search lines: the dev switch was off)' if r['only_it'] is None else r['only_it']
-        out.append(f"| {r['indexer']} | {r['searches']} | {r['downloads']} | {answer} | {r['without']} of {r['lists']} | {only} |")
-    return out
+    out = ['| ' + ' | '.join(INDEXER_HEADS) + ' |', '|' + '---|' * len(INDEXER_HEADS)]
+    return out + ['| ' + ' | '.join(indexer_cells(r)) + ' |' for r in indexer_rows(check, outcomes)]
+
+
+def requests_of(run_dir):
+    """What the stand-in sent each indexer in a check (requests_by_indexer), from the folder's logs/standin.log: the
+    check's ending and the Speed Check page read it the same way."""
+    return requests_by_indexer(allowance.requests_in(os.path.join(run_dir, 'logs', 'standin.log')))
 
 
 # --------------------------------------------------------------------------- the verdict and the report
