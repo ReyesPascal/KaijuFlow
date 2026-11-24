@@ -10,10 +10,12 @@ import os
 import random
 import tempfile
 import unittest
+import sys
 import urllib.parse
 
-import common
-import draw
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # for --capture, run as a script with -I
+import common  # noqa: E402
+import draw  # noqa: E402
 
 TODAY = '2026-11-24'
 NOW = datetime.datetime(2026, 11, 24, 12, 0, tzinfo=datetime.timezone.utc)
@@ -26,9 +28,10 @@ class FakeTmdb:
 
     def __init__(self):
         self.films, self.shows, self.lists, self.calls = {}, {}, {}, []
+        self.list_status = 200  # what TMDB answers a list call: 200, or the error it refuses with
 
-    def film(self, tmdb_id, title, year, original=None, imdb=None):
-        self.films[tmdb_id] = {'id': tmdb_id, 'title': title, 'original_title': original or title,
+    def film(self, tmdb_id, title, year, original=None, imdb=None, votes=500):
+        self.films[tmdb_id] = {'id': tmdb_id, 'title': title, 'original_title': original or title, 'vote_count': votes,
                                'release_date': f'{year}-05-01', 'imdb': imdb if imdb is not None else f'tt{tmdb_id:07d}'}
 
     def show(self, tmdb_id, name, seasons, imdb=None, aired=None):
@@ -42,6 +45,8 @@ class FakeTmdb:
         q = dict(urllib.parse.parse_qsl(query))
         parts = route.strip('/').split('/')
         if route.startswith(('/movie/popular', '/tv/popular', '/discover/')):
+            if self.list_status != 200:
+                return self.list_status, {'status_message': 'refused'}
             for piece, ids in self.lists.items():
                 if piece in path:
                     pool = self.films if route.startswith(('/movie', '/discover/movie')) else self.shows
@@ -102,7 +107,9 @@ def world():
     t.film(601, 'Halloween', 2018)
     t.film(602, 'Halloween', 1978)
     t.film(603, 'Only Once', 2015)  # no other film has its name: not a remake
-    t.lists['sort_by=vote_count.desc&page='] = [601, 603]
+    t.film(604, 'Hollow Name', 2012)
+    t.film(605, 'Hollow Name', 1990, votes=0)  # a namesake nobody voted on is no real film: not a remake
+    t.lists['sort_by=vote_count.desc&page='] = [601, 603, 604]
     t.film(701, 'Old Film', 1971)
     t.lists['primary_release_date.lte'] = [701]
     t.lists['vote_count.lte=200&page'] = [701]
@@ -130,6 +137,7 @@ class DrawTest(unittest.TestCase):
         self.assertEqual((show, season), ('tt0000401', '1'))
         self.assertTrue(1 <= int(episode) <= 12)
         self.assertEqual(got[0][2], f'Some Anime S01E{int(episode):02d}')
+        self.assertEqual(got[0][4], '2020-04-01')  # the episode's air date, for the right-title match
 
     def test_titles_in_the_ledger_are_never_drawn_and_a_played_show_takes_none_of_its_episodes(self):
         t = world()
@@ -156,20 +164,34 @@ class DrawTest(unittest.TestCase):
     def test_a_foreign_title_has_an_english_title_that_is_not_its_original_one(self):
         for seed in range(5):
             got = run_draw(world(), kinds={'foreign': 1}, seed=seed)
-            self.assertEqual(got[0][1:], ['tt0000301', 'Amélie', 'foreign'])
+            self.assertEqual(got[0][1:], ['tt0000301', 'Amélie', 'foreign', '2001-05-01'])
 
     def test_a_remake_title_shares_its_name_with_a_film_of_another_year(self):
         for seed in range(5):
             got = run_draw(world(), kinds={'remake': 1}, seed=seed)
-            self.assertEqual(got[0][1:], ['tt0000601', 'Halloween', 'remake'])
+            self.assertEqual(got[0][1:], ['tt0000601', 'Halloween', 'remake', '2018-05-01'])
 
     def test_a_daily_show_episode_comes_from_its_latest_season(self):
         got = run_draw(world(), kinds={'daily': 1})
         self.assertTrue(got[0][1].startswith('tt0000501:11:'), got[0][1])
 
+    def test_a_talk_show_with_weekly_seasons_is_no_daily_show(self):
+        t = FakeTmdb()
+        t.show(1, 'Weekly Talk', {1: (13, '2020-01-01'), 2: (13, '2021-01-01')})
+        t.lists['with_genres=10767'] = [1]
+        with self.assertRaises(draw.Refused):
+            run_draw(t, kinds={'daily': 1})
+
+    def test_a_list_tmdb_refuses_stops_the_draw(self):
+        t = world()
+        t.list_status = 503
+        with self.assertRaises(draw.pool.TmdbError) as e:
+            run_draw(t, kinds={'popular-film': 1})
+        self.assertEqual(str(e.exception), 'TMDB answered HTTP 503 for a popular-film list, so nothing was drawn.')
+
     def test_a_rare_kind_draws_from_older_or_little_known_titles(self):
         got = run_draw(world(), kinds={'rare-film': 1})
-        self.assertEqual(got[0][1:], ['tt0000701', 'Old Film', 'rare-film'])
+        self.assertEqual(got[0][1:], ['tt0000701', 'Old Film', 'rare-film', '1971-05-01'])
 
     def test_an_episode_not_aired_yet_and_a_season_not_started_are_never_drawn(self):
         t = FakeTmdb()
@@ -221,7 +243,7 @@ class CapturedTmdbTest(unittest.TestCase):
             cap = json.load(f)
 
         def get(path):
-            self.assertIn(path, cap['answers'], 'a TMDB call the capture does not hold')
+            self.assertIn(path, cap['answers'], 'a TMDB call the capture does not hold: capture again (below)')
             status, data = cap['answers'][path]
             return status, data
         got = draw.draw(get, [], cap['kinds'], random.Random(cap['seed']), cap['today'])
@@ -323,5 +345,30 @@ class CommandTest(unittest.TestCase):
         self.assertTrue({t[1] for t in common.TITLES} <= ids)
 
 
+def capture(folder, seed=7):
+    """Captures TMDB's real answers to one draw of each kind into `folder`/answers.json, with the metadata key of
+    KaijuFlow's test copy (never written: it is only in the request URLs). After a change to the order of the draw's
+    TMDB calls or its random picks: python3 -I tools/brain/test_draw.py --capture tools/brain/fixtures/<day>-tmdb-draw"""
+    get, answers = draw.pool.tmdb_getter(common.DEFAULT_TEST_DIR), {}
+
+    def keep(path):
+        answers[path] = list(get(path))
+        return tuple(answers[path])
+    today, kinds = datetime.date.today().isoformat(), {k: 1 for k in draw.KINDS}
+    drawn = draw.draw(keep, [], kinds, random.Random(seed), today)
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, 'answers.json'), 'w') as f:
+        json.dump({'about': f"TMDB's real answers to one draw of each kind (draw.py, #269), captured {today} with the "
+                            'seed and day below by test_draw.py --capture; the key was only in the request URLs. '
+                            'test_draw.py replays them.',
+                   'seed': seed, 'today': today, 'kinds': kinds, 'drawn': drawn, 'answers': answers},
+                  f, ensure_ascii=False, indent=1)
+    return drawn
+
+
 if __name__ == '__main__':
-    unittest.main()
+    if sys.argv[1:2] == ['--capture']:
+        for title in capture(sys.argv[2]):
+            print(title)
+    else:
+        unittest.main()

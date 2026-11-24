@@ -177,7 +177,7 @@ Every speed test plays titles no speed test has played before (ADR 0007). They c
 ]
 ```
 
-The field is called the list, not the kind: kind already means film or series. A draw writes the easy films, the easy episodes, the hard films, then the hard episodes.
+The field is called the list, not the kind: kind already means film or series here. (A real-use check's drawn list has a fifth field and calls its fourth the kind of draw, such as `popular-film`: see "The title draw and the ledger".) A draw writes the easy films, the easy episodes, the hard films, then the hard episodes.
 
 ## The title draw and the ledger (`draw.py`)
 
@@ -191,17 +191,17 @@ Every real-use check plays new titles (ADR 0010, #269). `python3 -I tools/brain/
 | `rare-film`, `rare-episode` | film, episode | older titles (films before 2000, shows first aired before 2005) or little-known ones (20 to 200 votes), one of the two at random |
 | `foreign` | film | a film in another language (one of twelve, at random) whose English title is not its original one |
 | `anime` | episode | Japanese animated shows |
-| `remake` | film | well-known films that share their name with a film of another year (TMDB's search says so) |
-| `daily` | episode | English-language talk shows, an episode of their latest season |
+| `remake` | film | well-known films that share their name with a real film of another year (TMDB's search finds it, with 50 votes or more) |
+| `daily` | episode | English-language talk shows with a season of 100 episodes or more (one on most weekdays), an episode of the latest such season |
 
-From each kind's list the draw takes a page of the first ten at random and goes through it in random order. It skips a title in the ledger, a title without an IMDb ID, a film not released yet, and a show with no aired episode; an episode is a random aired episode of a random aired season. Each title's ID is checked as `check-ids` does (`pool.check_title`); one that does not check is skipped. A kind that finds no new title in 8 pages is refused with one sentence, and nothing is drawn. `--kinds anime=1` draws one more title of a kind, a full check's replacement for a hard-case title with nothing to play.
+From each kind's list the draw takes a page of the first 25 (500 titles) at random and goes through it in random order. It skips a title in the ledger, a title without an IMDb ID, a film not released yet, and a show with no aired episode; an episode is a random aired episode of a random aired season. Each title's ID is checked as `check-ids` does (`pool.check_title`); one that does not check is skipped. A kind that finds no new title in 8 pages is refused with one sentence, and nothing is drawn. `--kinds anime=1` draws one more title of a kind, a full check's replacement for a hard-case title with nothing to play.
 
-**The title list** is `[type, id, label, kind]`, in the order of `--kinds`, read like a tagged title list whose fourth field is the kind:
+**The title list** is `[type, id, label, kind, date]`, in the order of `--kinds`. The date is a film's release date or an episode's air date (TMDB's), so a check can tell the right title from another of the same name. It is a real-use check's list, not a `--titles-file` for `brainrun.py run`, which reads a fourth field as the easy or hard list:
 
 ```json
 [
-  ["movie", "tt33764258", "The Odyssey", "popular-film"],
-  ["series", "tt2359704:2:9", "JoJo's Bizarre Adventure S02E09", "anime"]
+  ["movie", "tt33764258", "The Odyssey", "popular-film", "2026-07-17"],
+  ["series", "tt2359704:2:9", "JoJo's Bizarre Adventure S02E09", "anime", "2014-02-28"]
 ]
 ```
 
@@ -210,11 +210,13 @@ From each kind's list the draw takes a page of the first ten at random and goes 
 ```json
 {"about": "...",
  "titles": [
-  {"id": "tt33764258", "type": "movie", "label": "The Odyssey", "kind": "popular-film", "check": "quick 2026-11-25", "when": "2026-11-25T10:00:00+00:00"}
+  {"id": "tt33764258", "type": "movie", "label": "The Odyssey", "kind": "popular-film", "date": "2026-07-17", "check": "quick 2026-11-25", "when": "2026-11-25T10:00:00+00:00"}
  ]}
 ```
 
-A drawn title counts as played. The ledger is written before the title list, so a check that stops, or a list that cannot be written, leaves its titles spent (the owner: "dont redo same things") and never lets a later draw take them again. `draw.py seed` adds the titles the replayed recording's speed tests played (Test 1's ten and the pool's used titles) once; it was run when the draw was built.
+A drawn title counts as played. The ledger is written before the title list, so a check that stops, or a list that cannot be written, leaves its titles spent (the owner: "dont redo same things") and never lets a later draw take them again. `draw.py seed` adds the titles the replayed recording's speed tests played (Test 1's ten and the pool's used titles) once, with the kind `old process`, the check `replayed recording` and no date; it was run on 2026-11-24 (70 titles).
+
+**The capture.** `test_draw.py` replays TMDB's real answers to one draw of every kind (`fixtures/2026-11-24-tmdb-draw/`). A change to the order of the draw's TMDB calls or its random picks needs a new one: `python3 -I tools/brain/test_draw.py --capture tools/brain/fixtures/<day>-tmdb-draw` (with the test copy's key, which it never writes), then point the test at it.
 
 ## Recording state and misses
 
