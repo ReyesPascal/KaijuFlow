@@ -18,6 +18,11 @@ export const ZYCLOPS_DEFAULT_ENDPOINT = process.env.ZYCLOPS_ENDPOINT || 'https:/
 
 export interface ConfigData {
   addonEnabled?: boolean;
+  /**
+   * The dev switch (#280, spec #279): off by default, on in the test copies only (tools/brain/expected-settings.json).
+   * Every diagnostic line and field goes behind it; with it off, KaijuFlow logs exactly what a release logs.
+   */
+  devDiagnostics?: boolean;
   indexers: UsenetIndexer[];
   cacheEnabled: boolean;
   cacheTTL: number;

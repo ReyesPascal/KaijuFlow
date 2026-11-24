@@ -533,6 +533,18 @@ class CheckWorld:
             raise ValueError('not a test container: ' + container)
         return '\n'.join(line for line in self.log if line[:24] >= since[:24]) if container == brainrun.KF_CONTAINER else ''
 
+    def secret_values(self):
+        return []
+
+    def check_answers(self):  # the check's store holds no answer here (FailedPlayWorld, test_evidence.py, fills one)
+        return None
+
+    def standin_lines(self):
+        return []
+
+    def altmount_file(self, path):
+        return None
+
     def title_names(self, title):
         if title[1] in self.other_names and self.other_names[title[1]] is None:
             raise pool.TmdbError('TMDB answered HTTP 503 to /find/' + title[1])  # as quickcheck.tmdb_names does

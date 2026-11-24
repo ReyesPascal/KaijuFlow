@@ -262,6 +262,49 @@ def _read_text(path):
         return None
 
 
+def _secret_strings(obj, name="", every=False):
+    """The text values in a JSON value that are secrets: under a secret name (brainreport.is_secret_name), or, with
+    `every`, every one but names, hosts and addresses (a key file holds nothing else worth keeping out)."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _secret_strings(v, str(k), every)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _secret_strings(v, name, every)
+    elif isinstance(obj, str) and obj and (br.is_secret_name(name) or (every and name.lower() not in KEY_FILE_PLAIN)):
+        yield obj
+
+
+KEY_FILE_PLAIN = {"name", "host", "port", "ssl", "url", "connections", "slug"}  # as backup.sh skips them
+
+
+def secret_values(test_dir):
+    """Every secret value the test folder holds (#280), for scrubbing what a check keeps: the key files' values
+    (`<test dir>/*.json`, as backup.sh reads them), the test copies' secret-named settings (config.json and AltMount's
+    config.yaml) and the .env's values. Never printed or written."""
+    out = set()
+    try:
+        names = sorted(os.listdir(test_dir))
+    except OSError:
+        names = []
+    for n in names:
+        if n.endswith(".json"):
+            out.update(_secret_strings(_read_json(os.path.join(test_dir, n)), every=True))
+    for rel in JSON_CONFIGS.values():
+        out.update(_secret_strings(_read_json(os.path.join(test_dir, rel))))
+    for side in YAML_CONFIGS:
+        for line in (_read_text(os.path.join(test_dir, side, "config/config.yaml")) or "").splitlines():
+            key, sep, value = line.strip().lstrip("- ").partition(":")
+            value = value.strip().strip("'\"")
+            if sep and value and br.is_secret_name(key.strip()):
+                out.add(value)
+    for line in (_read_text(os.path.join(test_dir, ".env")) or "").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and value.strip() and br.is_secret_name(key.strip()):
+            out.add(value.strip())
+    return sorted(out)
+
+
 def read_settings(test_dir):
     """Settings of every test copy with secrets removed: {side: {dotted key: value}}."""
     snap = {}

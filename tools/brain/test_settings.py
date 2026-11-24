@@ -73,7 +73,7 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
             'healthChecks': {**({} if cap is None else {'maxTotalConnections': cap}),
                              'providers': [{'name': 'p', 'host': 'h', 'username': SECRET, 'password': SECRET}]},
             'searchConfig': {'seasonPackAdditionalPages': 2, 'seriesPackAdditionalPages': 2},
-            'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False,
+            'cacheTTL': 9000, 'altmountApiKey': SECRET, 'easynewsEnabled': False, 'devDiagnostics': True,  # the dev switch (#280)
             'ultimateFallback': {'enabled': kf_fallback, **PLAY_TIME_CHECK},
             **({} if altmount_url is None else {'altmountUrl': altmount_url})}))
     _put(os.path.join(td, '.env'), f'JWT_SECRET={SECRET}\nTEST_DIR={td}\n' + ('' if host_ip is None else f'HOST_IP={host_ip}\n'))

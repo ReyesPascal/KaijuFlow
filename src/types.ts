@@ -147,6 +147,8 @@ export type SeriesPackKeyword = typeof SERIES_PACK_KEYWORDS[number];
 // Our app configuration
 export interface Config {
   addonEnabled: boolean;
+  /** The dev switch (#280): diagnostic lines and fields, for the owner's test copies only; off in a release. */
+  devDiagnostics: boolean;
   indexers: UsenetIndexer[];
   cacheEnabled: boolean;
   cacheTTL: number;  // Cache time in seconds

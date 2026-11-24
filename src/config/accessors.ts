@@ -48,6 +48,9 @@ export const config: Config = {
   get addonEnabled() {
     return configData.addonEnabled !== false;
   },
+  get devDiagnostics() {
+    return configData.devDiagnostics === true;
+  },
   get indexers() {
     return configData.indexers;
   },
