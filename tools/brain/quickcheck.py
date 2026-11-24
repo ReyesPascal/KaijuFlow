@@ -6,17 +6,23 @@ can feed it any visit: whether a play is a fail (no video, or the wrong title or
 which Sources were check misses and fallbacks, the verdict (pass on zero fails) and report.md with a ready-to-file
 ticket text for each fail and check miss. The rules: tools/brain/docs/rules.md, "Real-use checks".
 """
+import os
 import re
 import statistics
+import sys
 import unicodedata
 
-KINDS = {'popular-film': 2, 'rare-film': 1, 'popular-episode': 1, 'rare-episode': 1}  # the 5 titles' kinds (draw.KINDS)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+import brainreport as br  # noqa: E402
+
+QUICK_KINDS = {'popular-film': 2, 'rare-film': 1, 'popular-episode': 1, 'rare-episode': 1}  # the 5 titles' kinds (draw.KINDS)
 SLOW_PLAY_S = 60  # video later than this after the press is a slow play (GLOSSARY "Slow play")
 PLAY_TIMEOUT_S = 300  # how long the press is waited on: a slow play still shows, a play that never starts ends as a fail
 # What one title can ask of an indexer at most, for the allowance check: a few searches (pages, title variants) and the
 # Walk's 30 grabs (#228).
 NEED_PER_TITLE = {'search': 12, 'download': 30}
-PLAY_STEPS = ('play_check', 'played', 'play_failed')  # the step lines a check keeps per visit (KaijuFlow's [KF-STEP])
+# the step lines a check keeps per visit (KaijuFlow's [KF-STEP]): the search's filter count, the Play-time check's, the play's
+KEPT_STEPS = ('list_filter', 'play_check', 'played', 'play_failed')
 
 PLAYED, FAIL, NOTHING = 'played', 'fail', 'nothing to play'
 
@@ -50,10 +56,13 @@ def _markers(tokens):
     {season} from a season pack's S01, S01-S03 or "Season 1"."""
     episodes, seasons = set(), set()
     for i, t in enumerate(tokens):
-        m = re.fullmatch(r's(\d{1,3})((?:e\d{1,4})+)', t)
-        if m:
+        m = re.fullmatch(r's(\d{1,3})((?:e\d{1,4})+)', t) or (
+            re.fullmatch(r's(\d{1,3})()', t) if i + 1 < len(tokens) and re.fullmatch(r'e\d{1,4}', tokens[i + 1]) else None)
+        if m:  # S01E02, S01E01E02, or S01.E02 (the season and the episode as two words)
             nums = [int(x) for x in re.findall(r'e(\d+)', m.group(2))]
             j = i + 1
+            if not nums:  # S01.E02: the episode is the next word
+                nums, j = [int(tokens[i + 1][1:])], i + 2
             while j < len(tokens) and re.fullmatch(r'e\d{1,4}', tokens[j]):  # S01E01-E03: the range's end
                 nums.append(int(tokens[j][1:]))
                 j += 1
@@ -72,28 +81,60 @@ def _markers(tokens):
     return episodes, seasons
 
 
+COUNTRY = {'us', 'uk', 'au', 'nz', 'ca'}  # a show's country tag between its name and its episode (Some.Show.UK.S02E05)
+
+
+def _after(rel, name):
+    """The positions in the release words just after each place the name's words stand, one after another."""
+    n = len(name)
+    return [i + n for i in range(len(rel) - n + 1) if n and rel[i:i + n] == name]
+
+
+def _year(word):
+    return int(word) if re.fullmatch(r'(19|20)\d\d', word or '') else None
+
+
+def _episode_start(rel, j):
+    """Whether an episode, season or date marker starts at word j, after at most one year or country tag."""
+    for k in (j, j + 1):
+        w = rel[k] if k < len(rel) else ''
+        if re.fullmatch(r's\d{1,3}(e\d{1,4})*|\d{1,2}x\d{1,3}|season', w) or (_year(w) and k + 2 < len(rel)
+                                                                             and rel[k + 1].isdigit() and rel[k + 2].isdigit()):
+            return True
+        if k == j and not (_year(w) or w in COUNTRY):
+            return False
+    return False
+
+
 def right_title(release, title, names=()):
     """(True, '') when the release name played is the drawn title, else (False, why). `title` is the draw's
     [type, id, label, kind, date]; `names` are other names of it (TMDB's original and alternative titles), tried when the
-    label's name is not in the release.
+    label's name does not fit.
 
-    A film: its name, and a year within one of its release year (releases are dated by their own release). An episode:
-    the show's name, and its episode (S01E02, 1x02, in a range S01E01-E03), or its season when the release is a season
-    pack (KaijuFlow picks the file inside), or its air date (a daily show, 2026.11.20)."""
+    The name must stand right before what dates the release, so a longer title around it does not count: a film's name
+    is followed by a year within one of its release year (releases are dated by their own release). An episode's show
+    name is followed by its marker (after at most one year or country tag), and the marker is its episode (S01E02, 1x02,
+    in a range S01E01-E03), or its season when the release is a season pack (KaijuFlow picks the file inside), or its air
+    date (a daily show, 2026.11.20). A why that starts "the name" is one another name of the title may mend."""
     title_type, _, label, _, date = title
     rel = words(release)
     m = EPISODE_LABEL.match(label) if title_type == 'series' else None
     name = m.group(1) if m else label
-    if not any(_holds(rel, words(n)) for n in (name, *names)):
+    spots = [j for n in (name, *names) for j in _after(rel, words(n))]
+    if not spots:
         return False, f'the name "{name}" is not in it'
     if title_type == 'movie':
         year = int(date[:4]) if re.match(r'\d{4}', date or '') else None
-        years = [int(w) for w in rel if re.fullmatch(r'(19|20)\d\d', w)]
+        years = [_year(rel[j]) for j in spots if j < len(rel) and _year(rel[j])]
+        if not years:
+            return False, f'the name "{name}" is not followed by a year' + (f' ({year} wanted)' if year else '')
         if year and not any(abs(y - year) <= 1 for y in years):
-            return False, f"its year is {years[0]}, not {year}" if years else f'it names no year ({year} wanted)'
+            return False, f"its year is {years[0]}, not {year}"
         return True, ''
     if not m:
         return False, f'the label "{label}" names no episode'
+    if not any(_episode_start(rel, j) for j in spots):
+        return False, f'the name "{name}" is not followed by a season or episode'
     season, episode = int(m.group(2)), int(m.group(3))
     if re.match(r'\d{4}-\d\d-\d\d$', date or '') and _holds(rel, [date[:4], date[5:7], date[8:10]]):
         return True, ''
@@ -133,9 +174,26 @@ def tmdb_names(get, title):
 # --------------------------------------------------------------------------- one visit
 
 def visit_steps(steps, vid, since):
-    """The step lines of one visit that a check keeps: the Play-time check's and the play's (PLAY_STEPS), from `since`
-    (an ISO time) on, its own title's (`ref` the title's id) or with no ref."""
-    return [s for s in steps if s.get('step') in PLAY_STEPS and s.get('ref') in (None, vid) and str(s.get('t', '')) >= since]
+    """The step lines of one visit that a check keeps (KEPT_STEPS): the search's filter count, the Play-time check's and
+    the play's, from `since` (an ISO time) on, its own title's (`ref` the title's id) or with no ref."""
+    lo = br.parse_ts(since)
+
+    def from_then(s):
+        try:
+            return br.parse_ts(s['t']) >= lo
+        except (KeyError, TypeError, ValueError):
+            return False
+    return [s for s in steps if s.get('step') in KEPT_STEPS and s.get('ref') in (None, vid) and from_then(s)]
+
+
+def _search_text(steps):
+    """What KaijuFlow's search found for a list with no Source, from its `list_filter` line: `: the search found 12
+    releases and the filters kept none`; '' when the line is missing."""
+    f = next((s for s in steps if s.get('step') == 'list_filter'), None)
+    if not f or f.get('results') is None:
+        return ''
+    kept = f.get('kept') or 0
+    return f": the search found {f['results']} release{'' if f['results'] == 1 else 's'} and the filters kept {kept or 'none'}"
 
 
 def judge(visit, names=lambda: ()):
@@ -146,7 +204,7 @@ def judge(visit, names=lambda: ()):
     `visit` is what the check saw: 'title' (the draw's five fields), 'list_status', 'list_s', 'sources' (Sources in the
     list, the Best entry left out), 'best' (whether the list had the Best entry), 'play' (common.play_stream's result for
     the press of Best, or None), 'steps' (visit_steps). `names()` gives the title's other names, asked for only when the
-    release played does not carry the label's name."""
+    release played does not carry the label's name; None when TMDB could not be read (the fail then says so)."""
     steps = visit.get('steps') or []
     checked = [{'release': s.get('title'), 'ok': bool(s.get('ok')), 'status': s.get('status')} for s in steps if s['step'] == 'play_check']
     passed = {c['release'] for c in checked if c['ok']}
@@ -170,18 +228,24 @@ def judge(visit, names=lambda: ()):
     if visit.get('list_status') != 200:
         return end(FAIL, f"KaijuFlow's list did not come: {visit.get('note') or 'HTTP %s' % visit.get('list_status')}")
     if not visit.get('sources'):
-        return end(NOTHING, 'the list held no Source')
+        return end(NOTHING, 'the list held no Source' + _search_text(steps))
     if not visit.get('best'):
         return end(FAIL, 'the list had no Best entry to press')
     if video:
         out['title_to_video'] = round(visit['list_s'] + play['first_byte_s'], 2) if visit.get('list_s') is not None else None
-        out['slow'] = play['first_byte_s'] > SLOW_PLAY_S
         if not played:
             return end(FAIL, "video came, but KaijuFlow's log names no release played, so the right title cannot be told")
         ok, why = right_title(played['title'], visit['title'])
-        if not ok and why.startswith('the name'):
-            ok, why = right_title(played['title'], visit['title'], names())
-        return end(PLAYED, '') if ok else end(FAIL, f"the wrong title played: {played['title']} ({why})")
+        if not ok and why.startswith('the name'):  # another name of the title may fit
+            other = names()
+            if other is None:
+                why += "; TMDB's other names of the title could not be read"
+            else:
+                ok, why = right_title(played['title'], visit['title'], other)
+        if not ok:
+            return end(FAIL, f"the wrong title played: {played['title']} ({why})")
+        out['slow'] = play['first_byte_s'] > SLOW_PLAY_S  # a slow play is the right video, late
+        return end(PLAYED, '')
     no_video = f"no video ({play.get('note') or 'no answer'})"
     if passed or failed:
         reason = f"; AltMount refused {failed[0].get('title')}: {failed[0].get('reason')}" if failed else ''
@@ -193,6 +257,12 @@ def judge(visit, names=lambda: ()):
 
 
 # --------------------------------------------------------------------------- the verdict and the report
+
+def judged(check):
+    """The visits a check judges: all but the one the cap rule stopped (its play was cut by the limit, so it says nothing
+    of KaijuFlow)."""
+    return [v for v in check.get('visits') or [] if not v.get('cut_by_limit')]
+
 
 def verdict(check, outcomes):
     """'pass', 'fail' or None (no verdict: the check did not finish, the cap rule stopped it, or it failed)."""
@@ -231,9 +301,14 @@ def headline(check, outcomes):
     return f"Fail: {len(fails)} of {_plural(len(outcomes), 'title')} failed (" + '; '.join(o['label'] for o in fails) + ').'
 
 
+def check_said(c):
+    """What one Play-time check said of a Source: its status (`verified`, `blocked`), else passed or failed."""
+    return c['status'] or ('passed' if c['ok'] else 'failed')
+
+
 def checked_text(o):
-    """The Sources a visit's Play-time check looked at, with what each check said: `A.2020.1080p (ok), B (dead)`."""
-    return ', '.join('%s (%s)' % (c['release'], c['status'] or ('passed' if c['ok'] else 'failed')) for c in o['checked']) or 'none'
+    """The Sources a visit's Play-time check looked at, with what each check said: `A.2020.1080p (verified), B (blocked)`."""
+    return ', '.join('%s (%s)' % (c['release'], check_said(c)) for c in o['checked']) or 'none'
 
 
 def ticket_texts(check, outcomes):
@@ -286,7 +361,7 @@ def render_report(check, outcomes):
     lines += ['', '## Nothing to play', '']
     for o in nothing:
         lines.append(f"- {o['label']}: {o['why']}.")
-        lines += [f"  - {c['release']}: {c['status'] or ('passed' if c['ok'] else 'failed')}" for c in o['checked']]
+        lines += [f"  - {c['release']}: {check_said(c)}" for c in o['checked']]
     if not nothing:
         lines.append('None.')
     times = [o['title_to_video'] for o in outcomes if o['outcome'] == PLAYED and o['title_to_video'] is not None]

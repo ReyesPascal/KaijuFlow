@@ -10,8 +10,12 @@ import json
 import os
 import unittest
 
+from unittest import mock
+
 import brainreport as br
 import brainrun
+import common
+import draw
 import quickcheck as qc
 import testbed
 from test_preflight import FakeWorld, make_cfg, run_command
@@ -26,7 +30,8 @@ def names():
     with open(os.path.join(HERE, 'fixtures', '2026-11-24-release-names', 'names.txt')) as f:
         lines = f.read().splitlines()
     keys = ['inside out 2', 'pushing daisies e09', 'avatar', 'spider-verse', 'hitcher', '7th time loop', 'space 1999 e04',
-            'pushing daisies pack', 'avatar german', 'misanthrope e02']
+            'pushing daisies pack', 'avatar german', 'misanthrope e02', 'chernobyl 1x02', 'chernobyl s01.e02', 'got 2011 s02e03',
+            'breaking bad 1x01']
     return dict(zip(keys, lines))
 
 
@@ -41,7 +46,12 @@ def step_lines(name):
         return br.parse_step_lines(f.read())
 
 
-FILM = ['movie', 'tt1000010', 'KaijuFlow PlayTime', 'popular-film', '2026-03-01']
+def parity_film(tag):
+    """The title a captured Best press played (its releases are `KaijuFlow.PlayTime.<tag>.2026...`)."""
+    return ['movie', 'tt1000010', f'KaijuFlow PlayTime {tag}', 'popular-film', '2026-03-01']
+
+
+FILM = parity_film('log-ok')
 
 
 class RightTitleTest(unittest.TestCase):
@@ -61,8 +71,16 @@ class RightTitleTest(unittest.TestCase):
 
     def test_a_year_one_off_is_right_but_further_is_the_wrong_film(self):
         self.assertTrue(self.ok('avatar', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2010-01-01'])[0])
+        self.assertEqual(self.ok('avatar', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2012-05-01']),
+                         (False, 'its year is 2009, not 2012'))
+
+    def test_the_name_must_stand_right_before_the_year_or_the_episode(self):
         ok, why = self.ok('inside out 2', ['movie', 'tt2096673', 'Inside Out', 'popular-film', '2015-06-17'])
-        self.assertEqual((ok, why), (False, 'its year is 2024, not 2015'))  # the sequel is the wrong film
+        self.assertEqual((ok, why), (False, 'the name "Inside Out" is not followed by a year (2015 wanted)'))  # the sequel
+        self.assertFalse(qc.right_title('It.Follows.2014.1080p.BluRay.x264', ['movie', 'tt1396484', 'It', 'popular-film', '2014-09-04'])[0])
+        title = ['series', 'tt1:2:5', 'Some Show S02E05', 'popular-episode', '2024-05-01']  # invented: a longer show around the name
+        self.assertEqual(qc.right_title('Not.Some.Show.At.All.S02E05.1080p', title),
+                         (False, 'the name "Some Show" is not followed by a season or episode'))
 
     def test_a_release_without_the_name_is_the_wrong_title(self):
         ok, why = self.ok('hitcher', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15'])
@@ -91,14 +109,36 @@ class RightTitleTest(unittest.TestCase):
         ok, why = self.ok('pushing daisies pack', ['series', 'tt0925266:2:3', 'Pushing Daisies S02E03', 'rare-episode', '2008-10-15'])
         self.assertEqual((ok, why), (False, 'it is a pack of season 1, not season 2'))
 
-    def test_other_episode_markers(self):
+    def test_other_episode_markers_as_released(self):
+        chernobyl = ['series', 'tt7366338:1:2', 'Chernobyl S01E02', 'popular-episode', '2019-05-13']
+        self.assertEqual(self.ok('chernobyl 1x02', chernobyl), (True, ''))
+        self.assertEqual(self.ok('chernobyl s01.e02', chernobyl), (True, ''))
+        self.assertEqual(self.ok('chernobyl s01.e02', chernobyl[:1] + ['tt7366338:1:5', 'Chernobyl S01E05'] + chernobyl[3:]),
+                         (False, 'it is S01E02, not S01E05'))  # S01.E02 is an episode, not a pack of season 1
+        self.assertEqual(self.ok('got 2011 s02e03', ['series', 'tt0944947:2:3', 'Game of Thrones S02E03', 'popular-episode',
+                                                     '2012-04-15']), (True, ''))  # a year between the name and the episode
+        self.assertEqual(self.ok('breaking bad 1x01', ['series', 'tt0903747:1:1', 'Breaking Bad S01E01', 'popular-episode',
+                                                       '2008-01-20']), (True, ''))
+        self.assertEqual(self.ok('7th time loop', ['series', 'tt1:1:1', '7th Time Loop: The Villainess Enjoys a Carefree Life '
+                                                   'Married to Her Worst Enemy! S01E01', 'anime', '2024-01-07']),
+                         (False, 'the name "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!" is not in it'))
+        self.assertTrue(self.ok('7th time loop', ['series', 'tt1:1:1', '7th Time Loop S01E01', 'anime', '2024-01-07'])[0])
+
+    def test_a_title_inside_a_longer_name_fits_only_through_another_name(self):
+        title = ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15']
+        self.assertEqual(self.ok('avatar german', title), (False, 'the name "Avatar" is not followed by a year (2009 wanted)'))
+        self.assertTrue(self.ok('avatar german', title, ['Avatar: Aufbruch nach Pandora'])[0])
+
+    def test_episode_markers_no_recording_holds(self):
+        """Invented names: no release in the recordings uses these markers."""
         title = ['series', 'tt1:3:7', 'Some Show S03E07', 'popular-episode', '2024-05-01']
-        for release, right in (('Some.Show.3x07.720p.HDTV', True), ('Some.Show.S03E06-E08.1080p.WEB', True),
-                               ('Some.Show.S03E06E07.1080p', True), ('Some.Show.S01-S04.COMPLETE.1080p', True),
-                               ('Some.Show.Season.3.1080p', True), ('Some.Show.1080p.WEB', False)):
+        for release, right in (('Some.Show.S03E06-E08.1080p.WEB', True), ('Some.Show.S03E06E07.1080p', True),
+                               ('Some.Show.S01-S04.COMPLETE.1080p', True), ('Some.Show.Season.3.1080p', True),
+                               ('Some.Show.UK.S03E07.1080p', True), ('Some.Show.1080p.WEB', False)):
             self.assertEqual(qc.right_title(release, title)[0], right, release)
 
     def test_a_daily_show_is_known_by_its_air_date(self):
+        """Invented names: no daily show is in the recordings."""
         title = ['series', 'tt3697842:2026:45', 'Late Night Talk S2026E45', 'daily', '2026-11-20']
         self.assertTrue(qc.right_title('Late.Night.Talk.2026.11.20.Guest.Name.1080p.WEB.h264', title)[0])
         self.assertFalse(qc.right_title('Late.Night.Talk.2026.11.19.Guest.Name.1080p.WEB.h264', title)[0])
@@ -115,29 +155,21 @@ class TmdbNamesTest(unittest.TestCase):
         self.assertEqual(qc.right_title(release, title), (False, 'the name "Amélie" is not in it'))
         self.assertEqual(qc.right_title(release, title, found), (True, ''))
 
-    def test_original_and_alternative_names_from_the_imdb_id(self):
+    def test_an_episode_is_looked_up_by_its_show_in_tmdbs_real_answers(self):
+        answers = json.loads(read(HERE, 'fixtures', '2026-11-24-release-names', 'tmdb-breaking-bad.json'))
         asked = []
 
         def get(path):
             asked.append(path)
-            if path.startswith('/find/tt0499549'):
-                return 200, {'movie_results': [{'id': 19995, 'title': 'Avatar', 'original_title': 'Avatar'}], 'tv_results': []}
-            if path == '/movie/19995/alternative_titles':
-                return 200, {'titles': [{'title': 'Avatar: Aufbruch nach Pandora'}, {'title': 'Avatar'}]}
-            return 404, None
-        self.assertEqual(qc.tmdb_names(get, FILM[:1] + ['tt0499549'] + FILM[2:]), ['Avatar', 'Avatar: Aufbruch nach Pandora'])
-        self.assertEqual(asked, ['/find/tt0499549?external_source=imdb_id', '/movie/19995/alternative_titles'])
+            return tuple(answers.get(path, [404, None]))
+        found = qc.tmdb_names(get, ['series', 'tt0903747:1:1', 'Breaking Bad S01E01', 'popular-episode', '2008-01-20'])
+        self.assertEqual(found[0], 'Breaking Bad')
+        self.assertIn('Breaking Bad: A Química do Mal', found)
+        self.assertEqual(asked, ['/find/tt0903747?external_source=imdb_id', '/tv/1396/alternative_titles'])
 
-    def test_an_episode_is_looked_up_by_its_show_and_unknown_gives_none(self):
-        def get(path):
-            if path.startswith('/find/tt0925266'):
-                return 200, {'movie_results': [], 'tv_results': [{'id': 1, 'name': 'Pushing Daisies', 'original_name': 'Pushing Daisies'}]}
-            if path == '/tv/1/alternative_titles':
-                return 200, {'results': [{'title': 'Pushing Up Daisies'}]}
-            return 200, {'movie_results': [], 'tv_results': []}
-        self.assertEqual(qc.tmdb_names(get, ['series', 'tt0925266:1:9', 'Pushing Daisies S01E09', 'rare-episode', '2008-12-03']),
-                         ['Pushing Daisies', 'Pushing Up Daisies'])
-        self.assertEqual(qc.tmdb_names(get, ['movie', 'tt9', 'X', 'popular-film', '2000-01-01']), [])
+    def test_a_title_tmdb_does_not_know_has_no_other_names(self):
+        self.assertEqual(qc.tmdb_names(lambda path: (200, {'movie_results': [], 'tv_results': []}),
+                                       ['movie', 'tt9', 'X', 'popular-film', '2000-01-01']), [])
 
 
 def visit(title=FILM, steps=(), sources=3, best=True, plays=True, first_byte=4.0, list_s=2.0, status=200, note=None):
@@ -157,7 +189,7 @@ class JudgeTest(unittest.TestCase):
                          [('log-ok', 'verified'), ('log-dead', 'blocked'), ('log-backup', 'verified')])
 
     def test_a_source_altmount_refused_after_its_check_is_a_check_miss_and_a_fallback_that_ended_in_video(self):
-        o = qc.judge(visit(steps=step_lines('kaijuflow-head-start-refused-first.txt')))
+        o = qc.judge(visit(title=parity_film('hsr-ok'), steps=step_lines('kaijuflow-head-start-refused-first.txt')))
         self.assertEqual((o['outcome'], o['fallbacks'], o['video']), ('played', 1, True))
         self.assertEqual(o['check_misses'], [{'release': 'KaijuFlow.PlayTime.hsr-refused.2026.2160p.WEB-DL.H265-GRP',
                                               'reason': 'AltMount could not process the Source: {"error":"NZB processing failed"}'}])
@@ -175,7 +207,19 @@ class JudgeTest(unittest.TestCase):
         o = qc.judge(visit(title=title, steps=steps), names=lambda: ['Alles steht Kopf'])
         self.assertEqual(o['outcome'], 'fail')
         self.assertIn('the wrong title played: Inside.Out.2.2024', o['why'])
-        self.assertIn('its year is 2024, not 2015', o['why'])
+        self.assertIn('is not followed by a year (2015 wanted)', o['why'])
+
+    def test_a_wrong_title_after_60_s_is_a_fail_not_a_slow_play(self):
+        title = ['movie', 'tt2096673', 'Inside Out', 'popular-film', '2015-06-17']
+        steps = [{'step': 'played', 'title': names()['inside out 2']}]
+        o = qc.judge(visit(title=title, steps=steps, first_byte=75.0), names=lambda: [])
+        self.assertEqual((o['outcome'], o['slow']), ('fail', False))
+
+    def test_tmdb_that_cannot_be_read_is_named_in_the_fail(self):
+        title = ['movie', 'tt0499549', 'Avatar: Aufbruch nach Pandora', 'foreign', '2009-12-15']
+        o = qc.judge(visit(title=title, steps=[{'step': 'played', 'title': names()['avatar']}]), names=lambda: None)
+        self.assertEqual(o['outcome'], 'fail')
+        self.assertIn("TMDB's other names of the title could not be read", o['why'])
 
     def test_other_names_are_asked_for_only_when_the_name_is_missing(self):
         asked = []
@@ -199,6 +243,8 @@ class JudgeTest(unittest.TestCase):
     def test_nothing_to_play_needs_every_source_said_no(self):
         empty = qc.judge(visit(sources=0, best=False))
         self.assertEqual((empty['outcome'], empty['why']), ('nothing to play', 'the list held no Source'))
+        counted = qc.judge(visit(sources=0, best=False, steps=[{'step': 'list_filter', 'results': 12, 'kept': 0}]))
+        self.assertEqual(counted['why'], 'the list held no Source: the search found 12 releases and the filters kept none')
         dead = [{'step': 'play_check', 'title': f'Rel.{i}.2026', 'ok': False, 'status': 'blocked'} for i in range(3)]
         o = qc.judge(visit(sources=3, plays=False, steps=dead))
         self.assertEqual((o['outcome'], o['why']), ('nothing to play', 'every Source KaijuFlow looked at failed its check (3 of 3)'))
@@ -290,12 +336,13 @@ class CheckWorld:
     None (no video, every Source's check failed), or 'limit' (KaijuFlow's log says the indexer's limit was reached).
     A stopped container answers no list (status None), as a stopped copy refuses the connection."""
 
-    def __init__(self, plays=None, problems=(), drawn=DRAWN):
+    def __init__(self, plays=None, problems=(), drawn=DRAWN, refuse_draw=None, other_names=None):
         self.clock, self.calls, self.problems, self.drawn = T0, [], list(problems), [list(t) for t in drawn]
         # by default each press plays the right release: a film's name and year, an episode's show and episode
         self.plays = {t[1]: t[2].replace(' ', '.') + ('.' + t[4][:4] if t[0] == 'movie' else '') + '.1080p.WEB' for t in drawn}
         self.plays.update(plays or {})
         self.log, self.up, self.store, self.marker_ = [], True, None, None
+        self.refuse_draw, self.other_names, self.marker_on_stop = refuse_draw, other_names or {}, None
 
     def takes(self, s):
         self.clock += datetime.timedelta(seconds=s)
@@ -324,6 +371,8 @@ class CheckWorld:
 
     def draw_titles(self, check, kinds):
         self.calls.append(('draw', check.split(' ')[0], dict(kinds)))
+        if self.refuse_draw:  # as draw.draw refuses a kind TMDB has no new title of
+            raise self.refuse_draw
         return [list(t) for t in self.drawn]
 
     def reset(self, sides, log=print):
@@ -336,14 +385,20 @@ class CheckWorld:
 
     def close_check_store(self):
         self.calls.append(('close-store',))
+        self.store = None
+        self.marker_ = None  # the marker goes with the store
 
     def start_standin(self, logpath, mode='replay', wait=True):
+        if self.store is None:  # the real stand-in has no store to record into
+            raise RuntimeError('indexer stand-in did not start')
         self.calls.append(('standin', mode))
         world = self
 
         class Handle:
             def stop(self):
                 world.calls.append(('standin-stop',))
+                if world.marker_on_stop:  # a late request hit the limit before the stand-in stopped
+                    world.marker_ = world.marker_on_stop
         return Handle()
 
     def marker(self):
@@ -386,7 +441,9 @@ class CheckWorld:
         return '\n'.join(line for line in self.log if line[:24] >= since[:24]) if container == brainrun.KF_CONTAINER else ''
 
     def title_names(self, title):
-        return []
+        if title[1] in self.other_names and self.other_names[title[1]] is None:
+            raise OSError('TMDB unreachable')
+        return list(self.other_names.get(title[1], []))
 
 
 def check_cfg(case):
@@ -408,11 +465,11 @@ class QuickCheckRunTest(unittest.TestCase):
         code, out = run_check(cfg, world)
         self.assertEqual(code, 0, out)
         self.assertIn('Pass: 0 fails in 5 titles.', out)
-        self.assertEqual(world.calls[:5], [('preflight', 'check'), ('draw', 'quick', qc.KINDS), ('reset', tuple(brainrun.ALL_TESTBED)),
+        self.assertEqual(world.calls[:5], [('preflight', 'check'), ('draw', 'quick', qc.QUICK_KINDS), ('reset', tuple(brainrun.ALL_TESTBED)),
                                            ('open-store',), ('standin', 'record')])
         self.assertEqual([c[1] for c in world.calls if c[0] == 'visit'], [t[1] for t in DRAWN])  # each title once
         self.assertEqual(world.calls[-3:], [('standin-stop',), ('stop-all',), ('close-store',)])
-        self.assertEqual(sum(qc.KINDS.values()), 5)
+        self.assertEqual(sum(qc.QUICK_KINDS.values()), 5)
         folder = os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check')
         meta = json.loads(read(os.path.join(folder, 'meta.json')))
         self.assertEqual((meta['kind'], meta['verdict'], meta['status'], meta['commit'], meta['start_load']),
@@ -448,6 +505,48 @@ class QuickCheckRunTest(unittest.TestCase):
         self.assertEqual(world.calls[-3:], [('standin-stop',), ('stop-all',), ('close-store',)])
         index = read(os.path.join(cfg['runs_root'], 'INDEX.md'))
         self.assertIn('| quick-check | NULL |', index)
+
+    def test_a_limit_after_the_last_title_still_gives_no_verdict(self):
+        world = CheckWorld()
+        world.marker_on_stop = {'indexer': 'ninjacentral', 'time': '2026-11-25T10:02:00Z'}
+        code, out = run_check(check_cfg(self), world)
+        self.assertEqual(code, brainrun.EXIT_NO_VERDICT, out)
+        self.assertIn('No verdict: ninjacentral said its limit was reached at 2026-11-25T10:02:00Z', out)
+
+    def test_the_play_the_limit_cut_is_not_judged(self):
+        world = CheckWorld()
+        world.plays['tt0000002'] = 'limit'
+        cfg = check_cfg(self)
+        run_check(cfg, world)
+        folder = os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check')
+        raw = json.loads(read(folder, 'raw.json'))
+        self.assertEqual([v['id'] for v in raw['visits']], ['tt0000001', 'tt0000002'])
+        self.assertTrue(raw['visits'][1]['cut_by_limit'])
+        self.assertEqual([o['id'] for o in raw['outcomes']], ['tt0000001'])
+        report = read(folder, 'report.md')
+        self.assertNotIn('## Fails', report)
+        self.assertNotIn('Tickets to file', report)
+
+    def test_a_foreign_name_reaches_the_judge_through_tmdbs_names(self):
+        drawn = [list(t) for t in DRAWN]
+        drawn[0] = ['movie', 'tt0211915', 'Amélie', 'foreign', '2001-04-25']
+        world = CheckWorld(drawn=drawn, plays={'tt0211915': 'Le.Fabuleux.Destin.dAmelie.Poulain.2001.1080p.BluRay'},
+                           other_names={'tt0211915': ["Le Fabuleux Destin d'Amélie Poulain"]})
+        code, out = run_check(check_cfg(self), world)
+        self.assertEqual(code, 0, out)
+        world = CheckWorld(drawn=drawn, plays={'tt0211915': 'Le.Fabuleux.Destin.dAmelie.Poulain.2001.1080p.BluRay'},
+                           other_names={'tt0211915': None})  # TMDB down: a fail that says so
+        code, out = run_check(check_cfg(self), world)
+        self.assertEqual(code, brainrun.EXIT_FAILS, out)
+
+    def test_a_refused_draw_ends_the_check_with_its_sentence_not_a_traceback(self):
+        cfg = check_cfg(self)
+        world = CheckWorld(refuse_draw=draw.Refused('TMDB gave no new rare-film title in 8 pages: nothing was drawn.'))
+        code, out = run_check(cfg, world)
+        self.assertEqual(code, 1, out)
+        self.assertIn('No verdict: the check failed: TMDB gave no new rare-film title in 8 pages', out)
+        self.assertNotIn(('reset', tuple(brainrun.ALL_TESTBED)), world.calls)
+        self.assertIn('| quick-check | failed |', read(cfg['runs_root'], 'INDEX.md'))
 
     def test_a_stand_in_marker_stops_the_check_too(self):
         world = CheckWorld()
@@ -487,6 +586,64 @@ class QuickCheckRunTest(unittest.TestCase):
         self.assertIn('2 of 5 plays had finished, and it stopped during the next one (KaijuFlow, cold, Old Film)', out)
         raw = json.loads(read(os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check', 'raw.json')))
         self.assertEqual(len(raw['outcomes']), 2)
+
+
+class RealPartsTest(unittest.TestCase):
+    """The parts of RealIO a check adds, and main's wiring, with only HTTP, TMDB and Docker faked."""
+
+    def setUp(self):
+        self.root = tempdir(self)
+        self.cfg = dict(test_dir=os.path.join(self.root, 'td'), user_id='u', ledger=os.path.join(self.root, 'titles-played.json'))
+
+    def test_the_draw_writes_the_ledger_before_any_title_is_played(self):
+        with mock.patch.object(brainrun.pool, 'tmdb_getter', return_value=lambda path: (200, {})), \
+                mock.patch.object(brainrun.draw, 'draw', return_value=[list(t) for t in DRAWN[:2]]) as drew, \
+                contextlib.redirect_stdout(io.StringIO()):
+            titles = brainrun.RealIO(self.cfg).draw_titles('quick check x', qc.QUICK_KINDS)
+        self.assertEqual(titles, DRAWN[:2])
+        self.assertEqual(drew.call_args.args[2], qc.QUICK_KINDS)
+        self.assertEqual([e['id'] for e in draw.read_ledger(self.cfg['ledger'])], ['tt0000001', 'tt0000002'])
+
+    def test_the_check_store_is_the_test_folders_own_and_goes_after_the_check(self):
+        real = brainrun.RealIO(self.cfg)
+        real.open_check_store(os.path.join(self.root, '2026-11-25T100000Z-quick-check'))
+        store = self.cfg['store']
+        self.assertEqual((os.path.dirname(store), self.cfg['listname']), (os.path.join(self.cfg['test_dir'], 'check-answers'), 'check'))
+        os.makedirs(os.path.join(store, 'check', 'ninjacentral'))
+        real.close_check_store()
+        self.assertFalse(os.path.exists(store))
+        self.cfg['store'] = os.path.join(self.root, 'not-a-check-store')  # never a store the check did not make
+        os.makedirs(self.cfg['store'])
+        real.close_check_store()
+        self.assertTrue(os.path.isdir(self.cfg['store']))
+
+    def test_a_visit_asks_the_list_then_presses_best_waiting_up_to_300_s(self):
+        body = json.dumps({'streams': [BEST, {'name': 'KaijuFlow', 'title': 'A'}]}).encode()
+        pressed = []
+        with mock.patch.object(common, 'get', return_value=(200, {}, body, {'ready': 1.0, 'total': 1.2})) as get, \
+                mock.patch.object(common, 'play_stream', side_effect=lambda st, timeout: pressed.append((st, timeout)) or
+                                  {'plays': True, 'first_byte_s': 2.0}):
+            real = brainrun.RealIO(self.cfg)
+            real.sleep = lambda s: None
+            out = real.check_visit('movie', 'tt0000001', 5)
+        self.assertEqual(get.call_args.args[0], 'http://localhost:1338/u/stream/movie/tt0000001.json')
+        self.assertEqual(pressed, [(BEST, qc.PLAY_TIMEOUT_S)])
+        self.assertEqual((out['sources'], out['best'], out['browse_pause_s'], out['list_s']), (1, True, 5, 1.2))
+
+    def test_main_runs_the_quick_check_with_its_name_ledger_and_key_file_indexers(self):
+        td = make_copies(self)
+        seen = {}
+
+        def fake_check(cfg, world):
+            seen.update(cfg)
+            return 0
+        with mock.patch.object(brainrun, 'quick_check_command', side_effect=fake_check):
+            code = brainrun.main(['check', '--quick', '--test-dir', td, '--runs-root', self.root])
+        self.assertEqual(code, 0)
+        self.assertEqual((seen['name'], seen['ledger'], seen['indexers']),
+                         ('quick-check', os.path.join(self.root, 'titles-played.json'), ['drunkenslug', 'ninjacentral']))
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            brainrun.main(['check', '--quick', '--run', self.root])
 
 
 # --------------------------------------------------------------------------- the preflight of a check, on fixture test copies
