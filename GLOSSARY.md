@@ -118,6 +118,10 @@ _Avoid_: batch, phase (cold or warm is the phase)
 The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("Browse pause").
 _Avoid_: think time, settle (the settle is the pause after a play)
 
+**CPU probe**:
+A short fixed piece of single-thread work (about 1 s on Brain plugged in) that a run's preflight times before the run starts, the same work every run, so a run whose CPU was slower says so. It judges nothing; the run keeps it in `meta.json` and the report holds it against the previous run's. Format in `tools/brain/docs/formats.md`.
+_Avoid_: benchmark (it measures the machine, not KaijuFlow)
+
 **Round**:
 Every title played once, cold or warm, on every side of a pass. A timed run plays four rounds: cold, warm, cold, warm. A side's figures for a round are made of its own plays in it; the time a round takes covers every side of the pass.
 _Avoid_: iteration, lap
