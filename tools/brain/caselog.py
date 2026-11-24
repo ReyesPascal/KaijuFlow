@@ -129,13 +129,14 @@ def run_clues(log, case_dir, occurrence, names, library=None, by='code', ran_by_
                                      't': t, 'by': 'diagnosis'})
             have.add(r['clue'])
             ran.append(r['clue'])
+    unknown = [n for n in names if n not in library and n not in have]
+    if unknown:
+        raise Refused(f"no Clue named {', '.join(unknown)} in the library")
     ev = failure = None
     for name in names:
         if name in have:
             skipped.append(name)
             continue
-        if name not in library:
-            raise Refused(f'no Clue named {name} in the library')
         if ev is None:
             ev = evidence.read(evidence_folder(case_dir, occ))
             failure = _failure_of(ev, occ)
@@ -221,6 +222,71 @@ def logs(cases):
 
 def count_open(cases):
     return sum(1 for log in logs(cases).values() if not log.get('entry'))
+
+
+# --------------------------------------------------------------------------- the agent's commands
+
+def case_dir_of(cases, cid):
+    d = os.path.join(cases, cid)
+    if not os.path.exists(os.path.join(d, CASE)):
+        raise Refused(f'no Case log {cid} under {cases}')
+    return d
+
+
+def run_command(cases, cid, names, occurrence=None, library=None):
+    """`case run`: the named Clues on every occurrence (or one), each only where it has not run; the lines it says."""
+    d = case_dir_of(cases, cid)
+    log = load(d)
+    occs = [o for o in log['occurrences'] if occurrence is None or o['n'] == occurrence]
+    if not occs:
+        raise Refused(f'{cid} has no occurrence {occurrence}')
+    said, t = [], _now()
+    for o in occs:
+        ran, skipped = run_clues(log, d, o['n'], names, library, 'agent')
+        _note(log, 'attempts', {'occurrence': o['n'], 'ran': ran, 'skipped': skipped, 'next': None}, 'agent', t)
+        answers = {r['clue']: r for r in log['clue_runs'] if r['occurrence'] == o['n']}
+        for name in sorted(set(names)):
+            r = answers[name]
+            if name in ran:
+                said.append(f"occurrence {o['n']}: {name}: {r['answer']}" + (f": {r['facts'][0]}" if r['facts'] else ''))
+            else:
+                said.append(f"occurrence {o['n']}: {name}: already run ({r['answer']}), not run again")
+    save(d, log)
+    return said
+
+
+def show(cases, cid):
+    return render(load(case_dir_of(cases, cid)))
+
+
+def main(argv):
+    """`diagnosis.py case ...` (argv from `case` on)."""
+    import argparse  # noqa: PLC0415
+    ap = argparse.ArgumentParser(prog='diagnosis.py case', description='Work a Case log (#287).')
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument('--cases', default=CASES, help='the Case logs folder (default %(default)s)')
+    sub = ap.add_subparsers(dest='cmd', required=True)
+    sub.add_parser('list', parents=[common], help='every Case log, its status and occurrences')
+    p = sub.add_parser('show', parents=[common], help='the Case log as CASE.md has it')
+    p.add_argument('id')
+    p = sub.add_parser('run', parents=[common],
+                       help='run Clues on the failure (a Clue already run on an occurrence is not run again)')
+    p.add_argument('id')
+    p.add_argument('clues', nargs='+')
+    p.add_argument('--occurrence', type=int)
+    a = ap.parse_args(argv)
+    try:
+        if a.cmd == 'list':
+            for cid, log in logs(a.cases).items():
+                print(f"{cid}: {log['status']}, {len(log['occurrences'])} occurrence(s): {log['fingerprint']}")
+        elif a.cmd == 'show':
+            print(show(a.cases, a.id), end='')
+        elif a.cmd == 'run':
+            print('\n'.join(run_command(a.cases, a.id, a.clues, a.occurrence)))
+    except Refused as e:
+        print(f'refused: {e}')
+        return 1
+    return 0
 
 
 # --------------------------------------------------------------------------- the readable copy

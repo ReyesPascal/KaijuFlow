@@ -3,6 +3,7 @@
     python3 -I tools/brain/diagnosis.py diagnose <check folder | evidence folder>   diagnose and write diagnosis.json
     python3 -I tools/brain/diagnosis.py record <check folder>     put its proved occurrences and ruled-out leads on the Casebook
     python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure with the current rules
+    python3 -I tools/brain/diagnosis.py case <list|show|run|add|repeat|entry> ...   work a Case log (#287; case --help)
 
 The answers: *found: X, proved by Clues A, B* (a lead's confirming recipe passed on this failure's own evidence),
 *suspected: X (no confirming test)* (a look-alike whose recipe cannot run yet), or *new* (no entry matches, or every
@@ -568,6 +569,8 @@ def _say(play):
 
 
 def main(argv):
+    if len(argv) > 1 and argv[1] == 'case':
+        return caselog.main(argv[2:])
     if len(argv) < 2 or argv[1] not in ('diagnose', 'record', 'refingerprint') or \
             len(argv) > 3 or (argv[1] != 'refingerprint' and len(argv) != 3):
         print(__doc__.strip().split('\n\n')[1], file=sys.stderr)
