@@ -1,0 +1,55 @@
+{
+ "format": 1,
+ "check": "2026-11-20T223814Z-baseline-189",
+ "kind": "run",
+ "title": [
+  "series",
+  "tt0052520:2:6",
+  "The Twilight Zone S02E06",
+  "old-episode",
+  null
+ ],
+ "label": "The Twilight Zone S02E06",
+ "id": "tt0052520:2:6",
+ "kept_because": "fail",
+ "outcome": {
+  "label": "The Twilight Zone S02E06",
+  "id": "tt0052520:2:6",
+  "kind": "old-episode",
+  "sources": 10,
+  "release": null,
+  "video": false,
+  "checked": [],
+  "fallbacks": 0,
+  "check_misses": [],
+  "start_s": null,
+  "title_to_video": null,
+  "slow": false,
+  "outcome": "fail",
+  "why": "no video (failure video); AltMount refused The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]: AltMount could not process the Source: {\"error\":{\"code\":\"INTERNAL_SERVER_ERROR\",\"details\":\"\",\"message\":\"fast-fail segment check failed: no regular files were successfully processed (all files failed validation)\"},\"success\":false}"
+ },
+ "t_start": "2026-11-20T22:42:16.638Z",
+ "t_end": "2026-11-20T22:42:26.447Z",
+ "commit": "d95ba93696861e3c3b75cd6205e516a508cd706f",
+ "head": "d95ba93696861e3c3b75cd6205e516a508cd706f",
+ "dirty": false,
+ "dev_switch": {
+  "setting": false,
+  "step_lines": 0,
+  "of": 12
+ },
+ "failed_sources": [
+  {
+   "release": "The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]",
+   "failed": "import",
+   "status": null,
+   "nzb": null
+  }
+ ],
+ "altmount_nzbs": [],
+ "answers": {
+  "list": "answers",
+  "kept": 0,
+  "not_stored": []
+ }
+}
