@@ -178,6 +178,45 @@ class DiffTest(unittest.TestCase):
         self.assertIn('one-page side: yes -> no', '\n'.join(br.diff_runs(old_one_page, new)))
 
 
+class MachineTest(unittest.TestCase):
+    """The machine a run ran on (meta.json `machine`, #262) in its report: the opening facts and "What changed"."""
+
+    base = DiffTest.base
+    plugged = {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance', 'cpu_probe_ms': 1000}
+
+    def test_the_power_state_and_the_probe_are_listed_against_the_previous_run(self):
+        prev = dict(self.base, machine=self.plugged)
+        cur = dict(self.base, machine=dict(self.plugged, power='battery', cpu_probe_ms=1240), started='2026-11-10T19:00:00Z')
+        out = br.diff_runs(prev, cur)
+        self.assertIn('Machine: previous run plugged in, CPU probe 1000 ms (governor powersave, energy preference performance); '
+                      'this run on battery, CPU probe 1240 ms (governor powersave, energy preference performance): the probe 24% slower', out)
+
+    def test_a_faster_probe_and_the_same_probe_are_said_so(self):
+        prev = dict(self.base, machine=self.plugged)
+        faster = '\n'.join(br.diff_runs(prev, dict(self.base, machine=dict(self.plugged, cpu_probe_ms=800))))
+        self.assertIn('this run plugged in, CPU probe 800 ms (governor powersave, energy preference performance): the probe 20% faster', faster)
+        same = '\n'.join(br.diff_runs(prev, dict(self.base, machine=dict(self.plugged, cpu_probe_ms=1004))))
+        self.assertIn('CPU probe 1004 ms (governor powersave, energy preference performance): the probe the same', same)
+
+    def test_a_run_from_before_with_no_machine_shows_no_difference(self):
+        for prev, cur in ((self.base, dict(self.base, machine=self.plugged)), (dict(self.base, machine=self.plugged), self.base),
+                          (dict(self.base, machine=None), dict(self.base, machine=self.plugged))):
+            out = br.diff_runs(prev, cur)
+            self.assertEqual([x for x in out if 'Machine' in x or 'probe' in x], [], out)
+            self.assertTrue(out[0].startswith('Nothing changed'), out)
+
+    def test_a_policy_that_could_not_be_read_is_left_out_of_the_words(self):
+        self.assertEqual(br.machine_text({'power': 'ac', 'cpu_probe_ms': 990}), 'plugged in, CPU probe 990 ms')
+
+    def test_the_report_opens_with_the_machine(self):
+        run = runs_fixture()
+        run['machine'] = dict(self.plugged, power='battery')
+        head = br.render_report(run, []).split('## What changed')[0]
+        self.assertIn('Machine: on battery, CPU probe 1000 ms (governor powersave, energy preference performance).', head)
+        run['machine'] = None
+        self.assertNotIn('Machine', br.render_report(run, []).split('## What changed')[0])
+
+
 class ScrubTest(unittest.TestCase):
     def test_only_real_secret_fields_are_masked(self):
         flat = br.flatten({'bypass_x': 'on', 'maxUsers': 5, 'max_users': 6, 'keepAlive': 1, 'keywords': 'a', 'passes': 2,

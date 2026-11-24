@@ -299,6 +299,17 @@ class RunTest(unittest.TestCase):
         rep = read(os.path.join(root, os.path.basename(run2['dir']), 'report.md'))
         self.assertIn('healthChecks.sampleCount: 3 -> 5', rep.split('Steps every side shares')[0])
 
+    def test_the_report_opens_with_the_machine_and_holds_it_against_the_previous_runs(self):
+        run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
+        io2 = FakeIO(machine={'power': 'battery', 'governor': 'powersave', 'cpu_probe_ms': 1140})
+        io2.clock += datetime.timedelta(minutes=5)
+        run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
+        head = read(os.path.join(run2['dir'], 'report.md')).split('Steps every side shares')[0]
+        self.assertIn('Machine: on battery, CPU probe 1140 ms (governor powersave).', head)
+        self.assertIn('- Machine: previous run plugged in, CPU probe 950 ms (governor powersave, energy preference performance); '
+                      'this run on battery, CPU probe 1140 ms (governor powersave): the probe 20% slower', head)
+        self.assertNotIn('Machine:', ' '.join(run1['changes']))  # the first run has nothing to hold it against
+
     def test_a_run_is_judged_against_the_previous_run_on_its_recording(self):
         run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
         io2 = FakeIO()

@@ -740,6 +740,17 @@ def machine_text(machine):
     return f"{POWER_WORDS.get(machine.get('power'), machine.get('power'))}, CPU probe {probe_text(machine)}"
 
 
+def machine_change(prev, cur):
+    """The line of "What changed" that holds a run's machine against the previous run's (#262), or None when either has
+    none (a run from before #262). A probe that rounds to 0% of the previous one is the same."""
+    a, b = prev.get('machine'), cur.get('machine')
+    if not a or not b or not a.get('cpu_probe_ms') or b.get('cpu_probe_ms') is None:
+        return None
+    change = round((b['cpu_probe_ms'] / a['cpu_probe_ms'] - 1) * 100)
+    speed = 'the same' if abs(change) < 1 else f'{abs(change)}% ' + ('slower' if change > 0 else 'faster')
+    return f'Machine: previous run {machine_text(a)}; this run {machine_text(b)}: the probe {speed}'
+
+
 def _settings_and_facts(meta):
     """(settings of the test copies, run-level facts) of a run meta. Runs recorded in the older shape kept the replay wait
     under settings['stand-in'] and the one-page side under settings['kaijuflow-1page']; they are read as facts."""
@@ -791,6 +802,9 @@ def diff_runs(prev, cur, nulls=None):
         out.append(f"Time of day: previous run {_stamp(parse_ts(prev['started']))}, this run {_stamp(parse_ts(cur['started']))}")
     except (KeyError, ValueError):
         pass
+    machine = machine_change(prev, cur)
+    if machine:  # always listed when both runs have it, as the time of day is: the probe differs a little every run
+        out.append(machine)
     if nulls:
         when = ', '.join(_stamp(parse_ts(n['started'])) for n in nulls if n.get('started'))
         out.append(f"{len(nulls)} null run{'' if len(nulls) == 1 else 's'} (stopped by an indexer limit, results not used) "
@@ -1021,12 +1035,17 @@ def _round_fails(vs, side, phase, lst):
 
 
 
+def machine_sentence(run):
+    """The report's opening fact of the machine (#262): 'Machine: plugged in, CPU probe 950 ms (...). '; '' for a run without one."""
+    return f"Machine: {machine_text(run['machine'])}. " if run.get('machine') else ''
+
+
 def render_report(run, changes, opening=None):
     g = _groups(run)
     lists = tagged(run['visits'])
     lines = [opening or answer_sentence(run), '',
              f"Run: {run['name']}. KaijuFlow code {run.get('commit')}{' (with uncommitted changes)' if run.get('dirty') else ''}. "
-             f"Started {run.get('started')}. All times are medians over the titles of one round, in seconds; "
+             f"Started {run.get('started')}. {machine_sentence(run)}All times are medians over the titles of one round, in seconds; "
              "\"-\" means that side does not show the step from outside.", '',
              '## What changed since the last run', ''] + [f'- {c}' for c in changes] + ['']
     if run.get('standin_misses'):
