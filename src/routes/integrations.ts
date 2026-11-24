@@ -69,9 +69,11 @@ export function createIntegrationRoutes(deps: IntegrationDeps): Router {
           'Season': 'season', 'Ep': 'ep', 'ImdbTitle': 'imdbtitle', 'ImdbYear': 'imdbyear',
           'Genre': 'genre', 'Year': 'year', 'RId': 'rid',
         };
-        const movieSearchParams = (caps?.movieSearchParams || []).map((p: string) => paramMap[p] || p.toLowerCase());
-        const tvSearchParams = (caps?.tvSearchParams || []).map((p: string) => paramMap[p] || p.toLowerCase());
-        const capabilities = { movieSearchParams, tvSearchParams };
+        // No caps in Prowlarr's answer: unknown (the IMDb fallback), not "no ID" (kaijuSearch.idWaysOf)
+        const toParams = (ps: string[] | undefined) => (ps || []).map((p: string) => paramMap[p] || p.toLowerCase());
+        const capabilities = caps
+          ? { movieSearchParams: toParams(caps.movieSearchParams), tvSearchParams: toParams(caps.tvSearchParams) }
+          : prev?.capabilities;
 
         return {
           id: i.id.toString(),

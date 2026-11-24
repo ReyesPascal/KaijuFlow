@@ -10,6 +10,7 @@ import { configData } from '../../src/config/index.ts';
 import { indexManagerSearch, kaijuSearch, type SearchContext } from '../../src/addon/searchOrchestrator.ts';
 import { mergeFound, type FoundBy } from '../../src/addon/kaijuSearch.ts';
 import { parseStepLine } from '../../src/utils/stepTiming.ts';
+import { fetchIndexerCaps } from '../../src/parsers/newznabClient.ts';
 import { captureLogs } from './capture-logs.ts';
 
 interface Asked { indexer: string; t: string; ids: Record<string, string>; q?: string }
@@ -111,6 +112,25 @@ test('the ID search asks with every ID the indexer supports; an indexer whose ca
   assert.deepEqual(results.map(r => `${r.indexerName}: ${r.title}`).sort(), [
     `Both: ${BOTH}`, `Both: ${NAME_ONLY}`, `Plain: ${BOTH}`, `Plain: ${NAME_ONLY}`,
   ], 'found by two IDs, listed once per indexer');
+});
+
+test('an indexer whose caps were fetched and list no ID for the kind (available="no") is asked by name only, not by IMDb', async () => {
+  const asked: Asked[] = [];
+  const noIds = await listen(fakeIndexer('NoIds', [], {}, [NAME_ONLY], asked)); // it refuses every ID query
+  const caps = await listen(http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/xml' });
+    res.end('<?xml version="1.0" encoding="UTF-8"?><caps><searching><search available="yes" supportedParams="q"/>'
+      + '<tv-search available="yes" supportedParams="q,season,ep"/><movie-search available="no" supportedParams="q,imdbid"/>'
+      + '</searching></caps>');
+  }));
+  const fetched = await quiet(() => fetchIndexerCaps(caps, 'k', 'NoIds'));
+  assert.deepEqual(fetched.movieSearchParams, []);
+  configData.indexers = [{ name: 'NoIds', url: noIds, apiKey: 'k', enabled: true, caps: fetched }];
+
+  const results = await quiet(() => indexManagerSearch(matrix));
+
+  assert.deepEqual(asked.map(a => [a.t, a.ids]), [['search', {}]]);
+  assert.deepEqual(results.map(r => r.title), [NAME_ONLY]);
 });
 
 // Search Flow decides what a name search keeps (#282 decision 4, done here): the loose rule keeps, and a release the
