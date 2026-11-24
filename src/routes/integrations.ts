@@ -15,6 +15,7 @@ import { Router } from 'express';
 import axios from 'axios';
 import type { Config, IndexerCaps, SyncedIndexer } from '../types.js';
 import { capsOfReply } from '../parsers/newznabClient.js';
+import { CAPS_VERSION } from '../config/capsMigration.js';
 import { matchIndexerLogo } from '../utils/indexerHelpers.js';
 
 interface IntegrationDeps {
@@ -73,7 +74,7 @@ export function createIntegrationRoutes(deps: IntegrationDeps): Router {
         // No caps in Prowlarr's answer: unknown (the IMDb fallback), not "no ID" (kaijuSearch.idWaysOf)
         const toParams = (ps: string[] | undefined) => ps?.map((p: string) => paramMap[p] || p.toLowerCase());
         const capabilities = caps
-          ? { movieSearchParams: toParams(caps.movieSearchParams), tvSearchParams: toParams(caps.tvSearchParams) }
+          ? { version: CAPS_VERSION, movieSearchParams: toParams(caps.movieSearchParams), tvSearchParams: toParams(caps.tvSearchParams) }
           : prev?.capabilities;
 
         return {

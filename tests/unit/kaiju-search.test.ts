@@ -13,6 +13,7 @@ import { indexManagerSearch, kaijuSearch, type SearchContext } from '../../src/a
 import { mergeFound, type FoundBy } from '../../src/addon/kaijuSearch.ts';
 import { parseStepLine } from '../../src/utils/stepTiming.ts';
 import { fetchIndexerCaps } from '../../src/parsers/newznabClient.ts';
+import { CAPS_VERSION } from '../../src/config/capsMigration.ts';
 import { createIntegrationRoutes } from '../../src/routes/integrations.ts';
 import { captureLogs } from './capture-logs.ts';
 
@@ -130,10 +131,10 @@ const serve = (body: string) => listen(http.createServer((_req, res) => {
 
 test("caps read from an indexer's reply list the IDs each kind of search takes", async () => {
   const fromDs = await quiet(() => serve(DS_CAPS).then(url => fetchIndexerCaps(url, 'k', 'DrunkenSlug')));
-  assert.deepEqual(fromDs, { movieSearchParams: ['q', 'imdbid'],
+  assert.deepEqual(fromDs, { version: CAPS_VERSION, movieSearchParams: ['q', 'imdbid'],
     tvSearchParams: ['q', 'vid', 'tvdbid', 'traktid', 'rid', 'tvmazeid', 'imdbid', 'tmdbid', 'season', 'ep'] });
   const fromNinja = await quiet(() => serve(NINJA_CAPS).then(url => fetchIndexerCaps(url, 'k', 'NinjaCentral')));
-  assert.deepEqual(fromNinja, { movieSearchParams: ['q', 'imdbid', 'genre'],
+  assert.deepEqual(fromNinja, { version: CAPS_VERSION, movieSearchParams: ['q', 'imdbid', 'genre'],
     tvSearchParams: ['q', 'rid', 'tvdbid', 'imdbid', 'tvmazeid', 'season', 'ep'] });
 });
 
@@ -144,12 +145,22 @@ test('an indexer whose caps say a kind of search is not available (available="no
     '<movie-search available="no" supportedParams=""/>'); // the shape of its own audio-search line
   const fetched = await quiet(() => serve(reply).then(url => fetchIndexerCaps(url, 'k', 'NoIds')));
   assert.deepEqual(fetched.movieSearchParams, []);
+  assert.equal(fetched.version, CAPS_VERSION, 'marked as read by this reader: its empty list means not available');
   configData.indexers = [{ name: 'NoIds', url: noIds, apiKey: 'k', enabled: true, caps: fetched }];
 
   const results = await quiet(() => indexManagerSearch(matrix));
 
   assert.deepEqual(asked.map(a => [a.t, a.ids]), [['search', {}]]);
   assert.deepEqual(results.map(r => r.title), [NAME_ONLY]);
+});
+
+test('caps saved before caps were marked read (legacy, no version) read an empty list as unknown: asked by IMDb', async () => {
+  const asked: Asked[] = [];
+  const url = await listen(fakeIndexer('Legacy', ['imdbid'], { imdbid: [BOTH] }, [NAME_ONLY], asked));
+  // the old parser stored unreadable caps (a Newznab <error>, no <searching> block) as empty lists
+  configData.indexers = [{ name: 'Legacy', url, apiKey: 'k', enabled: true, caps: { movieSearchParams: [], tvSearchParams: [] } }];
+  await quiet(() => indexManagerSearch(matrix));
+  assert.deepEqual(asked.filter(a => a.t === 'movie').map(a => a.ids), [{ imdbid: '0133093' }]);
 });
 
 test('caps that cannot be read stay unknown, so the indexer is still asked by IMDb', async () => {

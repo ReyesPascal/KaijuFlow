@@ -52,6 +52,7 @@ export interface UsenetIndexer {
 
 // Discovered indexer capabilities from Newznab ?t=caps endpoint
 export interface IndexerCaps {
+  version?: number;              // CAPS_VERSION once read by the reader that tells unknown from not available (capsMigration.ts)
   movieSearchParams?: string[];  // e.g. ['q', 'imdbid', 'tmdbid']; [] when not available; undefined when unknown
   tvSearchParams?: string[];     // e.g. ['q', 'tvdbid', 'imdbid', 'season', 'ep']; the same
 }

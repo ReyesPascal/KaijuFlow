@@ -18,6 +18,7 @@ import 'dotenv/config';
 import crypto from 'crypto';
 import { configData, saveConfigFile } from './schema.js';
 import { migratePlaySettings } from './playSettingsMigration.js';
+import { migrateLegacyCaps } from './capsMigration.js';
 import { dropDeletedSettings, DELETED_ENV } from './deletedSettingsMigration.js';
 import { migrateToHeadStart } from './headStartMigration.js';
 
@@ -328,6 +329,14 @@ if (configData.streamDisplayConfig?.elements && !configData.streamDisplayConfig.
   const ignored = DELETED_ENV.filter(name => process.env[name] !== undefined && process.env[name] !== '');
   if (ignored.length > 0) {
     console.warn(`⚠️  Deprecated env vars set but ignored: ${ignored.join(', ')}. A Source is always checked when it is played, only the Source being played is prepared, and a failed list entry walks the whole list.`);
+  }
+}
+
+// Caps saved before they were marked read (#285, review of #279): their empty lists meant unknown, not "no ID".
+{
+  if (migrateLegacyCaps(configData as unknown as Record<string, unknown>)) {
+    saveConfigFile(configData);
+    console.log('✅ Indexer caps saved before #279 read again: an empty list is unknown (asked by IMDb)');
   }
 }
 

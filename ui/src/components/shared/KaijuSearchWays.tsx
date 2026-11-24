@@ -9,7 +9,7 @@ const ID_LABELS: Record<'movie' | 'tv', [string, string][]> = {
 
 function idsOf(caps: IndexerCaps | null | undefined, kind: 'movie' | 'tv'): string[] {
   const params = (kind === 'movie' ? caps?.movieSearchParams : caps?.tvSearchParams)?.map(p => p.toLowerCase());
-  if (!params) return ['IMDb']; // unknown; [] (not available) asks by no ID
+  if (!params || (params.length === 0 && caps?.version === undefined)) return ['IMDb']; // unknown (a legacy [] too); [] read as not available asks by no ID
   return ID_LABELS[kind].filter(([p]) => params.includes(p)).map(([, label]) => label);
 }
 

@@ -9,7 +9,8 @@ export interface Manifest {
 }
 
 export interface IndexerCaps {
-  movieSearchParams?: string[]; // [] when not available; undefined when unknown (asked by IMDb)
+  version?: number; // set once read by the reader that tells unknown from not available (src/config/capsMigration.ts)
+  movieSearchParams?: string[]; // [] when not available (with version); undefined when unknown (asked by IMDb)
   tvSearchParams?: string[];
 }
 

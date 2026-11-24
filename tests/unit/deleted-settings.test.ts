@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dropDeletedSettings } from '../../src/config/deletedSettingsMigration.ts';
+import { CAPS_VERSION, migrateLegacyCaps } from '../../src/config/capsMigration.ts';
 
 const provider = { id: 'p1', name: 'News', host: 'news.example', port: 563, useTLS: true, username: 'u', password: 'p', enabled: true, type: 'pool' };
 
@@ -54,4 +55,29 @@ test('the search method settings are dropped from every indexer and from the sea
     syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, capabilities: caps }],
   });
   assert.equal(dropDeletedSettings(c), false, 'a second startup finds nothing to drop');
+});
+
+// Caps saved before the review of #279 hold no version: the old parser stored unreadable caps as empty lists, so an
+// empty list there means unknown (the indexer is asked by IMDb), not "no ID" as it does in caps read since (version 2).
+test('a legacy config\'s empty caps lists become unknown at load; caps marked as read keep theirs', () => {
+  const c: Record<string, unknown> = {
+    indexers: [
+      { name: 'Unread', caps: { movieSearchParams: [], tvSearchParams: [] } },
+      { name: 'Half', caps: { movieSearchParams: ['q', 'imdbid'], tvSearchParams: [] } },
+      { name: 'Read', caps: { version: CAPS_VERSION, movieSearchParams: [], tvSearchParams: ['q', 'tvdbid'] } },
+      { name: 'Never' },
+    ],
+    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, capabilities: { movieSearchParams: [], tvSearchParams: ['q', 'imdbid'] } }],
+  };
+  assert.equal(migrateLegacyCaps(c), true);
+  assert.deepEqual(c, {
+    indexers: [
+      { name: 'Unread', caps: { version: CAPS_VERSION } },
+      { name: 'Half', caps: { version: CAPS_VERSION, movieSearchParams: ['q', 'imdbid'] } },
+      { name: 'Read', caps: { version: CAPS_VERSION, movieSearchParams: [], tvSearchParams: ['q', 'tvdbid'] } },
+      { name: 'Never' },
+    ],
+    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, capabilities: { version: CAPS_VERSION, tvSearchParams: ['q', 'imdbid'] } }],
+  });
+  assert.equal(migrateLegacyCaps(c), false, 'a second startup finds nothing to change');
 });

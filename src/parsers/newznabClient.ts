@@ -11,6 +11,7 @@ import { NZBSearchResult, IndexerCaps } from '../types.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
 import { getAxiosProxyConfig } from '../proxy.js';
+import { CAPS_VERSION } from '../config/capsMigration.js';
 
 // Parsed response with pagination metadata
 export interface NewznabParsedResponse {
@@ -102,7 +103,8 @@ function searchParams(line: any): string[] | undefined {
 export function capsOfReply(parsed: any): IndexerCaps | undefined {
   const searching = parsed?.caps?.searching?.[0];
   if (!searching || typeof searching !== 'object') return undefined;
-  return { movieSearchParams: searchParams(searching['movie-search']?.[0]), tvSearchParams: searchParams(searching['tv-search']?.[0]) };
+  return { version: CAPS_VERSION, movieSearchParams: searchParams(searching['movie-search']?.[0]),
+    tvSearchParams: searchParams(searching['tv-search']?.[0]) };
 }
 
 /**
