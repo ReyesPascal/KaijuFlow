@@ -9,7 +9,7 @@
            [--rebuild-image] [--provider-limit 100] [--key-file PATH]   (the setup check alone; a run starts with it)
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke [--one-page]   (stand-in reachability check, see README)
     python3 -I tools/brain/brainrun.py check --quick [--name quick-check] [--runs-root DIR] [--ledger FILE] [--key-file PATH]
-           [--rebuild-image]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
+           [--cases DIR] [--rebuild-image]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
 indexer time for every answer unless --no-wait; every visit waits the fixed Browse pause between its list and
@@ -52,6 +52,7 @@ import allowance  # noqa: E402
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
 import draw  # noqa: E402
+import caselog  # noqa: E402
 import diagnosis  # noqa: E402
 import evidence  # noqa: E402
 import indexer_standin  # noqa: E402
@@ -1596,7 +1597,7 @@ def write_check_ending(cfg, io, check, started, logbuf):
     save_evidence(io, check)
     try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
         # section says if it could not
-        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet)
+        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet, cases=cfg.get('cases'))
     except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
         check['diagnosis'] = None
         check['diagnosis_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
@@ -1954,6 +1955,8 @@ def build_parser():
     ap.add_argument('--rounds', type=int, help='run only: 1 plays cold 1 and warm 1 only, 2 (the default) the full plan (a short run)')
     ap.add_argument('--quick', action='store_true', help='check: the quick check, 5 new titles played live (#270); run: shorthand for '
                     '--sides kaijuflow --rounds 1 (a short run; does not imply --no-wait)')
+    ap.add_argument('--cases', default=caselog.CASES,
+                    help='check --quick only: the Case logs of failures with no proved cause (default %(default)s, #287)')
     ap.add_argument('--ledger', help='check --quick only: the titles already played (default <runs root>/titles-played.json)')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
@@ -2040,7 +2043,7 @@ def main(argv):
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
     if a.cmd == 'check' or (a.cmd == 'preflight' and a.mode == 'check'):
-        cfg.update(name=a.name or 'quick-check', indexers=read_key_file(_key_path(cfg))[1],
+        cfg.update(name=a.name or 'quick-check', indexers=read_key_file(_key_path(cfg))[1], cases=a.cases,
                    ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'))
     started = time.time()
     if a.cmd == 'check':

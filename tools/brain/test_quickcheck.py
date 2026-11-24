@@ -557,7 +557,7 @@ class CheckWorld:
 def check_cfg(case):
     root = tempdir(case)
     return dict(name='quick-check', runs_root=root, test_dir=os.path.join(root, 'td'), indexers=['ninjacentral'], browse_pause=5,
-                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u')
+                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u', cases=os.path.join(tempdir(case), 'cases'))
 
 
 def run_check(cfg, world):

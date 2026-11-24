@@ -20,6 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
 import casebook  # noqa: E402
+import caselog  # noqa: E402
 import clues  # noqa: E402
 import evidence  # noqa: E402
 
@@ -402,10 +403,32 @@ def live_clues(run_dir, open_usenet, now=None):
     return asked
 
 
-def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None):
+def open_cases(run_dir, cases, library=None):
+    """A Case log for every failure of the check with no proved cause (new or suspected): opened, or joined when one
+    with its fingerprint is there, the code's attempt written into it (caselog.open_or_join). [{'id', 'status',
+    'occurrences', 'new'}], one per Case log, in the order the failures came."""
+    out = {}
+    for folder in evidence_folders(run_dir):
+        d = _read_json(os.path.join(folder, STORED))
+        if not d:
+            continue
+        ev = evidence.read(folder)
+        for f, said in zip(failures(ev), d['failures']):
+            if said['verdict'] == 'found':
+                continue
+            f = dict(f, fingerprint=said['fingerprint'])
+            cid, new, _ = caselog.open_or_join(cases, folder, ev, f, dict(said, rules=d['rules']), library)
+            log = caselog.load(os.path.join(cases, cid))
+            row = out.setdefault(cid, {'id': cid, 'status': log['status'], 'occurrences': 0, 'new': False})
+            row.update(status=log['status'], occurrences=len(log['occurrences']), new=row['new'] or new)
+    return list(out.values())
+
+
+def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None, cases=None):
     """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
     `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
-    rules changed, then this check's plays diagnosed. The summary, or None when the check left no evidence folder."""
+    rules changed, then this check's plays diagnosed, and every failure with no proved cause put in its Case log under
+    `cases`. The summary, or None when the check left no evidence folder."""
     if not evidence_folders(run_dir):
         return None
     if usenet is not None:
@@ -413,7 +436,12 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
     rules = load_rules() if rules is None else rules
     entries = load_index() if entries is None else entries
     refingerprint(runs_root, rules, entries, library)
-    return diagnose_check(run_dir, entries, library, rules)
+    summary = diagnose_check(run_dir, entries, library, rules)
+    if cases is not None:
+        summary['cases'] = open_cases(run_dir, cases, library)
+        summary['open_cases'] = caselog.count_open(cases)
+        _write_json(os.path.join(run_dir, STORED), summary)
+    return summary
 
 
 def _plural(n, word):
@@ -428,8 +456,9 @@ def report_section(summary, error=None):
     if not summary:
         return lines + ['None: no play failed or fell back.']
     c = summary['counts']
+    open_ = summary.get('open_cases')
     lines.append(f"{_plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
-                 f"{c['unexplained']} unexplained; open Case logs: none kept yet.")
+                 f"{c['unexplained']} unexplained; open Case logs: {'not kept' if open_ is None else open_}.")
     lines.append('')
     for p in summary['plays']:
         if p.get('error'):
@@ -437,6 +466,11 @@ def report_section(summary, error=None):
         for f in p['failures']:
             source = f"{f['release']}: " if f.get('release') else ''
             lines.append(f"- {p.get('label') or p['evidence']}: {source}{f['says']}.")
+    if summary.get('cases'):
+        lines.append('')
+        for k in summary['cases']:
+            lines.append(f"- Case log `{k['id']}`: {'opened' if k['new'] else 'one more occurrence'} "
+                         f"({_plural(k['occurrences'], 'occurrence')}, {k['status']}).")
     return lines
 
 
