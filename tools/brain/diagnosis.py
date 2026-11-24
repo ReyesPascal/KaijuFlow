@@ -2,7 +2,7 @@
 
     python3 -I tools/brain/diagnosis.py diagnose <check folder | evidence folder>   diagnose and write diagnosis.json
     python3 -I tools/brain/diagnosis.py record <check folder>     put its proved occurrences and ruled-out leads on the Casebook
-    python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure with the current rules
+    python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure and Case log with the current rules
     python3 -I tools/brain/diagnosis.py fix <check folder> [--casebook DIR] [--dry-run]   its proved causes' fixes (#288)
     python3 -I tools/brain/diagnosis.py case <list|show|run|add|repeat|entry> ...   work a Case log (#287; case --help)
 
@@ -476,7 +476,7 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
                 alert=None, book=None, tracker=None):
     """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
     `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
-    rules changed, then this check's plays diagnosed against the Casebook in `book` (default the repo's), every proved
+    rules changed (the Case logs under `cases` too), then this check's plays diagnosed against the Casebook in `book` (default the repo's), every proved
     cause's fix (fixing.after_check: a KaijuFlow cause's ticket, filed through `tracker` unless it is None, a dry run),
     and every failure with no proved cause put in its Case log under `cases`; when one of those logs is open,
     `agent(cases, ids, run_dir)` starts the diagnosing agent on them and `alert(line)` tells the owner in one line. The
@@ -489,6 +489,8 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
     rules = load_rules() if rules is None else rules
     entries = load_index(book) if entries is None else entries
     refingerprint(runs_root, rules, entries, library)
+    if cases is not None:
+        caselog.refingerprint(cases, rules)
     summary = diagnose_check(run_dir, entries, library, rules)
     summary['fixes'] = fixing.after_check(run_dir, stored_plays(run_dir), book, tracker)
     if cases is not None:
@@ -690,8 +692,11 @@ def main(argv):
         return 2
     if argv[1] == 'refingerprint':
         root = argv[2] if len(argv) == 3 else os.path.expanduser('~/kaijuflow-notes/brain-runs')
-        changed = refingerprint(root)
-        print(f"{_plural(len(changed), 'stored failure')} fingerprinted again with rules version {load_rules()['version']}")
+        rules = load_rules()
+        changed = refingerprint(root, rules)
+        logs = caselog.refingerprint(caselog.CASES, rules)
+        print(f"{_plural(len(changed), 'stored failure')} and {_plural(len(logs), 'Case log')} fingerprinted again with "
+              f"rules version {rules['version']}")
         return 0
     folder = argv[2]
     if argv[1] == 'record':

@@ -261,8 +261,9 @@ def _failure_of(ev, occ):
     raise Refused(f"the evidence folder of occurrence {occ['n']} has no failure for {occ['release'] or 'the play'}")
 
 
-def _new_log(failure, cid, when):
-    return {'format': FORMAT, 'id': cid, 'fingerprint': failure['fingerprint'], 'kind': failure['kind'],
+def _new_log(failure, cid, when, rules):
+    return {'format': FORMAT, 'id': cid, 'fingerprint': failure['fingerprint'], 'rules': rules, 'earlier': [],
+            'kind': failure['kind'],
             'where': failure['where'], 'reason': failure['reason'], 'status': OPEN, 'opened': when,
             'occurrences': [], 'observations': [], 'hypotheses': [], 'clue_runs': [], 'attempts': [], 'research': [],
             'tickets': [], 'asks': [], 'conclusion': None, 'entry': None}
@@ -328,10 +329,11 @@ def open_or_join(cases, folder, ev, failure, diagnosed, library=None):
     """Opens the Case log of one unproved failure, or adds this occurrence to the one with its fingerprint (as a
     `repeat` when a Drill-down played it again), and writes the code's attempt for it. Returns (id, whether the log is
     new, whether the occurrence is new)."""
-    cid = case_id(failure)
+    cid = next((i for i, log in logs(cases).items() if log['fingerprint'] == failure['fingerprint']), None) \
+        or case_id(failure)  # a log fingerprinted again under new rules keeps its first id
     case_dir = os.path.join(cases, cid)
     new = not os.path.exists(os.path.join(case_dir, CASE))
-    log = _new_log(failure, cid, _now()) if new else load(case_dir)
+    log = _new_log(failure, cid, _now(), diagnosed.get('rules')) if new else load(case_dir)
     if _occurrence_of(log, case_dir, folder, failure['release'], any_release=False):
         return cid, False, False
     _join(log, case_dir, folder, ev, failure, diagnosed.get('rules'), library, diagnosed)
@@ -353,6 +355,35 @@ def logs(cases):
     except OSError:
         return {}
     return {n: load(os.path.join(cases, n)) for n in names if os.path.exists(os.path.join(cases, n, CASE))}
+
+
+def _rules_of(log):
+    return log.get('rules') or (log['occurrences'][0]['rules'] if log['occurrences'] else None)
+
+
+def refingerprint(cases, rules):
+    """Fingerprints again every Case log made with another masking version (story 25), from its first occurrence's
+    evidence, so the same failure under the new rules joins it; the old fingerprint goes into `earlier`. Returns the ids
+    it changed. A log whose evidence folder cannot be read keeps its fingerprint."""
+    import diagnosis  # noqa: PLC0415
+    changed = []
+    for cid, log in logs(cases).items():
+        if not log['occurrences'] or _rules_of(log) == rules['version']:
+            continue
+        d = os.path.join(cases, cid)
+        occ = log['occurrences'][0]
+        try:
+            ev = evidence.read(evidence_folder(d, occ))
+        except (OSError, ValueError):
+            continue
+        f = next((f for f in diagnosis.failures(ev) if f['release'] == occ['release']), None)
+        if f is None:
+            continue
+        log.setdefault('earlier', []).append({'rules': _rules_of(log), 'fingerprint': log['fingerprint']})
+        log['fingerprint'], log['rules'] = diagnosis.fingerprint(f, ev, rules), rules['version']
+        save(d, log)
+        changed.append(cid)
+    return changed
 
 
 def count_open(cases):

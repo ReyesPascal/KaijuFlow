@@ -94,6 +94,25 @@ class OpensACaseLogTest(unittest.TestCase):
         self.assertEqual(again['cases'][0]['occurrences'], 2)
 
 
+class NewMaskingRulesTest(unittest.TestCase):
+    def test_a_new_masking_version_fingerprints_the_case_logs_again_so_the_same_failure_joins_its_log(self):
+        root, run_dir, cases, _ = after(self, (TWO_REFUSALS,))
+        [(cid, log)] = logs(cases).items()
+        rules = diagnosis.load_rules()
+        rules = dict(rules, version=2, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}]
+                     + rules['masks'])
+
+        _, later, _, summary = after(self, (TWO_REFUSALS,), cases=cases, rules=rules)
+
+        [(again, log)] = logs(cases).items()  # one log still, under its first id
+        self.assertEqual(again, cid)
+        self.assertEqual([o['n'] for o in log['occurrences']], [1, 2])
+        self.assertIn('"code":"<code>"', log['fingerprint'])
+        self.assertEqual(log['rules'], 2)
+        self.assertEqual([e['rules'] for e in log['earlier']], [1])
+        self.assertEqual(summary['cases'], [{'id': cid, 'status': 'open', 'occurrences': 2, 'new': False}])
+
+
 class NeverRepeatsAClueTest(unittest.TestCase):
     def setUp(self):
         self.root, self.run_dir, self.cases, _ = after(self, (INDEXER_DOWN,))
