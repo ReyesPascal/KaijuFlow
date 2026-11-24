@@ -16,6 +16,7 @@ import brainreport as br
 import brainrun
 import common
 import draw
+import pool
 import quickcheck as qc
 import testbed
 from test_preflight import FakeWorld, make_cfg, run_command
@@ -31,7 +32,8 @@ def names():
         lines = f.read().splitlines()
     keys = ['inside out 2', 'pushing daisies e09', 'avatar', 'spider-verse', 'hitcher', '7th time loop', 'space 1999 e04',
             'pushing daisies pack', 'avatar german', 'misanthrope e02', 'chernobyl 1x02', 'chernobyl s01.e02', 'got 2011 s02e03',
-            'breaking bad 1x01']
+            'breaking bad 1x01', 'squid game challenge', 'witcher blood origin', 'guardians imax', 'thief german', 'witcher sonarr',
+            'reacher tv']
     return dict(zip(keys, lines))
 
 
@@ -40,10 +42,15 @@ def read(*parts):
         return f.read()
 
 
+def step_lines_of(folder, name):
+    """KaijuFlow's step lines in one captured log (fixtures/<folder>/<name>)."""
+    with open(os.path.join(HERE, 'fixtures', folder, name)) as f:
+        return br.parse_step_lines(f.read())
+
+
 def step_lines(name):
     """KaijuFlow's step lines of one captured Best press (fixtures/2026-11-23-step-lines/)."""
-    with open(os.path.join(HERE, 'fixtures', '2026-11-23-step-lines', name)) as f:
-        return br.parse_step_lines(f.read())
+    return step_lines_of('2026-11-23-step-lines', name)
 
 
 def parity_film(tag):
@@ -74,13 +81,29 @@ class RightTitleTest(unittest.TestCase):
         self.assertEqual(self.ok('avatar', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2012-05-01']),
                          (False, 'its year is 2009, not 2012'))
 
-    def test_the_name_must_stand_right_before_the_year_or_the_episode(self):
+    def test_a_number_between_a_films_name_and_its_year_is_another_film(self):
         ok, why = self.ok('inside out 2', ['movie', 'tt2096673', 'Inside Out', 'popular-film', '2015-06-17'])
         self.assertEqual((ok, why), (False, 'the name "Inside Out" is not followed by a year (2015 wanted)'))  # the sequel
-        self.assertFalse(qc.right_title('It.Follows.2014.1080p.BluRay.x264', ['movie', 'tt1396484', 'It', 'popular-film', '2014-09-04'])[0])
-        title = ['series', 'tt1:2:5', 'Some Show S02E05', 'popular-episode', '2024-05-01']  # invented: a longer show around the name
-        self.assertEqual(qc.right_title('Not.Some.Show.At.All.S02E05.1080p', title),
-                         (False, 'the name "Some Show" is not followed by a season or episode'))
+
+    def test_words_between_a_films_name_and_its_year_are_another_name_or_an_edition(self):
+        self.assertEqual(self.ok('guardians imax', ['movie', 'tt6791350', 'Guardians of the Galaxy Vol. 3', 'popular-film',
+                                                    '2023-05-03']), (True, ''))  # IMAX and 1080p before the year
+        self.assertEqual(self.ok('thief german', ['movie', 'tt0083190', 'Thief', 'rare-film', '1981-03-27']), (True, ''))
+        self.assertEqual(self.ok('avatar german', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15']), (True, ''))
+        ok, why = self.ok('spider-verse', ['movie', 'tt0145487', 'Spider-Man', 'popular-film', '2002-05-01'])
+        self.assertEqual((ok, why), (False, 'its year is 2023, not 2002'))  # a longer film is told apart by its year
+
+    def test_a_longer_show_around_the_name_is_another_show(self):
+        ok, why = self.ok('squid game challenge', ['series', 'tt10919420:1:1', 'Squid Game S01E01', 'popular-episode', '2021-09-17'])
+        self.assertEqual((ok, why), (False, 'the name "Squid Game" is not followed by a season or episode'))
+        self.assertFalse(self.ok('witcher blood origin', ['series', 'tt5180504:1:1', 'The Witcher S01E01', 'popular-episode',
+                                                          '2019-12-20'])[0])
+
+    def test_a_show_tag_year_or_tvdb_number_may_stand_before_the_episode(self):
+        witcher = ['series', 'tt5180504:1:1', 'The Witcher S01E01', 'popular-episode', '2019-12-20']
+        self.assertEqual(self.ok('witcher sonarr', witcher), (True, ''))  # The Witcher (2019) (362696) - S01E01
+        self.assertEqual(self.ok('reacher tv', ['series', 'tt9288030:1:1', 'Reacher S01E01', 'popular-episode', '2022-02-04']),
+                         (True, ''))
 
     def test_a_release_without_the_name_is_the_wrong_title(self):
         ok, why = self.ok('hitcher', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15'])
@@ -124,17 +147,14 @@ class RightTitleTest(unittest.TestCase):
                          (False, 'the name "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!" is not in it'))
         self.assertTrue(self.ok('7th time loop', ['series', 'tt1:1:1', '7th Time Loop S01E01', 'anime', '2024-01-07'])[0])
 
-    def test_a_title_inside_a_longer_name_fits_only_through_another_name(self):
-        title = ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15']
-        self.assertEqual(self.ok('avatar german', title), (False, 'the name "Avatar" is not followed by a year (2009 wanted)'))
-        self.assertTrue(self.ok('avatar german', title, ['Avatar: Aufbruch nach Pandora'])[0])
-
     def test_episode_markers_no_recording_holds(self):
         """Invented names: no release in the recordings uses these markers."""
         title = ['series', 'tt1:3:7', 'Some Show S03E07', 'popular-episode', '2024-05-01']
         for release, right in (('Some.Show.S03E06-E08.1080p.WEB', True), ('Some.Show.S03E06E07.1080p', True),
                                ('Some.Show.S01-S04.COMPLETE.1080p', True), ('Some.Show.Season.3.1080p', True),
-                               ('Some.Show.UK.S03E07.1080p', True), ('Some.Show.1080p.WEB', False)):
+                               ('Some.Show.UK.S03E07.1080p', True), ('Some.Show.1080p.WEB', False),
+                               ('Some.Show.US.2005.S03E07', True),
+                               ('Some.Show.Complete.Season.3', True), ('Some.Show.Uncensored.S03E07', True)):
             self.assertEqual(qc.right_title(release, title)[0], right, release)
 
     def test_a_daily_show_is_known_by_its_air_date(self):
@@ -170,6 +190,11 @@ class TmdbNamesTest(unittest.TestCase):
     def test_a_title_tmdb_does_not_know_has_no_other_names(self):
         self.assertEqual(qc.tmdb_names(lambda path: (200, {'movie_results': [], 'tv_results': []}),
                                        ['movie', 'tt9', 'X', 'popular-film', '2000-01-01']), [])
+
+    def test_a_tmdb_that_does_not_answer_raises_so_the_fail_says_so(self):
+        for status in (429, 500):
+            with self.assertRaisesRegex(pool.TmdbError, f'TMDB answered HTTP {status}'):
+                qc.tmdb_names(lambda path: (status, None), ['movie', 'tt9', 'X', 'popular-film', '2000-01-01'])
 
 
 def visit(title=FILM, steps=(), sources=3, best=True, plays=True, first_byte=4.0, list_s=2.0, status=200, note=None):
@@ -241,15 +266,28 @@ class JudgeTest(unittest.TestCase):
         self.assertFalse(qc.judge(visit(first_byte=60.0, steps=step_lines('kaijuflow-best-dead-first.txt')))['slow'])
 
     def test_nothing_to_play_needs_every_source_said_no(self):
-        empty = qc.judge(visit(sources=0, best=False))
-        self.assertEqual((empty['outcome'], empty['why']), ('nothing to play', 'the list held no Source'))
         counted = qc.judge(visit(sources=0, best=False, steps=[{'step': 'list_filter', 'results': 12, 'kept': 0}]))
-        self.assertEqual(counted['why'], 'the list held no Source: the search found 12 releases and the filters kept none')
+        self.assertEqual((counted['outcome'], counted['why']),
+                         ('nothing to play', "the list held no Source: KaijuFlow's search kept 12 releases and its filters kept none"))
         dead = [{'step': 'play_check', 'title': f'Rel.{i}.2026', 'ok': False, 'status': 'blocked'} for i in range(3)]
         o = qc.judge(visit(sources=3, plays=False, steps=dead))
         self.assertEqual((o['outcome'], o['why']), ('nothing to play', 'every Source KaijuFlow looked at failed its check (3 of 3)'))
         o = qc.judge(visit(sources=5, plays=False, steps=dead))  # two Sources never reached: not shown that none would play
         self.assertEqual((o['outcome'], o['why']), ('fail', 'no video (failure video), and only 3 of 5 Sources were checked'))
+
+    def test_an_empty_list_is_a_fail_when_it_is_not_shown_that_nothing_would_play(self):
+        lines = step_lines_of('2026-11-24-step-lines', 'kaijuflow-indexer-down-empty-list.txt')  # NinjaCentral did not answer
+        kept = qc.visit_steps(lines, 'tt1375666', '2026-11-24T06:00:46.348Z')
+        self.assertEqual([s['step'] for s in kept], ['indexer_page', 'list_filter'])
+        o = qc.judge(visit(title=['movie', 'tt1375666', 'Inception', 'popular-film', '2010-07-15'], sources=0, best=False, steps=kept))
+        self.assertEqual((o['outcome'], o['why']), ('fail', 'the list held no Source, and NinjaCentral did not answer its search (page 1)'))
+        answered = [dict(kept[0], ok=True), kept[1]]
+        o = qc.judge(visit(sources=0, best=False, steps=answered))
+        self.assertEqual((o['outcome'], o['why']),
+                         ('nothing to play', "the list held no Source: KaijuFlow's search kept 0 releases and its filters kept none"))
+        o = qc.judge(visit(sources=0, best=False))  # no list_filter line: the list's handler failed
+        self.assertEqual(o['outcome'], 'fail')
+        self.assertIn('no list_filter line', o['why'])
 
     def test_a_list_that_did_not_come_or_has_no_best_entry_is_a_fail(self):
         o = qc.judge(visit(status=None, sources=0, best=False, note='timed out'))
@@ -261,8 +299,10 @@ class JudgeTest(unittest.TestCase):
         steps = step_lines('kaijuflow-best-dead-first.txt')
         kept = qc.visit_steps(steps + [{'step': 'played', 'ref': 'tt999', 'title': 'Other', 't': '2026-11-23T20:35:13.000Z'}],
                               'tt1000010', '2026-11-23T20:35:11.000Z')
-        self.assertEqual([s['step'] for s in kept], ['play_check', 'play_check', 'play_check', 'played'])
+        self.assertEqual([s['step'] for s in kept], ['indexer_page', 'play_check', 'play_check', 'play_check', 'played'])
         self.assertEqual(qc.visit_steps(steps, 'tt1000010', '2026-11-23T20:36:00.000Z'), [])  # lines before the visit
+        at_start = [{'step': 'played', 'ref': 'tt1000010', 'title': 'A', 't': '2026-11-23T20:35:11.000Z'}]
+        self.assertEqual(len(qc.visit_steps(at_start, 'tt1000010', '2026-11-23T20:35:11Z')), 1)  # times as times, not text
 
 
 def check_record(**kw):
@@ -442,7 +482,7 @@ class CheckWorld:
 
     def title_names(self, title):
         if title[1] in self.other_names and self.other_names[title[1]] is None:
-            raise OSError('TMDB unreachable')
+            raise pool.TmdbError('TMDB answered HTTP 503 to /find/' + title[1])  # as quickcheck.tmdb_names does
         return list(self.other_names.get(title[1], []))
 
 
@@ -526,6 +566,7 @@ class QuickCheckRunTest(unittest.TestCase):
         report = read(folder, 'report.md')
         self.assertNotIn('## Fails', report)
         self.assertNotIn('Tickets to file', report)
+        self.assertIn('Played 2 of 5 titles; 1 cut by the limit, not judged.', report)
 
     def test_a_foreign_name_reaches_the_judge_through_tmdbs_names(self):
         drawn = [list(t) for t in DRAWN]
@@ -536,8 +577,11 @@ class QuickCheckRunTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
         world = CheckWorld(drawn=drawn, plays={'tt0211915': 'Le.Fabuleux.Destin.dAmelie.Poulain.2001.1080p.BluRay'},
                            other_names={'tt0211915': None})  # TMDB down: a fail that says so
-        code, out = run_check(check_cfg(self), world)
+        cfg = check_cfg(self)
+        code, out = run_check(cfg, world)
         self.assertEqual(code, brainrun.EXIT_FAILS, out)
+        report = read(cfg['runs_root'], '2026-11-25T100000Z-quick-check', 'report.md')
+        self.assertIn("TMDB's other names of the title could not be read", report)
 
     def test_a_refused_draw_ends_the_check_with_its_sentence_not_a_traceback(self):
         cfg = check_cfg(self)
@@ -547,6 +591,13 @@ class QuickCheckRunTest(unittest.TestCase):
         self.assertIn('No verdict: the check failed: TMDB gave no new rare-film title in 8 pages', out)
         self.assertNotIn(('reset', tuple(brainrun.ALL_TESTBED)), world.calls)
         self.assertIn('| quick-check | failed |', read(cfg['runs_root'], 'INDEX.md'))
+
+    def test_tmdb_failing_the_draw_ends_the_check_with_its_sentence(self):
+        cfg = check_cfg(self)
+        code, out = run_check(cfg, CheckWorld(refuse_draw=pool.TmdbError('TMDB refused the key of KaijuFlow\'s test copy (HTTP 401), so no ID can be checked.')))
+        self.assertEqual(code, 1, out)
+        self.assertIn('No verdict: the check failed: TMDB refused the key', out)
+        self.assertNotIn('Traceback', out)
 
     def test_a_stand_in_marker_stops_the_check_too(self):
         world = CheckWorld()
