@@ -15,7 +15,7 @@ import brainrun
 import brainreport as br
 import evidence
 import indexer_standin
-from test_quickcheck import DRAWN, CheckWorld, check_cfg, read, run_check
+from test_quickcheck import ALTMOUNT, DRAWN, CheckWorld, check_cfg, read, run_check
 from test_settings import SECRET, make_copies, tempdir
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -115,7 +115,7 @@ class FailedPlayWorld(CheckWorld):
 
 def run_failed_check(case, **kw):
     cfg, world = check_cfg(case), FailedPlayWorld(**kw)
-    world.case = case
+    world.case, world.cases = case, cfg['cases']
     code, out = run_check(cfg, world)
     folder = os.path.join(cfg['runs_root'], CHECK)
     return code, out, folder, world
@@ -148,6 +148,10 @@ class FailedPlayEvidenceTest(unittest.TestCase):
         self.assertNotIn('evidence', raw['visits'][1])  # a play that went fine keeps only what a check keeps today
         self.assertEqual(sorted(os.listdir(self.folder)), ['diagnosis.json', 'evidence', 'logs', 'meta.json', 'raw.json', 'report.md', 'settings.json',
                                                            'titles.json'])
+
+    def test_it_keeps_the_altmount_version_the_play_ran_on_as_the_check_does(self):
+        self.assertEqual(self.meta()['altmount'], ALTMOUNT)  # what changed since the last good check (#287)
+        self.assertEqual(json.loads(read(self.folder, 'meta.json'))['altmount'], ALTMOUNT)
 
     def test_it_says_what_it_is_for_whom_and_why_it_was_kept(self):
         m = self.meta()

@@ -9,7 +9,7 @@
            [--rebuild-image] [--provider-limit 100] [--key-file PATH]   (the setup check alone; a run starts with it)
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke [--one-page]   (stand-in reachability check, see README)
     python3 -I tools/brain/brainrun.py check --quick [--name quick-check] [--runs-root DIR] [--ledger FILE] [--key-file PATH]
-           [--rebuild-image]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
+           [--cases DIR] [--rebuild-image]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
 indexer time for every answer unless --no-wait; every visit waits the fixed Browse pause between its list and
@@ -52,6 +52,7 @@ import allowance  # noqa: E402
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
 import draw  # noqa: E402
+import caselog  # noqa: E402
 import diagnosis  # noqa: E402
 import evidence  # noqa: E402
 import indexer_standin  # noqa: E402
@@ -283,6 +284,13 @@ class RealIO:
         label = r.stdout.strip()
         return label if r.returncode == 0 and label and label != '<no value>' else None
 
+    def altmount_image(self):
+        """{'image', 'id'} of AltMount's test copy as it runs (docker inspect, read-only), or None when it is not up."""
+        r = subprocess.run(['docker', 'inspect', '-f', '{{.Config.Image}} {{.Image}}', ALTMOUNT_CONTAINER],
+                           capture_output=True, text=True, timeout=60)
+        parts = r.stdout.split()
+        return {'image': parts[0], 'id': parts[1]} if r.returncode == 0 and len(parts) == 2 else None
+
     def rebuild_image(self, commit):
         build_image(commit, self.repo)
 
@@ -480,6 +488,14 @@ class RealIO:
         """The live Clues' one read-only connection to the test copy's AltMount provider (#284), opened at its first
         command."""
         return nntp.Usenet(login=nntp.provider(test_dir=self.cfg['test_dir']))
+
+    def start_diagnosing_agent(self, cases, ids, run_dir):
+        """The diagnosing agent on the check's open Case logs (#287): a herdr agent in the agents tab, else claude -p."""
+        return caselog.start_agent(cases, ids, run_dir)
+
+    def alert(self, line):
+        """The owner told in one line, the usual alert (kf-alert returns at once; its voice runs detached)."""
+        subprocess.run([os.path.expanduser('~/.local/bin/kf-alert'), line], timeout=30, check=False)
 
     def secret_values(self):
         """The test copies' secret values (key files, logins, keys), for scrubbing what a check keeps; never shown."""
@@ -1511,7 +1527,7 @@ def quick_check_all(cfg, io):
     check = {'kind': 'quick check', 'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir,
              'folder': os.path.basename(run_dir), 'titles': [], 'visits': [], 'null': None, 'stopped': None, 'error': None,
              'indexers': list(cfg['indexers']), 'browse_pause_s': cfg['browse_pause'], 'settings': {}, 'commit': None,
-             'head': None, 'dirty': None, 'start_load': round(seen['load'], 2) if 'load' in seen else None,
+             'head': None, 'dirty': None, 'altmount': None, 'start_load': round(seen['load'], 2) if 'load' in seen else None,
              'machine': seen.get('machine'), 'stage': 'the draw', 'playing': None}
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     check['plays'] = []  # both containers' lines per visit, for the evidence folders (never in raw.json)
@@ -1527,6 +1543,7 @@ def quick_check_all(cfg, io):
             planned = len(check['titles'])
             check['stage'] = 'the reset'
             io.reset(ALL_TESTBED, progress_log(io, 0, planned))
+            check['altmount'] = io.altmount_image()  # after the reset, which starts the copy (#287: what changed)
             io.open_check_store(run_dir)
             handle = io.start_standin(os.path.join(run_dir, 'logs', 'standin.log'), mode='record')
             check['stage'] = 'the plays'
@@ -1596,7 +1613,8 @@ def write_check_ending(cfg, io, check, started, logbuf):
     save_evidence(io, check)
     try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
         # section says if it could not
-        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet)
+        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet, cases=cfg.get('cases'),
+                                                   agent=io.start_diagnosing_agent, alert=io.alert)
     except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
         check['diagnosis'] = None
         check['diagnosis_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
@@ -1606,7 +1624,7 @@ def write_check_ending(cfg, io, check, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': check['status'], 'visits': check['visits'],
                                                           'outcomes': check['outcomes']}, indent=1))
     meta = {k: check.get(k) for k in ('kind', 'name', 'status', 'verdict', 'headline', 'started', 'finished', 'seconds', 'commit',
-                                      'head', 'dirty', 'titles', 'indexers', 'null', 'stopped', 'error', 'browse_pause_s',
+                                      'head', 'dirty', 'altmount', 'titles', 'indexers', 'null', 'stopped', 'error', 'browse_pause_s',
                                       'start_load', 'machine')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     result = {'pass': 'pass', 'fail': 'FAIL'}.get(check['verdict']) or {'null': 'NULL'}.get(check['status'], check['status'])
@@ -1626,7 +1644,8 @@ def save_evidence(io, check):
             continue
         nxt = visits[i + 1]['t_start'] if i + 1 < len(visits) else br.iso(br.parse_ts(v['t_end']) + datetime.timedelta(seconds=GRACE_S))
         play = {'check': check['folder'], 'kind': check['kind'], 'visit': v, 'outcome': outcome, **plays[i],
-                'settings': check.get('settings') or {}, 'until': nxt, **{k: check.get(k) for k in ('commit', 'head', 'dirty')}}
+                'settings': check.get('settings') or {}, 'until': nxt,
+                **{k: check.get(k) for k in ('commit', 'head', 'dirty', 'altmount')}}
         try:
             outcome['evidence'] = evidence.save(check['dir'], i + 1, play, io)
         except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
@@ -1954,6 +1973,8 @@ def build_parser():
     ap.add_argument('--rounds', type=int, help='run only: 1 plays cold 1 and warm 1 only, 2 (the default) the full plan (a short run)')
     ap.add_argument('--quick', action='store_true', help='check: the quick check, 5 new titles played live (#270); run: shorthand for '
                     '--sides kaijuflow --rounds 1 (a short run; does not imply --no-wait)')
+    ap.add_argument('--cases', default=caselog.CASES,
+                    help='check --quick only: the Case logs of failures with no proved cause (default %(default)s, #287)')
     ap.add_argument('--ledger', help='check --quick only: the titles already played (default <runs root>/titles-played.json)')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
@@ -2040,7 +2061,7 @@ def main(argv):
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
     if a.cmd == 'check' or (a.cmd == 'preflight' and a.mode == 'check'):
-        cfg.update(name=a.name or 'quick-check', indexers=read_key_file(_key_path(cfg))[1],
+        cfg.update(name=a.name or 'quick-check', indexers=read_key_file(_key_path(cfg))[1], cases=a.cases,
                    ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'))
     started = time.time()
     if a.cmd == 'check':

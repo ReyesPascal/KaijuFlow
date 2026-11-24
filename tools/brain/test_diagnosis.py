@@ -249,7 +249,7 @@ class AfterACheckTest(unittest.TestCase):
         self.assertEqual(f['says'], answers(READ_ERROR)[0]['says'])
         self.assertTrue(os.path.exists(os.path.join(folder, play['evidence'], diagnosis.STORED)))
         report = read(folder, 'report.md')
-        self.assertIn('## Diagnosis\n\n1 failure: 0 new, 1 matched, 1 proved, 0 unexplained; open Case logs: none kept yet.\n\n'
+        self.assertIn('## Diagnosis\n\n1 failure: 0 new, 1 matched, 1 proved, 0 unexplained; open Case logs: 0.\n\n'
                       f'- The Witcher S01E01: {HHWEB}: {f["says"]}.\n', report)
 
     def test_a_check_with_no_failure_diagnoses_nothing(self):

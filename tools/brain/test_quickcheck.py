@@ -474,6 +474,9 @@ DRAWN = [['movie', 'tt0000001', 'First Film', 'popular-film', '2020-05-01'],
 BEST = {'name': 'KaijuFlow', 'title': 'KaijuFlow ▶ Best', 'url': 'http://localhost:1338/u/play/stream/ultimate-fallback?x=1'}
 
 
+ALTMOUNT = {'image': 'ghcr.io/kipsilabs/altmount:v0.4.0', 'id': 'sha256:5e1f'}  # AltMount's test copy (#287)
+
+
 class CheckWorld:
     """The real world as a quick check meets it, faked: a clock that moves only while something takes time, the draw, the
     reset, the stand-in, KaijuFlow's list and the press of Best (through brainrun.check_visit_answer, as RealIO does), and
@@ -494,6 +497,13 @@ class CheckWorld:
 
     def usenet(self):  # this world has no news server: the live Clues' connection is refused (#284)
         raise OSError('no news server in this world')
+
+    def start_diagnosing_agent(self, cases, ids, run_dir):  # the agent a check starts on its unproved failures (#287)
+        self.calls.append(('diagnosing agent', list(ids)))
+        return 'herdr agent diag-test'
+
+    def alert(self, line):
+        self.calls.append(('alert', line))
 
     def now(self):
         return self.clock
@@ -516,6 +526,9 @@ class CheckWorld:
 
     def image_label(self):
         return 'img1'
+
+    def altmount_image(self):
+        return dict(ALTMOUNT)
 
     def draw_titles(self, check, kinds):
         self.calls.append(('draw', check.split(' ')[0], dict(kinds)))
@@ -614,7 +627,7 @@ class CheckWorld:
 def check_cfg(case):
     root = tempdir(case)
     return dict(name='quick-check', runs_root=root, test_dir=os.path.join(root, 'td'), indexers=['ninjacentral'], browse_pause=5,
-                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u')
+                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u', cases=os.path.join(tempdir(case), 'cases'))
 
 
 def run_check(cfg, world):

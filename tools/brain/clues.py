@@ -40,10 +40,11 @@ def clue(name, question):
     return register
 
 
-def run(name, evidence, failure):
-    """{'clue', 'answer', 'facts'} of one Clue on one failure. A Clue that raises answers can't tell, with the error."""
+def run(name, evidence, failure, library=None):
+    """{'clue', 'answer', 'facts'} of one Clue (from `library`, else CLUES) on one failure. A Clue that raises answers
+    can't tell, with the error."""
     try:
-        answer, facts = CLUES[name].run(evidence, failure)
+        answer, facts = (CLUES if library is None else library)[name].run(evidence, failure)
     except Exception as e:  # noqa: BLE001  (one broken Clue never stops a diagnosis)
         answer, facts = CANT, [f'the Clue failed: {type(e).__name__}: {e}']
     if answer not in ANSWERS:

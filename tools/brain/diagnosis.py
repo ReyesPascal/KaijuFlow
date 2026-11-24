@@ -3,6 +3,7 @@
     python3 -I tools/brain/diagnosis.py diagnose <check folder | evidence folder>   diagnose and write diagnosis.json
     python3 -I tools/brain/diagnosis.py record <check folder>     put its proved occurrences and ruled-out leads on the Casebook
     python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure with the current rules
+    python3 -I tools/brain/diagnosis.py case <list|show|run|add|repeat|entry> ...   work a Case log (#287; case --help)
 
 The answers: *found: X, proved by Clues A, B* (a lead's confirming recipe passed on this failure's own evidence),
 *suspected: X (no confirming test)* (a look-alike whose recipe cannot run yet), or *new* (no entry matches, or every
@@ -20,6 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
 import casebook  # noqa: E402
+import caselog  # noqa: E402
 import clues  # noqa: E402
 import evidence  # noqa: E402
 
@@ -402,10 +404,57 @@ def live_clues(run_dir, open_usenet, now=None):
     return asked
 
 
-def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None):
+def open_cases(run_dir, cases, library=None):
+    """A Case log for every failure of the check with no proved cause (new or suspected): opened, or joined when one
+    with its fingerprint is there, the code's attempt written into it (caselog.open_or_join). [{'id', 'status',
+    'occurrences', 'new'}], one per Case log, in the order the failures came."""
+    out = {}
+    for folder in evidence_folders(run_dir):
+        d = _read_json(os.path.join(folder, STORED))
+        if not d:
+            continue
+        ev = evidence.read(folder)
+        for f, said in zip(failures(ev), d['failures']):
+            if said['verdict'] == 'found':
+                continue
+            f = dict(f, fingerprint=said['fingerprint'])
+            cid, new, _ = caselog.open_or_join(cases, folder, ev, f, dict(said, rules=d['rules']), library)
+            log = caselog.load(os.path.join(cases, cid))
+            row = out.setdefault(cid, {'id': cid, 'status': log['status'], 'occurrences': 0, 'new': False})
+            row.update(status=log['status'], occurrences=len(log['occurrences']), new=row['new'] or new)
+    return list(out.values())
+
+
+def _start_agent(summary, run_dir, cases, agent, alert):
+    """Starts the diagnosing agent on the check's open Case logs and tells the owner in one line (story 49)."""
+    waiting = [k['id'] for k in summary.get('cases') or [] if k['status'] == caselog.OPEN]
+    if not waiting or agent is None:
+        return
+    try:
+        started, error = agent(cases, waiting, run_dir), None
+    except Exception as e:  # noqa: BLE001  (the check's report comes first; the line says so)
+        started, error = None, br.scrub_text(f'{type(e).__name__}: {e}')
+    summary['agent'] = {'started': started, 'error': error, 'cases': waiting}
+    n = sum(1 for p in summary['plays'] for f in p['failures'] if f['verdict'] != 'found')
+    logs = f"Case log{'s' if len(waiting) > 1 else ''} {', '.join(waiting)}"
+    line = f"Diagnosis: {_plural(n, 'failure')} in {os.path.basename(os.path.normpath(run_dir))} " \
+           f"{'has' if n == 1 else 'have'} no proved cause; "
+    line += f'the diagnosing agent is on {logs} ({started}).' if error is None else \
+        f"the diagnosing agent could not start ({error}): {logs} wait{'s' if len(waiting) == 1 else ''} for it."
+    if alert is not None:
+        try:
+            alert(line)
+        except Exception:  # noqa: BLE001, S110  (an alert that fails never stops the check)
+            pass
+
+
+def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None, cases=None, agent=None,
+                alert=None):
     """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
     `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
-    rules changed, then this check's plays diagnosed. The summary, or None when the check left no evidence folder."""
+    rules changed, then this check's plays diagnosed, and every failure with no proved cause put in its Case log under
+    `cases`; when one of those logs is open, `agent(cases, ids, run_dir)` starts the diagnosing agent on them and
+    `alert(line)` tells the owner in one line. The summary, or None when the check left no evidence folder."""
     if not evidence_folders(run_dir):
         return None
     if usenet is not None:
@@ -413,7 +462,13 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
     rules = load_rules() if rules is None else rules
     entries = load_index() if entries is None else entries
     refingerprint(runs_root, rules, entries, library)
-    return diagnose_check(run_dir, entries, library, rules)
+    summary = diagnose_check(run_dir, entries, library, rules)
+    if cases is not None:
+        summary['cases'] = open_cases(run_dir, cases, library)
+        summary['open_cases'] = caselog.count_open(cases)
+        _start_agent(summary, run_dir, cases, agent, alert)
+        _write_json(os.path.join(run_dir, STORED), summary)
+    return summary
 
 
 def _plural(n, word):
@@ -428,8 +483,9 @@ def report_section(summary, error=None):
     if not summary:
         return lines + ['None: no play failed or fell back.']
     c = summary['counts']
+    open_ = summary.get('open_cases')
     lines.append(f"{_plural(c['failures'], 'failure')}: {c['new']} new, {c['matched']} matched, {c['proved']} proved, "
-                 f"{c['unexplained']} unexplained; open Case logs: none kept yet.")
+                 f"{c['unexplained']} unexplained; open Case logs: {'not kept' if open_ is None else open_}.")
     lines.append('')
     for p in summary['plays']:
         if p.get('error'):
@@ -437,6 +493,15 @@ def report_section(summary, error=None):
         for f in p['failures']:
             source = f"{f['release']}: " if f.get('release') else ''
             lines.append(f"- {p.get('label') or p['evidence']}: {source}{f['says']}.")
+    if summary.get('cases'):
+        lines.append('')
+        for k in summary['cases']:
+            lines.append(f"- Case log `{k['id']}`: {'opened' if k['new'] else 'one more occurrence'} "
+                         f"({_plural(k['occurrences'], 'occurrence')}, {k['status']}).")
+    a = summary.get('agent')
+    if a:
+        lines += ['', f"The diagnosing agent started: {a['started']}." if a['error'] is None else
+                  f"The diagnosing agent could not start: {a['error']}."]
     return lines
 
 
@@ -534,6 +599,8 @@ def _say(play):
 
 
 def main(argv):
+    if len(argv) > 1 and argv[1] == 'case':
+        return caselog.main(argv[2:])
     if len(argv) < 2 or argv[1] not in ('diagnose', 'record', 'refingerprint') or \
             len(argv) > 3 or (argv[1] != 'refingerprint' and len(argv) != 3):
         print(__doc__.strip().split('\n\n')[1], file=sys.stderr)

@@ -245,7 +245,7 @@ One small reusable yes/no test that answers a single question from the evidence 
 _Avoid_: probe, check (a check plays titles), test (unqualified)
 
 **Case log**:
-The record of a failure with no proved cause yet: every observation, hypothesis (with the result that would refute it), Clue run and result, so a later attempt starts from what was tried. It stays open until the cause is proved, and then becomes a Casebook entry.
+The record of a failure with no proved cause yet: every observation, hypothesis (with the result that would refute it), Clue run and result, so a later attempt starts from what was tried and never runs a Clue twice. The diagnosing agent, started by the check, works it; every claim it writes must quote evidence that holds it. A concluded cause is *probable* until the failure is repeated at will (a Drill-down or a replay), then *proved*; it is written up as a Casebook entry.
 _Avoid_: ticket (a ticket is for a fix), notes, incident
 
 **Kaiju Search**:
