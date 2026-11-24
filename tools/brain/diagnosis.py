@@ -84,8 +84,9 @@ def _reason(ev, release, step):
 
 def failures(ev):
     """The failures of one play: one per Source that failed for it (AltMount refused it, or it failed after its check),
-    in the order they failed, or one for the play itself when no Source failed (nothing to play, a fail before any
-    Source, a slow play). Each: release, kind, step (the failing step line or None), where, reason."""
+    in the order they failed, and one for the play itself when no Source failed (nothing to play, a fail before any
+    Source, a slow play) or when the wrong title played (story 71: its refused Sources are their own failures, check
+    misses or fallbacks, as video came). Each: release, kind, step (the failing step line or None), where, reason."""
     o = ev.meta.get('outcome') or {}
     if not ev.meta.get('kept_because'):
         return []  # a play that went fine (a Drill-down keeps its folder too, #272) has no failure
@@ -101,16 +102,17 @@ def failures(ev):
             continue  # a Source its Play-time check stopped is the check working, not a failure
         release = f['release']
         step = _failing_step(ev, release)
-        kind = play_kind or ('check miss' if _checked(ev, release) else 'fallback')
+        kind = play_kind if play_kind in ('fail', 'nothing to play') else \
+            ('check miss' if _checked(ev, release) else 'fallback')
         out.append({'release': release, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none',
                     'reason': _reason(ev, release, step)})
-    if out:
+    if out and play_kind != 'wrong title':
         return out
     steps = [s for s in ev.steps if s.get('step') not in LIST_OWN + EVENTS + SEARCH_LINES]  # the last step line
     step = steps[-1] if steps else None
     kind = play_kind or ('slow play' if o.get('slow') else ev.meta.get('kept_because') or 'fail')
-    return [{'release': None, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none',
-             'reason': o.get('why') or '' if play_kind else ''}]
+    return out + [{'release': None, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none',
+                   'reason': o.get('why') or '' if play_kind else ''}]
 
 
 def _never_a_sign(ev):

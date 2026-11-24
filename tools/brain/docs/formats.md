@@ -260,7 +260,7 @@ What Diagnosis (#283, spec #279; `tools/brain/diagnosis.py`) makes of an [eviden
 
 **The fingerprint**: `<kind> | <where> | <reason>`, for example `check miss | import_wait not ok | AltMount could not process the Source: {...all files failed validation...}`.
 
-- `kind`: `fail` (no video), `wrong title`, `nothing to play`, from the play's outcome; when video came, a failed Source is a `check miss` when its Play-time check had passed it (a `play_check` line with `ok`), else a `fallback`; a play with no failed Source and late video is a `slow play`.
+- `kind`: `fail` (no video), `wrong title`, `nothing to play`, from the play's outcome; when video came, a failed Source is a `check miss` when its Play-time check had passed it (a `play_check` line with `ok`), else a `fallback`; a play with no failed Source and late video is a `slow play`. A wrong-title play is a failure of its own beside its failed Sources, which are then check misses or fallbacks (video came, story 71).
 - `where`: the failing step line and whether it was ok: the failed Source's first prepare step (`nzb_fetch`, `unscramble`, `upload`, `import_wait`, `first_byte`) that was not ok, else its last; for the play's own failure, its last step line, the list's own lines, the play's events and Kaiju Search's `search` lines (dev switch only, so the switch never changes a fingerprint) left out; a slow play's is `first_byte`. `none` when there is none.
 - `reason`: the failed Source's `play_failed` reason, or, in builds from before #242, KaijuFlow's own failure line nearest its failing step (within 2 s: `❌ Failed: <reason>`, `❌ Stream failed [i/n] <release>: <reason>`); the play's own failure takes the outcome's `why`. Masked, then `-` when empty.
 

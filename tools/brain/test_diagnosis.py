@@ -80,16 +80,17 @@ class FingerprintTest(unittest.TestCase):
         self.assertNotIn(SIC, sic['fingerprint'])
 
 
-def variant(case, folder, outcome, keep=None):
-    """A copy of a captured play told as another outcome: evidence.json's `outcome` updated, no failed Source, and only
-    the step lines up to and with the first `keep` names (all when None)."""
+def variant(case, folder, outcome, keep=None, failed_sources=False):
+    """A copy of a captured play told as another outcome: evidence.json's `outcome` updated, no failed Source (unless
+    `failed_sources`: its own kept), and only the step lines up to and with the first `keep` names (all when None)."""
     copy = os.path.join(tempdir(case), os.path.basename(folder))
     shutil.copytree(folder, copy)
     with open(os.path.join(copy, 'evidence.json')) as f:
         meta = json.load(f)
     meta['outcome'] = dict(meta['outcome'], **outcome)
     meta['kept_because'] = evidence.kept_because(meta['outcome'])
-    meta['failed_sources'] = []
+    if not failed_sources:
+        meta['failed_sources'] = []
     with open(os.path.join(copy, 'evidence.json'), 'w') as f:
         json.dump(meta, f)
     if keep is not None:
@@ -118,6 +119,17 @@ class EverySignCanMatchTest(unittest.TestCase):
         [f] = diagnosis.diagnose(folder)['failures']
         self.assertEqual((f['kind'], f['where']), ('nothing to play', 'indexer_page ok'))  # the search lines come after
         self.assertEqual({t['id'] for t in f['leads']}, signs_of('nothing to play'))
+
+
+class WrongTitleTest(unittest.TestCase):
+    def test_a_wrong_title_play_with_refused_sources_is_a_failure_of_its_own_beside_theirs(self):
+        why = 'the wrong title played: The Witcher S01E02 instead of S01E01'
+        folder = variant(self, TWO_REFUSALS, {'outcome': 'fail', 'why': why}, failed_sources=True)
+        fs = diagnosis.diagnose(folder)['failures']
+        self.assertEqual([(f['release'], f['kind']) for f in fs], [(HHWEB, 'check miss'), (SIC, 'check miss'),
+                                                                   (None, 'wrong title')])
+        self.assertEqual(fs[0]['verdict'], 'found')  # a refused Source's own cause is still found
+        self.assertEqual((fs[2]['where'], fs[2]['reason']), ('import_wait not ok', why))  # its last step line
 
 
 class SuspectedAndNewTest(unittest.TestCase):
