@@ -3,13 +3,16 @@ answer: found (a cause, proved by its Clues), suspected (a look-alike with no co
 The evidence folders are real plays cut from run folders (fixtures/2026-11-24-diagnosis/README.md).
     python3 -I -m unittest discover -s tools/brain -p 'test_diagnosis.py'
 """
+import json
 import os
+import shutil
 import unittest
 
 import casebook
 import clues
 import diagnosis
 import evidence
+from test_settings import tempdir
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CAPTURES = os.path.join(HERE, 'fixtures', '2026-11-24-diagnosis')
@@ -117,6 +120,49 @@ class CluesOnRealCapturesTest(unittest.TestCase):
         runs = sorted(e['id'] for e in diagnosis.load_index()
                       if e['confirm'] != casebook.NO_EVIDENCE and all(c['clue'] in clues.CLUES for c in e['confirm']))
         self.assertEqual(runs, sorted(r[0] for r in RECIPE_CAPTURES))
+
+
+def stored_check(case, name='2026-11-24T070000Z-quick-check', plays=(READ_ERROR, DEAD_PACK)):
+    """A runs root holding one check whose evidence/ holds copies of the captured plays, as a check stores them."""
+    root = tempdir(case)
+    run_dir = os.path.join(root, name)
+    for n, folder in enumerate(plays, 1):
+        shutil.copytree(folder, os.path.join(run_dir, evidence.DIR, f'{n:02d}-{os.path.basename(folder)}'))
+    return root, run_dir
+
+
+def stored(run_dir):
+    out = {}
+    for name in sorted(os.listdir(os.path.join(run_dir, evidence.DIR))):
+        with open(os.path.join(run_dir, evidence.DIR, name, diagnosis.STORED)) as f:
+            out[name] = json.load(f)
+    return out
+
+
+class StoredFailuresTest(unittest.TestCase):
+    def test_a_new_masking_version_fingerprints_every_stored_failure_again(self):
+        root, run_dir = stored_check(self)
+        diagnosis.diagnose_check(run_dir)
+        before = stored(run_dir)
+        self.assertEqual({d['rules'] for d in before.values()}, {1})
+        rules = diagnosis.load_rules()
+        rules = dict(rules, version=2, masks=[{'name': 'error code', 'pattern': '[A-Z]+(_[A-Z]+)+', 'with': '<code>'}] + rules['masks'])
+        path = os.path.join(tempdir(self), 'masking-rules.json')
+        with open(path, 'w') as f:
+            json.dump(rules, f)
+
+        changed = diagnosis.refingerprint(root, diagnosis.load_rules(path))
+
+        after = stored(run_dir)
+        self.assertEqual(sorted(changed), sorted(os.path.join(run_dir, evidence.DIR, n) for n in after))
+        for name, d in after.items():
+            self.assertEqual(d['rules'], 2)
+            old = [f['fingerprint'] for f in before[name]['failures']]
+            self.assertEqual(d['earlier'], [{'rules': 1, 'fingerprints': old}])
+            for f in d['failures']:
+                self.assertIn('"code":"<code>"', f['fingerprint'])
+                self.assertNotIn('INTERNAL_SERVER_ERROR', f['fingerprint'])
+        self.assertEqual(diagnosis.refingerprint(root, diagnosis.load_rules(path)), [])  # the same version: nothing to do
 
 
 if __name__ == '__main__':

@@ -245,3 +245,121 @@ def diagnose(folder, entries=None, library=None, rules=None):
     meta = ev.meta
     return {'folder': os.path.basename(os.path.normpath(folder)), 'check': meta.get('check'), 'title': meta.get('title'),
             'label': meta.get('label'), 'rules': rules['version'], 'failures': out}
+
+
+# --------------------------------------------------------------------------- stored failures: a check's evidence folders
+
+STORED = 'diagnosis.json'  # in each evidence folder (that play's answers) and in the check's folder (the summary)
+
+
+def _write_json(path, data):
+    with open(path, 'w') as f:
+        f.write(json.dumps(data, indent=1, ensure_ascii=False) + '\n')
+
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def evidence_folders(run_dir):
+    d = os.path.join(run_dir, evidence.DIR)
+    try:
+        names = sorted(os.listdir(d))
+    except OSError:
+        return []
+    return [os.path.join(d, n) for n in names if os.path.exists(os.path.join(d, n, 'evidence.json'))]
+
+
+def store(folder, result, earlier=()):
+    """Writes one play's answers into its evidence folder, with the fingerprints of earlier rule versions."""
+    _write_json(os.path.join(folder, STORED), dict(result, earlier=list(earlier)))
+
+
+def diagnose_stored(folder, entries=None, library=None, rules=None):
+    """Diagnoses one stored evidence folder and writes its diagnosis.json; an earlier answer made with other rules goes
+    into `earlier` (its version and fingerprints)."""
+    old = _read_json(os.path.join(folder, STORED))
+    result = diagnose(folder, entries, library, rules)
+    earlier = list((old or {}).get('earlier') or [])
+    if old and old.get('rules') != result['rules']:
+        earlier.append({'rules': old.get('rules'), 'fingerprints': [f.get('fingerprint') for f in old.get('failures') or []]})
+    store(folder, result, earlier)
+    return dict(result, earlier=earlier)
+
+
+def counts(plays):
+    """The report's numbers over a check's answers (story 57)."""
+    fs = [f for p in plays for f in p.get('failures') or []]
+    return {'failures': len(fs), 'new': sum(1 for f in fs if not f['leads']), 'matched': sum(1 for f in fs if f['leads']),
+            'proved': sum(1 for f in fs if f['verdict'] == 'found'),
+            'unexplained': sum(1 for f in fs if f['verdict'] != 'found'),
+            'suspected': sum(1 for f in fs if f['verdict'] == 'suspected'),
+            'unreadable': sum(1 for p in plays if p.get('error'))}
+
+
+def summarize(run_dir, plays, rules):
+    keep = ('release', 'kind', 'fingerprint', 'verdict', 'cause', 'proved_by', 'says')
+    out = {'rules': rules['version'], 'counts': counts(plays), 'plays': []}
+    for p in plays:
+        row = {'evidence': os.path.relpath(p['path'], run_dir), 'label': p.get('label')}
+        if p.get('error'):
+            row['error'] = p['error']
+        row['failures'] = [{k: f.get(k) for k in keep} for f in p.get('failures') or []]
+        out['plays'].append(row)
+    _write_json(os.path.join(run_dir, STORED), out)
+    return out
+
+
+def diagnose_check(run_dir, entries=None, library=None, rules=None):
+    """Diagnoses every evidence folder of one check (its run folder): each folder's diagnosis.json, and the check's
+    summary in <run folder>/diagnosis.json. An unreadable folder is said in the summary and the others go on."""
+    entries = load_index() if entries is None else entries
+    rules = load_rules() if rules is None else rules
+    plays = []
+    for folder in evidence_folders(run_dir):
+        try:
+            plays.append(dict(diagnose_stored(folder, entries, library, rules), path=folder))
+        except Exception as e:  # noqa: BLE001  (one broken folder never stops the others)
+            plays.append({'path': folder, 'error': br.scrub_text(f'{type(e).__name__}: {e}'), 'failures': []})
+    return summarize(run_dir, plays, rules)
+
+
+def stored_checks(root):
+    """The run folders under `root` (and its archive/) that hold an evidence folder."""
+    out = []
+    for base in (root, os.path.join(root, 'archive')):
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            continue
+        out += [os.path.join(base, n) for n in names if evidence_folders(os.path.join(base, n))]
+    return out
+
+
+def refingerprint(root, rules=None, entries=None, library=None):
+    """Fingerprints again every stored failure under the runs root whose answers were made with another rules version
+    (and diagnoses it again: the leads follow the fingerprint); returns the evidence folders it changed."""
+    rules = load_rules() if rules is None else rules
+    entries = load_index() if entries is None else entries
+    changed = []
+    for run_dir in stored_checks(root):
+        mine = []
+        for folder in evidence_folders(run_dir):
+            old = _read_json(os.path.join(folder, STORED))
+            if old is not None and old.get('rules') != rules['version']:
+                mine.append(folder)
+        if mine:
+            for folder in mine:
+                diagnose_stored(folder, entries, library, rules)
+            changed += mine
+            plays = []
+            for folder in evidence_folders(run_dir):
+                d = _read_json(os.path.join(folder, STORED))
+                if d is not None:
+                    plays.append(dict(d, path=folder))
+            summarize(run_dir, plays, rules)
+    return changed
