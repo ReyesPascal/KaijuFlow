@@ -29,6 +29,10 @@ RUN_ORDER = [('cold', 1), ('warm', 1), ('cold', 2), ('warm', 2)]
 CAUSES = [('indexer_limit', 'Indexer limit'), ('backend_rejection', 'Backend rejection'),
           ('failure_video', 'Failure video'), ('other', 'Other'), ('not_recorded', 'Not recorded')]
 SEARCH_STEPS = ('indexer_page', 'health_batch')
+# The stream list's own lines (#249): the whole request with a trace of the process (`list`), then its parts. They carry
+# `ref` like the search-side lines and are kept by it.
+LIST_STEPS = ('list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start')
+REF_STEPS = SEARCH_STEPS + LIST_STEPS
 PLAY_CHECK = 'play_check'  # one line per Source the Play-time check checked (#190): Best checks several, a list entry one
 
 COLUMN_HELP = {
@@ -328,7 +332,7 @@ def play_check_s(v):
 
 
 def visit_metrics(v):
-    steps = [s for s in v.get('steps', []) if s.get('step') not in SEARCH_STEPS or s.get('ref') == v.get('id')]
+    steps = [s for s in v.get('steps', []) if s.get('step') not in REF_STEPS or s.get('ref') == v.get('id')]
     pages = {}
     for s in steps:
         if s.get('step') == 'indexer_page':
@@ -570,7 +574,7 @@ def visit_cause(v):
 def attribute_steps(visit, steps, end=None):
     """The step lines that belong to one visit of one side.
 
-    Search-side lines (indexer_page, health_batch) carry `ref`: kept when ref is the visit's id, from the visit's start until
+    Search-side lines (indexer_page, health_batch) and the list's own lines (LIST_STEPS, #249) carry `ref`: kept when ref is the visit's id, from the visit's start until
     `end` (the start of that side's next visit; None = no end), however late they are written. Play-time check lines
     (play_check, #190) are kept for every Source checked inside that window, played or not: Best checks several Sources and
     skips the ones whose check fails, and that wait is the visit's. Other prepare-side lines carry the release `title` of the
@@ -588,12 +592,12 @@ def attribute_steps(visit, steps, end=None):
             return False
         return t >= lo and (end is None or t < end)
 
-    out = [s for s in steps if s.get('step') in SEARCH_STEPS and s.get('ref') == visit.get('id') and inside(s)]
+    out = [s for s in steps if s.get('step') in REF_STEPS and s.get('ref') == visit.get('id') and inside(s)]
     out += [s for s in steps if s.get('step') == PLAY_CHECK and inside(s)]
     played = ' '.join(str(t.get('title', '')) for t in visit.get('tries', [])[:1])
     src = _norm(visit.get('played_source') or '')
     for s in steps:
-        if s.get('step') in SEARCH_STEPS + (PLAY_CHECK,) + PLAY_STEPS or not s.get('title') or not inside(s):
+        if s.get('step') in REF_STEPS + (PLAY_CHECK,) + PLAY_STEPS or not s.get('title') or not inside(s):
             continue
         n = _norm(s['title'])
         if (src and n == src) or (len(n) >= 8 and n in _norm(played)):
@@ -1095,8 +1099,83 @@ def render_report(run, changes, opening=None):
     cols = TAGGED_TITLE_COLS if lists else TITLE_COLS
     lines += ['## Per title', ''] + _table(cols, rows) + [''] + _defs(cols) + ['']
     lines += not_recorded_section(run)
+    lines += list_work_section(run)
     lines += time_section(run)
     return '\n'.join(lines)
+
+
+# The list's own work (#249): what KaijuFlow's list lines and the runner's CPU readings say of each list request.
+# Each figure: (column, help, read from a visit). Milliseconds unless the column says otherwise.
+def _step_field(name, field='ms'):
+    def read(v):
+        mine = [s for s in v.get('steps', []) if s.get('step') == name and s.get('ref') == v.get('id')]
+        return mine[0].get(field) if mine else None
+    return read
+
+
+def _cpu_field(field):
+    return lambda v: (v.get('list_cpu') or {}).get(field)
+
+
+LIST_WORK = [
+    ('List (ms)', 'the list time as the runner saw it: from asking for the Stream list until it had arrived.',
+     lambda v: None if v.get('list_s') is None else round(v['list_s'] * 1000)),
+    ('KaijuFlow (ms)', 'the list request inside KaijuFlow, from its `list` step line: from the request reaching the handler '
+                       'until the answer was handed back.', _step_field('list')),
+    ('Filters', 'dead marks and the user\'s filters (`list_filter`), the sort left out.', _step_field('list_filter')),
+    ('Sort', 'the sort (`list_sort`).', _step_field('list_sort')),
+    ('Build', 'building the Streams (`list_build`), the group write included.', _step_field('list_build')),
+    ('Group write', 'writing the list\'s fallback group, which saves every group held to disk (`fallback_group`).',
+     _step_field('fallback_group')),
+    ('Groups held', 'how many fallback groups that write saved.', _step_field('fallback_group', 'groups')),
+    ('Head start', 'starting the Head start, the part that runs before the answer (`head_start`).', _step_field('head_start')),
+    ('CPU', 'KaijuFlow\'s process CPU time during the request, its other work at the same time included (`list` line).',
+     _step_field('list', 'cpu_ms')),
+    ('GC', 'garbage-collection pauses during the request (`list` line).', _step_field('list', 'gc_ms')),
+    ('Loop delay', 'the longest event-loop delay during the request (`list` line): other work holding the loop.',
+     _step_field('list', 'loop_max_ms')),
+    ('Busy', 'the share of the request\'s time the event loop was busy, 0 to 1 (`list` line).', _step_field('list', 'elu')),
+    ('Heap (MB)', 'KaijuFlow\'s heap in use as the request ended (`list` line).', _step_field('list', 'heap_mb')),
+    ('KaijuFlow container CPU', 'CPU the KaijuFlow container used while the list was asked for, by its cgroup, read by the runner.',
+     _cpu_field('kaijuflow_ms')),
+    ('AltMount CPU', 'CPU the AltMount container used in the same time.', _cpu_field('altmount_ms')),
+    ('Machine CPU', 'CPU the whole machine used in the same time, every core added up (/proc/stat).', _cpu_field('machine_ms')),
+]
+
+
+def list_work_section(run):
+    """The list's own work, per side and round (medians) and per warm visit: where a list's time goes inside KaijuFlow
+    and what the process and the machine did meanwhile (#249). [] for a run whose visits hold no `list` line."""
+    visits = [v for v in run.get('visits') or [] if _step_field('list')(v) is not None]
+    if not visits:
+        return []
+    g = {}
+    for v in visits:
+        g.setdefault((v['side'], v['phase'], v['round']), []).append(v)
+    cols = [c for c, _, _ in LIST_WORK]
+    rows = []
+    for side in _sides(run):
+        for phase, rnd in RUN_ORDER:
+            vs = g.get((side, phase, rnd))
+            if vs:
+                rows.append([SIDE_NAMES[side], _run_label(phase, rnd)]
+                            + [_work_cell(median([x for x in (read(v) for v in vs) if x is not None])) for _, _, read in LIST_WORK])
+    out = ['## The list\'s own work', '',
+           'Where a Stream list\'s time goes inside KaijuFlow, and what its process and the machine did meanwhile, from '
+           'KaijuFlow\'s list step lines and the runner\'s CPU readings (#249). Milliseconds, medians over the titles of a round.', '']
+    out += _table(['Side', 'Run'] + cols, rows) + ['']
+    warm = [v for v in visits if v['phase'] == 'warm']
+    if warm:
+        out += ['Every warm list:', '']
+        out += _table(['Title', 'Side', 'Run'] + cols,
+                      [[v['title'], SIDE_NAMES[v['side']], _run_label(v['phase'], v['round'])]
+                       + [_work_cell(read(v)) for _, _, read in LIST_WORK] for v in warm]) + ['']
+    out += [f'- **{c}**: {h}' for c, h, _ in LIST_WORK] + ['']
+    return out
+
+
+def _work_cell(x):
+    return '-' if x is None else (f'{x:.2f}' if isinstance(x, float) and x < 1 else str(round(x)))
 
 
 def not_recorded_section(run):
