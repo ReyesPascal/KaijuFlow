@@ -28,6 +28,7 @@ COLUMNS = ('Columns: Used = requests counted since the indexer last reset; Limit
            'Left = Limit minus Used.')
 ADD_COMMAND = 'python3 -I tools/brain/testbed.py indexer add {slug} --stash <entry> --searches <n> --downloads <n>'
 LIMIT_FIELDS = ('search_per_day', 'download_per_day', 'reset', 'timezone')
+CAPS_PING_LOG = 'caps-pings.log'  # in the runs root: the check preflight's caps requests (#303), one search each
 
 
 def limits_path(cfg):
@@ -103,7 +104,7 @@ def _parse_iso(s):
     return when if when.tzinfo else when.replace(tzinfo=datetime.timezone.utc)
 
 
-def _log_requests(log):
+def requests_in(log):
     """[(slug, kind, when)] for the RECORD and ERROR lines of one stand-in log."""
     out = []
     try:
@@ -122,8 +123,8 @@ def _log_requests(log):
 def standin_requests(runs_root):
     """Every request the stand-in sent to a real indexer, from every record folder's log."""
     out = []
-    for log in sorted(glob.glob(os.path.join(runs_root, '*', 'logs', 'standin.log'))):
-        out.extend(_log_requests(log))
+    for log in sorted(glob.glob(os.path.join(runs_root, '*', 'logs', 'standin.log'))) + [os.path.join(runs_root, CAPS_PING_LOG)]:
+        out.extend(requests_in(log))
     return out
 
 
@@ -204,5 +205,3 @@ def left(cfg, now=None, stats_files=None):
         return None, problem
     return {slug: {kind: lim[kind] - used[slug]['standin'][kind] - used[slug]['copies'][kind] for kind in KINDS}
             for slug, lim in limits.items()}, None
-
-

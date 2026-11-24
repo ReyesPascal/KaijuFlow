@@ -1,12 +1,13 @@
 """Real-use checks on the test copies (spec #268, ADR 0010): the quick check, the Drill-down, their preflight and the allowance.
 
     python3 -I tools/brain/brainrun.py check --quick [--name quick-check] [--runs-root DIR] [--ledger FILE] [--key-file PATH]
-           [--cases DIR] [--rebuild-image]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
+           [--cases DIR] [--rebuild-image] [--fix]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
     python3 -I tools/brain/brainrun.py drill --title <imdb id> [--episode S01E02] [--entry ID ...] [--casebook DIR]
-           [--cases DIR] [--tickets-dry-run] [--rebuild-image]   (the Drill-down, #272: one failed title again, as a quick
+           [--cases DIR] [--tickets-dry-run] [--rebuild-image] [--fix]   (the Drill-down, #272: one failed title again, as a quick
            check plays it; its suspected causes marked proved fixed or reopened, drill.py)
-    python3 -I tools/brain/brainrun.py preflight [--rebuild-image] [--provider-limit 100] [--key-file PATH]
-           (the setup check alone; a check starts with it)
+    python3 -I tools/brain/brainrun.py preflight [--for check [--full [--standing-go]]] [--rebuild-image] [--fix]
+           [--provider-limit 100] [--key-file PATH]   (the setup check alone; a check starts with it; every refusal names its
+           fix, --fix runs the safe ones and the preflight again, #303)
     python3 -I tools/brain/brainrun.py usage   (the indexer allowance: used, limit and left per indexer)
 
 A check starts the indexer stand-in in record mode on the check's own empty store, so every answer comes from the live
@@ -23,6 +24,7 @@ retired by ADR 0010 and archived (retired.py, archive/README.md): they stop unle
 import argparse
 import contextlib
 import datetime
+import html
 import ipaddress
 import json
 import os
@@ -33,7 +35,10 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
+import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -47,6 +52,7 @@ import caselog  # noqa: E402
 import diagnosis  # noqa: E402
 import evidence  # noqa: E402
 import fixing  # noqa: E402
+import indexer_standin  # noqa: E402
 import nntp  # noqa: E402
 import pool  # noqa: E402
 import quickcheck  # noqa: E402
@@ -234,7 +240,7 @@ class RealIO:
 
 
     def preflight(self, mode, seen=None):
-        return preflight(mode, self.cfg, self, seen)
+        return checked(mode, self.cfg, self, seen)
 
     def marker(self):
         return br.read_json(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
@@ -313,6 +319,12 @@ class RealIO:
 
     def allowance_left(self):
         return allowance.left(self.cfg)
+
+    def fix(self, fixes):
+        return run_fixes(self.cfg, fixes, self.stop_all)
+
+    def caps_answers(self, slugs):
+        return ping_caps(_key_path(self.cfg), slugs, self.cfg.get('standin_port', 1340), self.cfg.get('runs_root'))
 
     def open_check_store(self, run_dir):
         """The check's own empty store for the stand-in, in the test folder; the stand-in and the cap rule read it from cfg."""
@@ -560,6 +572,22 @@ PROBE_ROUNDS = 12_000_000
 NEWS_HOST, ROUTER, SINKHOLE = 'news.newshosting.com', '192.168.4.1', ipaddress.ip_network('10.0.0.0/8')
 
 
+class Problem(str):
+    """A preflight sentence (it is the text), with the safe fixes `--fix` may run for it (#303): ('rebuild',), ('apply',
+    side), ('key_mode', path) or ('indexer', 'on'|'off', slug). A sentence with none names a fix the owner or the lead makes."""
+
+    def __new__(cls, text, *fixes):
+        out = super().__new__(cls, text)
+        out.fixes = fixes
+        return out
+
+
+FIX = ' (--fix runs it)'  # said in a sentence whose fix --fix runs
+FIX_ROUNDS = 3  # --fix runs the preflight at most this many times more
+ADD_INDEXER = allowance.add_command  # the indexer command that writes an indexer's entry from the stash, limits with it
+TESTBED = 'python3 -I tools/brain/testbed.py'
+
+
 class PreflightFailed(Exception):
     def __init__(self, problems):
         super().__init__(' '.join(problems))
@@ -699,19 +727,21 @@ def expand_names(name, flat):
     return [f'{head}[{e}]{tail}' for e in entries]
 
 
-def setting_differences(expected, settings, file=None):
+def setting_differences(expected, settings, file=None, apply=None):
     """One sentence per setting of a test copy that differs from the expected settings; [] when every copy matches.
 
     expected: the entries of the expected settings file (load_expected_settings). settings: {side: {dotted name: value}}, as
     the settings reader gives them (testbed.read_settings). file: where the expected settings file is, for the first
-    sentence, which also says what to do (the others stay short).
+    sentence, which also says what to do (the others stay short). apply: the copy whose `testbed.py apply` command the first
+    sentence names (the preflight asks one copy at a time).
     """
     out = []
 
     def say(start, end):
         first = not out
+        command = f" ({TESTBED} apply {apply} writes the file's settings into it; --fix runs it)" if apply else ''
         out.append(f"{start} the expected settings file{f' ({file})' if first and file else ''} {end}"
-                   + (": change the test copy's config, or the file if the copy's value is the intended one." if first else '.'))
+                   + (f": change the test copy's config{command}, or the file if the copy's value is the intended one." if first else '.'))
 
     for entry in expected:
         for side in entry['copies']:
@@ -750,6 +780,171 @@ def setting_differences(expected, settings, file=None):
     return out
 
 
+# The check's caps request (#303): one `t=caps` per switched-on indexer through the stand-in, so a wrong key, an expired
+# account or a down indexer refuses the check before titles are drawn. Test tools only: KaijuFlow sends none of its own.
+CAPS_REQUEST = 't=caps'
+CAPS_PING_SEARCHES = 1  # what the request costs each indexer, as the allowance counts it (an "api" request is a search)
+CAPS_PING_LOG = allowance.CAPS_PING_LOG  # in the runs root: the stand-in's RECORD and ERROR lines of every caps request
+CAPS_TIMEOUT_S = 70  # the stand-in waits up to 60 s for the indexer (indexer_standin.fetch_real)
+NOT_REACHED = (502, b'indexer not reachable')  # the stand-in's answer when the indexer could not be reached
+
+
+def key_file_names(path):
+    """Every indexer slug the key file has an entry for, switched on or off; [] when it cannot be read."""
+    data = br.read_json(path)
+    names = data.get('indexers') if isinstance(data, dict) else None
+    return sorted(str(k) for k in names) if isinstance(names, dict) else []
+
+
+def _get(url, timeout):
+    """(status, body) of a GET, or None when nothing answered."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except OSError:
+        return None
+
+
+def ping_caps(key_file, slugs, port, runs_root, timeout=CAPS_TIMEOUT_S):
+    """{slug: (status, body), or None when the indexer gave no answer} for one caps request to each indexer, sent through
+    the stand-in's own code in record mode (the key file's address, key and dropped parameters) on loopback, on an empty
+    store of its own that is deleted after, so every request reaches the real indexer and nothing is kept. Its RECORD and
+    ERROR lines are added to the runs root's caps log, where the allowance counts each as a search."""
+    cfg = br.read_json(key_file) or {'indexers': {}}
+    store, out = tempfile.mkdtemp(prefix='caps-ping-'), {}
+    try:
+        with open(os.devnull, 'w') as quiet, contextlib.redirect_stderr(quiet):  # its lines go to the caps log instead
+            srv = indexer_standin.make_server(cfg, store, 'record', 'caps', port, bind='127.0.0.1')
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            try:
+                for slug in slugs:
+                    got = _get(f'http://127.0.0.1:{port}/{urllib.parse.quote(slug)}/api?{CAPS_REQUEST}'
+                               f'&apikey={testbed.STANDIN_API_KEY}', timeout)
+                    out[slug] = None if got == NOT_REACHED else got
+            finally:
+                srv.shutdown()
+                srv.server_close()
+    finally:
+        shutil.rmtree(store, ignore_errors=True)
+    if runs_root and srv.state.log_lines:
+        os.makedirs(runs_root, exist_ok=True)
+        with open(os.path.join(runs_root, CAPS_PING_LOG), 'a') as f:
+            f.write(''.join(line + '\n' for line in srv.state.log_lines))
+    return out
+
+
+def _error_text(body):
+    """'code: description' of a small newznab error answer (XML or JSON), or ''."""
+    if body.lstrip()[:1] == b'{':
+        try:
+            err = json.loads(body).get('error')
+        except (ValueError, AttributeError):
+            return ''
+        err = err.get('@attributes', err) if isinstance(err, dict) else {'description': err}
+        code, what = err.get('code'), err.get('description')
+    else:
+        tag = re.search(rb'<error\b[^>]*>', body)
+        tag = tag.group(0).decode('utf-8', 'replace') if tag else ''
+        code, what = (re.search(f'{k}="([^"]*)"', tag) for k in ('code', 'description'))
+        code, what = code and html.unescape(code.group(1)), what and html.unescape(what.group(1))
+    return ': '.join(str(x)[:120] for x in (code, what) if x)
+
+
+def caps_problem(slug, answer):
+    """The preflight's sentence for an indexer's caps answer (ping_caps), or None when it answered with its caps."""
+    off = f'python3 -I tools/brain/testbed.py indexer off {slug}'
+    fix = (f'put its right key in the key file ({allowance.add_command(slug)}, which reads it from the stash), or switch it '
+           f'off for this check ({off})')
+    if answer is None or tuple(answer) == NOT_REACHED:
+        return (f'{slug} did not answer the caps request the preflight sent it through the indexer stand-in, so it is down or '
+                f'cannot be reached: wait until it answers, or switch it off for this check ({off}).')
+    status, body = answer
+    if indexer_standin.is_limit(status, body):
+        return (f'{slug} says its limit is reached (its answer to the caps request): wait for its reset (brainrun.py usage shows '
+                f'the allowance), or switch it off for this check ({off}).')
+    if indexer_standin.has_error(body):
+        said = _error_text(body)
+        return f"{slug} answered the caps request with an error{f' ({said})' if said else ''}, so its key or account is wrong: {fix}."
+    if not 200 <= status < 300:
+        return f'{slug} answered the caps request with HTTP {status}: {fix}.'
+    if not re.search(rb'<caps\b', body):
+        return f'{slug} answered the caps request with something that is not its caps: {fix}.'
+    return None
+
+
+def switch_problem(start, key_on, key_all, rep, sides, port, ours):
+    """The sentence for a key file and KaijuFlow that switch on other indexers, `start` saying how they differ. The key file
+    says which are on: an indexer on there and off in KaijuFlow is switched on (`indexer on`), one off there and on in
+    KaijuFlow is switched off (`indexer off`), and --fix runs those when the key file is the test folder's own (`ours`, the
+    one the indexer command writes). An indexer the key file or KaijuFlow has no entry for is added with `indexer add`: its
+    key comes from the stash and its limits from the owner, so --fix does not run it."""
+    commands, fixes = [], []
+    for s in sides:
+        have = {testbed.standin_slug(r['url'], port) for r in rep['indexers'][s]} - {None}
+        for slug in sorted(set(key_on) ^ set(rep['enabled'][s])):
+            if slug in have and slug in key_all:
+                verb = 'on' if slug in key_on else 'off'
+                commands.append(f'{TESTBED} indexer {verb} {slug}')
+                if ours:
+                    fixes.append(('indexer', verb, slug))
+            else:
+                commands.append(ADD_INDEXER(slug))
+    runs = '; --fix runs ' + ('it' if len(commands) == 1 else 'the indexer on and off ones') if fixes else ''
+    return Problem(f"{start}: make them the same ({'; '.join(commands)}{runs}).", *fixes)
+
+
+def checked(mode, cfg, io, seen=None):
+    """The preflight, and with `fix` in cfg (--fix, #303) its safe fixes too: the image rebuilt when it is not current (as
+    --rebuild-image does), then the fixes the refusals carry (the expected settings written, the key file made private, an
+    indexer switched on or off to match the key file), then the preflight again, whose sentences are the answer. Power, the
+    machine's addresses, DNS and the allowance are never touched: their sentences say what to do. The preflight command and
+    every check use it."""
+    if not cfg.get('fix'):
+        return preflight(mode, cfg, io, seen)
+    cfg, done = dict(cfg, rebuild_image=True), []
+    problems = preflight(mode, cfg, io, seen)
+    for _ in range(FIX_ROUNDS):  # a fix can show the next problem (an open key file hides which indexers it switches on)
+        fixes = [f for f in dict.fromkeys(f for p in problems for f in getattr(p, 'fixes', ())) if f != ('rebuild',) and f not in done]
+        if not fixes:
+            break
+        done += fixes
+        for line in io.fix(fixes):
+            print(f'Fixing: {line}', flush=True)
+        if seen is not None:
+            seen.clear()
+        problems = preflight(mode, cfg, io, seen)
+    return problems
+
+
+def run_fixes(cfg, fixes, stop_all):
+    """Runs the safe fixes (Problem.fixes) on the test folder; returns the lines to print, none with a secret in it. The test
+    copies are stopped first when a fix writes a config, as `testbed.py apply` and `indexer` want them."""
+    out, td = [], cfg['test_dir']
+    if any(f[0] in ('apply', 'indexer') for f in fixes):
+        stop_all()
+        out.append('the test copies stopped, so none writes its config over the fixes.')
+    for f in fixes:
+        try:
+            if f[0] == 'key_mode':
+                os.chmod(f[1], 0o600)
+                out.append(f'the key file {f[1]} made readable only by you (chmod 600).')
+            elif f[0] == 'apply':
+                out += testbed.apply_expected(td, f[1], cfg.get('expected_settings'))
+            elif f[0] == 'indexer':
+                out += testbed.indexer_command(td, [f[1], f[2]])
+        except (OSError, ValueError) as e:  # its sentence comes back in the preflight that follows
+            out.append(f'{" ".join(f[:2])} could not be done ({type(e).__name__}: {e}).')
+    return out
+
+
+def waits_for_idle(mode, cfg):
+    """Whether the preflight asks for an idle machine: a run, and a full check (`full_check`) unless the lead passed its
+    standing go (`standing_go`); never a quick check or a drill-down, which start at once (#303)."""
+    return mode == 'run' or (mode == 'check' and bool(cfg.get('full_check')) and not cfg.get('standing_go'))
+
+
 def preflight(mode, cfg, io, seen=None):
     """Checks the setup before a real-use check ('check', #270; a Drill-down too). Returns plain sentences, one per problem;
     [] means go.
@@ -771,7 +966,7 @@ def preflight(mode, cfg, io, seen=None):
     commit, dirty = io.git_info()
     label = io.image_label()
     if dirty:
-        problems.append('The repository has uncommitted changes, so the test image cannot name the code that runs: commit them first.')
+        problems.append('The repository has uncommitted changes, so the test image cannot name the code that runs: commit them first (git commit).')
     else:
         state = image_state(label, commit, io.build_inputs_changed)
         if cfg.get('rebuild_image') and state != 'current':
@@ -780,20 +975,24 @@ def preflight(mode, cfg, io, seen=None):
             label = io.image_label()
             state = image_state(label, commit, io.build_inputs_changed)
         if state == 'missing':
-            problems.append(f'The test image {IMAGE} is missing or does not say which commit it was built from: build it again with --rebuild-image.')
+            problems.append(Problem(f'The test image {IMAGE} is missing or does not say which commit it was built from: build it '
+                                    f'again with --rebuild-image{FIX}.', ('rebuild',)))
         elif state == 'stale':
-            problems.append(f'The test image was built from commit {label[:7]}, and the code that goes into the image has changed '
-                            f'since then (the repository is at {commit[:7]}): build it again with --rebuild-image.')
+            problems.append(Problem(f'The test image was built from commit {label[:7]}, and the code that goes into the image has '
+                                    f'changed since then (the repository is at {commit[:7]}): build it again with --rebuild-image{FIX}.',
+                                    ('rebuild',)))
         elif state == 'unknown':
-            problems.append(f'The test image was built from commit {label[:7]}, which this repository does not have, so nothing says '
-                            f'whether it holds the code at {commit[:7]}: build it again with --rebuild-image.')
+            problems.append(Problem(f'The test image was built from commit {label[:7]}, which this repository does not have, so '
+                                    f'nothing says whether it holds the code at {commit[:7]}: build it again with --rebuild-image{FIX}.',
+                                    ('rebuild',)))
 
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
     titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
     indexer_sides = INDEXER_SIDES
     unreadable = [s for s in indexer_sides if rep['indexers'].get(s) is None]
     for s in unreadable:
-        problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder.")
+        problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder ({TESTBED} settings "
+                        'shows what can be read).')
     readable = [s for s in indexer_sides if s not in unreadable]
 
     # 2. (record and check) the key file switches on exactly the indexers KaijuFlow has switched on
@@ -801,50 +1000,60 @@ def preflight(mode, cfg, io, seen=None):
         path = _key_path(cfg)
         state, key = io.key_state(path)
         if state == 'missing':
-            problems.append(f'The key file {path} is missing: create it with one entry per indexer before recording.')
+            problems.append(f'The key file {path} is missing: create it with one entry per indexer ({ADD_INDEXER()}).')
         elif state == 'open':
-            problems.append(f'The key file {path} can be read by others: make the key file readable only by you (run: chmod 600 {path}).')
+            problems.append(Problem(f'The key file {path} can be read by others: make the key file readable only by you (run: '
+                                    f'chmod 600 {path}){FIX}.', ('key_mode', path)))
         elif state == 'unreadable':
-            problems.append(f'The key file {path} has no "indexers" list of names: fix the file.')
+            problems.append(f'The key file {path} has no "indexers" list of names: write it again with one entry per indexer '
+                            f'({ADD_INDEXER()}).')
         else:
             differ = [f'{titles[s]} switches on {_list(rep["enabled"][s])}' for s in readable if rep['enabled'][s] != key]
             if differ:
-                problems.append(f'The key file switches on {_list(key)}, but ' + '; '.join(differ) + ': make them the same.')
+                problems.append(switch_problem(f'The key file switches on {_list(key)}, but ' + '; '.join(differ), key,
+                                               key_file_names(path), rep, readable, port,
+                                               path == os.path.join(cfg['test_dir'], testbed.KEY_FILE)))
 
     # 3. every indexer address in KaijuFlow is the indexer stand-in's (explained once, in the first sentence)
     what = ' (the local program that replays recorded indexer answers)'
     for s in readable:
         for r in rep['indexers'][s]:
             if testbed.standin_slug(r['url'], port) is None:
-                problems.append(f'{r["name"]} in {titles[s]} points at {r["url"]}, not the indexer stand-in{what}: '
-                                f'change the address to http://{testbed.STANDIN_HOST}:{port}/<indexer> so no test can reach a real indexer.')
+                problems.append(f'{r["name"]} in {titles[s]} points at {r["url"]}, not the indexer stand-in{what}: change the address '
+                                f"in KaijuFlow's indexer settings to http://{testbed.STANDIN_HOST}:{port}/<indexer> so no test can reach a "
+                                'real indexer.')
                 what = ''
 
     # 4. the connection caps fit the provider limit
     for s in testbed.SETTINGS_SIDES:
         if rep['caps'].get(s) is None:
-            problems.append(f"The connection cap of {titles[s]} cannot be read from its config: check the file.")
+            problems.append(f"The connection cap of {titles[s]} cannot be read from its config: check the file ({TESTBED} settings).")
     if rep['total'] > rep['limit']:
         per = ', '.join(f'{titles[s]} {rep["caps"][s]}' for s in testbed.SETTINGS_SIDES if rep['caps'].get(s) is not None)
         problems.append(f'The test copies may open {rep["total"]} connections together ({per}), over the provider limit of {rep["limit"]}: '
-                        'lower the caps.')
+                        f"lower the caps ({TESTBED} settings shows each copy's).")
 
     # 5. every test copy has the sort and filter settings of the expected settings file
     path = cfg.get('expected_settings') or EXPECTED_SETTINGS_FILE
     shown = os.path.relpath(path, REPO) if os.path.abspath(path).startswith(REPO + os.sep) else path
     try:
-        problems += setting_differences(load_expected_settings(path), rep['settings'], shown)
+        expected = load_expected_settings(path)
+        for side in testbed.SETTINGS_SIDES:  # per copy, so each sentence carries the apply command of its copy
+            mine = [dict(e, copies=[side]) for e in expected if side in e['copies']]
+            problems += [Problem(t, ('apply', side)) for t in setting_differences(mine, rep['settings'], shown, apply=side)]
     except ValueError as e:
         problems.append(f'The expected settings file cannot be used ({e}): fix the file.')
 
     # 6. the stand-in's port is free
     if not io.port_free(port):
-        problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (an earlier indexer stand-in?) and try again.")
+        problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (ss -ltnp 'sport = :{port}' "
+                        'shows it; an earlier indexer stand-in?) and try again.')
 
-    # 7. (run and check) the machine is idle (#217); after an image build by this preflight, once the build's own load has settled
+    # 7. (run and check) the machine is idle (#217); after an image build by this preflight, once the build's own load has settled.
+    # A check reads the load for its record, and only a full check outside a standing go waits for idle (#303).
     if mode in ('run', 'check'):
         load = io.load_average()
-        if rebuilt and load >= BUSY_LOAD:
+        if rebuilt and load >= BUSY_LOAD and waits_for_idle(mode, cfg):
             print(f"Waiting up to {SETTLE_AFTER_BUILD_S // 60} minutes for the image build's load to settle (1-minute load average "
                   f'{load:.2f}).', flush=True)
             waited = 0
@@ -855,10 +1064,10 @@ def preflight(mode, cfg, io, seen=None):
         probe = io.cpu_probe_ms()  # once the load is judged, so an image build's own load has settled first (#262)
         if seen is not None:
             seen['load'] = load
-        if load >= BUSY_LOAD:
+        if load >= BUSY_LOAD and waits_for_idle(mode, cfg):
             after = f' {SETTLE_AFTER_BUILD_S // 60} minutes after the image build' if rebuilt else ''
             problems.append(f'The machine is busy: its 1-minute load average is {load:.2f}{after}, at or above {BUSY_LOAD:.2f}, which slows '
-                            'a timed run: stop what keeps it busy (other agents, test suites, builds) and wait until it is idle.')
+                            'a timed run: stop what keeps it busy (other agents, test suites, builds; uptime shows the load) and wait until it is idle.')
 
     # 8. the pinned addresses are this machine's (#217): a stale altmountUrl made every play fail on 2026-11-20
     pinned, env = io.pinned_addresses(), os.path.join(cfg['test_dir'], '.env')
@@ -871,10 +1080,11 @@ def preflight(mode, cfg, io, seen=None):
     others = [str(a) for a in mine if not a.is_loopback and not a.is_link_local]
     shown = _list(others) if others else 'only loopback and link-local ones'
     if not pinned['HOST_IP']:
-        problems.append(f"The test folder's {env} has no HOST_IP: set it to this machine's address" + ('.' if unread else f' ({shown}).'))
+        problems.append(f"The test folder's {env} has no HOST_IP: set it to this machine's address" + ('' if unread else f' ({shown})')
+                        + f', then start the test copies again ({TESTBED} up).')
     elif not unread and _address(pinned['HOST_IP']) not in mine:
         problems.append(f'HOST_IP in {env} is {pinned["HOST_IP"]}, which is not an address this machine has now ({shown}): '
-                        'set it to the current one, then start the test copies again.')
+                        f'set it to the current one, then start the test copies again ({TESTBED} up).')
     host = pinned['altmount_host']
     if pinned['altmount_url'] == 'missing':
         problems.append("KaijuFlow's config has no altmountUrl, so it cannot reach its AltMount: set it, with the owner's go.")
@@ -901,7 +1111,7 @@ def preflight(mode, cfg, io, seen=None):
         problems.append(f'The router ({ROUTER}) answers {NEWS_HOST} with {_list(sunk)}, its sinkhole, so every Usenet read would fail: '
                         f"fix the router's DNS until dig +short {NEWS_HOST} @{ROUTER} gives no 10.x address.")
 
-    # 11. run and record: the machine is plugged in (#262): on battery the same code listed 20-25% slower (#249)
+    # 10. the machine is plugged in (#262): on battery the same code listed 20-25% slower (#249)
     power = io.power()
     if power == 'battery':
         problems.append(f'The machine runs on battery (no Mains supply in {POWER_SUPPLY_ROOT} is online), which slows the CPU and a '
@@ -909,10 +1119,11 @@ def preflight(mode, cfg, io, seen=None):
     if mode in ('run', 'check') and seen is not None:
         seen['machine'] = {'power': power, **io.cpu_policy(), 'cpu_probe_ms': probe}
 
-    # 12. (check only, #270) every switched-on indexer has what the check may ask of it left in its daily allowance
+    # 11. (check only, #270) every switched-on indexer has what the check may ask of it left in its daily allowance
     if mode == 'check':
         left, problem = io.allowance_left()
         want = quickcheck.need(cfg.get('check_titles') or sum(quickcheck.QUICK_KINDS.values()))
+        want['search'] += CAPS_PING_SEARCHES  # check 12's caps request
         if problem:
             problems.append(problem)  # the key file's limits are missing or wrong: the sentence names the command
         else:
@@ -939,19 +1150,26 @@ def preflight(mode, cfg, io, seen=None):
                 else:
                     problems.append(f'The indexers have {sum(downloads.values())} {name} left today between them ({each}), and the '
                                     f"check may need {want['download']}: wait for a reset (brainrun.py usage shows the allowance).")
+
+    # 12. (check only, #303) every switched-on indexer answers one caps request through the stand-in; sent last, and only when
+    # nothing else refused, so a refused check spends no request
+    if mode == 'check' and not problems:
+        slugs = sorted({slug for s in readable for slug in rep['enabled'][s]})
+        answers = io.caps_answers(slugs)
+        problems += [p for p in (caps_problem(slug, answers.get(slug)) for slug in slugs) if p]
     return problems
 
 
 def preflight_command(mode, cfg, io):
     """Prints the preflight result in plain sentences; exit code 0 when the setup is right, 1 otherwise."""
     seen = {}
-    problems = preflight(mode, cfg, io, seen)
+    problems = checked(mode, cfg, io, seen)
     for p in problems:
         print(p)
     if not problems:
-        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if mode in ('run', 'check') else ''
+        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if waits_for_idle(mode, cfg) else ''
         machine = (f'; the machine is plugged in{idle}, HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
-                   + {'check': " and the indexer allowance holds the check's requests"}.get(mode, ''))
+                   + {'check': " and the indexer allowance holds the check's requests, and every indexer answered its caps request"}.get(mode, ''))
         print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
         if 'machine' in seen:
             print(f"CPU probe: {br.probe_text(seen['machine'])}.")
@@ -1022,7 +1240,7 @@ def check_visit_answer(got, play, pause_s=0, sleep=time.sleep):
 
 def collect_check_visit(cfg, io, title, logbuf, plays=None, secrets=()):
     """One title of a check: its list, the Browse pause, one press of Best; then KaijuFlow's play step lines for it
-    (quickcheck.visit_steps), its AltMount imports and any "limit reached" line in either log. Both containers' lines go
+    (quickcheck.visit_steps) and the Releases each indexer's search found (quickcheck.found_by_indexer), its AltMount imports and any "limit reached" line in either log. Both containers' lines go
     to `logbuf` scrubbed (evidence.scrub, with the test copies' `secrets`) and, unscrubbed, to `plays` for the evidence
     folder of a play that fails (write_check_ending)."""
     kind, vid, label = title[:3]
@@ -1036,8 +1254,9 @@ def collect_check_visit(cfg, io, title, logbuf, plays=None, secrets=()):
     if plays is not None:
         plays.append({'kf_text': kf_text, 'be_text': be_text})
     lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
+    steps = br.parse_step_lines(kf_text)
     return {'title': list(title), 'label': label, 'id': vid, 't_start': br.iso(t0), 't_end': br.iso(t1), **http,
-            'steps': quickcheck.visit_steps(br.parse_step_lines(kf_text), vid, since),
+            'steps': quickcheck.visit_steps(steps, vid, since), 'found': quickcheck.found_by_indexer(steps, vid, since),
             'imports': [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi],
             'limit': br.limit_event(kf_text + '\n' + be_text, cfg['indexers'])}
 
@@ -1158,7 +1377,10 @@ def write_check_ending(cfg, io, check, started, logbuf):
             return io.title_names(title)
         except Exception:  # noqa: BLE001  (TMDB down: judge says the other names could not be read)
             return None
-    check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t)) for v in quickcheck.judged(check)]
+    check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t), indexers=check['indexers'])
+                         for v in quickcheck.judged(check)]
+    # what the stand-in sent each indexer, for the report's indexer table (#304)
+    check['requests'] = quickcheck.requests_by_indexer(allowance.requests_in(os.path.join(run_dir, 'logs', 'standin.log')))
     save_evidence(io, check, every=check['kind'] == drill.KIND)  # a Drill-down keeps its play's folder however it went
     try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
         # section says if it could not
@@ -1253,7 +1475,13 @@ def build_parser():
     ap.add_argument('--episode', help='drill only: the episode of a show, written S01E02')
     ap.add_argument('--entry', action='append', default=[],
                     help='drill only: a Casebook entry to mark besides the ones proved on the title before (repeatable)')
-    ap.add_argument('--full', action='store_true', help="drill only: watch the play as the full check does (#271)")
+    ap.add_argument('--full', action='store_true', help="drill: watch the play as the full check does (#271); preflight: "
+                    "the full check's preflight, which waits for an idle machine (#303)")
+    ap.add_argument('--fix', action='store_true', help='preflight, check --quick and drill: run the safe fixes first (the expected '
+                    'settings, the image rebuild, the key file made private, an indexer switched on or off to match the key '
+                    'file), then the preflight again (#303); never power, addresses, DNS or the allowance')
+    ap.add_argument('--standing-go', action='store_true', help="preflight --full: the full check runs under a standing go the "
+                    'lead passes, so it does not wait for an idle machine (the load is still kept, #303)')
     ap.add_argument('--casebook', help="check --quick and drill: the Casebook folder Diagnosis reads (default the repo's)")
     ap.add_argument('--cases', default=caselog.CASES,
                     help='check --quick and drill: the Case logs of failures with no proved cause (default %(default)s, #287)')
@@ -1310,7 +1538,8 @@ def main(argv):
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),
                settle=a.settle, browse_pause=BROWSE_PAUSE_S, rebuild_image=a.rebuild_image, limit=a.provider_limit,
                key_file=a.key_file, standin_port=testbed.STANDIN_PORT, cases=a.cases, tickets_dry_run=a.tickets_dry_run,
-               casebook=a.casebook, ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'))
+               casebook=a.casebook, ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'), fix=a.fix,
+               standing_go=a.standing_go, full_check=a.cmd == 'preflight' and a.full)
     if a.cmd == 'usage':
         print('\n'.join(allowance.usage_lines(cfg)))
         return 0

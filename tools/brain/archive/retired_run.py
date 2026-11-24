@@ -994,7 +994,7 @@ def last_complete_recording(runs_root, listname):
         if not m or m.group(1) != listname:
             continue
         counts = {}
-        for slug, kind, _ in allowance._log_requests(log):
+        for slug, kind, _ in allowance.requests_in(log):
             counts.setdefault(slug, dict.fromkeys(allowance.KINDS, 0))[kind] += 1
         return os.path.basename(folder), counts
     return None

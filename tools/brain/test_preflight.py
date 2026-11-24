@@ -31,8 +31,11 @@ class FakeWorld(brainrun.RealIO):
 
     def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3,
                  machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1'), dns=('85.12.62.251', '85.12.62.214'), power='ac', probe=950,
-                 policy=(('governor', 'powersave'), ('energy_preference', 'performance')), allowance=None):
+                 policy=(('governor', 'powersave'), ('energy_preference', 'performance')), caps=None, allowance=None):
         super().__init__(cfg)
+        # caps: {slug: (status, body) or None (no answer)} the caps request gets (#303); every other indexer of the key file
+        # answers with NinjaCentral's captured caps, and one the key file lacks gets the stand-in's 404
+        self.caps, self.caps_asked = dict(caps or {}), []
         self.allowance = allowance  # {slug: {'search', 'download'}} left, given by hand; None reads the key file's limits
         self.power_, self.probe, self.policy = power, probe, dict(policy)
         self.asked = []  # the machine's readings in the order they were taken: 'load', 'probe'
@@ -87,6 +90,16 @@ class FakeWorld(brainrun.RealIO):
     def dns_answer(self, name, server):
         self.asked_dns.append((name, server))
         return answer(self.dns)
+
+    def caps_answers(self, slugs):
+        self.caps_asked.append(list(slugs))
+        known = brainrun.key_file_names(brainrun._key_path(self.cfg))
+        return {s: self.caps[s] if s in self.caps else (200, CAPS_REPLY) if s in known else (404, b'unknown indexer') for s in slugs}
+
+
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tests', 'fixtures', 'indexer-caps',
+                       'ninjacentral-caps.xml'), 'rb') as _f:
+    CAPS_REPLY = _f.read()  # a real indexer's caps reply (review rule 2)
 
 
 def answer(addresses):
@@ -192,8 +205,8 @@ class PreflightTest(unittest.TestCase):
     def test_a_check_that_passes_names_the_machine_checks_too(self):
         code, text = run_command('check', self.cfg, self.world())
         self.assertEqual(code, 0, text)
-        self.assertIn('the machine is plugged in and idle (1-minute load below 1.00), HOST_IP and altmountUrl are its addresses, '
-                      "news.newshosting.com resolves outside 10.x and the indexer allowance holds the check's requests", text)
+        self.assertIn('the machine is plugged in, HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves outside '
+                      "10.x and the indexer allowance holds the check's requests, and every indexer answered its caps request", text)
         self.assertIn('CPU probe: 950 ms (governor powersave, energy preference performance).', text)
 
     def test_a_machine_on_battery_stops_a_check(self):
@@ -214,7 +227,8 @@ class PreflightTest(unittest.TestCase):
         code, text = run_command('check', self.cfg, self.world(policy=()))
         self.assertIn('CPU probe: 950 ms.', text)
 
-    def test_a_busy_machine_stops_a_check(self):
+    def test_a_busy_machine_stops_a_full_check(self):
+        self.cfg['full_check'] = True  # only the full check waits for an idle machine (#303)
         for load in (1.0, 2.37):
             world = self.world(load=load)
             self.assert_stops('check', world, f'load average is {load:.2f}, at or above 1.00', 'idle')
@@ -224,8 +238,8 @@ class PreflightTest(unittest.TestCase):
         code, text = run_command('check', self.cfg, self.world(load=0.99))
         self.assertEqual(code, 0, text)
 
-    def test_after_its_image_build_a_check_preflight_waits_for_the_load_to_settle(self):
-        self.cfg['rebuild_image'] = True
+    def test_after_its_image_build_a_full_check_preflight_waits_for_the_load_to_settle(self):
+        self.cfg.update(rebuild_image=True, full_check=True)
         world, seen = self.world(label=OLDER, load=[6.2, 3.1, 1.4, 0.8, 0.5]), {}
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(brainrun.preflight('check', self.cfg, world, seen), [])
@@ -234,8 +248,8 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(world.asked[-2:], ['load', 'probe'])  # the probe runs once the build's load has settled
         self.assertIn('Waiting up to 3 minutes', out.getvalue())
 
-    def test_a_load_that_does_not_settle_3_minutes_after_the_image_build_stops_a_check(self):
-        self.cfg['rebuild_image'] = True
+    def test_a_load_that_does_not_settle_3_minutes_after_the_image_build_stops_a_full_check(self):
+        self.cfg.update(rebuild_image=True, full_check=True)
         world = self.world(label=OLDER, load=2.5)
         code, text = run_command('check', self.cfg, world)
         self.assertEqual(code, 1, text)
@@ -470,7 +484,8 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(code, 1, text)
         self.assertEqual(text.splitlines(), [
             'KaijuFlow has movieFilters.maxFileSize set to 9000, but the expected settings file '
-            f"({self.cfg['expected_settings']}) says 3000: change the test copy's config, or the file if the copy's value is the intended one.",
+            f"({self.cfg['expected_settings']}) says 3000: change the test copy's config (python3 -I tools/brain/testbed.py apply "
+            "kaijuflow writes the file's settings into it; --fix runs it), or the file if the copy's value is the intended one.",
             'KaijuFlow has tvFilters.maxFileSize set to 50, but the expected settings file says 1000.',
             'KaijuFlow has tvFilters.rules.rankedRegexPatterns[No disc images].mode set to "rank", '
             'but the expected settings file says "drop".'])
@@ -909,7 +924,8 @@ class MachineWiringTest(unittest.TestCase):
         with mock.patch.object(subprocess, 'run', self.run_), mock.patch.object(os, 'getloadavg', lambda: (load, 0.2, 0.1)):
             return run_command(mode, self.cfg, self.World(self.cfg, allowance=PLENTY))
 
-    def test_a_check_reads_the_load_the_addresses_and_the_dns_from_the_machine(self):
+    def test_a_full_check_reads_the_load_the_addresses_and_the_dns_from_the_machine(self):
+        self.cfg['full_check'] = True
         code, text = self.preflight('check', 0.31)
         self.assertEqual(code, 0, text)
         self.assertEqual(self.asked, ['ip', 'dig'])
