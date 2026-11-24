@@ -1651,13 +1651,14 @@ def write_check_ending(cfg, io, check, started, logbuf):
         check['diagnosis'] = None
         check['diagnosis_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
     check['verdict'] = quickcheck.verdict(check, check['outcomes'])
-    if check['kind'] == drill.KIND and check['verdict'] is not None and check.get('diagnosis') is not None:
-        try:  # the suspected causes marked proved fixed or reopened (#272)
-            check['drill'] = drill.mark(run_dir, check.get('drill_suspects') or [], cfg.get('casebook'))
-        except Exception as e:  # noqa: BLE001  (the report and verdict come first)
-            check['drill_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
-    elif check['kind'] == drill.KIND and check.get('diagnosis_error'):
-        check['drill_error'] = 'Diagnosis could not run'
+    if check['kind'] == drill.KIND and check['verdict'] is not None:
+        if check.get('diagnosis_error'):
+            check['drill_error'] = 'Diagnosis could not run'
+        else:
+            try:  # the suspected causes marked proved fixed or reopened (#272)
+                check['drill'] = drill.mark(run_dir, check.get('drill_suspects') or [], cfg.get('casebook'))
+            except Exception as e:  # noqa: BLE001  (the report and verdict come first)
+                check['drill_error'] = br.scrub_text(f'{type(e).__name__}: {e}')
     check['headline'] = quickcheck.headline(check, check['outcomes'])
     _write(os.path.join(run_dir, 'report.md'), quickcheck.render_report(check, check['outcomes']))
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': check['status'], 'visits': check['visits'],

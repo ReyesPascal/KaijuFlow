@@ -22,7 +22,7 @@ import pool
 from test_diagnosis import HHWEB, READ_ERROR, casebook_copy, stored_check
 from test_evidence import WITCHER, FailedPlayWorld, run_failed_check
 from test_quickcheck import CheckWorld, check_cfg, read
-from test_fixing import set_field
+from test_fixing import FakeTracker, set_field
 from test_settings import make_copies, tempdir
 
 EARLIER = '2026-11-24T070000Z-quick-check'  # the check that proved the cause on the Witcher (stored_check's name)
@@ -139,6 +139,14 @@ class ReopenedTest(unittest.TestCase):
         self.assertIn('2026-11-23T191000Z-drill-down', [s['check'] for s in fields['seen']])  # the occurrence, as a check's
         self.assertEqual(casebook.problems(self.book), [])
 
+        # the fix did not hold: the report says how its new fix ticket is filed, and that files it
+        self.assertIn('`python3 -I tools/brain/diagnosis.py fix <this folder>` files the new fix ticket of a KaijuFlow '
+                      'cause reopened here', read(folder, 'report.md'))
+        tracker = FakeTracker()
+        [fix] = diagnosis.fix(folder, self.book, tracker)
+        self.assertEqual((fix['entry'], fix['action'], fix['ticket']['filed']), ('unscramble-read-error', 'ticket', '#301'))
+        self.assertIn('brainrun.py drill --title tt5180504 --episode S01E01', tracker.filed[0][2])
+
     def test_a_new_failure_reopens_it_too_since_a_fix_that_moved_the_problem_does_not_count(self):
         world = CheckWorld(drawn=[WITCHER], plays={WITCHER[1]: None})  # every Source's check failed: nothing to play
         code, out = run_drill(self.cfg, world)
@@ -185,6 +193,18 @@ class NotMarkedTest(unittest.TestCase):
                       sections['History'])
         self.assertEqual(entry(self.book, 'eeaao-slow-start')[0]['status'], 'open')
         self.assertEqual(casebook.problems(self.book), [])
+
+    def test_a_drill_whose_play_kept_no_evidence_folder_says_so(self):
+        class Unwritable(CheckWorld):
+            def secret_values(self):  # the evidence folder cannot be written (its scrubbing needs these)
+                if any(c[0] == 'visit' for c in self.calls):
+                    raise OSError('no room left on the disk')
+                return []
+        cfg = drill_cfg(self, self.root, self.book)
+        code, out = run_drill(cfg, Unwritable(drawn=[WITCHER]))
+        folder = os.path.join(self.root, '2026-11-25T100000Z-drill-down')
+        self.assertEqual(code, 0, out)
+        self.assertIn('## Drill-down\n\nNo entry marked: the play left no evidence folder.', read(folder, 'report.md'))
 
     def test_a_drill_with_no_verdict_marks_nothing(self):
         cfg = drill_cfg(self, self.root, self.book)

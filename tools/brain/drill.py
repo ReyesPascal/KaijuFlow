@@ -200,4 +200,7 @@ def report_lines(drill, error=None):
         else:
             lines.append(f"- {m['entry']}: {m['result']}: {m['why']}.")
     lines += ['', "`python3 -I tools/brain/diagnosis.py record <this folder>` writes the marks on the entries; commit them."]
+    if any(m['result'] == 'reopened' and any(r['result'] == 'proved' for r in m['recipe']) for m in drill['marks']):
+        lines.append('Then `python3 -I tools/brain/diagnosis.py fix <this folder>` files the new fix ticket of a KaijuFlow '
+                     'cause reopened here (its cause proved again).')
     return lines
