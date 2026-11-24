@@ -5,6 +5,8 @@
  * `docker logs`: the tag `[KF-STEP] ` followed by a single-line JSON object.
  * Fields: step, source, ms, ok, t (end time, ISO), then ref / title / extras.
  * Lines never carry URLs or keys: callers pass names and numbers only.
+ * The dev switch (#280, the `devDiagnostics` setting, off in a release): with it on, every line ends with `dev: true`,
+ * and diagnostic lines and fields are written only while `devSwitchOn()`; with it off, the lines are exactly a release's.
  * Format reference: the "Step lines" section of tools/brain/README.md.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -30,6 +32,18 @@ export interface StepFields {
 
 const refStore = new AsyncLocalStorage<string>();
 
+let devSwitch: () => boolean = () => false;
+
+/** Read the dev switch through `read` (config/index.ts binds the setting); off until it is bound. */
+export function bindDevSwitch(read: () => boolean): void {
+  devSwitch = read;
+}
+
+/** Whether the dev switch is on: every diagnostic line and field goes behind it (#280). */
+export function devSwitchOn(): boolean {
+  return devSwitch() === true;
+}
+
 /** Run `fn` with a request reference (the Stremio id) added to every step line inside it. */
 export function withStepRef<T>(ref: string, fn: () => T): T {
   return refStore.run(ref, fn);
@@ -40,6 +54,7 @@ export function logStep(fields: StepFields & { ms: number }): void {
   const { step, source, ms, ok = true, title, ...extra } = fields;
   const ref = refStore.getStore();
   const rec: Record<string, unknown> = { step, source, ms: Math.round(ms), ok, t: new Date().toISOString(), ref, title, ...extra };
+  if (devSwitchOn()) rec.dev = true;
   console.log(`${STEP_LOG_TAG} ${JSON.stringify(rec)}`);
 }
 
