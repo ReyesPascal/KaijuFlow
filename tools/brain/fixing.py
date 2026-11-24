@@ -224,6 +224,46 @@ def record(run_dir, fixes, book=casebook.FOLDER):
     return out
 
 
+DRILL_NOTE = '(Drill-down, #272)'
+
+
+def drill_history(drill, m):
+    """The History line a Drill-down's mark writes on its entry."""
+    head = f"- {drill['date']}: "
+    if m['result'] == 'not marked':
+        head += f"the Drill-down {drill['check']} did not mark it" + (f" {m['would']}" if m.get('would') else '')
+    else:
+        head += f"{m['result']} by the Drill-down {drill['check']}"
+    return f"{head}: {m['why']}. {DRILL_NOTE}"
+
+
+def record_drill(drill, book=casebook.FOLDER):
+    """Writes a Drill-down's marks (drill.mark) onto their entries: `proved fixed` or `reopened` as the status, and a
+    History line for every mark, the ones not marked too. Nothing is written twice. Returns {entry id: [what changed]}."""
+    out = {}
+    for m in (drill or {}).get('marks') or []:
+        path = os.path.join(book, m.get('file') or '')
+        if not m.get('file') or not os.path.exists(path):
+            continue
+        fields, _ = casebook.read_entry(path)
+        with open(path) as fh:
+            text = fh.read()
+        line = drill_history(drill, m)
+        if line in text:
+            continue
+        lines = text.split('\n')
+        changed = []
+        if m['result'] in ('proved fixed', 'reopened') and fields['status'] != m['result']:
+            _set(lines, lines.index('---', 1), 'status', m['result'])
+            changed.append(m['result'])
+        _history(lines, line)
+        changed.append('history')
+        with open(path, 'w') as fh:
+            fh.write('\n'.join(lines))
+        out[m['entry']] = changed
+    return out
+
+
 # --------------------------------------------------------------------------- the real tracker
 
 class GitHub:

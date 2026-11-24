@@ -15,6 +15,7 @@ import unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import brainreport as br  # noqa: E402
 import diagnosis  # noqa: E402
+import drill  # noqa: E402
 import pool  # noqa: E402
 
 QUICK_KINDS = {'popular-film': 2, 'rare-film': 1, 'popular-episode': 1, 'rare-episode': 1}  # the 5 titles' kinds (draw.KINDS)
@@ -384,14 +385,20 @@ def checked_text(o):
     return ', '.join('%s (%s)' % (c['release'], check_said(c)) for c in o['checked']) or 'none'
 
 
+def check_name(check):
+    """`Quick check` or `Drill-down` (#272), as the report and its tickets name the check."""
+    return {'drill-down': 'Drill-down'}.get(check.get('kind'), 'Quick check')
+
+
 def ticket_texts(check, outcomes):
     """One ready-to-file ticket per fail and per check miss: [(title, body)]."""
-    where = f"Quick check `{check['folder']}` (commit {str(check.get('commit') or '?')[:7]}, {check['started']})"
+    name = check_name(check)
+    where = f"{name} `{check['folder']}` (commit {str(check.get('commit') or '?')[:7]}, {check['started']})"
     out = []
     for o in outcomes:
         tid, kind = o['id'], o['kind']
         if o['outcome'] == FAIL:
-            out.append((f"Quick check fail: {o['label']}",
+            out.append((f"{name} fail: {o['label']}",
                         f"{where}: pressing Best on **{o['label']}** (`{tid}`, {kind}) failed: {o['why']}.\n\n"
                         f"Release played: {o['release'] or 'none'}. Sources in the list: {o['sources']}; checked: "
                         f"{checked_text(o)}.\n\n"
@@ -435,7 +442,7 @@ def render_report(check, outcomes):
     """report.md of a quick check: pass or fail and the fails first, then slow plays, check misses, fallbacks, nothing to
     play, the typical title to video, the allowed words offered (#286), and a ticket text for each fail and check miss.
     Totals only: no title by title, no comparison with an earlier check."""
-    lines = [f"# Quick check {check['started']}", '', headline(check, outcomes), '']
+    lines = [f"# {check_name(check)} {check['started']}", '', headline(check, outcomes), '']
     if verdict(check, outcomes) is None and not outcomes:
         return '\n'.join(lines)
     fails = [o for o in outcomes if o['outcome'] == FAIL]
@@ -469,6 +476,8 @@ def render_report(check, outcomes):
     lines += played_line(check)
     lines += ['', '## Allowed words offered', ''] + (allowed_word_lines(outcomes) or ['None.'])
     lines += [''] + diagnosis.report_section(check.get('diagnosis'), check.get('diagnosis_error'))
+    if check.get('kind') == drill.KIND:
+        lines += [''] + drill.report_lines(check.get('drill'), check.get('drill_error'))
     tickets = ticket_texts(check, outcomes)
     if tickets:
         lines += ['', '## Tickets to file', '']
