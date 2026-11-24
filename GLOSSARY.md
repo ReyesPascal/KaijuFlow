@@ -215,7 +215,7 @@ One rule set for every side of a comparison of setups (the same list of Sources,
 _Avoid_: fair run, same settings
 
 **Recording** (retired by ADR 0010):
-The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing.
+The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing. The recordings themselves were deleted on 2026-11-24 (#312); the kaijuflow-notes history keeps them.
 _Avoid_: cache, snapshot
 
 **Stand-in**:

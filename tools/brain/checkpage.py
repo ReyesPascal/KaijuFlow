@@ -1,11 +1,12 @@
 """The KaijuFlow Speed Check page of real-use checks (#273, ADR 0010): the newest check's verdict, its fails and its
-totals (no per-title table: the report's totals only), then every check given, one row each. Nothing is published.
+totals (no per-title table: the report's totals only) and its indexer table (#304, #312: the rows of its report's
+`## Indexers`), then every check given, one row each. Nothing is published.
 
     python3 -I tools/brain/checkpage.py CHECK_DIR [CHECK_DIR ...] [--out DIR]
 
 CHECK_DIR is a check folder of brainrun.py (`check --quick` or `drill`; for example
-~/kaijuflow-notes/brain-runs/<date>-quick-check/). Each is read from its meta.json and raw.json, the way its report.md
-was written (quickcheck.py), so the page says what the report says. The newest check given that has a verdict leads the
+~/kaijuflow-notes/brain-runs/<date>-quick-check/). Each is read from its meta.json, raw.json and logs/standin.log, the
+way its report.md was written (quickcheck.py), so the page says what the report says. The newest check given that has a verdict leads the
 page; a check with no verdict (stopped, or the cap rule) gets its row and its one sentence. The page is written as
 index.html into the output folder (default ~/kaijuflow-notes/brain-1338/page/); RUNBOOK.md, "Publish the page", has the
 steps from there. Checks are never compared with each other: each check plays new titles (ADR 0010).
@@ -28,14 +29,17 @@ class NotACheck(Exception):
 
 
 def load(folder):
-    """{'folder', 'meta', 'outcomes'} of a check folder; NotACheck when it is not one (a timed run's, or unreadable)."""
+    """{'folder', 'meta', 'outcomes', 'indexers'} of a check folder (`indexers`: quickcheck.indexer_rows, as its report's
+    table); NotACheck when it is not one (a timed run's, or unreadable)."""
     name = os.path.basename(os.path.normpath(folder))
     meta = br.read_json(os.path.join(folder, 'meta.json'))
     if not isinstance(meta, dict) or meta.get('kind') not in KINDS:
         raise NotACheck(f'{folder} is not a real-use check: its meta.json names no quick check or Drill-down kind '
                         '(a timed run of the retired recording path is not shown, ADR 0010).')
     raw = br.read_json(os.path.join(folder, 'raw.json')) or {}
-    return {'folder': name, 'meta': meta, 'outcomes': raw.get('outcomes') or []}
+    outcomes = raw.get('outcomes') or []
+    check = {'visits': raw.get('visits') or [], 'indexers': meta.get('indexers') or [], 'requests': quickcheck.requests_of(folder)}
+    return {'folder': name, 'meta': meta, 'outcomes': outcomes, 'indexers': quickcheck.indexer_rows(check, outcomes)}
 
 
 def page_model(checks):
@@ -73,6 +77,11 @@ def _lead_html(c):
         out += ['<h2>Fails</h2>', '<ul>'] + [f'<li><b>{_e(o["label"])}</b> ({_e(o["kind"])}): {_e(o["why"])}</li>' for o in fails]
         out.append('</ul>')
     out += ['<dl>'] + [f'<div><dt>{_e(k)}</dt><dd>{_e(v)}</dd></div>' for k, v in _totals(outcomes)] + ['</dl>']
+    if c['indexers']:
+        out += ['<h2>Indexers</h2>', '<table><thead><tr>' + ''.join(f'<th>{_e(h)}</th>' for h in quickcheck.INDEXER_HEADS)
+                + '</tr></thead><tbody>']
+        out += ['<tr>' + ''.join(f'<td>{_e(v)}</td>' for v in quickcheck.indexer_cells(r)) + '</tr>' for r in c['indexers']]
+        out.append('</tbody></table>')
     out.append('</section>')
     return out
 
