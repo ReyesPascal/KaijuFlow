@@ -12,10 +12,11 @@
  *   Source still grabbed or checked above it is waited for (#190). Only the Source being played is prepared (#192).
  * - A library hit (a Source the Backend already holds) plays without a grab, unless a Source above it is still
  *   grabbed or prepared; once one plays, the other library hits are kept beside it as backups.
- * - A Walk makes at most WALK_MAX_GRABS grabs (30), then ends as if the list had run out, and says so once (#228).
- * - An indexer that refuses a grab (429, 5xx, 401/403, an error payload not 300, a network error, a timeout) is skipped for the rest of the
- *   Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004). The grabs
- *   already under way when it refuses still reach it, so it is asked at most `inFlight` (candidateCount) times.
+ * - The limits on asking indexers are WalkLimits' (below), the same for a clicked list entry's walk-on (#255): a Walk
+ *   makes at most WALK_MAX_GRABS grabs (30), then ends as if the list had run out, and says so once (#228); an indexer
+ *   that refuses a grab (429, 5xx, 401/403, an error payload not 300, a network error, a timeout) is skipped for the
+ *   rest of the Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004).
+ *   The grabs already under way when it refuses still reach it, so it is asked at most `inFlight` (candidateCount) times.
  * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx, error payload 300) or bad, a check that blocks a
  *   Source, or a prepare that fails for the Source's own reason, marks it dead; a refused grab, a check that cannot
  *   answer, or a Backend failure leaves it alive.
@@ -23,6 +24,44 @@
 
 /** About twice the deepest Walk measured (16 grabs, The Twilight Zone S02E06, #14 played), #228. */
 export const WALK_MAX_GRABS = 30;
+
+/**
+ * The Walk's limits on asking indexers (ADR 0004, "The walk's grabs"; #228, #243), one set per Walk: Best's Walk keeps
+ * one, and so does a clicked list entry's walk-on across the requests of its play (#255). Only a grab is limited: a
+ * Source that needs none (a library hit, a Source remembered ready) is never held back by them.
+ */
+export class WalkLimits {
+  private grabs = 0;
+  private atCeiling = false;
+  private readonly refusing = new Set<string>();
+
+  /** Grabs the Walk made. */
+  get grabCount(): number { return this.grabs; }
+
+  /** The Walk made its WALK_MAX_GRABS grabs: it ends as if the list had run out. */
+  get stopped(): boolean { return this.atCeiling; }
+
+  /**
+   * Count the grab the Walk is about to make. 'ceiling' when it already made WALK_MAX_GRABS, the first time (say it
+   * once), 'stopped' every time after: no grab then.
+   */
+  grab(): 'grab' | 'ceiling' | 'stopped' {
+    if (this.atCeiling) return 'stopped';
+    if (this.grabs >= WALK_MAX_GRABS) { this.atCeiling = true; return 'ceiling'; }
+    this.grabs++;
+    return 'grab';
+  }
+
+  /** An indexer that refused a grab: its Sources are passed by for the rest of the Walk. */
+  skips(indexer: string): boolean { return this.refusing.has(indexer); }
+
+  /** The indexer refused a grab. True the first time (say it once). */
+  refused(indexer: string): boolean {
+    if (this.refusing.has(indexer)) return false;
+    this.refusing.add(indexer);
+    return true;
+  }
+}
 
 export type WalkEvent =
   | { type: 'grabbed'; index: number }
@@ -87,9 +126,7 @@ const ext = (videoPath: string): string => {
 export class Walk {
   private readonly members: WalkMember[] = [];
   private next = 0;
-  private grabs = 0;
-  private ceilingHit = false;
-  private readonly skipped = new Set<string>();
+  private readonly limits = new WalkLimits();
   private played: number | null = null;
   private ended: WalkEnd | null = null;
 
@@ -155,7 +192,7 @@ export class Walk {
   /** Where each Source the Walk reached stands, in list order (for the summary). */
   snapshot(): readonly WalkMember[] { return this.members; }
 
-  get grabCount(): number { return this.grabs; }
+  get grabCount(): number { return this.limits.grabCount; }
 
   /** Sources the Walk gave up on: no longer walked, and not because a stop cancelled their prepare (for the summary). */
   get failedCount(): number {
@@ -180,13 +217,13 @@ export class Walk {
     this.handOver(out);
     if (this.settled()) return;
     if (this.members.every(m => this.finished(m)) && !this.canEnter()) {
-      this.ended = this.ceilingHit ? 'ceiling' : 'ran-out';
+      this.ended = this.limits.stopped ? 'ceiling' : 'ran-out';
       out.push({ type: 'settleNone', end: this.ended });
     }
   }
 
   private canEnter(): boolean {
-    if (this.ceilingHit) return false;
+    if (this.limits.stopped) return false;
     let i = this.next;
     while (i < this.opts.size && this.passedBy(i)) i++;
     return i < this.opts.size;
@@ -194,23 +231,21 @@ export class Walk {
 
   /** A Source the Walk does not reach: remembered dead, or not a library hit and from an indexer that refused. */
   private passedBy(index: number): boolean {
-    return this.opts.isDead(index) || (!this.opts.hits.has(index) && this.skipped.has(this.opts.indexerOf(index)));
+    return this.opts.isDead(index) || (!this.opts.hits.has(index) && this.limits.skips(this.opts.indexerOf(index)));
   }
 
   private skipIndexer(indexer: string, out: WalkDecision[]): void {
-    if (this.skipped.has(indexer)) return;
-    this.skipped.add(indexer);
-    out.push({ type: 'skipIndexer', indexer });
+    if (this.limits.refused(indexer)) out.push({ type: 'skipIndexer', indexer });
   }
 
   /** Bring the next Source of the list into the Walk. False when none can come: the list ran out or the grabs did. */
   private enter(out: WalkDecision[]): boolean {
-    if (this.ceilingHit) return false;
+    if (this.limits.stopped) return false;
     while (this.next < this.opts.size && this.passedBy(this.next)) this.next++;
     if (this.next >= this.opts.size) return false;
     const index = this.next;
-    if (!this.opts.hits.has(index) && this.grabs >= WALK_MAX_GRABS) {
-      if (!this.ceilingHit) { this.ceilingHit = true; out.push({ type: 'ceiling', grabs: this.grabs }); }
+    if (!this.opts.hits.has(index) && this.limits.grab() !== 'grab') {
+      out.push({ type: 'ceiling', grabs: this.limits.grabCount });
       return false;
     }
     this.next++;
@@ -221,7 +256,6 @@ export class Walk {
       this.tryLibrary(m, out, true);
     } else {
       m.grab = 'grabbing';
-      this.grabs++;
       out.push({ type: 'grab', index });
     }
     return true;

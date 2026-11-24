@@ -7,6 +7,8 @@
 import type { StreamData } from './types.js';
 import type { PlayContext } from './playContext.js';
 import { isSourceFailure } from '../backends/types.js';
+import { isBadGrab } from '../backends/nzbGrab.js';
+import type { WalkLimits } from './walk.js';
 import { config as globalConfig } from '../config/index.js';
 import { clearFallbackGroups } from './fallbackManager.js';
 import { clearDeliveryLog } from './utils.js';
@@ -60,7 +62,7 @@ export function clearVideoPathBroken(videoPath: string): void {
 }
 
 /** Injected stream preparation function (set by streamHandler to break circular dep) */
-type PrepareFn = (source: PlaySource, play: PlayContext | undefined, logPrefix: string) => Promise<StreamData>;
+type PrepareFn = (source: PlaySource, play: PlayContext | undefined, logPrefix: string, walk?: WalkLimits) => Promise<StreamData>;
 let prepareFn: PrepareFn | null = null;
 
 /** The console line that says a Source goes to the Backend now, the same for every prepare (a clicked list entry,
@@ -93,11 +95,12 @@ export function isPreparing(source: { nzbUrl: string; title: string }, play?: Pl
 /**
  * Prepare a Source for a play, sharing a prepare already under way. A Source remembered dead for the play is not
  * prepared (its error is thrown); what the prepare ends in is remembered: ready, or dead when it is a bad Source.
+ * `walk`: the limits of the walk the prepare is part of (a clicked list entry's walk-on, #255), for its grab.
  */
 export async function getOrCreateStream(
   source: PlaySource,
   play: PlayContext | undefined,
-  { verbose = true, logPrefix = '' }: { verbose?: boolean; logPrefix?: string } = {},
+  { verbose = true, logPrefix = '', walk }: { verbose?: boolean; logPrefix?: string; walk?: WalkLimits } = {},
 ): Promise<StreamData> {
   cleanupExpiredCache();
   const { title } = source;
@@ -127,7 +130,7 @@ export async function getOrCreateStream(
   // Create new preparation task
   if (verbose) logPrepareStart(logPrefix, title);
 
-  const promise = prepareFn(source, play, logPrefix);
+  const promise = prepareFn(source, play, logPrefix, walk);
 
   // Set as pending with a TTL — if the promise hangs, the entry expires and
   // subsequent requests can retry instead of hanging forever.  When UF is
@@ -148,7 +151,8 @@ export async function getOrCreateStream(
     remember({ source, play, ready: data });
   }).catch((error) => {
     pendingCache.delete(cacheKey);
-    if (isSourceFailure(error)) remember({ source, play, dead: error });
+    // A link the indexer says is gone, or a bad NZB, is the Source's for every episode (GLOSSARY: Source memory).
+    if (isSourceFailure(error)) remember({ source, play, dead: error, everyEpisode: isBadGrab(error) });
   });
 
   return promise;

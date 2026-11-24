@@ -20,6 +20,8 @@ import { getDeliveryLog, WebDav404Error, isUltimateFallbackActive } from './util
 import { episodeOf, episodeForTile, playContextOfTile, type PlayContext } from './playContext.js';
 import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, walkFoundNothing, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
+import { WalkLimits, WALK_MAX_GRABS } from './walk.js';
+import { walkGrab } from '../backends/nzbGrab.js';
 import { encodeTileEnvelope, parseTilePayload } from './redirectHelpers.js';
 import { serveVideo, type InlineProxy } from './delivery.js';
 import { keepAlive } from './keepAlive.js';
@@ -193,14 +195,45 @@ function logLobbyServe(sessionKey: string, videoPath: string): void {
 // Stream Preparation Pipeline
 // ============================================================================
 
+/** A Source the walk-on's limits hold back (GLOSSARY: Walk, #255): not tried, so not failed and not dead. */
+class WalkLimitError extends Error {
+  /** True when the walk made its 30 grabs: it ends as if the list had run out. Else the Source's indexer refused. */
+  constructor(message: string, readonly ceiling: boolean) { super(message); this.name = 'WalkLimitError'; }
+}
+
+/**
+ * The grab of a clicked list entry's walk-on (ADR 0004, "The walk's grabs", #255): Best's Walk's grab (walkGrab),
+ * under the walk's limits. A Source whose indexer refused earlier in the walk, or one past its 30 grabs, is not grabbed
+ * (WalkLimitError). A link the indexer says is gone or a bad NZB is a Source failure (dead for every episode); a
+ * refusal skips the indexer for the rest of the walk, said once, and leaves the Source alive.
+ */
+async function grabForWalk(source: BackendSource, walk: WalkLimits | undefined, logPrefix: string): Promise<void> {
+  const indexer = source.indexerName ?? '';
+  if (walk?.skips(indexer)) throw new WalkLimitError(`${indexer} refused a grab earlier in this Walk: passed by`, false);
+  const turn = walk?.grab() ?? 'grab';
+  if (turn !== 'grab') {
+    if (turn === 'ceiling') console.log(`${logPrefix}\u{1F6D1} Walk stopped: ${walk!.grabCount} grabs, the most one Walk makes — ending as if the list had run out`);
+    throw new WalkLimitError(`the Walk made its ${WALK_MAX_GRABS} grabs`, true);
+  }
+  try {
+    await walkGrab(source.nzbUrl, source.title, logPrefix, source.indexerName, source.searchExitIp);
+  } catch (err) {
+    if (!isSourceFailure(err) && walk?.refused(indexer)) {
+      console.log(`${logPrefix}⏭️ ${indexer} refused a grab: skipped for the rest of the Walk, its Sources kept (ADR 0004)`);
+    }
+    throw err;
+  }
+}
+
 /**
  * Complete stream preparation pipeline:
  * 0. Already prepared on the Backend, or remembered ready (and its first byte still served)?
- * 1. Play-time check (when on): only a healthy Source goes on
- * 2. Hand the Source to the Backend and wait for its video
- * 3. Probe the first byte
+ * 1. The grab, under the walk's limits (`walk`, a clicked list entry's walk-on, #255)
+ * 2. Play-time check: only a healthy Source goes on
+ * 3. Hand the Source to the Backend and wait for its video
+ * 4. Probe the first byte
  */
-export async function prepareStream(playSource: PlaySource, play?: PlayContext, logPrefix = ''): Promise<StreamData> {
+export async function prepareStream(playSource: PlaySource, play?: PlayContext, logPrefix = '', walk?: WalkLimits): Promise<StreamData> {
   const { nzbUrl, title, isSeasonPack, indexerName, searchExitIp } = playSource;
   const contentType = play?.type || undefined;
   // The Backend is sent the file pattern, which for a daily show also finds the file named by its aired date.
@@ -242,6 +275,8 @@ export async function prepareStream(playSource: PlaySource, play?: PlayContext, 
 
   // Steps 1-3: hand the Source to the Backend and wait for its video, with no time limit of KaijuFlow's
   // (AltMount's prepare timeout is the limit; keep-alive answers the player meanwhile).
+  // The grab sorts the indexer's answer as Best's Walk does (ADR 0004); the check and the Backend use its NZB.
+  await grabForWalk(source, walk, logPrefix);
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
   // It is the only health check since #191, so it runs whatever the fallback setting.
   await requireHealthySource(source, logPrefix);
@@ -335,6 +370,28 @@ async function sendFailureVideo(req: Request, res: ExpressResponse): Promise<voi
 // ============================================================================
 // Express Handler
 // ============================================================================
+
+// ── A clicked list entry's walk-on (GLOSSARY: Walk, #255) ────────────
+// Its limits (WalkLimits: 30 grabs, a refusing indexer skipped) are one Walk's across the requests of its play: a
+// self-redirect resumes the walk-on with them. Keyed as the Stremio dedup is, by the clicked Source as the play asks.
+
+const WALK_ON_IDLE_MS = 10 * 60_000; // a walk-on whose player never followed its self-redirect
+const walkOns = new Map<string, { limits: WalkLimits; touchedAt: number }>();
+
+/** The limits of the play's walk-on: the one under way (a self-redirect, or another request of the same click), else new ones. */
+function walkOnOf(key: string): WalkLimits {
+  const now = Date.now();
+  for (const [k, w] of walkOns) if (now - w.touchedAt > WALK_ON_IDLE_MS) walkOns.delete(k);
+  let w = walkOns.get(key);
+  if (!w) walkOns.set(key, w = { limits: new WalkLimits(), touchedAt: now });
+  w.touchedAt = now;
+  return w.limits;
+}
+
+/** The play ended: a new click starts a new walk-on. */
+function endWalkOn(limits: WalkLimits): void {
+  for (const [k, w] of walkOns) if (w.limits === limits) walkOns.delete(k);
+}
 
 /** Key for Stremio request dedup: the Backend, and the Source as the play asks for it (the Source memory's key). */
 function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }, play?: PlayContext): string {
@@ -470,7 +527,7 @@ export async function handleStream(
     }
   }
 
-  // A failed list entry walks on through the whole list (#190; its attempts cap was deleted in #228).
+  // A failed list entry walks on down the whole list (#190), a Walk whose limits (30 grabs) bound it (#255).
   const maxCandidates = fallbackEnabled ? candidates.length : 1;
   // rc/ci are read first from the in-`t` envelope (so they survive iOS handoff
   // truncation). safeNum guards against NaN leaking from a malformed in-`t`
@@ -706,6 +763,13 @@ export async function handleStream(
   let warming: number | undefined;
   let circuitAborted = false;
 
+  // A failed list entry walks on as a Walk (GLOSSARY: Walk, #255): its limits go on across the play's self-redirects
+  // and end with it any other way (served, the failure video, the lobby, the player gone).
+  const walk = candidates.length > 0 ? walkOnOf(dedupKey(backend, candidates[0], play)) : undefined;
+  let walkGoesOn = false;
+  const selfRedirect = (i: number) => { walkGoesOn = true; keep.redirect(res, i); };
+  res.once('close', () => { if (!walkGoesOn && walk) endWalkOn(walk); });
+
   for (const i of candidateOrder) {
     // Stop processing if the client disconnected (user backed out)
     if (req.socket.destroyed) {
@@ -728,9 +792,9 @@ export async function handleStream(
     // player follows the self-redirect, which resumes at this Source (ci).
     if (keep.timeUp() && !req.socket.destroyed) {
       if (!isPreparing(candidate, play)) {
-        getOrCreateStream(candidate, play, { verbose }).catch(() => {});
+        getOrCreateStream(candidate, play, { verbose, walk }).catch(() => {});
       }
-      keep.redirect(res, i);
+      selfRedirect(i);
       return;
     }
 
@@ -745,11 +809,11 @@ export async function handleStream(
       const switchAtMs = redirectCount === 0 && FIRST_SOURCE_SWITCH_MS > 0 && i === candidateOrder[0] && candidateOrder.length > 1
         ? Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime))
         : undefined;
-      const waited = await keep.wait(getOrCreateStream(candidate, play, { verbose }), switchAtMs);
+      const waited = await keep.wait(getOrCreateStream(candidate, play, { verbose, walk }), switchAtMs);
       if (!waited.done) {
         if (waited.timeUp) {
           // Still preparing when this request's time is up: a self-redirect resumes at this Source.
-          if (!req.socket.destroyed) keep.redirect(res, i);
+          if (!req.socket.destroyed) selfRedirect(i);
           return;
         }
         // Not a failure: leave it warming, don't mark it dead, try the next.
@@ -767,6 +831,13 @@ export async function handleStream(
       return;
 
     } catch (error) {
+      // The walk's limits held the Source back (#255): it was not tried. Past its 30 grabs the walk ends as if the
+      // list had run out; a Source of an indexer that refused is passed by.
+      if (error instanceof WalkLimitError) {
+        if (error.ceiling) break;
+        console.log(`⏭️ Passed by [${i + 1}/${maxCandidates}] (${error.message}): ${candidate.title}`);
+        continue;
+      }
       // Proxy circuit aborted (VPN IP changed / baseline unavailable / etc.) -
       // every remaining candidate in the local array carries the same stale
       // searchExitIp hash and would abort identically. Break the walk; the
@@ -825,9 +896,9 @@ export async function handleStream(
     if (!recalled.dead && (isPreparing(first, play) || (recalled.ready && !isVideoPathBroken(recalled.ready.videoPath)))) {
       console.log(`↩️ Every later Source failed: back to the first Source, still usable [1/${maxCandidates}]: ${first.title}`);
       try {
-        const waited = await keep.wait(getOrCreateStream(first, play, { verbose }));
+        const waited = await keep.wait(getOrCreateStream(first, play, { verbose, walk }));
         if (!waited.done) {
-          if (!req.socket.destroyed) keep.redirect(res, 0);
+          if (!req.socket.destroyed) selfRedirect(0);
           return;
         }
         await deliver(first, waited.value);
