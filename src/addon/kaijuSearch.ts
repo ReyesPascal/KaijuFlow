@@ -74,9 +74,10 @@ export function mergeFound<T extends { link?: string; title?: string; size?: num
 /** One indexer as a search asked it: its name, and the IDs it was asked by (none when it was asked by name only). */
 export interface AskedIndexer { source: string; ids: SearchWay[] }
 
-type Marked = { title: string; flow: 'sure' | 'maybe'; flowWhy: string; indexerName?: string; foundBy?: FoundBy[] };
+type Marked = { title: string; flow: 'sure' | 'maybe'; flowWhy: string; proof?: string; indexerName?: string; foundBy?: FoundBy[] };
 
-const entry = (r: Marked) => ({ release: r.title, flow: r.flow, why: r.flowWhy });
+/** A result as its search line names it: a sure one extra proof made sure says which proof (#286). */
+const entry = (r: Marked) => ({ release: r.title, flow: r.flow, ...(r.proof ? { proof: r.proof } : {}), why: r.flowWhy });
 
 /**
  * Write a `search` step line per indexer and way of asking (dev switch only; the caller checks it): the way (`id`,
@@ -109,9 +110,11 @@ function line(log: (fields: Record<string, unknown>) => void, source: string, wa
   });
 }
 
-/** Write a `search` line when the strict rule alone would have left nothing: the search kept Sources and none of them
- *  is sure (dev switch only; the caller checks it). */
+/** Write a `search` line when the strict rule alone would have left nothing: the search kept Sources and the strict
+ *  rule passes none of them (a Source extra proof made sure is not the strict rule's, #286; dev switch only, the
+ *  caller checks it). `sure` counts the Sources extra proof made sure. */
 export function logStrictAlone(log: (fields: Record<string, unknown>) => void, marked: Marked[]): void {
-  if (marked.length === 0 || marked.some(r => r.flow === 'sure')) return;
-  log({ strict_alone: 'nothing', kept: marked.length, sure: 0, maybe: marked.length });
+  if (marked.length === 0 || marked.some(r => r.flow === 'sure' && !r.proof)) return;
+  const sure = marked.filter(r => r.flow === 'sure').length;
+  log({ strict_alone: 'nothing', kept: marked.length, sure, maybe: marked.length - sure });
 }

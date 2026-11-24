@@ -93,8 +93,11 @@ export function timeStepSync<T>(fields: StepFields, fn: () => T, after?: (result
  * a Source failed for the play, with KaijuFlow's reason. The brain tools learn a visit's top pick and why it failed
  * only from these lines (brainreport.read_play), so the console lines beside them can be reworded freely.
  */
-export function logPlayed(title: string, source: string | undefined): void {
-  logStep({ step: 'played', source: source || undefined, title, ms: 0 });
+export function logPlayed(title: string, source: string | undefined, dev: { flow?: string; proof?: string; video?: string } = {}): void {
+  // With the dev switch on (#280), Search Flow's mark of the Source played and the name of its video file (#286): the
+  // quick check reads them to offer an allowed word.
+  const extra = devSwitchOn() ? Object.fromEntries(Object.entries(dev).filter(([, v]) => v)) : {};
+  logStep({ step: 'played', source: source || undefined, title, ms: 0, ...extra });
 }
 
 export function logPlayFailed(title: string, source: string | undefined, err: unknown): void {

@@ -16,7 +16,7 @@ import { performHealthCheck } from '../health/healthCheckPipeline.js';
 import type { NntpConnectionPool } from '../health/nntpConnection.js';
 import type { HealthCheckResult } from '../health/types.js';
 import type { UsenetProvider } from '../types.js';
-import { logStep } from '../utils/stepTiming.js';
+import { logStep, devSwitchOn } from '../utils/stepTiming.js';
 import { sourceFailure } from '../backends/types.js';
 
 /** The health-check providers switched on: the only ones a Play-time check asks. */
@@ -59,7 +59,9 @@ export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPo
       { archiveInspection: true, sampleCount: globalConfig.ultimateFallback?.sampleCount ?? 3, episodePattern: source.episodePattern },
       pool, source.indexerName, source.searchExitIp,
     );
-  if (!pool?.stopped) logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ms: Date.now() - t0 });
+  // With the dev switch on (#280), the line names the video file inside the NZB (`video`, Search Flow's extra proof, #286).
+  const video = devSwitchOn() && result.videoName ? { video: result.videoName } : {};
+  if (!pool?.stopped) logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ...video, ms: Date.now() - t0 });
   return result;
 }
 

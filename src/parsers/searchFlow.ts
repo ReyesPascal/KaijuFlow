@@ -31,6 +31,12 @@ export interface FlowTitle {
   /** The loose rule's extras: the title's country (a country tag in a release) and a year in its TVDB name. */
   country?: string;
   titleYear?: string;
+  /** The title's runtime in seconds (TMDB for a film, TVDB for an episode): a maybe whose own runtime fits it is sure
+   *  (extra proof, #286). */
+  runtime?: number;
+  /** Other TMDB/TVDB names of the title the search does not ask by (TVDB's aliases, TMDB's alternative titles): a
+   *  maybe that fits one is sure (extra proof, #286). */
+  knownNames?: string[];
 }
 
 /** How sure a Source in the list is, and why. */
@@ -149,9 +155,10 @@ const two = (n: number) => String(n).padStart(2, '0');
  * its year, past only edition, language and video tags; an episode's show name by its marker (its episode, its season
  * when the release is a season pack, or its air date), past only show tags, years and TVDB numbers. The title's other
  * names are tried when its name does not fit. Answers word for word as quickcheck.right_title does (`ok` and `why`);
- * `fits` says what fits when it passes.
+ * `fits` says what fits when it passes; `against`, that the name says another year, season or episode (no extra proof
+ * makes it sure, #286).
  */
-export function strictMatch(release: string, title: FlowTitle): { ok: boolean; why: string; fits?: string } {
+export function strictMatch(release: string, title: FlowTitle): { ok: boolean; why: string; fits?: string; against?: true } {
   const rel = words(release);
   const { name } = title;
   let tried = [name, ...(title.otherNames ?? []).filter(Boolean)];
@@ -162,7 +169,7 @@ export function strictMatch(release: string, title: FlowTitle): { ok: boolean; w
     const year = /^\d{4}/.test(title.year ?? '') ? Number(title.year!.slice(0, 4)) : undefined;
     const years = spots.map(j => filmYear(rel, j)).filter((y): y is number => y !== undefined);
     if (years.length === 0) return { ok: false, why: `the name "${name}" is not followed by a year${year ? ` (${year} wanted)` : ''}` };
-    if (year && !years.some(y => Math.abs(y - year) <= 1)) return { ok: false, why: `its year is ${years[0]}, not ${year}` };
+    if (year && !years.some(y => Math.abs(y - year) <= 1)) return { ok: false, why: `its year is ${years[0]}, not ${year}`, against: true };
     return { ok: true, why: '', fits: 'the name and year fit' };
   }
   const { season, episode, aired } = title;
@@ -173,10 +180,10 @@ export function strictMatch(release: string, title: FlowTitle): { ok: boolean; w
   if (episodes.some(([s, e]) => s === season && e === episode)) return { ok: true, why: '', fits: 'the name and episode fit' };
   if (episodes.length > 0) {
     const [s, e] = [...episodes].sort((a, b) => a[0] - b[0] || a[1] - b[1])[0];
-    return { ok: false, why: `it is S${two(s)}E${two(e)}, not S${two(season)}E${two(episode)}` };
+    return { ok: false, why: `it is S${two(s)}E${two(e)}, not S${two(season)}E${two(episode)}`, against: true };
   }
   if (seasons.has(season)) return { ok: true, why: '', fits: 'the name and season fit (a season pack)' };
-  if (seasons.size > 0) return { ok: false, why: `it is a pack of season ${Math.min(...seasons)}, not season ${season}` };
+  if (seasons.size > 0) return { ok: false, why: `it is a pack of season ${Math.min(...seasons)}, not season ${season}`, against: true };
   return { ok: false, why: `it names no season or episode (S${two(season)}E${two(episode)} wanted)` };
 }
 
@@ -226,14 +233,15 @@ export function droppedBy(): Map<string, Map<string, string>> {
 /**
  * The searchers' name filter: Search Flow's keep. The loose rule with the searcher's own name for the query (its
  * arguments are `isTextSearchMatch`'s), or the strict rule on the title being searched (`withFlowTitle`), so a
- * release the strict rule passes is kept even where the loose rule would drop it. Outside a search, the loose rule.
+ * release the strict rule passes is kept even where the loose rule would drop it, and so is one that fits another
+ * TMDB/TVDB name of the title (`knownNames`, extra proof, #286). Outside a search, the loose rule.
  */
 export function nameKeeps(name: string, release: string, year?: string, country?: string, otherNames?: string[], titleYear?: string): boolean {
   if (isTextSearchMatch(name, release, year, country, otherNames, titleYear)) return true;
   const s = searching.getStore();
   if (s === undefined) return false;
   const strict = strictMatch(release, s.title);
-  if (strict.ok) return true;
+  if (strict.ok || fitsKnownName(release, s.title)) return true;
   if (s.dropped) {
     const key = s.indexer ?? '';
     if (!s.dropped.has(key)) s.dropped.set(key, new Map());
@@ -245,28 +253,90 @@ export function nameKeeps(name: string, release: string, year?: string, country?
 /** What the list path knows of a title (its SearchContext), as Search Flow judges releases against it. */
 export function flowTitleOf(ctx: {
   type: string; title: string; year?: string; season?: number; episode?: number; country?: string; titleYear?: string;
-  additionalTitles?: string[]; searchAliases?: string[]; episodeAired?: string;
+  additionalTitles?: string[]; searchAliases?: string[]; episodeAired?: string; knownNames?: string[]; runtime?: number;
 }): FlowTitle {
   const otherNames = [...new Set([...(ctx.additionalTitles ?? []), ...(ctx.searchAliases ?? [])].filter(n => n && n !== ctx.title))];
   return {
     type: ctx.type === 'series' ? 'series' : 'movie',
     name: ctx.title, otherNames, year: ctx.year, season: ctx.season, episode: ctx.episode, aired: ctx.episodeAired,
     country: ctx.country, titleYear: ctx.titleYear,
+    ...(ctx.knownNames?.length ? { knownNames: ctx.knownNames.filter(n => n && n !== ctx.title && !otherNames.includes(n)) } : {}),
+    ...(ctx.runtime ? { runtime: ctx.runtime } : {}),
   };
+}
+
+/** The kinds of extra proof that make a maybe sure (#286): the ID search returned it too, the video file inside its NZB
+ *  fits, its runtime or its size fits, or it fits another TMDB/TVDB name of the title. */
+export type FlowProof = 'id' | 'nzb video' | 'runtime' | 'size' | 'other name';
+
+/** A Source of a title's list as Search Flow marks it: its release name, and what Kaiju Search knows of it: the ways
+ *  that found it, its size (bytes) and its own runtime (seconds, the indexer's). */
+export interface FlowSource { title: string; foundBy?: ('id' | 'name')[]; size?: number; duration?: number }
+
+/** A runtime fits the title's within a minute or 2 %, whichever is more (a release's own runtime is the cut's). */
+const runtimeFits = (own: number, title: number) => Math.abs(own - title) <= Math.max(60, title * 0.02);
+/** Two sizes are one upload's within 0.1 % (indexers round a size), of a Source big enough to be a film or episode. */
+const MIN_PROOF_SIZE = 100 * 1024 ** 2;
+const sameSize = (a: number, b: number) => a >= MIN_PROOF_SIZE && b >= MIN_PROOF_SIZE && Math.abs(a - b) <= Math.max(a, b) * 0.001;
+const minutes = (s: number) => Math.round(s / 60);
+
+/** A marked Source: sure or maybe with why, and the extra proof that made it sure, when one did. */
+export type Marked<T> = T & { flow: FlowMark['flow']; flowWhy: string; proof?: FlowProof };
+
+/** The other TMDB/TVDB name of the title (`knownNames`) the release fits by the strict rule, if one. */
+function fitsKnownName(release: string, title: FlowTitle): string | undefined {
+  return (title.knownNames ?? []).find(n => strictMatch(release, { ...title, name: n, otherNames: [] }).ok);
+}
+
+/**
+ * The extra proof a maybe has in its list, with why; none when it has none. The ID search and the runtime back only a
+ * name the loose rule keeps (an indexer files a release under a wrong ID, many films run as long); another TMDB/TVDB
+ * name and the size of a sure Source (`sure`, the list's) are proof on their own. A name that says another year, season
+ * or episode (`against`) has none but another name.
+ */
+function listProof(source: FlowSource, title: FlowTitle, loose: boolean, against: boolean, sure: FlowSource[]): { proof: FlowProof; why: string } | undefined {
+  if (!against && loose && source.foundBy?.includes('id')) return { proof: 'id', why: 'the ID search returned it too' };
+  if (!against && loose && source.duration && title.runtime && runtimeFits(source.duration, title.runtime)) {
+    return { proof: 'runtime', why: `its runtime fits (${minutes(source.duration)} min, the title's ${minutes(title.runtime)} min)` };
+  }
+  const twin = against || !source.size ? undefined : sure.find(s => s.size && sameSize(s.size, source.size!));
+  if (twin) return { proof: 'size', why: `it is the size of a sure Source, ${twin.title}` };
+  const other = fitsKnownName(source.title, title);
+  if (other) return { proof: 'other name', why: `it fits another name of the title, "${other}"` };
+  return undefined;
 }
 
 /**
  * Mark every Source of a title's list sure or maybe, with why (`flow`, `flowWhy`). Every Source in it has stayed: the
  * searchers dropped what Search Flow drops (`nameKeeps`), and a result found by ID, which no name rule drops, is marked
- * too; one neither rule fits by its name is a maybe that says so. New objects; the list's order is kept.
+ * too; one neither rule fits by its name is a maybe that says so. A maybe with extra proof (#286) is sure, with the
+ * proof (`proof`) and why, and its name's why after it. New objects; the list's order is kept.
  */
-export function markSources<T extends { title: string }>(sources: T[], title: FlowTitle): (T & { flow: FlowMark['flow']; flowWhy: string })[] {
-  return sources.map(source => {
-    const v = searchFlow(source.title, title);
-    return v.flow === 'dropped'
-      ? { ...source, flow: 'maybe' as const, flowWhy: `${v.why}; the loose rule does not fit it either` }
-      : { ...source, flow: v.flow, flowWhy: v.why };
+export function markSources<T extends FlowSource>(sources: T[], title: FlowTitle): Marked<T>[] {
+  const verdicts = sources.map(source => ({ source, v: searchFlow(source.title, title), against: strictMatch(source.title, title).against === true }));
+  const sure = verdicts.filter(x => x.v.flow === 'sure').map(x => x.source);
+  return verdicts.map(({ source, v, against }) => {
+    if (v.flow === 'sure') return { ...source, flow: v.flow, flowWhy: v.why };
+    const loose = v.flow === 'maybe';
+    const why = loose ? v.why : `${v.why}; the loose rule does not fit it either`;
+    const proved = listProof(source, title, loose, against, sure);
+    return proved
+      ? { ...source, flow: 'sure' as const, flowWhy: `${proved.why}; by its name alone: ${why}`, proof: proved.proof }
+      : { ...source, flow: 'maybe' as const, flowWhy: why };
   });
+}
+
+/**
+ * The Play-time check's extra proof (#286): a maybe whose NZB holds a video file (`videoName`, read when the check
+ * fetches it) that fits the title by the strict rule is sure, with why. Undefined when it proves nothing: a sure Source,
+ * no video file named (an archive), or a file that does not fit. A new object.
+ */
+export function videoProof<T extends { title: string; flow?: FlowMark['flow']; flowWhy?: string }>(
+  source: T, videoName: string | undefined, title: FlowTitle,
+): Marked<T> | undefined {
+  if (source.flow !== 'maybe' || !videoName || !strictMatch(videoName, title).ok) return undefined;
+  const why = `the video file inside its NZB fits, ${videoName}`;
+  return { ...source, flow: 'sure', proof: 'nzb video', flowWhy: `${why}; by its name alone: ${source.flowWhy ?? ''}` };
 }
 
 /** Best's Walk order: the sure Sources first, then the maybe ones, each in list order. A Source with no mark (a list
