@@ -1400,13 +1400,13 @@ export const keepAliveScenarios = [
 
 /**
  * The go-back after the first-Source switch (#192) across a self-redirect, the first Source still preparing: in a
- * suite of its own (parity-go-back-preparing.mjs), since it takes about 75 s and each suite process has 120 s.
+ * suite of its own (parity-go-back-preparing.mjs), since it waits out a player's 60 s window.
  */
 export const goBackPreparingScenarios = [
   {
-    // The switch leaves the first Source preparing (72 s import); the next one is still preparing when the request's
-    // 55 s are up, so the request self-redirects to it, and it fails in the next request (first byte 400 at about
-    // 58 s). The first is still preparing: the play goes back to it, as it does when the next Source fails within the
+    // The switch leaves the first Source preparing (59 s import); the next one is still preparing when the request's
+    // 55 s are up, so the request self-redirects to it. It fails in the next request (first byte 400 at about 57 s).
+    // The first is still preparing: the play goes back to it, as it does when the next Source fails within the
     // first request, and plays it once it is ready, instead of the failure video.
     id: 'after-the-25-s-switch-a-next-source-failing-after-a-self-redirect-goes-back-to-the-first',
     async run(w) {
@@ -1424,7 +1424,7 @@ export const goBackPreparingScenarios = [
             'the first request ran out of time while the next Source was preparing, and resumed at it');
           assert.equal(w.backend.submitsFor('backrd-b'), 1, 'the next Source was tried');
           assert.equal(r.status, 200);
-          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms); ${lines.filter(l => /User-pick attempt|Decoded rc=|Sending Source to AltMount|Go-back state|Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
+          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms); ${lines.filter(l => /User-pick attempt|Decoded rc=|Sending Source to AltMount|Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
           assert.ok(took >= 58000, `it played once the first Source was ready (${took} ms)`);
           assert.equal(w.backend.submitsFor('backrd-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
         }));
