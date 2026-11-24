@@ -198,10 +198,11 @@ export async function createFakeAltmount(listen) {
     requests,
     submitKinds,
     submitFields,
-    /** Register a movie Source the fake will accept. Returns its NZB link. */
+    /** Register a movie Source the fake will accept. Returns its NZB link. opts { file }: its video file's name, in
+     *  the NZB and as AltMount files it (default: the release name in the NZB, the tag in AltMount). */
     addMovie(tag, title, media, opts = {}) {
-      sources.set(tag, { tag, title, files: [{ media, path: `/movies/${title}/${tag}.mkv` }], queueId: nextQueueId++, submits: 0, completed: false });
-      if (news) sources.get(tag).nzb = checkableNzb(tag, `${title}.mkv`, opts);
+      sources.set(tag, { tag, title, files: [{ media, path: `/movies/${title}/${opts.file ?? `${tag}.mkv`}` }], queueId: nextQueueId++, submits: 0, completed: false });
+      if (news) sources.get(tag).nzb = checkableNzb(tag, opts.file ?? `${title}.mkv`, opts);
       return `${base}/${tag}.nzb`;
     },
     /**

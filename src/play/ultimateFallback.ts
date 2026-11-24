@@ -27,7 +27,7 @@ import { formatBytes } from '../parsers/metadataParsers.js';
 import { checkSource, isHealthy, enabledHealthCheckProviders } from './playTimeCheck.js';
 import { Walk, WALK_MAX_GRABS, type WalkDecision, type WalkEvent } from './walk.js';
 import { episodeOf, type PlayContext } from './playContext.js';
-import { sureFirst } from '../parsers/searchFlow.js';
+import { sureFirst, videoProof } from '../parsers/searchFlow.js';
 
 // ── Active session tracking ─────────────────────────────────────────
 
@@ -381,6 +381,13 @@ export async function ultimateFallbackFromCandidates(
         .then(result => {
           if (checking.get(index) !== mine) return;
           runOf(index).containerType = result.containerType;
+          // Search Flow's extra proof (#286): a maybe whose NZB's video file fits the title is sure from now on. Its
+          // list's Source is marked (a later Walk of the list, the played line); this Walk keeps its order (#190).
+          const proved = play.flow ? videoProof(list[index], result.videoName, play.flow) : undefined;
+          if (proved) {
+            Object.assign(list[index], { flow: proved.flow, flowWhy: proved.flowWhy, proof: proved.proof });
+            console.log(`${tag} ✔️ #${index + 1} sure by extra proof: ${proved.flowWhy}`);
+          }
           // A check whose pool was stopped (its Walk ended, #244) was not answered: no verdict to log.
           if (!isHealthy(result) && !used?.stopped) console.log(`${tag} ❌ #${index + 1} not healthy (${result.message}) — ${list[index].title}`);
           verdict({ type: 'checked', index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true });

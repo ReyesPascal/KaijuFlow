@@ -21,6 +21,9 @@ export interface HealthCheckResult {
   /** The check sampled the wanted episode's file of a pack of loose videos (#203): its verdict holds for that episode
    *  only, so a blocked pack is remembered dead for that episode, not for the others. */
   episodeOnly?: boolean;
+  /** The name of the video file the check picked inside the NZB (loose videos; none for an archive): Search Flow's
+   *  extra proof reads it (#286). */
+  videoName?: string;
 }
 
 export interface NzbFile {

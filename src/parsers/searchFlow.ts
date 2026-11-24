@@ -326,6 +326,19 @@ export function markSources<T extends FlowSource>(sources: T[], title: FlowTitle
   });
 }
 
+/**
+ * The Play-time check's extra proof (#286): a maybe whose NZB holds a video file (`videoName`, read when the check
+ * fetches it) that fits the title by the strict rule is sure, with why. Undefined when it proves nothing: a sure Source,
+ * no video file named (an archive), or a file that does not fit. A new object.
+ */
+export function videoProof<T extends { title: string; flow?: FlowMark['flow']; flowWhy?: string }>(
+  source: T, videoName: string | undefined, title: FlowTitle,
+): Marked<T> | undefined {
+  if (source.flow !== 'maybe' || !videoName || !strictMatch(videoName, title).ok) return undefined;
+  const why = `the video file inside its NZB fits, ${videoName}`;
+  return { ...source, flow: 'sure', proof: 'nzb video', flowWhy: `${why}; by its name alone: ${source.flowWhy ?? ''}` };
+}
+
 /** Best's Walk order: the sure Sources first, then the maybe ones, each in list order. A Source with no mark (a list
  *  from before Search Flow) counts as sure, so an old list keeps its order. */
 export function sureFirst<T extends { flow?: FlowMark['flow'] }>(sources: T[]): T[] {

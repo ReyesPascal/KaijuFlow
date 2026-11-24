@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import { strictMatch, looseMatch, searchFlow, markSources, sureFirst, flowTitleOf, type FlowTitle } from '../../src/parsers/searchFlow.ts';
+import { strictMatch, looseMatch, searchFlow, markSources, sureFirst, flowTitleOf, videoProof, type FlowTitle } from '../../src/parsers/searchFlow.ts';
 import { UsenetSearcher } from '../../src/parsers/usenetSearcher.ts';
 import { deduplicateAndPreFilter, applyUserFilters } from '../../src/addon/resultProcessor.ts';
 
@@ -187,4 +187,16 @@ test('extra proof never makes sure a release whose name says another year, seaso
   const ep9 = row('Pushing.Daisies.S01E09.Corpsicle.EAC3.5.1.1080p.Bluray.x265-iVy.part01.rar', 'Pushing Daisies S01E08');
   const [m] = markSources([source(ep9, { foundBy: ['id', 'name'] })], titleOf(ep9));
   assert.deepEqual([m.flow, m.flowWhy], ['maybe', 'it is S01E09, not S01E08']);
+});
+
+test('a maybe whose NZB holds a video file that fits the title is sure; a file that does not fit leaves it a maybe', () => {
+  const joker = row('Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs', 'Joker');
+  const [maybe] = markSources([source(joker)], titleOf(joker));
+  const fits = videoProof(maybe, 'Joker.2019.1080p.WEB-DL.DD5.1.H264.mkv', titleOf(joker));
+  assert.deepEqual(fits && [fits.flow, fits.proof, fits.flowWhy], ['sure', 'nzb video',
+    'the video file inside its NZB fits, Joker.2019.1080p.WEB-DL.DD5.1.H264.mkv; by its name alone: the name "Joker" is not followed by a year (2019 wanted)']);
+  assert.equal(videoProof(maybe, 'Joker.Folie.a.Deux.2024.1080p.mkv', titleOf(joker)), undefined);
+  assert.equal(videoProof(maybe, undefined, titleOf(joker)), undefined, 'no video file named (an archive)');
+  const sure = markSources([{ title: 'Joker 2019 1080p BluRay x264-GeneMige' }], titleOf(joker))[0];
+  assert.equal(videoProof(sure, 'Joker.2019.1080p.WEB-DL.DD5.1.H264.mkv', titleOf(joker)), undefined, 'a sure Source needs no proof');
 });

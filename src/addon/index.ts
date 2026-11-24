@@ -31,7 +31,7 @@ import { sessionKeyOf, makePlayContext, type PlayContext } from '../play/playCon
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { kaijuSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
-import { flowTitleOf, markSources } from '../parsers/searchFlow.js';
+import { flowTitleOf, markSources, type FlowTitle } from '../parsers/searchFlow.js';
 import { waysOf } from './kaijuSearch.js';
 import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
@@ -334,11 +334,11 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
     };
 
     // === SHARED: Process from raw results → streams (filter, sort, build) ===
-    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number }) => {
+    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number; flow?: FlowTitle }) => {
       // The play context (#246): made once here, stored with the list's fallback group, read by every play of it.
       const play = makePlayContext({
         manifestKey: requestManifestKey, type, imdbId, season, episode,
-        aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason,
+        aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason, flow: titleMeta.flow,
       });
 
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
@@ -374,7 +374,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
 
     // Check cache first (cacheTTL of 0 means disabled)
     if (config.cacheEnabled && config.cacheTTL > 0) {
-      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number } }>(cacheKey);
+      const cached = cache.get<{ rawResults: any[]; deprioritizedPacks: any[]; _meta: { type: string; season?: number; episode?: number; episodesInSeason?: number; episodeAired?: string; runtime?: number; flow?: FlowTitle } }>(cacheKey);
       if (cached) {
         console.log(`💾 Cache hit for ${type} ${imdbId}`);
 
@@ -383,7 +383,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
         // Re-apply filters and sort, and build streams with current settings
         const { streams, fallbackCandidates, play } = await processFromRaw(
           cached.rawResults, cached.deprioritizedPacks || [],
-          { episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime }
+          { episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime, flow: cached._meta.flow }
         );
 
         startHeadStart(fallbackCandidates, play);
@@ -434,7 +434,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
     const now = Date.now();
     const { streams, fallbackCandidates, play } = await processFromRaw(
       rawResults, deprioritizedPacks,
-      { episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime }
+      { episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime, flow: flowTitle }
     );
 
     // Cache raw results + deprioritized packs (filters, sorts and marks reapply on cache hits).
@@ -443,7 +443,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
       cache.set(cacheKey, {
         rawResults,
         deprioritizedPacks,
-        _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime },
+        _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime, flow: flowTitle },
       }, config.cacheTTL);
     } else if (skipEmptyCache && config.cacheEnabled && config.cacheTTL > 0) {
       console.log(`⏭️  Skipping cache write — 0 results for ${type} ${imdbId}`);
