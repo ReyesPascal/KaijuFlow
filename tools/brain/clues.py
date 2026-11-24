@@ -138,3 +138,38 @@ def original_uploaded_after_unscramble(evidence, failure):
 @clue('altmount-missing-volumes', 'Did AltMount say volumes of the Source\'s RAR set were missing?')
 def altmount_missing_volumes(evidence, failure):
     return _altmount_said(evidence, failure, r'Skipping RAR archive group with missing volume', 'volumes were missing')
+
+
+SMART_NONE = 'Smart mode: no healthy result found after checking'  # the old list-time check (before #190) found none
+
+
+def _check_lines(evidence, release):
+    return [s for s in evidence.steps if s.get('step') == 'play_check' and s.get('title') == release]
+
+
+def _old_check_found_none(evidence):
+    """The old list-time check's line that it found no healthy Source, from a build before the Play-time check (#190),
+    or None."""
+    if any(s.get('step') == 'play_check' for s in evidence.steps):
+        return None
+    return next((line for line in evidence.kf_lines if SMART_NONE in line), None)
+
+
+@clue('played-source-unchecked', 'Was the Source that failed handed to AltMount with no health check of its own?')
+def played_source_unchecked(evidence, failure):
+    release = failure.get('release')
+    own = _check_lines(evidence, release)
+    if own:
+        return NO, [step_text(s) for s in own]
+    if any(s.get('step') == 'play_check' for s in evidence.steps):
+        return YES, [f'no play_check line for {release}, among the play\'s '
+                     f"{sum(1 for s in evidence.steps if s.get('step') == 'play_check')} play_check lines"]
+    none = _old_check_found_none(evidence)
+    if none:  # the old check kept every Source it had not checked once it found none healthy (#190)
+        return YES, [none, f'no check line names {release}']
+    return CANT, ['this build writes no play_check lines, and its list-time check does not say which Sources it checked']
+
+
+@clue('altmount-fast-fail-refused', 'Did AltMount refuse the Source at its fast-fail segment check?')
+def altmount_fast_fail_refused(evidence, failure):
+    return _altmount_said(evidence, failure, r'fast-fail segment check failed', 'its fast-fail segment check failed')
