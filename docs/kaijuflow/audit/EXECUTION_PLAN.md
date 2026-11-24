@@ -120,7 +120,7 @@ Raw canonical REA Evidence may be large and expose source paths or secrets. Hash
 
 ## Reporting and session recovery
 
-Update `evidence/README.md`, per-subsystem entries, Issue #2 and `docs/kaijuflow/audit/NEXT_SESSION.md` only when a gate meaningfully advances. At every session record branch/head, evidence IDs/hashes, source/tool/test provenance, unresolved questions, rollback and the next single action. Never call an A3 static map a passing A4 behavior test.
+Update `evidence/README.md`, per-subsystem entries, Issue #2 and `~/kaijuflow-notes/NEXT_SESSION.md` only when a gate meaningfully advances. At every session record branch/head, evidence IDs/hashes, source/tool/test provenance, unresolved questions, rollback and the next single action. Never call an A3 static map a passing A4 behavior test.
 
 ## Verified external reference docs
 

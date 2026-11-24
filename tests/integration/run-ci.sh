@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
+# run-ci.sh [suite ...]: run the integration suites (tests/integration/<suite>.mjs) in an isolated network namespace;
+# with names, only those (`npm run test:integration -- parity-altmount discovery-stream`).
 set -euo pipefail
+only="$*"
 cd "$(git rev-parse --show-toplevel)"
 ROOT="$PWD"
 # KaijuFlow: fixes are allowed now, so test the committed app source (HEAD)
@@ -33,7 +36,7 @@ fi
 echo "A4-ISO-000 negative-control PASS: no application import"
 status=0
 sudo -n env -i PATH="$PATH" A4_ROOT="$ROOT" A4_RUN_DIR="$sandbox/positive" \
-  A4_PARENT_NETNS="$parent_ns" A4_FORCE_FAIL=0 \
+  A4_PARENT_NETNS="$parent_ns" A4_FORCE_FAIL=0 INTEGRATION_ONLY="$only" \
   unshare --net -- bash "$ROOT/tests/integration/in-namespace.sh" || status=$?
 for r in "$sandbox"/positive/results-*.json; do
   [[ -f "$r" ]] || continue

@@ -4,7 +4,7 @@
 
 ### Where things stand
 
-Resuming a session: `docs/agents/resume.md` (status, handoff note `docs/kaijuflow/audit/NEXT_SESSION.md`, frontier). Before any timed run: runbook `tools/brain/RUNBOOK.md`.
+Resuming a session: `docs/agents/resume.md` (status, handoff note `~/kaijuflow-notes/NEXT_SESSION.md`, frontier). Before any timed run: runbook `tools/brain/RUNBOOK.md`.
 
 ### Issue tracker
 
@@ -20,7 +20,7 @@ Component map: `docs/kaijuflow/A3_STATIC_ARCHITECTURE.md` (read the Backend slot
 
 ### Review standards
 
-Four written rules for reviewing tests, shared setup and call sites: `docs/agents/review-standards.md`.
+Four written rules for reviewing tests, shared setup and call sites, and the review a fix-up gets before it merges: `docs/agents/review-standards.md`.
 
 ### Domain docs
 

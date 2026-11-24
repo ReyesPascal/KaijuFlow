@@ -1,4 +1,7 @@
 """Tests for unreported.py: INDEX.md rows newer than the handoff note."""
+import os
+import subprocess
+import tempfile
 import unittest
 
 import unreported
@@ -25,10 +28,19 @@ class RowsAfterTest(unittest.TestCase):
 
 
 class NoteTimeTest(unittest.TestCase):
-    def test_the_note_is_dated_in_utc_like_the_index(self):
-        stamp = unreported.note_time(unreported.os.path.dirname(unreported.os.path.dirname(unreported.os.path.dirname(
-            unreported.os.path.abspath(unreported.__file__)))))
-        self.assertRegex(stamp or '', r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+    def test_the_note_is_dated_by_its_last_commit_in_utc_like_the_index(self):
+        with tempfile.TemporaryDirectory() as repo:
+            note = os.path.join(repo, 'NEXT_SESSION.md')
+            open(note, 'w').write('# Handoff\n')
+            env = {**os.environ, 'GIT_COMMITTER_DATE': '2026-11-24T01:02:03-06:00', 'GIT_AUTHOR_NAME': 't',
+                   'GIT_AUTHOR_EMAIL': 't@t', 'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@t'}
+            for cmd in (['init', '-q'], ['add', 'NEXT_SESSION.md'], ['commit', '-qm', 'note']):
+                subprocess.run(['git', '-C', repo, *cmd], check=True, env=env)
+            self.assertEqual(unreported.note_time(note), '2026-11-24T07:02:03Z')
+
+    def test_a_note_git_cannot_date_gives_none(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertIsNone(unreported.note_time(os.path.join(folder, 'NEXT_SESSION.md')))
 
 
 if __name__ == '__main__':

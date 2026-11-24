@@ -102,8 +102,8 @@ def _reaches_test_folder(words, cwd):
         word = REDIRECT.sub('', word)
         if word.startswith('-'):
             word = word.partition('=')[2]  # --file=<path>
-        elif word == '/' and command not in SEARCH:
-            continue  # `cut -d /`, `a / b` in a heredoc
+        elif re.fullmatch(r'/+', word) and command not in SEARCH:
+            continue  # `cut -d /`, `a / b` or a `//` comment line in a heredoc (each heredoc line is judged as a command)
         if not word:
             continue
         place = _place(_resolve(word, cwd))

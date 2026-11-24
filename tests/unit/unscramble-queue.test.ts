@@ -44,7 +44,9 @@ test('three sets prepared at once: the first one started is Unscrambled inside i
 
   assert.equal(a.changed, true, `the top pick should be Unscrambled, got ${a.reason} after ${a.ms} ms`);
   assert.ok(a.waitMs < 100, `the first one started does not wait for another Unscramble; waited ${a.waitMs} ms`);
-  assert.ok(a.ms < LIMIT_MS * 0.8, `the top pick took ${a.ms} ms of its ${LIMIT_MS} ms`);
+  // Inside the limit, not a margin under it: sharing the connections would take ~1.5 s and time out, and a 0.8 margin
+  // failed at 1001 ms while another agent's integration run loaded the machine (#239 retro).
+  assert.ok(a.ms < LIMIT_MS, `the top pick took ${a.ms} ms of its ${LIMIT_MS} ms`);
   assert.equal(b.changed, true, `the second pick should be Unscrambled, got ${b.reason} after ${b.ms} ms (waited ${b.waitMs} ms)`);
   assert.ok(b.waitMs >= a.ms * 0.8, `the second pick waits for the top pick's turn; waited ${b.waitMs} ms, top took ${a.ms} ms`);
   assert.ok(b.ms > LIMIT_MS, `the wait doesn't count against the limit: ${b.ms} ms in all, ${b.waitMs} ms of it waiting`);

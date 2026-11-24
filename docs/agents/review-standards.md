@@ -2,6 +2,8 @@
 
 Four rules for reviewing a change. Each one comes from a real mistake (rules 1 to 3 on 2026-11-10, rule 4 on 2026-11-15).
 
+**A fix-up is reviewed too.** Before a review's fix-up branch merges into the integration branch, run `/mattpocock-skills:code-review` and `/codex-review` on the fix-up's own diff (base: the integration tip it branched from), and fix what survives on the same branch. One review per fix-up. Why: #239's round 1 fix-up merged unreviewed, and a later review of its diff alone found three real bugs in it.
+
 ## 1. A test double refuses what the real thing refuses
 
 Why: a fake that says yes to everything hides the mistakes the real thing would catch.
