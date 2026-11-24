@@ -2,7 +2,9 @@
 
 Commands are the `package.json` scripts. The things they don't tell you:
 
-- **Integration and A4 runners test committed code.** Commit, then run `npm run test:integration` / `npm run test:a4`: they rebuild `dist/` first. Calling a `run-ci.sh` directly stops with STALE-DIST when `dist/` is older than `src/`.
+- **Every check but integration in one command:** `npm run check` (build, unit tests, `typecheck:tests`, `check:brain`), the same command CI runs. Put it in agent briefs and merge checks, then `npm run test:integration`; plain `tsc` skips the test files.
+- **Integration and A4 runners test committed code.** Commit, then run `npm run test:integration` / `npm run test:a4`: they rebuild `dist/` first. Calling a `run-ci.sh` directly stops with STALE-DIST when `dist/` is older than `src/`. Leave `src/` alone while a run goes: an edit ends it with SOURCE HASHES CHANGED, and the run counts for nothing.
+- **One suite, or a few:** `npm run test:integration -- parity-play-time-check discovery-stream` runs only those (`tests/integration/<name>.mjs`; a wrong name lists the suites). Use it while working on a change and the full run before DONE. Two such runs can go side by side, each in its own 6G scope (below).
 - **Fresh worktree:** run `npm ci` at the root *and* in `ui/`.
 - **Node for `nobody`:** the isolated runners run node as user `nobody`, which cannot enter `/home`. They stop with NODE-UNREACHABLE when it can't run node from your PATH. On Brain a root-owned copy sits at `/opt/node-20`, linked as `/usr/local/bin/node`: `nobody` is denied `~/.local/node` and finds that one later in PATH. After upgrading `~/.local/node`, refresh the copy (`sudo cp -a`, then `chown -R root:root`).
 - **Memory:** each integration scenario runs under a 4G cap (`tests/integration/in-namespace.sh`) and prints `INTEGRATION MEMORY <name> peak_rss_kb=…`. When running several suites at once (parallel agents), wrap each run too: `systemd-run --user --scope -q -p MemoryMax=6G -p MemorySwapMax=0 bash -c "…"`.

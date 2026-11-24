@@ -8,7 +8,7 @@
 
 | Start here | Purpose |
 | --- | --- |
-| [Next-session runbook](../docs/kaijuflow/audit/NEXT_SESSION.md) | Current status and next action |
+| Next-session note: `~/kaijuflow-notes/NEXT_SESSION.md` (private notes repo) | Current status and next action |
 | [A3-ROUTE-001 first-pass route/UI matrix](../docs/kaijuflow/audit/A3-ROUTE-001.md) | 63 explicit endpoint declarations, 21 representative UI/action chains, side effects, guard classification and unknowns |
 | [Execution plan](../docs/kaijuflow/audit/EXECUTION_PLAN.md) | Research-validated stages 0–5, tool choice and exit gates |
 | [Original independent research report](../docs/kaijuflow/audit/RESEARCH_REPORT_2026-11-07.txt) | Exact user-supplied report archived for provenance; **illustrative commands may contain assumptions** and the corrected execution plan is authoritative |

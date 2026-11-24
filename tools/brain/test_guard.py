@@ -147,7 +147,7 @@ class SecretCommandTest(GuardCase):
 
     def test_refuses_a_search_from_a_folder_holding_the_test_folder(self):
         for cmd in ('grep -r apikey ~', f'grep -rn apikey {self.home}', 'rg apikey $HOME', 'find ~ -name indexers.json',
-                    'find / -name limits.json', 'cat $(find ~ -name indexers.json)', 'cd ~ && grep -r apikey .',
+                    'find / -name limits.json', 'find // -name limits.json','cat $(find ~ -name indexers.json)', 'cd ~ && grep -r apikey .',
                     'cd && cat kaijuflow-test/indexers.json', 'cd ~ && cat kaijuflow-test/uu/config/config.json',
                     'cd ~/kaijuflow-test; cd uu; cat config/config.json', 'cd ~/kaijuflow-test && grep -r key .'):
             self.assertIn('read-settings', self.bash(cmd) or '', cmd)
@@ -156,7 +156,8 @@ class SecretCommandTest(GuardCase):
         for cmd in ('grep limits.json tools/brain/docs/formats.md', 'grep -rn uu/config tools/brain',
                     "grep -n 'indexers.json\\|db.sqlite' tools/brain/RUNBOOK.md", 'git log --oneline -- tools/brain/limits.example.json',
                     'git commit -m "guard: refuse cat limits.json in nzbdav/config"', 'ls ~', 'cd ~ && ls', 'du -sh ~',
-                    'git branch -a | cut -d / -f 2', "python3 - <<'EOF'\nratio = a / b\nEOF", 'echo a / b', 'docker ps', 'docker exec kaijuflow-test-uu-1 ls /data',
+                    'git branch -a | cut -d / -f 2', "python3 - <<'EOF'\nratio = a / b\nEOF",
+                    "python3 - <<'EOF'\n  // a JS comment line\nEOF", "cat > x.mjs <<'EOF'\n// one\n  /// two\nEOF",'echo a / b', 'docker ps', 'docker exec kaijuflow-test-uu-1 ls /data',
                     'docker compose -f tools/brain/compose.test.yaml ps', 'cd ~/kaijuflow-test/store && ls'):
             self.assertIsNone(self.bash(cmd), cmd)
 

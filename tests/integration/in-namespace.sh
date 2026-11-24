@@ -52,8 +52,17 @@ with_memory_cap() {
     "${report[@]}" "$@"
   fi
 }
+# INTEGRATION_ONLY: the suite names to run (run-ci.sh's arguments, `.mjs` optional); empty runs every suite.
+scenarios=()
+for only in ${INTEGRATION_ONLY:-}; do
+  only="$(basename "$only" .mjs)"
+  [[ -f "$A4_RUN_DIR/work/$only.mjs" ]] || {
+    echo "INTEGRATION UNKNOWN SUITE $only; the suites: $(cd "$A4_RUN_DIR/work" && ls -- *.mjs | sed 's/\.mjs$//' | tr '\n' ' ')"; exit 30; }
+  scenarios+=("$A4_RUN_DIR/work/$only.mjs")
+done
+[[ ${#scenarios[@]} -gt 0 ]] || scenarios=("$A4_RUN_DIR"/work/*.mjs)
 overall=0
-for scenario in "$A4_RUN_DIR"/work/*.mjs; do
+for scenario in "${scenarios[@]}"; do
   name="$(basename "$scenario" .mjs)"
   rm -rf "$A4_RUN_DIR/work/config"; mkdir -p "$A4_RUN_DIR/work/config"; chown nobody:nogroup "$A4_RUN_DIR/work/config"
   rc=0

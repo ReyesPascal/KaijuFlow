@@ -89,7 +89,7 @@ Keep provider credentials, indexer keys, private configuration, logs, and runtim
 
 - [Roadmap and acceptance gates](docs/kaijuflow/ROADMAP.md)
 - [Audit findings and development decisions](docs/kaijuflow/AUDIT.md)
-- [Next session](docs/kaijuflow/audit/NEXT_SESSION.md)
+- Next session: the handoff note `~/kaijuflow-notes/NEXT_SESSION.md`, in the private notes repo (in this repo before 2026-11-24)
 - [Source manifest](docs/kaijuflow/upstream-v1.4.1-manifest.json) and [validation evidence](docs/kaijuflow/import-verification.json)
 
 Brain and its working containers and streaming configuration are outside this development task. No production deployment is authorized.

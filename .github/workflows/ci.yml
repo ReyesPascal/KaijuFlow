@@ -24,12 +24,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run build
-      - run: npm run test:unit
-      - name: Type-check the unit tests (tests/unit/*.ts)
-        run: npm run typecheck:tests
-      - name: Brain tools compile, lint and tests (tools/brain/check.sh, loopback fakes only)
-        run: npm run check:brain
+      - name: Build, unit tests, test type-check, brain tools (npm run check, the same command agents run)
+        run: npm run check
       - name: Working tree is clean after build and tests
         run: |
           git status --porcelain
