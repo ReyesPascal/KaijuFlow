@@ -13,9 +13,9 @@ What the next session starts with (`docs/agents/resume.md`). The ending session 
 
 **State (2026-11-23):** #239's build and both review rounds are done. Round 2's fix jobs 2, 3, 4 and 5 are merged into `deepen-239` (tip `98b3c29`; Job 1 was dropped: planted bugs). Build, unit, both type-checks, `check:brain` and integration pass on the tip. PR #252 is ready, CI green. Records: `~/kaijuflow-notes/reviews/239/round-2/fix-status.md`.
 
-**The owner types**, when usage is back, in a fresh herdr pane on Opus 5.5 at high effort (owner, 2026-11-23: "i do retro when i get usage back in a new session opus 5.5 high"; set it with `/model` first). The skill runs only when typed:
+**The owner types**, when usage is back, in a fresh herdr pane on Opus 5.5 at high effort (owner, 2026-11-23: "i do retro when i get usage back in a new session opus 5.5 high"; set it with `/model` first). A regular retro of the spec, no brief (owner, 2026-11-23: "i dont want to keep the brief anymore just regular retro of the spec"). The skill runs only when typed:
 
-    /mattpocock-skills:retro the #239 build: follow ~/kaijuflow-notes/reviews/239/retro-brief.md
+    /mattpocock-skills:retro the #239 build
 
 After the retro: #249 (replay), then #250 (grouped run), each on an idle machine under the owner's standing go for live tests (Owner's decisions). PR #252 merges on the owner's word.
 
