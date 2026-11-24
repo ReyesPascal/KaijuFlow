@@ -482,6 +482,14 @@ class RealIO:
         command."""
         return nntp.Usenet(login=nntp.provider(test_dir=self.cfg['test_dir']))
 
+    def start_diagnosing_agent(self, cases, ids, run_dir):
+        """The diagnosing agent on the check's open Case logs (#287): a herdr agent in the agents tab, else claude -p."""
+        return caselog.start_agent(cases, ids, run_dir)
+
+    def alert(self, line):
+        """The owner told in one line, the usual alert (kf-alert returns at once; its voice runs detached)."""
+        subprocess.run([os.path.expanduser('~/.local/bin/kf-alert'), line], timeout=30, check=False)
+
     def secret_values(self):
         """The test copies' secret values (key files, logins, keys), for scrubbing what a check keeps; never shown."""
         return testbed.secret_values(self.cfg['test_dir'])
@@ -1597,7 +1605,8 @@ def write_check_ending(cfg, io, check, started, logbuf):
     save_evidence(io, check)
     try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
         # section says if it could not
-        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet, cases=cfg.get('cases'))
+        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet, cases=cfg.get('cases'),
+                                                   agent=io.start_diagnosing_agent, alert=io.alert)
     except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
         check['diagnosis'] = None
         check['diagnosis_error'] = br.scrub_text(f'{type(e).__name__}: {e}')

@@ -425,11 +425,36 @@ def open_cases(run_dir, cases, library=None):
     return list(out.values())
 
 
-def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None, cases=None):
+def _start_agent(summary, run_dir, cases, agent, alert):
+    """Starts the diagnosing agent on the check's open Case logs and tells the owner in one line (story 49)."""
+    waiting = [k['id'] for k in summary.get('cases') or [] if k['status'] == caselog.OPEN]
+    if not waiting or agent is None:
+        return
+    try:
+        started, error = agent(cases, waiting, run_dir), None
+    except Exception as e:  # noqa: BLE001  (the check's report comes first; the line says so)
+        started, error = None, br.scrub_text(f'{type(e).__name__}: {e}')
+    summary['agent'] = {'started': started, 'error': error, 'cases': waiting}
+    n = sum(1 for p in summary['plays'] for f in p['failures'] if f['verdict'] != 'found')
+    logs = f"Case log{'s' if len(waiting) > 1 else ''} {', '.join(waiting)}"
+    line = f"Diagnosis: {_plural(n, 'failure')} in {os.path.basename(os.path.normpath(run_dir))} " \
+           f"{'has' if n == 1 else 'have'} no proved cause; "
+    line += f'the diagnosing agent is on {logs} ({started}).' if error is None else \
+        f"the diagnosing agent could not start ({error}): {logs} wait{'s' if len(waiting) == 1 else ''} for it."
+    if alert is not None:
+        try:
+            alert(line)
+        except Exception:  # noqa: BLE001, S110  (an alert that fails never stops the check)
+            pass
+
+
+def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usenet=None, cases=None, agent=None,
+                alert=None):
     """What a check runs by itself at its end when a play left an evidence folder: the live Clues asked once (when
     `usenet` opens the connection for them), every stored failure under the runs root fingerprinted again if the masking
     rules changed, then this check's plays diagnosed, and every failure with no proved cause put in its Case log under
-    `cases`. The summary, or None when the check left no evidence folder."""
+    `cases`; when one of those logs is open, `agent(cases, ids, run_dir)` starts the diagnosing agent on them and
+    `alert(line)` tells the owner in one line. The summary, or None when the check left no evidence folder."""
     if not evidence_folders(run_dir):
         return None
     if usenet is not None:
@@ -441,6 +466,7 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
     if cases is not None:
         summary['cases'] = open_cases(run_dir, cases, library)
         summary['open_cases'] = caselog.count_open(cases)
+        _start_agent(summary, run_dir, cases, agent, alert)
         _write_json(os.path.join(run_dir, STORED), summary)
     return summary
 
@@ -472,6 +498,10 @@ def report_section(summary, error=None):
         for k in summary['cases']:
             lines.append(f"- Case log `{k['id']}`: {'opened' if k['new'] else 'one more occurrence'} "
                          f"({_plural(k['occurrences'], 'occurrence')}, {k['status']}).")
+    a = summary.get('agent')
+    if a:
+        lines += ['', f"The diagnosing agent started: {a['started']}." if a['error'] is None else
+                  f"The diagnosing agent could not start: {a['error']}."]
     return lines
 
 

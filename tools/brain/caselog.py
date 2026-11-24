@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
@@ -627,6 +628,60 @@ def main(argv):
         print(f'refused: {e}')
         return 1
     return 0
+
+
+# --------------------------------------------------------------------------- starting the diagnosing agent
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the agent works in the repo
+ROUTINE = 'tools/brain/docs/diagnosing-agent.md'
+
+
+def prompt(cases, ids, run_dir):
+    return (f"You are the diagnosing agent (#287). Work the Case log{'s' if len(ids) > 1 else ''} {', '.join(ids)}, "
+            f"opened or joined by the check {run_dir}. Follow {ROUTINE} step by step; every write goes through "
+            f"`python3 -I tools/brain/diagnosis.py case <command> ... --cases {cases}`.")
+
+
+def _json(r):
+    return json.loads(r.stdout or '{}').get('result') or {}
+
+
+def start_agent(cases, ids, run_dir, run=subprocess.run, popen=subprocess.Popen, env=None, name=None, cwd=REPO):
+    """Starts the diagnosing agent and returns where it runs. Inside herdr (HERDR_ENV=1): a claude agent in a new pane
+    of the workspace's `agents` tab (made when missing), prompted with the routine; outside it, `claude -p` detached,
+    its output in <cases>/<name>.log."""
+    env = os.environ if env is None else env
+    name = name or 'diag-' + datetime.datetime.now().strftime('%m%d-%H%M%S')
+    text = prompt(cases, ids, run_dir)
+    if env.get('HERDR_ENV') == '1':
+        def herdr(*args):
+            r = run(['herdr', *args], capture_output=True, text=True, timeout=60, check=False)
+            if r.returncode != 0 and 'agent_prompt_stalled' in (r.stdout or '') + (r.stderr or ''):
+                run(['herdr', 'agent', 'send-keys', name, 'enter'], capture_output=True, text=True, timeout=60, check=False)
+                return {}  # the prompt sat in the input box: Enter sends it (as kf-next does)
+            if r.returncode != 0:
+                raise OSError(f"herdr {' '.join(args[:2])} failed: {(r.stderr or r.stdout or '').strip()[:200]}")
+            return _json(r)
+
+        def agents_tab():
+            return next((t['tab_id'] for t in herdr('tab', 'list').get('tabs') or [] if t.get('label') == 'agents'), None)
+        tab = agents_tab()
+        if tab is None:
+            herdr('tab', 'create', '--label', 'agents', '--cwd', cwd, '--no-focus')
+            tab = agents_tab()
+        pane = next((p['pane_id'] for p in herdr('pane', 'list').get('panes') or [] if p.get('tab_id') == tab), None)
+        if pane is None:
+            raise OSError('herdr has no pane in the agents tab')
+        new = herdr('pane', 'split', pane, '--direction', 'down', '--cwd', cwd)['pane']['pane_id']
+        herdr('agent', 'start', name, '--kind', 'claude', '--pane', new, '--', '--dangerously-skip-permissions')
+        herdr('agent', 'prompt', name, text, '--wait', '--timeout', '20000')
+        return f'herdr agent {name} in pane {new}'
+    os.makedirs(cases, exist_ok=True)
+    out = os.path.join(cases, name + '.log')
+    with open(out, 'w') as f:
+        p = popen(['claude', '-p', text, '--dangerously-skip-permissions'], cwd=cwd, stdout=f, stderr=subprocess.STDOUT,
+                  stdin=subprocess.DEVNULL, start_new_session=True)
+    return f'claude -p (pid {p.pid}), its output in {out}'
 
 
 # --------------------------------------------------------------------------- the readable copy

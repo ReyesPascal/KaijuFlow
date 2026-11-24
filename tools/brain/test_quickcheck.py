@@ -438,6 +438,13 @@ class CheckWorld:
     def usenet(self):  # this world has no news server: the live Clues' connection is refused (#284)
         raise OSError('no news server in this world')
 
+    def start_diagnosing_agent(self, cases, ids, run_dir):  # the agent a check starts on its unproved failures (#287)
+        self.calls.append(('diagnosing agent', list(ids)))
+        return 'herdr agent diag-test'
+
+    def alert(self, line):
+        self.calls.append(('alert', line))
+
     def now(self):
         return self.clock
 

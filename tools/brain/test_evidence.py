@@ -115,7 +115,7 @@ class FailedPlayWorld(CheckWorld):
 
 def run_failed_check(case, **kw):
     cfg, world = check_cfg(case), FailedPlayWorld(**kw)
-    world.case = case
+    world.case, world.cases = case, cfg['cases']
     code, out = run_check(cfg, world)
     folder = os.path.join(cfg['runs_root'], CHECK)
     return code, out, folder, world

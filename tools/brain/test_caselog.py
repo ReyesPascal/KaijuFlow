@@ -9,12 +9,15 @@ import io
 import json
 import os
 import unittest
+from unittest import mock
 
 import casebook
 import caselog
 import clues
 import diagnosis
 from test_diagnosis import DEAD_PACK, INDEXER_DOWN, READ_ERROR, SIC, TWO_REFUSALS, casebook_copy, stored_check
+from test_evidence import run_failed_check
+from test_quickcheck import read
 from test_settings import tempdir
 
 INCEPTION_PAGE = ('{"step": "indexer_page", "source": "NinjaCentral", "ms": 3, "ok": false, "t": '
@@ -337,6 +340,92 @@ class SolvedTest(CaseWrites):
     def test_an_unconcluded_case_is_not_written_up(self):
         self.assertEqual(case_cmd(self.cases, 'entry', self.id, 'x-y', '--casebook', casebook_copy(self)),
                          (1, f'refused: {self.id} is not concluded yet (open)\n'))
+
+
+class AgentStartsByItselfTest(unittest.TestCase):
+    def test_a_check_whose_failure_has_no_proved_cause_starts_the_agent_and_tells_the_owner_in_one_line(self):
+        with mock.patch.object(diagnosis, 'load_index', return_value=[]):  # a Casebook that knows nothing yet
+            code, out, folder, world = run_failed_check(self)
+        [cid] = os.listdir(world.cases)
+        self.assertIn(('diagnosing agent', [cid]), world.calls)
+        [line] = [c[1] for c in world.calls if c[0] == 'alert']
+        self.assertEqual(line, f'Diagnosis: 1 failure in {os.path.basename(folder)} has no proved cause; the diagnosing '
+                               f'agent is on Case log {cid} (herdr agent diag-test).')
+        report = read(folder, 'report.md')
+        self.assertIn('open Case logs: 1.', report)
+        self.assertIn(f'- Case log `{cid}`: opened (1 occurrence, open).', report)
+        self.assertIn('The diagnosing agent started: herdr agent diag-test.', report)
+
+    def test_a_check_whose_failures_are_all_proved_starts_no_agent(self):
+        code, out, folder, world = run_failed_check(self)
+        self.assertEqual([c for c in world.calls if c[0] in ('diagnosing agent', 'alert')], [])
+
+    def test_an_agent_that_cannot_start_is_said_in_the_line(self):
+        def refuse(cases, ids, run_dir):
+            raise OSError('herdr is not running')
+        alerts = []
+        root, run_dir, cases, summary = after(self, (INDEXER_DOWN,), agent=refuse, alert=alerts.append)
+        [cid] = logs(cases)
+        self.assertEqual(alerts, [f'Diagnosis: 1 failure in 2026-11-24T070000Z-quick-check has no proved cause; the '
+                                  f'diagnosing agent could not start (OSError: herdr is not running): Case log {cid} '
+                                  'waits for it.'])
+        self.assertEqual(summary['agent'], {'started': None, 'error': 'OSError: herdr is not running', 'cases': [cid]})
+
+
+# What herdr answered on Brain, 2026-11-24 (tab list, pane list cut to its fields), and pane split's answer as kf-next
+# reads it.
+TABS = ('{"id":"cli:tab:list","result":{"tabs":[{"agent_status":"done","focused":false,"label":"1","number":1,'
+        '"pane_count":1,"tab_id":"w5:t1","workspace_id":"w5"},{"agent_status":"working","focused":true,"label":"agents",'
+        '"number":3,"pane_count":5,"tab_id":"w5:t3","workspace_id":"w5"}],"type":"tab_list"}}')
+PANES = ('{"id":"cli:pane:list","result":{"panes":[{"agent":"claude","agent_status":"done","cwd":"/home/brain/code/'
+         'KaijuFlow","focused":false,"pane_id":"w5:p0","tab_id":"w5:t1","workspace_id":"w5"},{"agent":"claude",'
+         '"agent_status":"idle","cwd":"/home/brain/code/KaijuFlow","focused":true,"pane_id":"w5:pV","tab_id":"w5:t3",'
+         '"workspace_id":"w5"}]}}')
+SPLIT = '{"id":"cli:pane:split","result":{"pane":{"pane_id":"w5:p12","tab_id":"w5:t3"}}}'
+
+
+class FakeHerdr:
+    """herdr as the launcher meets it: answers its list and split commands, and the prompt as started."""
+    def __init__(self, tabs=TABS):
+        self.calls, self.tabs = [], tabs
+
+    def __call__(self, cmd, capture_output=True, text=True, timeout=None, check=False):
+        self.calls.append(cmd)
+        out = {('tab', 'list'): self.tabs, ('pane', 'list'): PANES, ('pane', 'split'): SPLIT,
+               ('tab', 'create'): '{"id":"cli:tab:create","result":{}}'}.get(tuple(cmd[1:3]), '{"result":{}}')
+        if cmd[1:3] == ['tab', 'create']:
+            self.tabs = TABS
+        return mock.Mock(returncode=0, stdout=out, stderr='')
+
+
+class LauncherTest(unittest.TestCase):
+    def test_inside_herdr_the_agent_starts_in_a_new_pane_of_the_agents_tab(self):
+        herdr = FakeHerdr()
+        said = caselog.start_agent('/n/cases', ['fail-indexer-page-e5f2211b'], '/n/runs/check', run=herdr,
+                                   env={'HERDR_ENV': '1'}, name='diag-1124')
+        self.assertEqual(said, 'herdr agent diag-1124 in pane w5:p12')
+        self.assertEqual(herdr.calls[2][:4], ['herdr', 'pane', 'split', 'w5:pV'])
+        self.assertEqual(herdr.calls[3][:7], ['herdr', 'agent', 'start', 'diag-1124', '--kind', 'claude', '--pane'])
+        prompt = herdr.calls[4]
+        self.assertEqual(prompt[:4], ['herdr', 'agent', 'prompt', 'diag-1124'])
+        self.assertIn('fail-indexer-page-e5f2211b', prompt[4])
+        self.assertIn('tools/brain/docs/diagnosing-agent.md', prompt[4])
+        self.assertIn('--cases /n/cases', prompt[4])
+
+    def test_with_no_agents_tab_it_makes_one(self):
+        herdr = FakeHerdr(tabs=TABS.replace('"agents"', '"other"'))
+        caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
+        self.assertEqual(herdr.calls[1][:5], ['herdr', 'tab', 'create', '--label', 'agents'])
+
+    def test_outside_herdr_it_runs_claude_detached_with_its_output_beside_the_case_logs(self):
+        cases = tempdir(self)
+        started = []
+        said = caselog.start_agent(cases, ['x'], '/n/runs/check', env={}, name='diag-1124',
+                                   popen=lambda cmd, **kw: started.append((cmd, kw)) or mock.Mock(pid=42))
+        [(cmd, kw)] = started
+        self.assertEqual(cmd[:2], ['claude', '-p'])
+        self.assertTrue(kw['start_new_session'])
+        self.assertEqual(said, f"claude -p (pid 42), its output in {os.path.join(cases, 'diag-1124.log')}")
 
 
 if __name__ == '__main__':
