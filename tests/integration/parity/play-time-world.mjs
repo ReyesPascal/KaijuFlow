@@ -20,12 +20,14 @@ export const PLAY_TIME_BOUNDARIES = ['Fake indexer answers every search with the
  * Without `refuseGrabs` it serves the copies it was given (`copy`, a Release's Source on this indexer, #300): the same
  * NZB as the upload's link on the suite's indexer; a copy set to refuse (`refuse`) answers as `refuseGrabs` does, and a
  * link it does not know answers 404, as an indexer does for a removed NZB.
+ * `slow(ms)` makes it answer every search that long after it was asked (0: at once), as a slower indexer does (#301).
  */
 async function createFakeIndexer(listen, { refuseGrabs } = {}) {
   const offers = new Map(); // imdb id without "tt" -> [{ title, link, size }]
   const requests = [];
   const searches = []; // { imdbid, at }
   const grabbedTags = [];
+  let delayMs = 0;
   const copies = new Map(); // tag -> { from: the upload's NZB link, refuse?: { status, body? } }
   const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const refuse = (res, how) => {
@@ -56,12 +58,15 @@ async function createFakeIndexer(listen, { refuseGrabs } = {}) {
     const items = offers.get(u.searchParams.get('imdbid')) ?? [];
     const cat = u.searchParams.get('t') === 'tvsearch' ? 5040 : 2040;
     res.setHeader('Content-Type', 'application/xml');
-    res.end(`<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response total="${items.length}" offset="0"/>` +
+    const answer = `<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response total="${items.length}" offset="0"/>` +
       items.map(i => `<item><title>${xml(i.title)}</title><link>${xml(i.link)}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate>` +
-        `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>');
+        `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>';
+    if (delayMs > 0) setTimeout(() => res.end(answer), delayMs); else res.end(answer);
   });
   return {
-    url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); },
+    url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`,
+    offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); },
+    slow(ms) { delayMs = ms; },
     /** This indexer's copy of an upload whose NZB is at `from`: its own link. `refuse`: answer every grab of it so. */
     copy(tag, from, { refuse } = {}) { copies.set(tag, { from, refuse }); return `${url}/${tag}.nzb`; },
     /** Grabs of this copy answer so from now on (`{ status: 429 }`), or serve again (undefined). */

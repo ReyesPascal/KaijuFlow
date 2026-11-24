@@ -243,6 +243,58 @@ const isBest = s => s.name.includes('KaijuFlow ▶ Best');
 /** The release name a list entry plays (from its tile envelope). */
 const entryTitle = s => JSON.parse(Buffer.from(new URL(s.url).searchParams.get('t'), 'base64url').toString()).title;
 
+/** How long the slow indexer takes to answer a search in the list deadline's scenarios (#301). */
+const SLOW_INDEXER_MS = 1500;
+
+/**
+ * Offer movie Sources for a new title named `KaijuFlow PlayTime <name>` (2026) on the suite's indexer (fast) and on the
+ * second one, which answers SLOW_INDEXER_MS late (#301). Each spec: { tag, kind?: 'healthy' | 'dead' }. A tag that
+ * ends in `-CE` makes a maybe (`CE` between the name and the year), any other a sure Source. Sizes go down in the
+ * order given, fast ones first. Returns { id, fast: [...], slow: [...] }, each { tag, title, media, link, size }.
+ */
+function offerFastAndSlow(w, name, fastSpecs, slowSpecs) {
+  const id = `tt${nextImdb++}`;
+  w.cinemeta.add(id, { name: `KaijuFlow PlayTime ${name}`, year: '2026' });
+  let i = 0;
+  const make = spec => {
+    const group = spec.tag.endsWith('-CE') ? `${name}-CE` : name;
+    const title = `KaijuFlow.PlayTime.${group}.2026.2160p.WEB-DL.H265-${spec.tag.replace(/-/g, '')}`;
+    const media = mediaFor(spec.tag);
+    const link = w.backend.addMovie(spec.tag, title, media, spec.kind === 'dead' ? { dead: true } : {});
+    return { tag: spec.tag, title, media, link, size: (20 - i++) * GB };
+  };
+  const fast = fastSpecs.map(make), slow = slowSpecs.map(make);
+  w.indexer.offer(id, fast);
+  w.second.offer(id, slow);
+  w.second.slow(SLOW_INDEXER_MS);
+  return { id, fast, slow };
+}
+
+/**
+ * A title whose Release the fast indexer (the second one here) lists with a copy it refuses (429), under a dead Source
+ * whose check is held past the slow indexer's answer; the suite's indexer, slowed by SLOW_INDEXER_MS, has the same
+ * upload (#301 with #300). Returns { id, dead, rel }. `endLateCopy` puts the indexer and the news server back.
+ */
+function offerLateCopy(w, name) {
+  w.stats.resetAllStats();
+  const id = `tt${nextImdb++}`;
+  w.cinemeta.add(id, { name: `KaijuFlow PlayTime ${name}`, year: '2026' });
+  const title = group => `KaijuFlow.PlayTime.${name}.2026.2160p.WEB-DL.H265-${group}`;
+  const dead = { tag: `${name}-dead`, title: title('DEAD'), size: 20 * GB };
+  dead.link = w.second.copy(`${dead.tag}-second`, w.backend.addMovie(dead.tag, dead.title, mediaFor(dead.tag), { dead: true }));
+  const rel = { tag: `${name}-rel`, title: title('REL'), size: 19 * GB, media: mediaFor(`${name}-rel`) };
+  const upload = w.backend.addMovie(rel.tag, rel.title, rel.media);
+  w.second.offer(id, [dead, { title: rel.title, size: rel.size, link: w.second.copy(`${rel.tag}-second`, upload, { refuse: { status: 429 } }) }]);
+  w.indexer.offer(id, [{ title: rel.title, size: rel.size, link: upload }]);
+  w.indexer.slow(SLOW_INDEXER_MS);
+  w.news.slow(`${dead.tag}-`, SLOW_INDEXER_MS + 1000);
+  return { id, dead, rel };
+}
+function endLateCopy(w, name) {
+  w.indexer.slow(0);
+  w.news.slow(`${name}-dead-`, 0);
+}
+
 /**
  * Offer movie Releases for a new title on the suite's indexer and on the second one (#299), in list order (same
  * quality, sizes going down). Each spec: { tag, on: 'both' | 'one' | 'second' (the second indexer only), apart? (the
@@ -463,6 +515,102 @@ export const playTimeScenarios = [
         w.configData.movieFilters = saved;
       }
     },
+  },
+  {
+    // The list deadline (#301): the fast indexer's answer holds a sure Source, so the list goes out at its time, not
+    // the slow one's. That Source is dead; the slow indexer's healthy Source arrives after the list and joins the
+    // Head start's Walk, which waits for it instead of ending, and Best plays it. The next list request shows it.
+    id: 'a-late-source-joins-a-walk-whose-fast-sources-failed',
+    async run(w) {
+      const { id, fast: [dead], slow: [late] } = offerFastAndSlow(w, 'late', [{ tag: 'late-fast', kind: 'dead' }], [{ tag: 'late-slow' }]);
+      try {
+        await withIndexer(w, w.second.entry, async () => {
+          const t0 = Date.now();
+          const { result: streams, lines } = await withLogs(async () => {
+            const out = await w.list('movie', id);
+            await new Promise(r => setImmediate(r)); // the list's own step line is written one turn after the answer
+            return out;
+          });
+          const listed = Date.now() - t0;
+          assert.ok(listed < SLOW_INDEXER_MS - 300, `the list went out at the fast indexer's time (${listed} ms)`);
+          assert.deepEqual(stepsOf(lines).filter(x => x.step === 'list' && x.ref === id).map(x => x.not_waited_for), [['Second']], 'its list line names the indexer it did not wait for');
+          assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle), [dead.title], 'the fast indexer\'s Source alone');
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, late.media, 'Best plays the slow indexer\'s Source');
+          assert.ok((await w.list('movie', id)).filter(s => !isBest(s)).map(entryTitle).includes(late.title), 'the next list shows the late Source');
+        });
+      } finally {
+        w.second.slow(0);
+      }
+    },
+  },
+  {
+    // The list deadline (#301): the fast indexer's answer holds only a maybe, so the list waits for the slow one and
+    // holds both indexers' Sources; Best plays the slow indexer's sure Source, not the fast one's healthy maybe.
+    id: 'the-list-waits-for-the-slow-indexer-when-the-fast-one-has-nothing-sure',
+    async run(w) {
+      const { id, fast: [maybe], slow: [sure] } = offerFastAndSlow(w, 'wait', [{ tag: 'wait-CE' }], [{ tag: 'wait-sure' }]);
+      try {
+        await withIndexer(w, w.second.entry, async () => {
+          const t0 = Date.now();
+          const { result: streams, lines } = await withLogs(async () => {
+            const out = await w.list('movie', id);
+            await new Promise(r => setImmediate(r)); // the list's own step line is written one turn after the answer
+            return out;
+          });
+          const listedAt = Date.now();
+          assert.deepEqual(stepsOf(lines).filter(x => x.step === 'list' && x.ref === id).map(x => 'not_waited_for' in x), [false], 'its list line names no indexer it did not wait for');
+          assert.ok(listedAt - t0 >= SLOW_INDEXER_MS, `the list waited for the slow indexer (${listedAt - t0} ms)`);
+          assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle).sort(), [maybe.title, sure.title].sort(), 'both indexers\' Sources');
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, sure.media, 'Best plays the sure Source');
+        });
+      } finally {
+        w.second.slow(0);
+      }
+    },
+  },
+  {
+    // #301 with #300: a late copy of a Release joins its Sources. The fast indexer (here the second one) lists the
+    // Release with a copy it refuses to hand out (429), under a dead Source whose slow check holds the Walk; the slow
+    // indexer's copy of the same upload arrives meanwhile, so Best fetches the Release's NZB from it and plays it.
+    // Without the late copy the Release's only indexer refused, and Best would find nothing to play.
+    id: 'a-late-copy-of-a-release-joins-its-sources-in-the-walk',
+    // One Source at a time, so the Walk reaches the Release only once the dead one's check is done.
+    run: w => withSettings(w, { candidateCount: 1 }, () => withIndexer(w, w.second.entry, async () => {
+      const { id, rel } = offerLateCopy(w, 'latecopy');
+      try {
+        const streams = await w.list('movie', id);
+        const r = await play(streams[0].url);
+        assert.equal(r.status, 200, 'Best plays');
+        assertBytes(r.body, rel.media, 'Best plays the Release, from the slow indexer\'s late copy');
+        assert.deepEqual(fetchedFrom(w, rel.tag), { Parity: 1, Second: 1 }, 'the fast indexer refused, the late copy served');
+      } finally {
+        endLateCopy(w, 'latecopy');
+      }
+    })),
+  },
+  {
+    // #301 with #300: the late copy joins the Release in the list's fallback group too, so a clicked list entry with no
+    // Head start (On Click) fetches its NZB from the slow indexer once the fast one refuses.
+    id: 'a-late-copy-of-a-release-joins-its-sources-for-a-clicked-entry',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withIndexer(w, w.second.entry, async () => {
+      const { id, rel } = offerLateCopy(w, 'latecopyclick');
+      try {
+        const streams = await w.list('movie', id);
+        const entry = streams.find(s => !isBest(s) && entryTitle(s) === rel.title);
+        assert.ok(entry, 'the Release is listed');
+        await new Promise(r => setTimeout(r, SLOW_INDEXER_MS + 500)); // the slow indexer has answered
+        const r = await play(entry.url);
+        assert.equal(r.status, 200, 'the list entry plays');
+        assertBytes(r.body, rel.media, 'the list entry plays the Release, from the slow indexer\'s late copy');
+        assert.equal(fetchedFrom(w, rel.tag).Parity, 1, 'the late copy served');
+      } finally {
+        endLateCopy(w, 'latecopyclick');
+      }
+    })),
   },
   {
     // The list goes out at once, sorted and unchecked, with the Best entry on top and the full list below: it waits

@@ -227,12 +227,13 @@ export function listAsked(sessionKey: string): void {
 /**
  * Head start (GLOSSARY): a title's stream list was asked for, so Best's check and prepare begin now in the
  * background (listAsked has stopped the one before). A title whose Best already runs or is done keeps that
- * session (a press joins it).
+ * session (a press joins it). `more`: the whole list's candidates, when a slower indexer is still to answer (#301);
+ * its new ones join the Walk when they come.
  */
-export function headStart(play: PlayContext, candidates: FallbackCandidate[], settings: UltimateFallbackConfig): void {
-  if (candidates.length === 0 || sessionPromises.has(play.sessionKey)) return;
-  console.log(`👑 Ultimate-Fallback [${play.sessionKey}] Head start: checking Best's Sources before a press`);
-  ultimateFallbackFromCandidates(play, candidates, settings)
+export function headStart(play: PlayContext, candidates: FallbackCandidate[], settings: UltimateFallbackConfig, more?: Promise<FallbackCandidate[]>): void {
+  if ((candidates.length === 0 && !more) || sessionPromises.has(play.sessionKey)) return;
+  console.log(`👑 Ultimate-Fallback [${play.sessionKey}] Head start: checking Best's Sources before a press${more ? ' (more to come from a slower indexer)' : ''}`);
+  ultimateFallbackFromCandidates(play, candidates, settings, more)
     .catch(err => console.error('❌ Ultimate-Fallback error (Head start):', err));
 }
 
@@ -281,11 +282,21 @@ interface SourceRun {
   prepareError?: Error;
 }
 
-/** Best's Walk for a play (its play context, #246): the Head start's, or a press's that walks on its own. */
+/** Same Source of a list: its NZB link and release name (as the list's entries find their candidate). */
+const candidateKey = (c: FallbackCandidate) => `${c.nzbUrl}\u0000${c.title}`;
+
+/**
+ * Best's Walk for a play (its play context, #246): the Head start's, or a press's that walks on its own. `more`: the
+ * whole list's candidates, when the list went out before a slower indexer answered (#301). Until it comes the Walk is
+ * open; then the candidates it does not hold join it, the sure ones after what it reached and before the maybes it
+ * has not, the maybes last; a candidate it holds takes the late one's fields but its mark (a Release with its late
+ * Sources). The late ones get no library pre-check.
+ */
 export async function ultimateFallbackFromCandidates(
   play: PlayContext,
   candidates: FallbackCandidate[],
   settings: UltimateFallbackConfig,
+  more?: Promise<FallbackCandidate[]>,
 ): Promise<void> {
   const { sessionKey, type: contentType, episodesInSeason } = play;
   if (activeSessions.has(sessionKey)) return;
@@ -324,8 +335,9 @@ export async function ultimateFallbackFromCandidates(
   try {
     // Opted-out indexers are not walked. Search Flow (#282): the sure Sources are tried first, then the maybe ones.
     const indexerMap = settings.healthCheckIndexers;
-    const list = sureFirst(indexerMap ? candidates.filter(c => indexerMap[c.indexerName] !== false) : candidates);
-    if (list.length === 0) {
+    const eligible = (cs: FallbackCandidate[]) => (indexerMap ? cs.filter(c => indexerMap[c.indexerName] !== false) : cs);
+    const list = sureFirst(eligible(candidates));
+    if (list.length === 0 && !more) {
       console.log(`${tag} No eligible candidates`);
       return;
     }
@@ -353,6 +365,8 @@ export async function ultimateFallbackFromCandidates(
       isDead: index => recall(list[index], play).dead !== undefined,
       indexersOf: index => sourcesOf(list[index]).map(s => s.indexerName ?? ''),
       hits: new Map([...hits].map(([index, data]) => [index, data.videoPath])),
+      open: more !== undefined,
+      isMaybe: index => list[index].flow === 'maybe',
     });
     const runs = new Map<number, SourceRun>();
     const runOf = (index: number): SourceRun => { let r = runs.get(index); if (!r) runs.set(index, r = {}); return r; };
@@ -541,8 +555,38 @@ export async function ultimateFallbackFromCandidates(
 
     // A stop (a newer list request, a settings change) ends the Walk at once: its checks' connections close now.
     controller.signal.addEventListener('abort', () => { pool?.stop(); post({ type: 'stop' }); }, { once: true });
+    // Late Sources (#301): put in the list where the Walk takes them, the library hits after them moved along.
+    const insert = (at: number, late: FallbackCandidate[]) => {
+      if (late.length === 0) return;
+      list.splice(at, 0, ...late);
+      const moved = [...hits].map(([index, data]): [number, StreamData] => [index >= at ? index + late.length : index, data]);
+      hits.clear();
+      for (const [index, data] of moved) hits.set(index, data);
+      post({ type: 'more', at, count: late.length });
+    };
+    const takeLate = (whole: FallbackCandidate[]) => {
+      if (walk.done) return;
+      const held = new Map(list.map(c => [candidateKey(c), c]));
+      const fresh: FallbackCandidate[] = [];
+      for (const c of sureFirst(eligible(whole))) {
+        const mine = held.get(candidateKey(c));
+        if (!mine) { fresh.push(c); continue; }
+        const { flow: _flow, flowWhy: _why, proof: _proof, ...fields } = c;
+        Object.assign(mine, fields);
+      }
+      const sure = fresh.filter(c => c.flow !== 'maybe');
+      const firstMaybe = list.findIndex((c, i) => i >= walk.reached && c.flow === 'maybe');
+      insert(firstMaybe < 0 ? list.length : firstMaybe, sure);
+      insert(list.length, fresh.filter(c => c.flow === 'maybe'));
+      if (fresh.length > 0) console.log(`${tag} ➕ ${fresh.length} late Source(s) from a slower indexer joined the Walk`);
+    };
+
     for (const d of walk.start()) run(d);
     if (walk.done) finish();
+    if (more) {
+      more.then(takeLate).catch(err => console.error(`${tag} Late Sources not taken:`, err))
+        .finally(() => { if (!walk.done) post({ type: 'closed' }); });
+    }
     await finished;
 
     // ── Summary ──────────────────────────────────────────────────
