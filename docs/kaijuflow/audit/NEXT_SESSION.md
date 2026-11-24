@@ -17,7 +17,7 @@ What the next session starts with (`docs/agents/resume.md`). The ending session 
 
     /mattpocock-skills:retro the #239 build: follow ~/kaijuflow-notes/reviews/239/retro-brief.md
 
-After the retro: the review report (`~/kaijuflow-notes/reviews/239/report-design.md`), then #249 (replay), then #250 (grouped run). #249 and #250 each need the owner's go, on an idle machine. PR #252 merges on the owner's word.
+After the retro: #249 (replay), then #250 (grouped run). #249 and #250 each need the owner's go, on an idle machine. PR #252 merges on the owner's word.
 
 **Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (voice "azelma", repeats until the notification is closed) at every stop-and-ask. Questions: AskUserQuestion plus `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered.
 
