@@ -18,41 +18,22 @@ import unittest
 import brainreport as br
 import build_page as bp
 import pagetargets as pt
+from run_fixtures import fixture, run_folder
 from test_brainreport import TAGGED_TITLES, tagged_visit
 from test_settings import tempdir
 
-BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13')
+BASELINE = fixture('run-2026-11-13')
 FOLDER = '2026-11-13T053200Z-baseline'
 
 
 def copy_run(root, folder_name=FOLDER, edit_visits=None, **meta):
-    """The 2026-11-13 baseline as a run folder named folder_name under root, its visits changed by edit_visits(visits)
-    and its meta.json fields by meta."""
-    folder = os.path.join(root, folder_name)
-    shutil.copytree(BASELINE, folder)
-    if edit_visits:
-        path = os.path.join(folder, 'raw.json')
-        with open(path) as f:
-            raw = json.load(f)
-        edit_visits(raw['visits'])
-        with open(path, 'w') as f:
-            json.dump(raw, f)
-    if meta:
-        path = os.path.join(folder, 'meta.json')
-        with open(path) as f:
-            m = json.load(f)
-        m.update(meta)
-        with open(path, 'w') as f:
-            json.dump(m, f)
-    return folder
+    """The 2026-11-13 baseline as a run folder named folder_name under root, on the recording 'l' (the fixture is from
+    before #186 and names none), its visits changed by edit_visits(visits) and its meta.json fields by meta."""
+    return run_folder(root, folder_name, {'recording': 'l', **meta}, like=BASELINE, edit_visits=edit_visits)
 
 
 def make_record(root, name='2026-11-13T035846Z-baseline-record'):
-    folder = os.path.join(root, name)
-    os.makedirs(folder)
-    with open(os.path.join(folder, 'meta.json'), 'w') as f:
-        json.dump({'name': 'baseline', 'mode': 'record', 'started': '2026-11-13T03:58:46.000Z'}, f)
-    return folder
+    return run_folder(root, name, {'name': 'baseline', 'mode': 'record', 'started': '2026-11-13T03:58:46.000Z'})
 
 
 def text(page):
@@ -178,7 +159,7 @@ class TieAtTheMaximum(unittest.TestCase):
 
 class AgainstAnEarlierRun(unittest.TestCase):
     def setUp(self):
-        root = tempdir(self)
+        self.root = root = tempdir(self)
 
         def slower(visits):  # KaijuFlow's cold starts 1 s slower in the earlier run
             for v in visits:
@@ -208,7 +189,7 @@ class AgainstAnEarlierRun(unittest.TestCase):
                                 'Baseline run 2026-11-13 No earlier run to compare with: this is the first one. 1 of 6 7.73 s 0.18 s 39 of 40'])
 
     def test_a_stopped_run_is_never_the_one_compared_with(self):
-        stopped = copy_run(tempdir(self), '2026-11-15T000000Z-stopped', name='stopped', status='stopped')
+        stopped = copy_run(self.root, '2026-11-15T000000Z-stopped', name='stopped', status='stopped')  # between the two
         index = bp.build([self.earlier, stopped, self.later])
         self.assertIn('Compared with the baseline run of 13 November 2026.', index)
         self.assertIn('<td class="sl-r">not judged</td>', section(index, 'Every run so far'))
@@ -423,7 +404,7 @@ FAILED = {('kaijuflow', 'cold', 1, 'Old Film'), ('altmount-addon', 'cold', 2, 'M
           ('uu', 'cold', 2, 'Old Film'), ('altmount-addon', 'cold', 1, 'Rare Show S01E01')}
 
 
-def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
+def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', edit_visits=None, **meta):
     """A finished speed test (a run on the tagged title list) as a run folder under root: KaijuFlow, Usenet Ultimate and
     AltMount direct, four rounds of Matrix and Dune (easy) and Old Film and Rare Show S01E01 (hard).
 
@@ -445,17 +426,10 @@ def speed_test_run(root, folder_name='2026-11-16T100000Z-speed', **meta):
             v['list_s'] = 0.5
         if key in FAILED:
             v.update(ok=False, start_s=None, note='failure video', tries=[{'plays': False, 'size': None, 'title': v['title']}])
-    folder = os.path.join(root, folder_name)
-    os.makedirs(folder)
     m = dict(name='speed', label='Test 2', status='ok', started='2026-11-16T10:00:00Z', finished='2026-11-16T11:00:00Z',
              titles=[t[2] for t in TAGGED_TITLES], lists={t[2]: t[3] for t in TAGGED_TITLES}, sides=list(SPEED_SIDES),
-             rounds=2, short=None, changes=['First speed test.'])
-    m.update(meta)
-    with open(os.path.join(folder, 'meta.json'), 'w') as f:
-        json.dump(m, f)
-    with open(os.path.join(folder, 'raw.json'), 'w') as f:
-        json.dump({'status': 'ok', 'visits': visits}, f)
-    return folder
+             rounds=2, short=None, changes=['First speed test.'], recording='speed-test-2')
+    return run_folder(root, folder_name, {**m, **meta}, visits, edit_visits=edit_visits)
 
 
 class SpeedTest(unittest.TestCase):
@@ -606,15 +580,12 @@ class SpeedTest(unittest.TestCase):
 class SpeedTestReportStaysOnePage(unittest.TestCase):
     def test_a_fails_cell_names_one_title_then_how_many_more_and_a_title_failed_in_every_round_says_so(self):
         root = tempdir(self)
-        folder = speed_test_run(root)
-        path = os.path.join(folder, 'raw.json')
-        with open(path) as f:
-            raw = json.load(f)
-        for v in raw['visits']:
-            if v['side'] == 'kaijuflow' and v['list'] == 'hard':  # both hard titles fail in every round
-                v.update(ok=False, start_s=None, note='failure video')
-        with open(path, 'w') as f:
-            json.dump(raw, f)
+
+        def edited(visits):
+            for v in visits:
+                if v['side'] == 'kaijuflow' and v['list'] == 'hard':  # both hard titles fail in every round
+                    v.update(ok=False, start_s=None, note='failure video')
+        folder = speed_test_run(root, edit_visits=edited)
         fails = section(bp.build_report([folder]), 'Fails, title by title')
         row = [text(r) for r in re.findall(r'<tr><th scope="row">.*?</tr>', fails)][0]
         self.assertEqual(row, 'KaijuFlow None 2 titles failed · 8 of 8 plays: Old Film (every round), +1 more')
@@ -630,18 +601,15 @@ class SpeedTestWithATitleLeftOut(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.root = tempfile.mkdtemp()
-        folder = speed_test_run(cls.root)
-        path = os.path.join(folder, 'raw.json')
-        with open(path) as f:
-            raw = json.load(f)
-        for v in raw['visits']:
-            if (v['side'], v['title']) == ('kaijuflow', 'Old Film'):
-                v['tries'][0]['title'] = 'Old Film.1080p.WEB-DL-GRP'
-                if v['phase'] == 'cold':
-                    v.update(ok=False, start_s=None, note='failure video')
-                    v['tries'][0].update(plays=False, size=None)
-        with open(path, 'w') as f:
-            json.dump(raw, f)
+
+        def edited(visits):
+            for v in visits:
+                if (v['side'], v['title']) == ('kaijuflow', 'Old Film'):
+                    v['tries'][0]['title'] = 'Old Film.1080p.WEB-DL-GRP'
+                    if v['phase'] == 'cold':
+                        v.update(ok=False, start_s=None, note='failure video')
+                        v['tries'][0].update(plays=False, size=None)
+        folder = speed_test_run(cls.root, edit_visits=edited)
         cls.index, cls.report = bp.build([folder]), bp.build_report([folder])
 
     @classmethod
@@ -681,8 +649,8 @@ class SpeedTestWithATitleLeftOut(unittest.TestCase):
 
 
 class SpeedTestAgainstEarlierRuns(unittest.TestCase):
-    def test_a_speed_test_is_never_compared_with_a_run_without_tags_and_both_are_in_every_run_so_far(self):
-        root = tempdir(self)
+    def test_a_speed_test_is_never_compared_with_a_run_on_another_recording_and_both_are_in_every_run_so_far(self):
+        root = tempdir(self)  # the baseline replayed the recording 'l', the speed test its own (#241: one Previous run)
         index = bp.build([copy_run(root), speed_test_run(root)])
         self.assertIn('No earlier run on this page to compare with.', index)
         rows = [text(r) for r in re.findall(r'<tr class="[^"]*"><th scope="row">.*?</tr>', section(index, 'Every run so far'))]
@@ -697,13 +665,7 @@ class SpeedTestAgainstEarlierRuns(unittest.TestCase):
             for v in visits:
                 if (v['side'], v['title']) == ('kaijuflow', 'Old Film'):
                     v.update(ok=True, start_s=1.5, note=None)
-        later = speed_test_run(root, '2026-11-20T100000Z-speed', finished='2026-11-20T11:00:00Z')
-        path = os.path.join(later, 'raw.json')
-        with open(path) as f:
-            raw = json.load(f)
-        all_play(raw['visits'])
-        with open(path, 'w') as f:
-            json.dump(raw, f)
+        later = speed_test_run(root, '2026-11-20T100000Z-speed', finished='2026-11-20T11:00:00Z', edit_visits=all_play)
         index = bp.build([earlier, later])
         self.assertIn('Compared with the Test 1b run of 16 November 2026.', index)
         heads = text(re.search(r'<ul class="sl-heads">.*?</ul>', index).group(0))

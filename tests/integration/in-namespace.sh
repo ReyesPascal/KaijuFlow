@@ -21,6 +21,8 @@ cp -a "$A4_ROOT/tests/integration/parity" "$A4_RUN_DIR/work/parity"
 # Real archives some scenarios post to the fake news server.
 mkdir -p "$A4_RUN_DIR/work/fixtures" && cp -a "$A4_ROOT/tests/fixtures/archives" "$A4_RUN_DIR/work/fixtures/archives"
 mkdir -p "$A4_RUN_DIR/work/ui/public" && cp "$A4_ROOT/ui/public/nzb_failure_video.mp4" "$A4_RUN_DIR/work/ui/public/"  # the failure video the app serves
+# The brain tools' reader of KaijuFlow's step lines, so a scenario checks what a run reads (brainreport.read_play).
+mkdir -p "$A4_RUN_DIR/work/brain" && cp "$A4_ROOT/tools/brain/brainreport.py" "$A4_ROOT/tools/brain/common.py" "$A4_RUN_DIR/work/brain/"
 mkdir -p "$A4_RUN_DIR/work/config"
 chown -R nobody:nogroup "$A4_RUN_DIR/work"
 printf 'integration isolation PASS\n' > "$A4_RUN_DIR/app-import.started"

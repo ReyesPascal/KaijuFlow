@@ -41,6 +41,11 @@ export interface PrepareOptions {
   onJob?: (jobId: string) => void;
   /** Checked between steps; when it returns true, prepare stops with PrepareCancelledError. */
   isCancelled?: () => boolean;
+  /** The Walk's: stops its other checks for an Unscramble retry (ADR 0005); returns the function that starts them again. */
+  stopChecks?: () => () => void;
+  /** The Walk's: aborts when the Walk ends (GLOSSARY: Walk). Cuts the grab and an Unscramble under way off, so their
+   *  connections close at once; prepare then stops with PrepareCancelledError. */
+  stop?: AbortSignal;
 }
 
 /** Options for probe. `title` and `source` only label the first-byte step line (#61). */
@@ -110,7 +115,7 @@ export class PrepareCancelledError extends Error {
 
 /**
  * Build the error a Backend throws when the Source itself is bad (isSourceFailure
- * is true for it). Its flag is `isBadSource`; streamCache.ts also reads the name dead marks saved before #200 used.
+ * is true for it). Its flag is `isBadSource`; sourceMemory.ts also reads the name dead marks saved before #200 used.
  */
 export function sourceFailure(message: string, isTimeout = false, isEpisodeSpecific = false): Error & { isBadSource: boolean; isTimeout: boolean; isEpisodeSpecific: boolean } {
   const err = new Error(message) as Error & { isBadSource: boolean; isTimeout: boolean; isEpisodeSpecific: boolean };

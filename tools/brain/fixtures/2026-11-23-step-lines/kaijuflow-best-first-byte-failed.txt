@@ -1,0 +1,89 @@
+2026-11-23T20:35:12.213Z 
+2026-11-23T20:35:12.213Z 
+2026-11-23T20:35:12.213Z ╔══════════════════════════════════════════════════════════════════════
+2026-11-23T20:35:12.213Z ║  🔍 Searching for movie tt1000012 [manual]
+2026-11-23T20:35:12.213Z ╚══════════════════════════════════════════════════════════════════════
+2026-11-23T20:35:12.213Z 
+2026-11-23T20:35:12.213Z ═══ Title Resolution ══════════════════════════════════════════
+2026-11-23T20:35:12.215Z 📌 Title: ""
+2026-11-23T20:35:12.215Z 
+2026-11-23T20:35:12.215Z ═══ Search Setup ══════════════════════════════════════════════
+2026-11-23T20:35:12.215Z 📋 Newznab search methods: imdb across 1 indexer(s)
+2026-11-23T20:35:12.215Z    Parity: imdb
+2026-11-23T20:35:12.216Z [KF-STEP] {"step":"indexer_page","source":"Parity","ms":1,"ok":true,"t":"2026-11-23T20:35:12.216Z","ref":"tt1000012","page":1}
+2026-11-23T20:35:12.216Z 
+2026-11-23T20:35:12.216Z ═══ Parity ══════════════════════════════════════════════════════
+2026-11-23T20:35:12.216Z   ┌─ movie imdb search 
+2026-11-23T20:35:12.216Z   │ 🔍 Movie search for IMDB: tt1000012 [timeout=15s]
+2026-11-23T20:35:12.216Z   │ 🔍 Searching Parity: http://127.0.0.1:44009
+2026-11-23T20:35:12.216Z   │ ✅ Response received (200), parsing...
+2026-11-23T20:35:12.216Z   │    📦 Found 1 results (total: 1)
+2026-11-23T20:35:12.216Z   └─
+2026-11-23T20:35:12.216Z 
+2026-11-23T20:35:12.216Z 
+2026-11-23T20:35:12.216Z ═══ Results Processing ════════════════════════════════════════
+2026-11-23T20:35:12.216Z 📊 Found 1 total results (indexer: 1, easynews: 0)
+2026-11-23T20:35:12.216Z 📊 Returning 1 streams after filtering
+2026-11-23T20:35:12.216Z 
+2026-11-23T20:35:12.216Z ═══ Final Results ═════════════════════════════════════════════
+2026-11-23T20:35:12.216Z 📊 Final results (after filtering + sorting):
+2026-11-23T20:35:12.216Z      1. 🎬 KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP [Parity]
+2026-11-23T20:35:12.217Z 🔄 Created fallback group 0f46a76f-b45 with 1 candidates
+2026-11-23T20:35:12.218Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] Head start: checking Best's Sources before a press
+2026-11-23T20:35:12.218Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] Starting — 1 candidate(s), pool size 3, list order, wait times: priority (movies=30s, tv=15s, pack=30s)
+2026-11-23T20:35:12.219Z   [KaijuFlow.PlayTime.fbf-40] 1 files (1 video, 0 archive) [MKV]
+2026-11-23T20:35:12.219Z   [KaijuFlow.PlayTime.fbf-40] Checking video: KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP.mkv
+2026-11-23T20:35:12.219Z   [KaijuFlow.PlayTime.fbf-40] Checking 3 segments across 1 provider(s)
+2026-11-23T20:35:12.261Z   [KaijuFlow.PlayTime.fbf-40] Result: 3/3 found (Fake News (3/3))
+2026-11-23T20:35:12.261Z   [KaijuFlow.PlayTime.fbf-40] → Verified
+2026-11-23T20:35:12.261Z [KF-STEP] {"step":"play_check","source":"Parity","ms":42,"ok":true,"t":"2026-11-23T20:35:12.261Z","ref":"tt1000012","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","status":"verified"}
+2026-11-23T20:35:12.261Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] 🚀 Submitting #1 KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP [Parity] to the Backend
+2026-11-23T20:35:12.261Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1] 🆕 Starting new stream preparation: KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP
+2026-11-23T20:35:12.261Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1]   💾 Using cached NZB from health check (546 bytes)
+2026-11-23T20:35:12.261Z [KF-STEP] {"step":"nzb_fetch","source":"Parity","ms":0,"ok":true,"t":"2026-11-23T20:35:12.261Z","ref":"tt1000012","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP"}
+2026-11-23T20:35:12.261Z [KF-STEP] {"step":"unscramble","source":"Parity","ms":0,"ok":true,"t":"2026-11-23T20:35:12.261Z","ref":"tt1000012","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","wait_ms":0,"result":"not-scrambled","parts":0}
+2026-11-23T20:35:12.262Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1]   📤 Sending Source to AltMount (waits up to 20s)
+2026-11-23T20:35:12.265Z [KF-STEP] {"step":"import_wait","source":"Parity","ms":3,"ok":true,"t":"2026-11-23T20:35:12.265Z","ref":"tt1000012","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","includes_upload":true,"job":"23"}
+2026-11-23T20:35:12.265Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1]   ✅ AltMount prepared the Source (streamable)
+2026-11-23T20:35:14.266Z [KF-STEP] {"step":"first_byte","source":"Parity","ms":2001,"ok":false,"t":"2026-11-23T20:35:14.266Z","ref":"tt1000012","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","job":"23"}
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1] ❌ Failed: First byte failed (status 400); the Source is kept: /movies/KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP/fbf-400.mkv
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ❌ Prepare failed for #1 KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP
+2026-11-23T20:35:14.266Z [KF-STEP] {"step":"play_failed","source":"Parity","ms":0,"ok":false,"t":"2026-11-23T20:35:14.266Z","ref":"tt1000012","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","reason":"First byte failed (status 400); the Source is kept"}
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ❌ Exhausted all 1 candidates
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] Pipeline ended without resolution (2.0s)
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::]   1 checked · 1 healthy · 1 dead · 0 skipped · 1 grabbed · 2.0s
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::]   ⚙️  pool: 3 · list order · only the Source played is prepared · at most 30 grabs
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+2026-11-23T20:35:14.266Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::]   #1 [MKV] KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP [Parity] → prepare-failed
+2026-11-23T20:35:14.288Z 🎟️ /stream hit: kind=UF filename=ultimate-fallback q=[t] ua=node
+2026-11-23T20:35:14.288Z 👑 UF fired on tile click [synthetic-manifest:movie:tt1000012::]
+2026-11-23T20:35:14.288Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] Starting — 1 candidate(s), pool size 3, list order, wait times: priority (movies=30s, tv=15s, pack=30s)
+2026-11-23T20:35:14.288Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] Best pressed: a play now, no newer list request stops it
+2026-11-23T20:35:14.288Z   [KaijuFlow.PlayTime.fbf-40] 1 files (1 video, 0 archive) [MKV]
+2026-11-23T20:35:14.288Z   [KaijuFlow.PlayTime.fbf-40] Checking video: KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP.mkv
+2026-11-23T20:35:14.288Z   [KaijuFlow.PlayTime.fbf-40] Checking 3 segments across 1 provider(s)
+2026-11-23T20:35:14.329Z   [KaijuFlow.PlayTime.fbf-40] Result: 3/3 found (Fake News (3/3))
+2026-11-23T20:35:14.329Z   [KaijuFlow.PlayTime.fbf-40] → Verified
+2026-11-23T20:35:14.329Z [KF-STEP] {"step":"play_check","source":"Parity","ms":41,"ok":true,"t":"2026-11-23T20:35:14.329Z","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","status":"verified"}
+2026-11-23T20:35:14.329Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] 🚀 Submitting #1 KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP [Parity] to the Backend
+2026-11-23T20:35:14.329Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1] 🆕 Starting new stream preparation: KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP
+2026-11-23T20:35:14.329Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1]   💾 Using cached NZB from health check (546 bytes)
+2026-11-23T20:35:14.329Z [KF-STEP] {"step":"nzb_fetch","source":"Parity","ms":0,"ok":true,"t":"2026-11-23T20:35:14.329Z","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP"}
+2026-11-23T20:35:14.330Z [KF-STEP] {"step":"unscramble","source":"Parity","ms":1,"ok":true,"t":"2026-11-23T20:35:14.330Z","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","wait_ms":0,"result":"not-scrambled","parts":0}
+2026-11-23T20:35:14.330Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1]   📤 Sending Source to AltMount (waits up to 20s)
+2026-11-23T20:35:14.331Z [KF-STEP] {"step":"import_wait","source":"Parity","ms":1,"ok":true,"t":"2026-11-23T20:35:14.331Z","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","includes_upload":true,"job":"23"}
+2026-11-23T20:35:14.331Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1]   ✅ AltMount prepared the Source (reused)
+2026-11-23T20:35:16.332Z [KF-STEP] {"step":"first_byte","source":"Parity","ms":2001,"ok":false,"t":"2026-11-23T20:35:16.332Z","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","job":"23"}
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] [prepare #1] ❌ Failed: First byte failed (status 400); the Source is kept: /movies/KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP/fbf-400.mkv
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ❌ Prepare failed for #1 KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP
+2026-11-23T20:35:16.332Z [KF-STEP] {"step":"play_failed","source":"Parity","ms":0,"ok":false,"t":"2026-11-23T20:35:16.332Z","title":"KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP","reason":"First byte failed (status 400); the Source is kept"}
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ❌ Exhausted all 1 candidates
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] Pipeline ended without resolution (2.0s)
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::]   1 checked · 1 healthy · 1 dead · 0 skipped · 1 grabbed · 2.0s
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::]   ⚙️  pool: 3 · list order · only the Source played is prepared · at most 30 grabs
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::] ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+2026-11-23T20:35:16.332Z 👑 Ultimate-Fallback [synthetic-manifest:movie:tt1000012::]   #1 [MKV] KaijuFlow.PlayTime.fbf-400.2026.2160p.WEB-DL.H265-GRP [Parity] → prepare-failed
+2026-11-23T20:35:16.332Z 👑 Lobby: session ended without resolution — falling through to single attempt
+2026-11-23T20:35:16.333Z 👑 UF tile: Best's Walk found no Source to play (sk=synthetic-manifest:movie:tt1000012::) — serving failure video

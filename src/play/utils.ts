@@ -96,14 +96,16 @@ export class WebDav404Error extends Error {
 /**
  * True for a dead-mark message written when the indexer did not hand over the
  * NZB (rate limit, server error, refused credentials, network error, download
- * timeout). Such a mark
+ * timeout), or for any error payload in the words earlier builds wrote for
+ * every code, a refusal included ("Indexer returned error: "). Such a mark
  * says nothing about the Source (ADR 0004, #51); the dead cache drops it on
- * load. Bad-content messages (invalid NZB, indexer error payload) stay.
+ * load. Bad-content messages (invalid NZB, a code-300 error payload) stay.
  */
 export function isIndexerUnavailableMessage(message: string): boolean {
   return /^Failed to download NZB from .+: (429|401|403|5\d\d)\b/.test(message)
     || /^NZB download failed for /.test(message)
-    || /^NZB download timed out after /.test(message);
+    || /^NZB download timed out after /.test(message)
+    || message.startsWith('Indexer returned error: ');
 }
 
 /**

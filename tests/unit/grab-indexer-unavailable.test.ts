@@ -1,7 +1,8 @@
 // #51 (ADR 0004): an indexer that doesn't hand over the NZB (429, 5xx, network
 // error) is not a bad Source. The grab throws a plain error for those, so the
 // player gets the failure video and the Source stays alive. Only bad NZB
-// content (invalid body, indexer error payload) is a Source failure.
+// content (an invalid body) or a link the indexer says is gone (404, or an
+// error payload with Newznab code 300, no such item) is a Source failure.
 // Run: npm run test:unit
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +21,9 @@ const indexer = http.createServer((req, res) => {
   if (path.startsWith('/429')) { res.writeHead(429, { 'Retry-After': '60' }); res.end('Too Many Requests'); return; }
   if (path.startsWith('/503')) { res.writeHead(503); res.end('maintenance'); return; }
   if (path.startsWith('/html')) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<html>login please</html>'); return; }
-  if (path.startsWith('/apierror')) { res.writeHead(200, { 'Content-Type': 'application/xml' }); res.end('<?xml version="1.0"?><error code="100" description="Incorrect user credentials"/>'); return; }
+  // An error payload (200 with a Newznab <error>): /apierror/<code>/<description>.
+  const apiError = path.match(/^\/apierror\/(\d+)\/([^?]+)/);
+  if (apiError) { res.writeHead(200, { 'Content-Type': 'application/xml' }); res.end(`<?xml version="1.0"?><error code="${apiError[1]}" description="${decodeURIComponent(apiError[2])}"/>`); return; }
   res.writeHead(404); res.end();
 });
 await new Promise<void>(r => indexer.listen(0, '127.0.0.1', () => r()));
@@ -76,11 +79,31 @@ test('a body that is not an NZB is still a Source failure', async () => {
   assert.equal(isSourceFailure(err), true, err.message);
 });
 
-test('an indexer error payload is still a Source failure', async () => {
-  const err = await failure('/apierror');
+// ADR 0004: a 200 with a Newznab error payload is sorted by its code, as an HTTP answer is by its status.
+test('an error payload with code 300 (no such item) is a Source failure: the link is gone', async () => {
+  const err = await failure('/apierror/300/No%20such%20item');
   assert.equal(isSourceFailure(err), true, err.message);
-  assert.match(err.message, /Incorrect user credentials/);
+  assert.match(err.message, /No such item/);
 });
+
+// Round 2 review of #239 (memory-2): a code-300 mark has words of its own, so the load can drop the old words, which
+// earlier builds wrote for every error payload, a refusal included, and keep this one.
+test('a dead mark for an error payload with code 300 is kept when the dead cache loads', async () => {
+  const err = await failure('/apierror/300/No%20such%20item');
+  assert.equal(err.message, 'Indexer says the NZB is gone (code 300): No such item');
+  const mark = { title: 't', indexerName: 'x', error: { message: err.message, isBadSource: true }, createdAt: 1, expiresAt: 0 };
+  const { kept, dropped } = pruneIndexerUnavailableMarks({ 'https://indexer.example/getnzb/gone.nzb': mark });
+  assert.deepEqual(dropped, []);
+  assert.deepEqual(Object.keys(kept), ['https://indexer.example/getnzb/gone.nzb']);
+});
+
+for (const [code, description] of [['100', 'Incorrect user credentials'], ['102', 'Account suspended'], ['500', 'Request limit reached'], ['501', 'Download limit reached'], ['900', 'Unknown error']]) {
+  test(`an error payload with code ${code} (${description}) is a refusal: a plain error, not a Source failure`, async () => {
+    const err = await failure(`/apierror/${code}/${encodeURIComponent(description)}`);
+    assert.equal(isSourceFailure(err), false, err.message);
+    assert.match(err.message, new RegExp(`FakeIndexer.*${description}`), 'the error names the indexer and its words');
+  });
+}
 
 test('stored dead marks from an unavailable indexer are recognised, bad-Source ones are not', () => {
   // Messages as earlier builds wrote them into dead-nzbs.json (the first three are
@@ -91,10 +114,12 @@ test('stored dead marks from an unavailable indexer are recognised, bad-Source o
     'NZB download failed for DrunkenSlug: fetch failed',
     'Failed to download NZB from NinjaCentral: 403 Forbidden',
     'NZB download timed out after 30s for altHUB',
+    // Earlier builds wrote these words for every error payload, a refusal included (round 2 review of #239).
+    'Indexer returned error: Incorrect user credentials',
   ]) assert.equal(isIndexerUnavailableMessage(m), true, m);
   for (const m of [
     'Invalid NZB content received (1234 bytes)',
-    'Indexer returned error: Incorrect user credentials',
+    'Indexer says the NZB is gone (code 300): No such item',
     'Health check: blocked',
     'NZBDav download failed: Article with message-id x@y not found.',
     'AltMount could not process the Source: {"error":{"code":"INTERNAL_SERVER_ERROR"}}',

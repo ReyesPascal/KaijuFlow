@@ -13,24 +13,25 @@ import {pathToFileURL} from 'node:url';
 import path from 'node:path';
 const root=process.env.A4_APP_ROOT;
 const sc=await import(pathToFileURL(path.join(root,'dist/play/streamCache.js')).href);
+const sm=await import(pathToFileURL(path.join(root,'dist/play/sourceMemory.js')).href);
+const {sourceFailure,isSourceFailure}=await import(pathToFileURL(path.join(root,'dist/backends/types.js')).href);
 const u='https://127.0.0.1/cache-restart-A4.nzb', title='A4 Restart Fixture';
 const bad='https://127.0.0.1/cache-restart-dead-A4.nzb';
+const isDead=nzbUrl=>sm.recall({nzbUrl,title:''}).dead!==undefined;
 if(process.env.A4_CACHE_STAGE==='old-flag'){
   // A dead mark saved before #200 carries the flag's old name; it must still count as a bad Source.
-  const {isSourceFailure}=await import(pathToFileURL(path.join(root,'dist/backends/types.js')).href);
   let err=null;
-  try{await sc.getOrCreateStream(bad,'A4 Old Flag');}catch(e){err=e;}
-  sc.saveCacheToDisk();
+  try{await sc.getOrCreateStream({nzbUrl:bad,title:'A4 Old Flag'});}catch(e){err=e;}
+  sm.saveCacheToDisk();
   const saved=JSON.parse((await import('node:fs')).readFileSync(path.join(root,'config','dead-nzbs.json'),'utf8'))[bad]?.error;
-  console.log('CACHE_METRIC '+JSON.stringify({dead:sc.isDeadNzbByUrl(bad),badSource:isSourceFailure(err),saved}));
+  console.log('CACHE_METRIC '+JSON.stringify({dead:isDead(bad),badSource:isSourceFailure(err),saved}));
   process.exit(0);
 }
 if(process.env.A4_CACHE_STAGE==='write'){
-  sc.setReadyCacheEntry(sc.getCacheKey(u,title),{videoPath:'/synthetic/a4.mp4',videoSize:4096},'Synthetic');
-  sc.addDeadNzbByUrl(bad,'A4 Unavailable','Synthetic',123);
-  sc.saveCacheToDisk();
+  sm.remember({source:{nzbUrl:u,title,indexerName:'Synthetic'},ready:{nzoId:'a4',videoPath:'/synthetic/a4.mp4',videoSize:4096}});
+  sm.remember({source:{nzbUrl:bad,title:'A4 Unavailable',indexerName:'Synthetic',size:123},dead:sourceFailure('Health check: blocked'),everyEpisode:true});
 }
-const state={ready:sc.isStreamCached(u,title),dead:sc.isDeadNzbByUrl(bad),readyCount:sc.getCacheStats().ready,deadCount:sc.getCacheStats().failed};
+const state={ready:sc.isStreamCached(u,title),dead:isDead(bad),readyCount:sc.getCacheStats().ready,deadCount:sc.getCacheStats().failed};
 console.log('CACHE_METRIC '+JSON.stringify(state));
 process.exit(0);
 `;

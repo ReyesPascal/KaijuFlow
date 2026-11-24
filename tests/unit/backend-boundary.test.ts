@@ -90,7 +90,7 @@ test('no NzbDAV name in src/ outside the readers of old saved data', () => {
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, i) => {
       if (!/nzbdav/i.test(line)) return;
-      if (rel(file) === 'play/streamCache.ts' && /isNzbdavFailure/.test(line) && !/nzbdav/i.test(line.replace(/isNzbdavFailure/g, ''))) return;
+      if (rel(file) === 'play/sourceMemory.ts' && /isNzbdavFailure/.test(line) && !/nzbdav/i.test(line.replace(/isNzbdavFailure/g, ''))) return;
       violations.push(`${rel(file)}:${i + 1}`);
     });
   }

@@ -39,7 +39,9 @@ try {
 
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream, prepareStream } = await load('play/streamHandler');
-  const { findReadyStream, getCacheEntries } = await load('play/streamCache');
+  const { getCacheEntries } = await load('play/streamCache');
+  const { recall } = await load('play/sourceMemory');
+  const findReadyStream = (nzbUrl, title) => recall({ nzbUrl, title }).ready ?? null; // a movie: no play context
   const { createPlayStreamRoutes } = await load('routes/play');
   const app = express();
   app.use('/stremio/:manifestKey/play', createPlayStreamRoutes({ config, handleStream, getLatestVersions: () => ({ chrome: 'synthetic' }) }));
@@ -52,20 +54,20 @@ try {
 
   // 1. NzbDAV's entries are not offered as ready.
   assert.equal(getCacheEntries().ready.length, 0, 'NzbDAV ready entries are hidden');
-  for (const s of [old, tagged]) assert.equal(findReadyStream(s.nzb, s.title, undefined), null, s.tag);
+  for (const s of [old, tagged]) assert.equal(findReadyStream(s.nzb, s.title), null, s.tag);
 
   // 2. Each Source plays through AltMount, uploaded once.
   for (const s of [old, tagged]) {
     const r = await play(s);
     assert.equal(r.status, 200, s.tag); assertBytes(r.body, media);
     assert.equal(alt.submitsFor(s.tag), 1, s.tag);
-    assert.ok(!findReadyStream(s.nzb, s.title, undefined).videoPath.startsWith('/content/'), 'the ready entry is AltMount\'s now');
+    assert.ok(!findReadyStream(s.nzb, s.title).videoPath.startsWith('/content/'), 'the ready entry is AltMount\'s now');
   }
   assert.equal(getCacheEntries().ready.length, 2);
 
   // 3. Re-preparing reuses AltMount's entry: no second upload.
-  const again = await prepareStream(old.nzb, old.title);
-  assert.equal(again.videoPath, findReadyStream(old.nzb, old.title, undefined).videoPath);
+  const again = await prepareStream({ nzbUrl: old.nzb, title: old.title });
+  assert.equal(again.videoPath, findReadyStream(old.nzb, old.title).videoPath);
   assert.equal(alt.submitsFor(old.tag), 1, 'reuse must not upload again');
   Object.assign(report, { status: 'pass' });
 } catch (e) { Object.assign(report, { status: 'fail', error: String(e?.stack || e) }); }

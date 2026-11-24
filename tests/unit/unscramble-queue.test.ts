@@ -99,3 +99,26 @@ test('an NZB with no number-named set does not wait for the turn', async () => {
   assert.ok(r.ms < 100 && r.waitMs === 0, `took ${r.ms} ms, waited ${r.waitMs} ms`);
   assert.equal((await holder).reason, 'timeout');
 });
+
+test('a stop cuts an Unscramble off mid-read and one still waiting for the turn: both come back stopped, the turn goes on', async () => {
+  const reading = scrambledRarSet({ base: 'stopread', parts: 4 });
+  const waiting = scrambledRarSet({ base: 'stopwait', parts: 4 });
+  const after = scrambledRarSet({ base: 'stopafter', parts: 4 });
+  const slow = await news({ articles: new Map([...reading.articles, ...waiting.articles]), delayMs: 3000 });
+  const fast = await news({ articles: after.articles });
+  const stop = new AbortController();
+  const started = Date.now();
+  const first = unscrambleNzb(reading.nzb, [slow.provider()], 10000, { stop: stop.signal });
+  const second = unscrambleNzb(waiting.nzb, [slow.provider()], 10000, { stop: stop.signal });
+  await new Promise(r => setTimeout(r, 100));
+  stop.abort();
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(a.reason, 'stopped', 'the one reading');
+  assert.equal(b.reason, 'stopped', 'the one waiting for its turn');
+  assert.equal(a.nzb, reading.nzb, 'the original comes back');
+  assert.ok(Date.now() - started < 1000, `both back at once, not after the 3 s reads (${Date.now() - started} ms)`);
+  assert.deepEqual(waiting.parts.map(p => p.firstId).filter(id => (slow.state.reads as string[]).includes(id)), [], 'the waiting one read nothing');
+  const next = await unscrambleNzb(after.nzb, [fast.provider()], 2000);
+  assert.equal(next.changed, true, `the next Unscramble gets the turn (${next.reason})`);
+  assert.ok(next.waitMs < 100, `and does not wait for the stopped ones (${next.waitMs} ms)`);
+});

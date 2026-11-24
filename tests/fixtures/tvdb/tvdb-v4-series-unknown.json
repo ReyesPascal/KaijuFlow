@@ -1,0 +1,8 @@
+{
+  "status": 404,
+  "body": {
+    "status": "failure",
+    "message": "NotFoundException: Season not found",
+    "data": null
+  }
+}

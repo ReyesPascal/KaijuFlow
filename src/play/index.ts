@@ -9,17 +9,20 @@ export type { FallbackCandidate } from './types.js';
 // Fallback management
 export { createFallbackGroup, getFallbackGroup, clearFallbackGroups } from './fallbackManager.js';
 
+// Source memory (ready and dead Sources, #247)
+export { remember, recall } from './sourceMemory.js';
+
 // Stream cache
-export { getOrCreateStream, getCacheKey, getDeadCacheKey, isStreamCached, isDeadNzbByUrl, addDeadNzbByUrl, evictReadyByVideoPath, clearTimeoutEntries, setReadyCacheEntry, setDeadNzbEntry } from './streamCache.js';
+export { getOrCreateStream, isStreamCached, evictReadyByVideoPath, clearTimeoutEntries } from './streamCache.js';
 
 // Cache utilities
-export { getCacheStats, clearStreamCache, clearReadyCache, clearFailedCache, deleteCacheEntry, getCacheEntries, saveCacheToDisk } from './cacheUtils.js';
+export { getCacheStats, clearStreamCache, clearReadyCache, forgetDeadSources, deleteCacheEntry, getCacheEntries, saveCacheToDisk } from './cacheUtils.js';
 
 // Ultimate-Fallback (combined retry-on-failure + health checking pipeline)
-export { headStart, ultimateFallbackFromCandidates, ultimateFallbackOptions, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';
+export { headStart, listAsked, ultimateFallbackFromCandidates, cancelAllUltimateFallbacks, getSessionPromise, hasAnySessions, clearResolvedSessions } from './ultimateFallback.js';
 
 // Shared utilities
-export { buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
+export { isUltimateFallbackActive } from './utils.js';
 
 // Stream handler (Express endpoint)
 export { handleStream } from './streamHandler.js';

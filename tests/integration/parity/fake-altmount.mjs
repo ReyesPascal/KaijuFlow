@@ -33,6 +33,10 @@ export async function createFakeAltmount(listen) {
   let base = '';
   let down = false;
   let indexerDown = 0; // HTTP status the NZB link answers while the indexer is "down" (0 = serves the NZB)
+  const grabs = []; // { tag, asked, answered, closed } per NZB link fetched: the indexer's side of a grab
+  const slowGrabs = new Map(); // tag prefix -> ms every NZB link of it waits before answering
+  const slowImports = new Map(); // tag prefix -> ms an import of it takes
+  const readyAt = new Map(); // tag -> when its slow import is done (one queue item, whoever uploads it)
   let nextQueueId = 1; // real AltMount queue ids are integers
   const uploads = new Map(); // tag -> uploaded NZB texts
   const volumeOf = new Map(); // first-article id -> real RAR5 volume, for Scrambled RAR sets
@@ -80,6 +84,13 @@ export async function createFakeAltmount(listen) {
 
     if (path.endsWith('.nzb')) {
       const tag = path.slice(1, -4);
+      const grab = { tag, asked: Date.now(), answered: null };
+      grabs.push(grab);
+      res.on('finish', () => { grab.answered = Date.now(); });
+      res.on('close', () => { if (grab.answered === null) grab.closed = Date.now(); });
+      const wait = [...slowGrabs].find(([prefix]) => tag.startsWith(prefix))?.[1];
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      // A link the indexer does not know (addGone) answers 404, as an indexer does for a removed NZB.
       if (!sources.has(tag)) { res.writeHead(404); res.end(); return; }
       if (indexerDown) { res.writeHead(indexerDown, { 'Retry-After': '60' }); res.end('indexer unavailable'); return; }
       res.writeHead(200, { 'Content-Type': 'application/x-nzb' });
@@ -144,6 +155,19 @@ export async function createFakeAltmount(listen) {
       if (src.rejected || src.refused) return json(500, { error: 'NZB processing failed' });
       // Not ready in time: AltMount answers 408 with the queue ID; the queued work is NOT cancelled.
       if (src.neverReady) { await new Promise(r => setTimeout(r, 300)); return json(408, { error: 'Timeout waiting for stream', details: src.queueId }); }
+      // A slow import (slowImports): AltMount answers once the import is done, or 408 at the upload's own timeout
+      // (the queued work goes on). Every upload of the Source waits for the same import.
+      const importMs = [...slowImports].find(([prefix]) => tag.startsWith(prefix))?.[1];
+      if (importMs && !src.completed) {
+        if (!readyAt.has(tag)) readyAt.set(tag, Date.now() + importMs);
+        const waitMs = readyAt.get(tag) - Date.now();
+        const limitMs = Number(field('timeout')) * 1000;
+        if (limitMs > 0 && waitMs > limitMs) {
+          await new Promise(r => setTimeout(r, limitMs));
+          return json(408, { error: 'Timeout waiting for stream', details: src.queueId });
+        }
+        if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
+      }
       const cached = src.completed;
       src.completed = true;
       // Pinned v0.4.0 StremioStreamsResponse: the queue fields sit next to `streams`.
@@ -181,12 +205,13 @@ export async function createFakeAltmount(listen) {
       return `${base}/${tag}.nzb`;
     },
     /**
-     * Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media}].
+     * Register a TV Source: one episode, or a season pack when several. episodes: [{season, episode, media, name?}]
+     * (name: the file's name without .mkv, as a daily show's pack names its files by aired date; default <title>.SxxEyy).
      * With a news server, opts { dead: true } leaves an episode's articles missing, and a pack's NZB names each
      * episode file, opts { deadEpisodes: [episode numbers] } leaving those episodes' articles missing.
      */
     addSeries(tag, title, episodes, opts = {}) {
-      const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}.mkv` }));
+      const files = episodes.map(e => ({ ...e, path: `/tv/${title}/${e.name ?? `${title}.S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}`}.mkv` }));
       sources.set(tag, { tag, title, files, queueId: nextQueueId++, submits: 0, completed: false });
       if (news) sources.get(tag).nzb = files.length > 1 ? checkablePackNzb(tag, files, opts) : checkableNzb(tag, `${title}.mkv`, opts);
       return `${base}/${tag}.nzb`;
@@ -296,6 +321,15 @@ export async function createFakeAltmount(listen) {
       return nzb;
     },
     setFirstByteFault(tag, mode) { sources.get(tag).fault = mode; },
+    /** The NZB link of a Source the indexer says is gone: every grab of it answers 404. */
+    addGone(tag) { return `${base}/${tag}.nzb`; },
+    /** Every NZB link fetched, in order: { tag, asked, answered, closed } (ms; answered null while it waits; closed
+     *  when the grab hung up before its answer). */
+    grabs,
+    /** Make every NZB link whose tag starts with prefix wait ms before answering (0 = answer at once). */
+    slowGrabs(prefix, ms) { if (ms > 0) slowGrabs.set(prefix, ms); else slowGrabs.delete(prefix); },
+    /** Make the import of every Source whose tag starts with prefix take ms from its first upload (0 = at once). */
+    slowImports(prefix, ms) { if (ms > 0) slowImports.set(prefix, ms); else slowImports.delete(prefix); },
     /**
      * Give every Source registered from now on an NZB KaijuFlow's health check can
      * read, its articles on this fake news server (startFakeNntp). addMovie and
