@@ -54,6 +54,20 @@ class FoundTest(unittest.TestCase):
         self.assertEqual(said['unscramble-read-error'], 'no')
 
 
+class FingerprintTest(unittest.TestCase):
+    def test_one_cause_seen_in_two_runs_has_one_fingerprint_and_its_details_are_masked(self):
+        [in_219], [in_218, sic] = answers(READ_ERROR), answers(TWO_REFUSALS)
+        self.assertEqual(in_219['fingerprint'], in_218['fingerprint'])
+        self.assertEqual(in_219['fingerprint'], 'check miss | import_wait not ok | AltMount could not process the Source: '
+                         '{"error":{"code":"INTERNAL_SERVER_ERROR","details":"","message":"no files were successfully processed '
+                         '(all files failed validation)"},"success":false}')
+        self.assertTrue(sic['fingerprint'].startswith('check miss | import_wait not ok | AltMount could not process the '
+                                                      'Source: {"error":{"code":"INTERNAL_SERVER_ERROR","details":"","message":"'
+                                                      "file '<release>' does not match allowed extensions (allowed: [.mkv .mp4 "),
+                        sic['fingerprint'])
+        self.assertNotIn(SIC, sic['fingerprint'])
+
+
 class SuspectedAndNewTest(unittest.TestCase):
     def test_each_failure_of_a_play_is_answered_and_a_look_alike_without_a_confirming_test_is_suspected(self):
         first, second = answers(TWO_REFUSALS)
