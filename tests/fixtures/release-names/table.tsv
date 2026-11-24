@@ -1,0 +1,68 @@
+release	type	label	date	other	right	strict	loose
+Inside.Out.2.2024.1080p.WEBRip.DDP.Atmos.5.1.10bit.H.265-iVy.part01.rar	movie	Inside Out 2	2024-06-11		yes	pass	keep
+Inside.Out.2.2024.1080p.WEBRip.DDP.Atmos.5.1.10bit.H.265-iVy.part01.rar	movie	Inside Out	2015-06-17		no	the name "Inside Out" is not followed by a year (2015 wanted)	drop
+Pushing.Daisies.S01E09.Corpsicle.EAC3.5.1.1080p.Bluray.x265-iVy.part01.rar	series	Pushing Daisies S01E09	2008-12-03		yes	pass	keep
+Pushing.Daisies.S01E09.Corpsicle.EAC3.5.1.1080p.Bluray.x265-iVy.part01.rar	series	Pushing Daisies S01E08	2008-11-26		no	it is S01E09, not S01E08	keep
+Avatar.2009.{edition-Extended}.1080p.BluRay.DDP.5.1.10bit.H.265-iVy.part01.rar	movie	Avatar	2009-12-15		yes	pass	keep
+Avatar.2009.{edition-Extended}.1080p.BluRay.DDP.5.1.10bit.H.265-iVy.part01.rar	movie	Avatar	2012-05-01		no	its year is 2009, not 2012	drop
+Spider-Man.Across.the.Spider-Verse.2023.1080p.WEBRip.DDP.Atmos.5.1.10bit.H.265-iVy.mkv.part02.rar	movie	Spider-Man: Across the Spider-Verse	2023-05-31		yes	pass	keep
+Spider-Man.Across.the.Spider-Verse.2023.1080p.WEBRip.DDP.Atmos.5.1.10bit.H.265-iVy.mkv.part02.rar	movie	Spider-Man	2002-05-01		no	the name "Spider-Man" is not followed by a year (2002 wanted)	drop
+4kdvs-the.hitcher.1986.restored.2160p.uhd.bluray.x265	movie	The Hitcher	1986-02-21		yes	pass	drop
+4kdvs-the.hitcher.1986.restored.2160p.uhd.bluray.x265	movie	Avatar	2009-12-15		no	the name "Avatar" is not in it	drop
+7th.Time.Loop.S01E01.Return.of.the.crown.prince.1080p.JPN.AAC.x265-EDGE	series	7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy! S01E01	2024-01-07		yes	the name "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!" is not in it	drop
+7th.Time.Loop.S01E01.Return.of.the.crown.prince.1080p.JPN.AAC.x265-EDGE	series	7th Time Loop S01E01	2024-01-07		yes	pass	keep
+Aaf-SPACE.1999.S01E04.1080P.BluRay.x264	series	Space: 1999 S01E04	1975-09-25		yes	pass	drop
+a.b.mm efnet - req 96401 - Pushing.Daisies.S01.DVDRip - 037 315 - pd.103.dvdrip-rwd.r00	series	Pushing Daisies S01E03	2007-10-17		yes	pass	drop
+a.b.mm efnet - req 96401 - Pushing.Daisies.S01.DVDRip - 037 315 - pd.103.dvdrip-rwd.r00	series	Pushing Daisies S02E03	2008-10-15		no	it is a pack of season 1, not season 2	drop
+(Ali.Baba] [Avatar - Aufbruch nach Pandora 2009 DVDRip German. XVID AC3 2.0 German Subs by Ali.Baba]- 'Avatar German mit deutschen Subs im Film.part001.rar'	movie	Avatar	2009-12-15		yes	the name "Avatar" is not followed by a year (2009 wanted)	drop
+(Ali.Baba] [Avatar - Aufbruch nach Pandora 2009 DVDRip German. XVID AC3 2.0 German Subs by Ali.Baba]- 'Avatar German mit deutschen Subs im Film.part001.rar'	movie	Avatar	2009-12-15	Avatar: Aufbruch nach Pandora	yes	pass	drop
+A.Misanthrope.Teaches.a.Class.for.Demi.Humans.S01E02.The.Misanthrope.and.the.Fleeting.Crown.of.Bubbles.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG	series	A Misanthrope Teaches a Class for Demi-Humans S01E02	2025-01-13		yes	pass	keep
+Chernobyl.1x02.Please.Remain.Calm.ITA-ENG.1080p.WEBMux.DD5.1.x264-NovaRip	series	Chernobyl S01E02	2019-05-13		yes	pass	drop
+Chernobyl.S01.E02.Please.Remain.Calm.1080p.BluRay.x264-OFT	series	Chernobyl S01E02	2019-05-13		yes	pass	keep
+Chernobyl.S01.E02.Please.Remain.Calm.1080p.BluRay.x264-OFT	series	Chernobyl S01E05	2019-06-03		no	it is S01E02, not S01E05	keep
+Game of Thrones-2011-S02E03-2160p UHD BluRay x265 DV HDR DDP 7.1 English-Weasley HONE-	series	Game of Thrones S02E03	2012-04-15		yes	pass	keep
+Breaking Bad 1x01 720p x264DUALOSCARBSES	series	Breaking Bad S01E01	2008-01-20		yes	pass	drop
+Squid Game The Challenge S01E01 1080p WEB h264-EDITH	series	Squid Game S01E01	2021-09-17		no	the name "Squid Game" is not followed by a season or episode	drop
+The Witcher Blood Origin S01 1080p NF WEB-DL DDP5 1 Atmos DV H 265-GRiMM	series	The Witcher S01E01	2019-12-20		no	the name "The Witcher" is not followed by a season or episode	drop
+Guardians.of.the.Galaxy.Vol.3.IMAX.1080p.2023.WEBRip.10Bit.DDP5.1.x265-Asiimov	movie	Guardians of the Galaxy Vol. 3	2023-05-03		yes	pass	keep
+Thief.Der.Einzelgaenger.1981.Directors.Cut.German.DL.1080p.BluRay.x264-CONTRiBUTiON	movie	Thief	1981-03-27		yes	the name "Thief" is not followed by a year (1981 wanted)	drop
+Thief.Der.Einzelgaenger.1981.Directors.Cut.German.DL.1080p.BluRay.x264-CONTRiBUTiON	movie	Thief	1981-03-27	Der Einzelgänger	yes	pass	drop
+The Witcher (2019) (362696) - S01E01 - [WEBDL-1080p] [Sonarr]	series	The Witcher S01E01	2019-12-20		yes	pass	keep
+REACHER.TV.S01E01.Welcome.to.Margrave.1080p.AMZN.WEB-DL.DDP5.1.H.265-NINJACENTRAL	series	Reacher S01E01	2022-02-04		yes	pass	drop
+Inception.The.Cobol.Job.2010.1080p.BDRip.x264.AC3-ViSiON	movie	Inception	2010-07-15		no	the name "Inception" is not followed by a year (2010 wanted)	drop
+Oppenheimer The Real Story-2023-1080p WEBRip-LAMA	movie	Oppenheimer	2023-07-19		no	the name "Oppenheimer" is not followed by a year (2023 wanted)	drop
+Avatar.Pandoras.Box.2009.BONUS.COMPLETE.BLURAY-REFRACTiON	movie	Avatar	2009-12-15		no	the name "Avatar" is not followed by a year (2009 wanted)	drop
+Deadpool.and.Wolverine.GERMAN.2024.DL.PAL.DVDR-Goodboy	movie	Deadpool & Wolverine	2024-07-24		yes	pass	drop
+The.Witcher.US.S01E01.1080p.HEVC.X265-MeGusta	series	The Witcher S01E01	2019-12-20		yes	pass	drop
+Utopia.UK.S01E01.720p.BluRay.H264-BONE	series	Utopia S01E01	2013-01-15		yes	pass	drop
+Game.of.Thrones.complete.S01-S08.web.10bit.ddp.hevc-d3g	series	Game of Thrones S02E03	2012-04-15		yes	pass	drop
+Akira.Special.Edition.1988.MULTi.1080p.Bluray.DTS.HDMA.x264-MeMyI	movie	Akira	1988-07-16		yes	pass	keep
+Guardians.of.the.Galaxy.Vol.3.IMAX.2160p.4k.2023.WEBRip.10Bit.DDP5.1.x265-Asiimov	movie	Guardians of the Galaxy Vol. 3	2023-06-01		yes	pass	keep
+Avatar (2D) - 2009 - Blu-ray BD-50 (42 GB) - Video UNTOUCHED - Audio DTS-HD [003 223] - 'AVTR.part001.rar'	movie	Avatar	2009-06-01		yes	pass	drop
+Guardians.of.the.Galaxy.Vol.3.3D.2023.COMPLETE.BLURAY-3DTorrents	movie	Guardians of the Galaxy Vol. 3	2023-06-01		yes	pass	drop
+Avatar.720P.(2009).bluray	movie	Avatar	2009-06-01		yes	pass	keep
+Akira-Anime 1988 Eng Jps Rus Ukr Multi-Subs 1080p-H264-mp4-	movie	Akira	1988-06-01		yes	pass	drop
+Avatar-Extended Collector s Edition-2009-1080p H265 60fps ita eng AC3 5.1 sub ita eng-Licdom	movie	Avatar	2009-06-01		yes	pass	drop
+Inside Out 2-EN+NL-2024 2160p WEB-DL DV H.264-DutcHY	movie	Inside Out 2	2024-06-01		yes	pass	drop
+The.Batman.UKR.ENG.2022.1080p.BluRay.Remux.AVC.DTS-HD.MA.7.1	movie	The Batman	2022-06-01		yes	pass	drop
+(www.Thunder-News.org) }Akira.UE.German.1988.AC3.DVDRiP.XViD.iNTERNAL-CiA{ {Sponsored by AstiNews} - (05 57) - 'cia-akiraue-xvid.r00'	movie	Akira	1988-06-01		yes	pass	drop
+Guardians.of.the.Galaxy.Vol.3.MULTi.2023.1080p.BluRay.x264-LYPSG	movie	Guardians of the Galaxy Vol. 3	2023-06-01		yes	pass	drop
+Joker nl subs 2019	movie	Joker	2019-06-01		yes	pass	drop
+Prince.Of.Darkness.REMASTERED.1987.BDRiP.x264-LiViDiTY	movie	Prince of Darkness	1987-06-01		yes	pass	keep
+Akira.SE.1988.DVDRip.DivX.iNTERNAL-LOL	movie	Akira	1988-06-01		yes	pass	drop
+Avatar.Theatrical.2009.1080p.Rifftrax.6ch.2ch.v2	movie	Avatar	2009-06-01		yes	pass	keep
+THE HITCHER UHD 1986 GBR UHD	movie	The Hitcher	1986-06-01		yes	pass	keep
+Avatar.Aufbruch.nach.Pandora.3DBD.2009.German.AC3.720p.BluRay.x264-IND [160 166]'AVATAR.vol001+02.PAR2' yEnc.Doc Snyder&Leroy	movie	Avatar	2009-06-01	Avatar: Aufbruch nach Pandora	yes	pass	drop
+Avatar.Aufbruch.nach.Pandora.Extended.Collectors.Edition.2009.BDRip.AC3.German.XviD-POE Usenet-of-Inferno	movie	Avatar	2009-06-01	Avatar: Aufbruch nach Pandora	yes	pass	keep
+Avatar.Aufbruch.nach.Pandora.theatrical.cut.2009.German.AC3.HDRiP.XviD-HQX	movie	Avatar	2009-06-01	Avatar: Aufbruch nach Pandora	yes	pass	keep
+Avatar Aufbruch nach Pandora 3D HSBS 2009 German D L 1080p BluRay3D x264-ANCIENT ancient-avatar.3d.1080p	movie	Avatar	2009-06-01	Avatar: Aufbruch nach Pandora	yes	pass	drop
+Blow.Out.Der.Tod.loescht.alle.Spuren.1981.German.EAC3.DL.1080p.BluRay.x265-VECTOR	movie	Blow Out	1981-07-24		yes	the name "Blow Out" is not followed by a year (1981 wanted)	drop
+Pulp.Fiction.CE.1994.INTERNAL.DVDRip.XviD-SChiZO	movie	Pulp Fiction	1994-09-10		yes	the name "Pulp Fiction" is not followed by a year (1994 wanted)	drop
+Pulp.Fiction.SD.1994.x264-SF	movie	Pulp Fiction	1994-09-10		yes	the name "Pulp Fiction" is not followed by a year (1994 wanted)	drop
+The Matrix Remuxed (1999) (1080p)	movie	The Matrix	1999-03-31		yes	the name "The Matrix" is not followed by a year (1999 wanted)	drop
+The Matrix 1 (1999).English.1080p-NoGroup	movie	The Matrix	1999-03-31		yes	the name "The Matrix" is not followed by a year (1999 wanted)	keep
+Parasite.AKA.Gisaengchung.2019.2160p.UHD.BluRay.REMUX.HDR.HEVC.Atmos.7.1-FraMeSToR	movie	Parasite	2019-05-30		yes	the name "Parasite" is not followed by a year (2019 wanted)	drop
+Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs	movie	Joker	2019-10-02		yes	the name "Joker" is not followed by a year (2019 wanted)	keep
+John Wick Chapter 4 2023 1080p AMZN WEB-DL DDP5 1 H 265-ViSTA	movie	John Wick	2014-10-24		no	the name "John Wick" is not followed by a year (2014 wanted)	drop
+Night Moves 1975 1080p BluRay x264-OFT	movie	Night Moves	2013-08-28		no	its year is 1975, not 2013	drop
+Night Moves 1975 1080p BluRay x264-OFT	movie	Night Moves	1975-06-11		yes	pass	keep

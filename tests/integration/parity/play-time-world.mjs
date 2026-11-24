@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import { createFakeAltmount } from './fake-altmount.mjs';
 import { useFakeNews } from './fake-nntp.mjs';
 import { createFakeTvdb } from './fake-tvdb.mjs';
+import { createFakeCinemeta } from './fake-cinemeta.mjs';
 
 export const PLAY_TIME_BOUNDARIES = ['Fake indexer answers every search with the Sources a scenario offers for that IMDB id', 'Fake news server holds the articles of healthy Sources only', 'Fake TVDB knows only the shows a scenario adds', 'Fake AltMount prepares at once unless a scenario slows an import', 'Synthetic media bytes, not decodable video'];
 
@@ -50,7 +51,7 @@ async function createFakeIndexer(listen, { refuseGrabs } = {}) {
 
 /**
  * Start KaijuFlow's real modules (from `root`/dist) with the fakes around them. Returns the world the scenarios take:
- * { kaijuflow, backend, news, indexer, refusing, limited, tvdb, list, configData }.
+ * { kaijuflow, backend, news, indexer, refusing, limited, tvdb, cinemeta, list, configData }.
  */
 export async function createPlayTimeWorld({ root, listen }) {
   const load = p => import(root + '/dist/' + p + '.js');
@@ -80,8 +81,13 @@ export async function createPlayTimeWorld({ root, listen }) {
   });
   // TVDB answers on loopback (the network is lo only); a scenario turns it on with the TVDB key (withTvdb).
   const tvdb = await createFakeTvdb(listen);
+  // Cinemeta on loopback too: it names only the titles a scenario adds (cinemeta.add), the rest stay unnamed.
+  const cinemeta = await createFakeCinemeta(listen, JSON.parse(fs.readFileSync(`${root}/fixtures/cinemeta/movie-tt7286456.json`, 'utf8')));
   const { default: axios } = await import(root + '/node_modules/axios/index.js');
-  axios.interceptors.request.use(cfg => { cfg.url = cfg.url?.replace('https://api4.thetvdb.com', tvdb.url); return cfg; });
+  axios.interceptors.request.use(cfg => {
+    cfg.url = cfg.url?.replace('https://api4.thetvdb.com', tvdb.url).replace('https://v3-cinemeta.strem.io', cinemeta.url);
+    return cfg;
+  });
   const { default: express } = await import(root + '/node_modules/express/index.js');
   const { handleStream } = await load('play/streamHandler');
   const { createPlayStreamRoutes } = await load('routes/play');
@@ -95,5 +101,5 @@ export async function createPlayTimeWorld({ root, listen }) {
     const out = await requestContext.run({ baseUrl: kaijuflow, pathPrefix: '/stremio', manifestKey: 'synthetic-manifest' }, () => addon.get('stream', type, id));
     return out.streams;
   };
-  return { kaijuflow, backend, news, indexer, refusing, limited, tvdb, list, configData };
+  return { kaijuflow, backend, news, indexer, refusing, limited, tvdb, cinemeta, list, configData };
 }

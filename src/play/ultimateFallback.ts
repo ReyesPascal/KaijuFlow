@@ -27,6 +27,7 @@ import { formatBytes } from '../parsers/metadataParsers.js';
 import { checkSource, isHealthy, enabledHealthCheckProviders } from './playTimeCheck.js';
 import { Walk, WALK_MAX_GRABS, type WalkDecision, type WalkEvent } from './walk.js';
 import { episodeOf, type PlayContext } from './playContext.js';
+import { sureFirst } from '../parsers/searchFlow.js';
 
 // ── Active session tracking ─────────────────────────────────────────
 
@@ -318,9 +319,9 @@ export async function ultimateFallbackFromCandidates(
   let pool = providers.length > 0 ? new NntpConnectionPool() : undefined;
 
   try {
-    // Opted-out indexers are not walked.
+    // Opted-out indexers are not walked. Search Flow (#282): the sure Sources are tried first, then the maybe ones.
     const indexerMap = settings.healthCheckIndexers;
-    const list = indexerMap ? candidates.filter(c => indexerMap[c.indexerName] !== false) : candidates;
+    const list = sureFirst(indexerMap ? candidates.filter(c => indexerMap[c.indexerName] !== false) : candidates);
     if (list.length === 0) {
       console.log(`${tag} No eligible candidates`);
       return;
@@ -331,7 +332,7 @@ export async function ultimateFallbackFromCandidates(
     const activeSet: TimeoutSet = settings.preferenceMode === 'priority'
       ? { movies: settings.priorityMoviesTimeoutSeconds, tv: settings.priorityTvTimeoutSeconds, seasonPack: settings.prioritySeasonPackTimeoutSeconds }
       : { movies: settings.speedMoviesTimeoutSeconds, tv: settings.speedTvTimeoutSeconds, seasonPack: settings.speedSeasonPackTimeoutSeconds };
-    console.log(`${tag} Starting — ${list.length} candidate(s), pool size ${settings.candidateCount}, list order, wait times: ${settings.preferenceMode} (movies=${formatTimeoutSeconds(activeSet.movies)}, tv=${formatTimeoutSeconds(activeSet.tv)}, pack=${formatTimeoutSeconds(activeSet.seasonPack)})`);
+    console.log(`${tag} Starting — ${list.length} candidate(s), pool size ${settings.candidateCount}, sure first then list order, wait times: ${settings.preferenceMode} (movies=${formatTimeoutSeconds(activeSet.movies)}, tv=${formatTimeoutSeconds(activeSet.tv)}, pack=${formatTimeoutSeconds(activeSet.seasonPack)})`);
 
     // Library hits: the Sources the Backend already holds (no NZB download needed).
     const libraryTasks = list.flatMap((candidate, index) => recall(candidate, play).dead ? [] : [() =>

@@ -31,6 +31,7 @@ import { sessionKeyOf, makePlayContext, type PlayContext } from '../play/playCon
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { indexManagerSearch, easynewsSearch, type SearchContext } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
+import { flowTitleOf, markSources } from '../parsers/searchFlow.js';
 import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
 import { recall } from '../play/sourceMemory.js';
@@ -421,7 +422,12 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
     console.log(`📊 Found ${allRawResults.length} total results (indexer: ${indexManagerResults.length}, easynews: ${easynewsResults.length})`);
 
     // === STEP 3: DEDUP + CONTENT-DEPENDENT PRE-FILTERING (cacheable) ===
-    const { results: rawResults, deprioritizedPacks } = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
+    const deduped = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
+    // Search Flow (#282): every Source marked sure or maybe, with why; Best's Walk tries the sure ones first. Cached
+    // with the marks.
+    const flowTitle = flowTitleOf(searchCtx);
+    const rawResults = markSources(deduped.results, flowTitle);
+    const deprioritizedPacks = markSources(deduped.deprioritizedPacks, flowTitle);
 
     // === STEP 4: FILTER, SORT, BUILD (user-preference-dependent; no health check, #191) ===
     const now = Date.now();

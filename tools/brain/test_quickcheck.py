@@ -38,6 +38,12 @@ def names():
     return dict(zip(keys, lines))
 
 
+def shared_release_names():
+    """The shared release-name table (tests/fixtures/release-names/table.tsv, #282): one dict per row."""
+    head, *lines = read(HERE, '..', '..', 'tests', 'fixtures', 'release-names', 'table.tsv').rstrip('\n').split('\n')
+    return [dict(zip(head.split('\t'), line.split('\t'))) for line in lines]
+
+
 def read(*parts):
     with open(os.path.join(*parts)) as f:
         return f.read()
@@ -180,6 +186,16 @@ class RightTitleTest(unittest.TestCase):
                                                    'Married to Her Worst Enemy! S01E01', 'anime', '2024-01-07']),
                          (False, 'the name "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!" is not in it'))
         self.assertTrue(self.ok('7th time loop', ['series', 'tt1:1:1', '7th Time Loop S01E01', 'anime', '2024-01-07'])[0])
+
+    def test_every_row_of_the_shared_release_name_table_gets_its_strict_answer(self):
+        """The table KaijuFlow's Search Flow tests read too (tests/unit/search-flow.test.ts), so the two copies of the
+        rule give the same answers: `strict` is `pass` or the why."""
+        rows = shared_release_names()
+        self.assertGreaterEqual(len(rows), 60)
+        for row in rows:
+            title = [row['type'], 'tt1', row['label'], 'shared-table', row['date']]
+            ok, why = qc.right_title(row['release'], title, row['other'].split('|') if row['other'] else [])
+            self.assertEqual('pass' if ok else why, row['strict'], f"{row['release']} as {row['label']}")
 
     def test_episode_markers_no_recording_holds(self):
         """Invented names: no release in the recordings uses these markers."""
