@@ -138,6 +138,91 @@ class IndexTest(unittest.TestCase):
                          ['index.json: missing; run python3 -I tools/brain/casebook.py index'])
 
 
+BROKEN = {
+    'a field left out': (ENTRY.replace('step: unscramble\n', ''),
+                         'unscramble-read-error.md: the fields must be id, title, kind, step, whose, status, match, '
+                         'confirm, fix, seen in that order (missing step)'),
+    'an unknown field': (ENTRY.replace('fix: ', 'ticket: "#245"\nfix: '),
+                         'unscramble-read-error.md: the fields must be id, title, kind, step, whose, status, match, '
+                         'confirm, fix, seen in that order (unknown ticket)'),
+    'fields out of order': (ENTRY.replace('kind: fallback\nstep: unscramble\n', 'step: unscramble\nkind: fallback\n'),
+                            'unscramble-read-error.md: the fields must be id, title, kind, step, whose, status, match, '
+                            'confirm, fix, seen in that order'),
+    'an id that is not the file name': (ENTRY.replace('id: unscramble-read-error', 'id: read-error'),
+                                        'unscramble-read-error.md: id must be the file name without .md, '
+                                        'in lower-case words joined by -'),
+    'a status outside the five': (ENTRY.replace('status: fixed awaiting proof', 'status: proved'),
+                                  "unscramble-read-error.md: status 'proved' is not one of: open, fix in progress, "
+                                  'fixed awaiting proof, proved fixed, reopened'),
+    'whose outside the list': (ENTRY.replace('whose: KaijuFlow', 'whose: Newshosting'),
+                               "unscramble-read-error.md: whose 'Newshosting' is not one of: KaijuFlow, AltMount, "
+                               'indexer, Usenet, test-only, unknown'),
+    'whose unknown on a fixed entry': (ENTRY.replace('whose: KaijuFlow', 'whose: unknown'),
+                                       'unscramble-read-error.md: whose unknown is only for an open entry'),
+    'a kind outside the list': (ENTRY.replace('kind: fallback', 'kind: crash'),
+                                "unscramble-read-error.md: kind 'crash' is not one of: fail, fallback, check miss, "
+                                'slow play, wrong title, nothing to play'),
+    'a step that is no step line': (ENTRY.replace('step: unscramble', 'step: unpack'),
+                                    "unscramble-read-error.md: step 'unpack' is not one of: " + ', '.join(casebook.STEPS)),
+    'a sign without three parts': (ENTRY.replace('fallback | import_wait not ok | ', 'fallback | '),
+                                   "unscramble-read-error.md: sign 'fallback | *all files failed validation*' must be "
+                                   '`<kind> | <step> ok|not ok | <reason>`'),
+    'a sign whose step says neither ok nor not ok': (ENTRY.replace('import_wait not ok', 'import_wait failed'),
+                                                     "unscramble-read-error.md: sign step 'import_wait failed' must be "
+                                                     '`<step> ok`, `<step> not ok` or *'),
+    'a match without its rules version': (ENTRY.replace('  - rules: 1\n    sign:', '  - sign:'),
+                                          'unscramble-read-error.md: match: an item takes rules, sign in that order'),
+    'confirm as free text': (ENTRY.replace('confirm:\n  - clue: unscramble-read-error\n    answer: yes\n'
+                                           '  - clue: altmount-missing-volumes\n    answer: yes\n',
+                                           'confirm: read the logs\n'),
+                             "unscramble-read-error.md: confirm must list Clues, or be 'none (no evidence kept)'"),
+    'a Clue answer of maybe': (ENTRY.replace('    answer: yes\n  - clue: alt', '    answer: maybe\n  - clue: alt'),
+                               'unscramble-read-error.md: confirm answer must be yes or no'),
+    'a seen date that is no date': (ENTRY.replace('    date: 2026-11-23\n---', '    date: 23 Nov\n---'),
+                                    "unscramble-read-error.md: seen date '23 Nov' must be YYYY-MM-DD"),
+    'a value YAML would read otherwise': (ENTRY.replace('fix: "#245 (PR #252', 'fix: #245 (PR #252').replace(
+        'then the Source is not uploaded"', 'then the Source is not uploaded'),
+        "unscramble-read-error.md:16: put '#245 (PR #252, 6efbc7c): a read-error is retried once, then the Source is "
+        "not uploaded' in double quotes"),
+    'no front matter': (ENTRY.split('---\n', 2)[2],
+                        'unscramble-read-error.md: must start with front matter between two --- lines'),
+    'a section left out': (ENTRY.replace('## Ruled out\n\nKaijuFlow going over its own connection cap (#245\'s first test).\n\n', ''),
+                           'unscramble-read-error.md: the sections must be What the viewer saw, Signs, Cause, How it was '
+                           'proved, Ruled out, Fix, History in that order (found: What the viewer saw, Signs, Cause, '
+                           'How it was proved, Fix, History)'),
+    'an empty section': (ENTRY.replace('A fallback: video from the next Source, 2 to 8 s late.\n', ''),
+                         "unscramble-read-error.md: section 'What the viewer saw' is empty"),
+    'text before the first section': (ENTRY.replace('---\n\n## What', '---\n\nSome words.\n\n## What'),
+                                      'unscramble-read-error.md: text before the first section'),
+}
+
+
+class FormatTest(unittest.TestCase):
+    def test_an_entry_that_breaks_the_format_is_a_problem(self):
+        for case, (text, problem) in BROKEN.items():
+            with self.subTest(case):
+                folder = casebook_with({'unscramble-read-error.md': ENTRY})
+                self.addCleanup(shutil.rmtree, folder, True)
+                with open(os.path.join(folder, 'unscramble-read-error.md'), 'w') as f:
+                    f.write(text)
+                self.assertEqual(casebook.problems(folder, clues=set()), [problem])
+
+    def test_the_index_command_refuses_a_casebook_with_a_broken_entry(self):
+        folder = casebook_with({'unscramble-read-error.md': ENTRY.replace('kind: fallback', 'kind: crash')}, index=False)
+        self.addCleanup(shutil.rmtree, folder, True)
+        with self.assertRaises(casebook.FormatError):
+            casebook.write_index(folder)
+        self.assertFalse(os.path.exists(os.path.join(folder, 'index.json')))
+
+    def test_an_entry_without_evidence_says_so_in_confirm(self):
+        text = ENTRY.replace('confirm:\n  - clue: unscramble-read-error\n    answer: yes\n'
+                             '  - clue: altmount-missing-volumes\n    answer: yes\n',
+                             'confirm: none (no evidence kept)\n')
+        folder = casebook_with({'unscramble-read-error.md': text})
+        self.addCleanup(shutil.rmtree, folder, True)
+        self.assertEqual(casebook.problems(folder, clues=set()), [])
+
+
 class CommandTest(unittest.TestCase):
     def run_tool(self, *args):
         return subprocess.run([sys.executable, '-I', os.path.join(HERE, 'casebook.py'), *args],

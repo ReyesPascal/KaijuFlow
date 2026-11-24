@@ -249,7 +249,8 @@ def write_index(folder=FOLDER):
     return len(entries)
 
 
-def index_problems(folder, entries):
+def index_problems(folder, entries, broken=()):
+    """How index.json disagrees with the entries; rows of a file in `broken` (already a format problem) are left out."""
     try:
         with open(os.path.join(folder, INDEX)) as f:
             text = f.read()
@@ -266,13 +267,17 @@ def index_problems(folder, entries):
         if i not in rows:
             out.append(f'{INDEX}: {i} is not in the index; {REGENERATE}')
         elif i not in entries:
+            if rows[i].get('file') in broken:
+                continue
             out.append(f'{INDEX}: {i} has no entry file; {REGENERATE}')
         else:
             want = index_row(entries[i])
             differ = sorted(k for k in set(want) | set(rows[i]) if want.get(k) != rows[i].get(k))
             if differ:
                 out.append(f'{INDEX}: {i} differs from its file ({", ".join(differ)}); {REGENERATE}')
-    return out or [f'{INDEX}: not written the way the index command writes it; {REGENERATE}']
+    if out or broken:
+        return out
+    return [f'{INDEX}: not written the way the index command writes it; {REGENERATE}']
 
 
 def known_clues():
@@ -302,7 +307,8 @@ def problems(folder=FOLDER, clues=None):
     files, entries that claim proved without a runnable confirm. `clues` is the set of Clue names that exist
     (default: the Clue library's)."""
     entries, out = load(folder)
-    out += index_problems(folder, entries)
+    broken = set(entry_files(folder)) - {e['file'] for e in entries.values()}
+    out += index_problems(folder, entries, broken)
     out += proof_problems(entries, known_clues() if clues is None else clues)
     return out
 
