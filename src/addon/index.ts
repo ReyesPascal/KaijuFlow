@@ -23,7 +23,8 @@ import { addonBuilder } from 'stremio-addon-sdk';
 const _require = createRequire(import.meta.url);
 const { version: APP_VERSION } = _require('../../package.json');
 import NodeCache from 'node-cache';
-import { withStepRef } from '../utils/stepTiming.js';
+import { withStepRef, logStep, timeStepSync } from '../utils/stepTiming.js';
+import { startProcessTrace } from '../utils/processTrace.js';
 import { config } from '../config/index.js';
 import { clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
 import { sessionKeyOf, makePlayContext, type PlayContext } from '../play/playContext.js';
@@ -182,6 +183,19 @@ async function resolveTitleAndBuildSearchCtx(args: {
 
 // Stream handler - called when user wants to watch something
 builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
+  // The list's own step line (#249): the whole request with a trace of the process meanwhile, written after the
+  // answer is handed back (one turn later, so the trace counts the list's last collection and never delays the
+  // answer). `cache` says whether the search was cached.
+  const t0 = performance.now();
+  const endTrace = startProcessTrace();
+  const listLine: { cache?: 'hit' | 'miss'; streams?: number } = {};
+  const answer = await streamList(type, id, listLine);
+  const ms = performance.now() - t0;
+  setImmediate(() => logStep({ step: 'list', ms, ...listLine, ...endTrace() }));
+  return answer;
+}));
+
+async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 'miss'; streams?: number }): Promise<{ streams: any[] }> {
   try {
     // Check if addon is disabled
     if (!config.addonEnabled) {
@@ -311,7 +325,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // On-tile-selection turns it off: UF waits for a press of Best (the lobby in streamHandler.ts).
       if (isUltimateFallbackActive() && config.ultimateFallback) {
         if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
-        headStart(play, fallbackCandidates ?? [], config.ultimateFallback);
+        timeStepSync({ step: 'head_start' }, () => headStart(play, fallbackCandidates ?? [], config.ultimateFallback!));
       }
     };
 
@@ -326,11 +340,16 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
       // season packs of remade shows take the deprioritized path (applyRemakeFilter)
       // and would otherwise bypass the dead-NZB DB.
+      // Step lines (#249): the filters (dead marks and the user's filters) and the sort, apart.
+      const filterStart = performance.now();
+      const timings = { sortMs: 0 };
       let allResults = filterDeadFromRaw(rawResults, play);
       const filteredDeprioritizedPacks = filterDeadFromRaw(deprioritizedPacks, play);
 
       // Apply current user filter/sort preferences (deprioritized packs appended after sort)
-      allResults = applyUserFilters(allResults, type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks);
+      allResults = applyUserFilters(allResults, type, titleMeta.now, titleMeta.runtime, filteredDeprioritizedPacks, { timings });
+      logStep({ step: 'list_filter', ms: performance.now() - filterStart - timings.sortMs, results: rawResults.length + deprioritizedPacks.length, kept: allResults.length });
+      logStep({ step: 'list_sort', ms: timings.sortMs });
 
       // No health check here (#191): the list goes out at once, unchecked; each
       // Source is checked when it is about to be played (Play-time check, #190).
@@ -338,13 +357,13 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
       // Build streams
       // Build streams (and the list's fallback group, written once)
-      const { streams, fallbackCandidates } = buildStreams({
+      const { streams, fallbackCandidates } = timeStepSync({ step: 'list_build' }, () => buildStreams({
         allResults,
         healthResults: verifiedMarks(allResults),
         play,
         now: titleMeta.now,
         runtime: titleMeta.runtime,
-      });
+      }), out => ({ streams: out.streams.length }));
 
       return { streams, fallbackCandidates, play };
     };
@@ -364,6 +383,7 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
         );
 
         startHeadStart(fallbackCandidates, play);
+        Object.assign(listLine, { cache: 'hit', streams: streams.length });
         return { streams };
       }
     }
@@ -424,12 +444,13 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
 
     startHeadStart(fallbackCandidates, play);
 
+    Object.assign(listLine, { cache: 'miss', streams: streams.length });
     return { streams };
   } catch (error) {
     console.error('❌ Stream handler error:', error);
     return { streams: [] };
   }
-}));
+}
 
 export { manifest as addonManifest };
 export default builder.getInterface();

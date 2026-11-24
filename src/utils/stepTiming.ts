@@ -11,7 +11,11 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 export const STEP_LOG_TAG = '[KF-STEP]';
 
-export const STEP_NAMES = ['indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed'] as const;
+export const STEP_NAMES = [
+  'indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed',
+  // The stream list's own steps (#249): the whole request (`list`, with the process trace), then its parts.
+  'list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start',
+] as const;
 export type StepName = (typeof STEP_NAMES)[number];
 
 export interface StepFields {
@@ -50,6 +54,20 @@ export async function timeStep<T>(fields: StepFields, fn: () => Promise<T>, afte
     throw err;
   }
   logStep({ ...fields, ...(after?.(result) ?? {}), ms: Date.now() - t0 });
+  return result;
+}
+
+/** Run a synchronous `fn`, then log one line with the elapsed time (ok=false when it throws). Never changes the result. */
+export function timeStepSync<T>(fields: StepFields, fn: () => T, after?: (result: T) => Partial<StepFields>): T {
+  const t0 = performance.now();
+  let result: T;
+  try {
+    result = fn();
+  } catch (err) {
+    logStep({ ...fields, ok: false, ms: performance.now() - t0 });
+    throw err;
+  }
+  logStep({ ...fields, ...(after?.(result) ?? {}), ms: performance.now() - t0 });
   return result;
 }
 
