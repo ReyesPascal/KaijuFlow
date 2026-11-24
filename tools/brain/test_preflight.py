@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import unittest
 from unittest import mock
 
@@ -983,6 +984,62 @@ class MachineWiringTest(unittest.TestCase):
         code, text = self.preflight('record', 4.0)
         self.assertEqual(code, 0, text)
         self.assertEqual(self.asked, ['ip', 'dig'])
+
+
+POWER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-24-power')
+
+
+def power_tree(case, mains_online='1', mains=True):
+    """A copy of the power supplies captured on Brain (plugged in) in a temporary folder: with the AC adapter's `online` set
+    to `mains_online`, or without the adapter (a desktop's tree) when `mains` is false."""
+    root = os.path.join(tempdir(case), 'power_supply')
+    shutil.copytree(os.path.join(POWER, 'power_supply'), root)
+    if not mains:
+        shutil.rmtree(os.path.join(root, 'AC'))
+    else:
+        with open(os.path.join(root, 'AC', 'online'), 'w') as f:
+            f.write(mains_online + '\n')
+    return root
+
+
+class PowerReadersTest(unittest.TestCase):
+    """The readers of the machine's power and CPU policy (#262), on the /sys files captured on Brain (fixtures/2026-11-24-power/)."""
+
+    def test_plugged_in_is_ac(self):
+        self.assertEqual(brainrun.read_power(os.path.join(POWER, 'power_supply')), 'ac')
+
+    def test_a_mains_supply_that_is_not_online_is_battery(self):
+        self.assertEqual(brainrun.read_power(power_tree(self, mains_online='0')), 'battery')
+
+    def test_a_mains_supply_whose_online_cannot_be_read_is_battery(self):
+        root = power_tree(self)
+        os.remove(os.path.join(root, 'AC', 'online'))
+        self.assertEqual(brainrun.read_power(root), 'battery')
+
+    def test_an_online_usb_supply_is_not_mains(self):
+        self.assertEqual(brainrun.read_power(power_tree(self, mains_online='0')), 'battery')  # the captured USB-C port is online
+
+    def test_a_machine_without_a_mains_supply_or_any_supply_is_ac(self):
+        self.assertEqual(brainrun.read_power(power_tree(self, mains=False)), 'ac')
+        self.assertEqual(brainrun.read_power(os.path.join(tempdir(self), 'no-such-folder')), 'ac')
+
+    def test_the_cpu_policy_is_the_governor_and_the_energy_preference(self):
+        self.assertEqual(brainrun.read_cpu_policy(os.path.join(POWER, 'cpufreq')),
+                         {'governor': 'powersave', 'energy_preference': 'performance'})
+
+    def test_a_cpu_policy_file_that_cannot_be_read_is_left_out(self):
+        root = os.path.join(tempdir(self), 'cpufreq')
+        shutil.copytree(os.path.join(POWER, 'cpufreq'), root)
+        os.remove(os.path.join(root, 'energy_performance_preference'))
+        self.assertEqual(brainrun.read_cpu_policy(root), {'governor': 'powersave'})
+        self.assertEqual(brainrun.read_cpu_policy(os.path.join(tempdir(self), 'none')), {})
+
+    def test_the_cpu_probe_does_the_same_work_every_time_and_says_how_long_it_took(self):
+        ticks, done = iter([10.0, 10.8126, 20.0, 21.2]), []
+        probe = lambda: brainrun.cpu_probe_ms(clock=lambda: next(ticks), work=done.append)  # noqa: E731
+        self.assertEqual((probe(), probe()), (813, 1200))
+        self.assertEqual(done, [brainrun.PROBE_ROUNDS] * 2)
+        self.assertEqual(brainrun.probe_work(1000), brainrun.probe_work(1000))
 
 
 class FirstInARunTest(unittest.TestCase):
