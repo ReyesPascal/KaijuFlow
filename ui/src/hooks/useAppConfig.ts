@@ -74,15 +74,11 @@ function useSentinelSetter<T>(
 
 const DEFAULT_NEW_INDEXER: NewIndexerForm = {
   name: '', url: '', apiKey: '', website: '', logo: '',
-  movieSearchMethod: ['text'], tvSearchMethod: ['text'],
-  animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'],
   caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS,
 };
 
 const DEFAULT_EDIT_FORM: EditIndexerForm = {
   name: '', url: '', apiKey: '', enabled: true, website: '', logo: '',
-  movieSearchMethod: ['text'], tvSearchMethod: ['text'],
-  animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'],
   caps: null, pagination: false, maxPages: 3, timeoutEnabled: true, timeout: DEFAULT_INDEXER_TIMEOUT_SECONDS,
 };
 
@@ -506,7 +502,7 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     }, 500);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editForm.name, editForm.url, editForm.apiKey, editForm.enabled, JSON.stringify(editForm.movieSearchMethod), JSON.stringify(editForm.tvSearchMethod), JSON.stringify(editForm.animeMovieSearchMethod), JSON.stringify(editForm.animeTvSearchMethod), editForm.caps, editForm.website, editForm.logo, editForm.pagination, editForm.maxPages, editForm.timeoutEnabled, editForm.timeout, expandedIndexer]);
+  }, [editForm.name, editForm.url, editForm.apiKey, editForm.enabled, editForm.caps, editForm.website, editForm.logo, editForm.pagination, editForm.maxPages, editForm.timeoutEnabled, editForm.timeout, expandedIndexer]);
 
   // Reset the Backend connection status when its fields change after initial load
   const backendFieldsChanged = useRef(false);
