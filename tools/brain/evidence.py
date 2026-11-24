@@ -142,7 +142,7 @@ def save(run_dir, n, play, io):
     """Write the evidence folder of the n-th play (1-based) of a check into `run_dir`/evidence/ and return its path
     relative to `run_dir`. `play` holds: 'check' (the run folder's name), 'kind' ('quick check'), 'visit' (as raw.json
     keeps it), 'outcome' (quickcheck.judge's), 'kf_text' and 'be_text' (both containers' lines for the play, unscrubbed),
-    'settings', 'commit', 'head', 'dirty', and 'until' (the end of the play's window: the next play's start, or its end
+    'settings', 'commit', 'head', 'dirty', 'altmount' (its test copy's image), and 'until' (the end of the play's window: the next play's start, or its end
     plus the grace). `io` gives check_answers() (the folder of the check's stored answers, or None), standin_lines(),
     altmount_file(container path) (bytes or None) and secret_values()."""
     visit, outcome = play['visit'], play['outcome']
@@ -195,6 +195,7 @@ def save(run_dir, n, play, io):
     meta = {'format': FORMAT, 'check': play['check'], 'kind': play['kind'], 'title': visit['title'], 'label': visit['label'],
             'id': visit['id'], 'kept_because': kept_because(outcome), 'outcome': outcome, 't_start': visit['t_start'],
             't_end': visit['t_end'], 'commit': play['commit'], 'head': play['head'], 'dirty': play['dirty'],
+            'altmount': play.get('altmount'),
             'dev_switch': {'setting': setting is True, 'step_lines': sum(1 for s in steps if s.get('dev') is True), 'of': len(steps)},
             'failed_sources': failed, 'altmount_nzbs': altmount,
             'answers': {'list': ANSWERS, 'kept': len(kept), 'not_stored': not_stored}}

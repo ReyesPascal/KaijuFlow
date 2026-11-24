@@ -284,6 +284,13 @@ class RealIO:
         label = r.stdout.strip()
         return label if r.returncode == 0 and label and label != '<no value>' else None
 
+    def altmount_image(self):
+        """{'image', 'id'} of AltMount's test copy as it runs (docker inspect, read-only), or None when it is not up."""
+        r = subprocess.run(['docker', 'inspect', '-f', '{{.Config.Image}} {{.Image}}', ALTMOUNT_CONTAINER],
+                           capture_output=True, text=True, timeout=60)
+        parts = r.stdout.split()
+        return {'image': parts[0], 'id': parts[1]} if r.returncode == 0 and len(parts) == 2 else None
+
     def rebuild_image(self, commit):
         build_image(commit, self.repo)
 
@@ -1520,7 +1527,7 @@ def quick_check_all(cfg, io):
     check = {'kind': 'quick check', 'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir,
              'folder': os.path.basename(run_dir), 'titles': [], 'visits': [], 'null': None, 'stopped': None, 'error': None,
              'indexers': list(cfg['indexers']), 'browse_pause_s': cfg['browse_pause'], 'settings': {}, 'commit': None,
-             'head': None, 'dirty': None, 'start_load': round(seen['load'], 2) if 'load' in seen else None,
+             'head': None, 'dirty': None, 'altmount': None, 'start_load': round(seen['load'], 2) if 'load' in seen else None,
              'machine': seen.get('machine'), 'stage': 'the draw', 'playing': None}
     logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
     check['plays'] = []  # both containers' lines per visit, for the evidence folders (never in raw.json)
@@ -1536,6 +1543,7 @@ def quick_check_all(cfg, io):
             planned = len(check['titles'])
             check['stage'] = 'the reset'
             io.reset(ALL_TESTBED, progress_log(io, 0, planned))
+            check['altmount'] = io.altmount_image()  # after the reset, which starts the copy (#287: what changed)
             io.open_check_store(run_dir)
             handle = io.start_standin(os.path.join(run_dir, 'logs', 'standin.log'), mode='record')
             check['stage'] = 'the plays'
@@ -1616,7 +1624,7 @@ def write_check_ending(cfg, io, check, started, logbuf):
     _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': check['status'], 'visits': check['visits'],
                                                           'outcomes': check['outcomes']}, indent=1))
     meta = {k: check.get(k) for k in ('kind', 'name', 'status', 'verdict', 'headline', 'started', 'finished', 'seconds', 'commit',
-                                      'head', 'dirty', 'titles', 'indexers', 'null', 'stopped', 'error', 'browse_pause_s',
+                                      'head', 'dirty', 'altmount', 'titles', 'indexers', 'null', 'stopped', 'error', 'browse_pause_s',
                                       'start_load', 'machine')}
     _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
     result = {'pass': 'pass', 'fail': 'FAIL'}.get(check['verdict']) or {'null': 'NULL'}.get(check['status'], check['status'])
@@ -1636,7 +1644,8 @@ def save_evidence(io, check):
             continue
         nxt = visits[i + 1]['t_start'] if i + 1 < len(visits) else br.iso(br.parse_ts(v['t_end']) + datetime.timedelta(seconds=GRACE_S))
         play = {'check': check['folder'], 'kind': check['kind'], 'visit': v, 'outcome': outcome, **plays[i],
-                'settings': check.get('settings') or {}, 'until': nxt, **{k: check.get(k) for k in ('commit', 'head', 'dirty')}}
+                'settings': check.get('settings') or {}, 'until': nxt,
+                **{k: check.get(k) for k in ('commit', 'head', 'dirty', 'altmount')}}
         try:
             outcome['evidence'] = evidence.save(check['dir'], i + 1, play, io)
         except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)

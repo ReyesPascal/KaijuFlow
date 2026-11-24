@@ -342,6 +342,64 @@ class SolvedTest(CaseWrites):
                          (1, f'refused: {self.id} is not concluded yet (open)\n'))
 
 
+def put_json(path, data, **kw):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write(json.dumps(data, indent=1, **kw))
+
+
+class WhatChangedTest(unittest.TestCase):
+    """Story 42: what changed since the last check that passed: the image's commit, the settings, AltMount's version."""
+    AM_OLD = {'image': 'ghcr.io/kipsilabs/altmount:v0.3.9', 'id': 'sha256:0ld'}
+    AM_NEW = {'image': 'ghcr.io/kipsilabs/altmount:v0.4.0', 'id': 'sha256:feed'}
+
+    def failing_check(self, good=True, altmount=True):
+        root, run_dir = stored_check(self, name='2026-11-24T070000Z-quick-check', plays=(INDEXER_DOWN,))
+        ev = os.path.join(run_dir, 'evidence', '01-265-inception-indexer-down')
+        with open(os.path.join(ev, 'evidence.json')) as f:
+            meta = json.load(f)
+        if altmount:
+            meta['altmount'] = self.AM_NEW
+        put_json(os.path.join(ev, 'evidence.json'), meta)
+        put_json(os.path.join(ev, 'settings.json'), {'kaijuflow': {'healthCheck.sampleCount': 3, 'devDiagnostics': True}},
+                 sort_keys=True)
+        put_json(os.path.join(run_dir, 'meta.json'), {'kind': 'quick check', 'started': '2026-11-24T07:00:00Z',
+                                                      'verdict': 'fail'}, sort_keys=True)
+        if good:
+            for name, verdict, commit in (('2026-11-22T080000Z-quick-check', 'pass', 'a1b2c3'),
+                                          ('2026-11-23T080000Z-quick-check', 'fail', 'ffffff'),
+                                          ('2026-11-25T080000Z-quick-check', 'pass', 'later')):
+                put_json(os.path.join(root, name, 'meta.json'), {'kind': 'quick check', 'verdict': verdict, 'commit': commit,
+                                                                 'started': name[:4] + '-' + name[5:7] + '-' + name[8:10],
+                                                                 'altmount': self.AM_OLD}, sort_keys=True)
+                put_json(os.path.join(root, name, 'settings.json'),
+                         {'kaijuflow': {'healthCheck.sampleCount': 5, 'devDiagnostics': True}}, sort_keys=True)
+        cases = os.path.join(tempdir(self), 'cases')
+        diagnosis.after_check(run_dir, root, cases=cases)
+        [(cid, log)] = logs(cases).items()
+        return cid, log, cases
+
+    def changed(self, log):
+        return next(o for o in log['observations'] if o['says'].startswith('since the last check that passed')
+                    or o['says'].startswith('no check passed'))
+
+    def test_the_commit_the_settings_and_altmount_are_compared_with_the_last_check_that_passed(self):
+        cid, log, cases = self.failing_check()
+        obs = self.changed(log)
+        self.assertEqual(obs['says'], 'since the last check that passed (2026-11-22T080000Z-quick-check): the commit '
+                                      'changed (a1b2c3 to fd19e62c5a1a0de5b9758db9d8584518c321d995); AltMount changed '
+                                      '(ghcr.io/kipsilabs/altmount:v0.3.9 to ghcr.io/kipsilabs/altmount:v0.4.0); 1 setting '
+                                      'changed: kaijuflow.healthCheck.sampleCount 5 to 3')
+        caselog.check_quotes(log, os.path.join(cases, cid), obs['quotes'], 'an observation')
+        self.assertEqual({q.get('check') for q in obs['quotes']}, {None, '2026-11-22T080000Z-quick-check'})
+
+    def test_what_was_not_recorded_is_said_so(self):
+        _, log, _ = self.failing_check(altmount=False)
+        self.assertIn("AltMount's version is not recorded in this play's evidence", self.changed(log)['says'])
+        _, log, _ = self.failing_check(good=False)
+        self.assertEqual(self.changed(log)['says'], 'no check passed before this one: nothing to compare with')
+
+
 class AgentStartsByItselfTest(unittest.TestCase):
     def test_a_check_whose_failure_has_no_proved_cause_starts_the_agent_and_tells_the_owner_in_one_line(self):
         with mock.patch.object(diagnosis, 'load_index', return_value=[]):  # a Casebook that knows nothing yet

@@ -417,6 +417,9 @@ DRAWN = [['movie', 'tt0000001', 'First Film', 'popular-film', '2020-05-01'],
 BEST = {'name': 'KaijuFlow', 'title': 'KaijuFlow ▶ Best', 'url': 'http://localhost:1338/u/play/stream/ultimate-fallback?x=1'}
 
 
+ALTMOUNT = {'image': 'ghcr.io/kipsilabs/altmount:v0.4.0', 'id': 'sha256:5e1f'}  # AltMount's test copy (#287)
+
+
 class CheckWorld:
     """The real world as a quick check meets it, faked: a clock that moves only while something takes time, the draw, the
     reset, the stand-in, KaijuFlow's list and the press of Best (through brainrun.check_visit_answer, as RealIO does), and
@@ -466,6 +469,9 @@ class CheckWorld:
 
     def image_label(self):
         return 'img1'
+
+    def altmount_image(self):
+        return dict(ALTMOUNT)
 
     def draw_titles(self, check, kinds):
         self.calls.append(('draw', check.split(' ')[0], dict(kinds)))

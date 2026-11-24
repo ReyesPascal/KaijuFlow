@@ -114,6 +114,108 @@ def path_observation(ev, failure):
             'quotes': [{'occurrence': None, 'file': 'steps.jsonl', 'text': line}] if line else []}
 
 
+def _runs_root(folder):
+    """(the runs root, the run folder) an evidence folder sits in: <runs root>/<run folder>/evidence/<NN-label>/."""
+    run_dir = os.path.dirname(os.path.dirname(os.path.normpath(folder)))
+    return os.path.dirname(run_dir), run_dir
+
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def last_good_check(folder):
+    """The name and meta.json of the last quick check under the runs root that passed before this play's check."""
+    root, run_dir = _runs_root(folder)
+    mine = _read_json(os.path.join(run_dir, 'meta.json')) or {}
+    since = mine.get('started') or (_read_json(os.path.join(folder, 'evidence.json')) or {}).get('t_start') or ''
+    for name in reversed(br.run_folders(root)):
+        if name == os.path.basename(run_dir):
+            continue
+        meta = _read_json(os.path.join(root, name, 'meta.json')) or {}
+        if meta.get('kind') == 'quick check' and meta.get('verdict') == 'pass' and (meta.get('started') or '') < since:
+            return name, meta
+    return None, None
+
+
+def _flat(d, at=''):
+    out = {}
+    for k, v in (d or {}).items():
+        if isinstance(v, dict):
+            out.update(_flat(v, f'{at}{k}.'))
+        else:
+            out[f'{at}{k}'] = (k, v)
+    return out
+
+
+def _shown(v):
+    return v if isinstance(v, str) else json.dumps(v)
+
+
+def _pair(key, value):
+    return f'{json.dumps(key)}: {json.dumps(value)}'
+
+
+def changed_observation(ev):
+    """What changed since the last quick check that passed (story 42): the image's commit, AltMount's version and the
+    settings, each quoted from this play's evidence and from that check's folder."""
+    name, good = last_good_check(ev.folder)
+    if name is None:
+        return {'says': 'no check passed before this one: nothing to compare with', 'quotes': []}
+    said, quotes = [], []
+
+    def mine(file, key, value):
+        quotes.append({'occurrence': None, 'file': file, 'text': _pair(key, value)})
+
+    def theirs(file, key, value):
+        quotes.append({'occurrence': None, 'check': name, 'file': file, 'text': _pair(key, value)})
+    meta = ev.meta
+    if meta.get('commit') and good.get('commit'):
+        if meta['commit'] != good['commit']:
+            said.append(f"the commit changed ({good['commit']} to {meta['commit']})")
+            mine('evidence.json', 'commit', meta['commit'])
+            theirs('meta.json', 'commit', good['commit'])
+        else:
+            said.append('the same commit')
+    else:
+        said.append("the commit is not recorded in both")
+    am, good_am = (meta.get('altmount') or {}).get('image'), (good.get('altmount') or {}).get('image')
+    if am is None:
+        said.append("AltMount's version is not recorded in this play's evidence")
+    elif good_am is None:
+        said.append(f'AltMount {am}; its version is not recorded in {name}')
+    elif am != good_am:
+        said.append(f'AltMount changed ({good_am} to {am})')
+        mine('evidence.json', 'image', am)
+        theirs('meta.json', 'image', good_am)
+    else:
+        said.append(f'the same AltMount ({am})')
+    now = _flat(_read_json(os.path.join(ev.folder, 'settings.json')))
+    then = _flat(_read_json(os.path.join(_runs_root(ev.folder)[0], name, 'settings.json')))
+    if not now or not then:
+        said.append('the settings are not recorded in both')
+    else:
+        diff = sorted(k for k in set(now) | set(then) if (now.get(k) or (None, None))[1] != (then.get(k) or (None, None))[1])
+        if not diff:
+            said.append('the same settings')
+        else:
+            words = []
+            for k in diff[:10]:
+                old, new = then.get(k), now.get(k)
+                words.append(f"{k} {_shown(old[1]) if old else '(none)'} to {_shown(new[1]) if new else '(none)'}")
+                if new and not isinstance(new[1], (dict, list)):
+                    mine('settings.json', *new)
+                if old and not isinstance(old[1], (dict, list)):
+                    theirs('settings.json', *old)
+            said.append(f"{len(diff)} setting{'' if len(diff) == 1 else 's'} changed: " + ', '.join(words) +
+                        (', ...' if len(diff) > 10 else ''))
+    return {'says': f'since the last check that passed ({name}): ' + '; '.join(said), 'quotes': quotes}
+
+
 def _ran(log, occurrence):
     return {r['clue'] for r in log['clue_runs'] if r['occurrence'] == occurrence}
 
@@ -190,10 +292,10 @@ def open_or_join(cases, folder, ev, failure, diagnosed, library=None):
     log['occurrences'].append({'n': n, 'evidence': where, 'check': meta.get('check'), 'label': meta.get('label'),
                                'release': failure['release'], 'date': (meta.get('t_start') or '')[:10],
                                'rules': diagnosed.get('rules'), 'how': 'check'})
-    obs = path_observation(ev, failure)
-    for q in obs['quotes']:
-        q['occurrence'] = n
-    _note(log, 'observations', {'occurrence': n, **obs}, 'code', t)
+    for obs in (path_observation(ev, failure), changed_observation(ev)):
+        for q in obs['quotes']:
+            q['occurrence'] = n
+        _note(log, 'observations', {'occurrence': n, **obs}, 'code', t)
     for lead in diagnosed.get('leads') or []:
         _note(log, 'observations', {'occurrence': n, 'says': _lead_text(lead),
                                     'quotes': [{'occurrence': n, 'clue': c['clue'], 'text': c['facts'][0]}
@@ -264,7 +366,8 @@ def _fold(text):
 def check_quotes(log, case_dir, quotes, what):
     """Refused unless every quote is in the evidence it names: {'occurrence', 'file' (a file in that occurrence's
     evidence folder), 'text'}, or {'occurrence', 'clue', 'text'} (what that Clue said when it ran on it). Each text is
-    looked up whole, spaces folded; none may be shorter than MIN_QUOTE."""
+    looked up whole, spaces folded; none may be shorter than MIN_QUOTE. A quote with a `check` (a run folder's name)
+    reads that check's folder in the same runs root instead (its meta.json, settings.json, ...)."""
     if not quotes:
         raise Refused(f'{what} quotes the evidence it rests on: no quote given')
     occs = {o['n']: o for o in log['occurrences']}
@@ -283,12 +386,20 @@ def check_quotes(log, case_dir, quotes, what):
             continue
         rel = q.get('file') or ''
         folder = evidence_folder(case_dir, occs[n])
+        where = f"occurrence {n}'s {rel}"
+        if q.get('check'):  # another check's folder in the same runs root (what changed since the last good one)
+            root = _runs_root(folder)[0]
+            folder = os.path.normpath(os.path.join(root, q['check']))
+            where = f"{q['check']}'s {rel}"
+            if os.path.dirname(folder) != os.path.normpath(root) or not os.path.isdir(folder):
+                raise Refused(f"quote {i} names {q['check']}, not a check in the runs root")
         path = os.path.normpath(os.path.join(folder, rel))
         if not rel or os.path.isabs(rel) or not path.startswith(folder + os.sep) or not os.path.isfile(path):
-            raise Refused(f'quote {i} names {rel or "no file"}, not a file in the evidence folder')
+            raise Refused(f'quote {i} names {rel or "no file"}, not a file in the '
+                          + ('check folder' if q.get('check') else 'evidence folder'))
         with open(path, errors='replace') as f:
             if _fold(text) not in _fold(f.read()):
-                raise Refused(f"quote {i} is not in occurrence {n}'s {rel}: \"{text}\"")
+                raise Refused(f'quote {i} is not in {where}: "{text}"')
 
 
 def _text(write, field, what):
