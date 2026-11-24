@@ -32,7 +32,7 @@ REAL_FILM_VOTES = 50  # a film with fewer TMDB votes than this does not count as
 DAILY_SEASON = 100  # episodes in a season of a daily show (one on most weekdays): fewer is a weekly show
 
 
-def _is_foreign(found, get):
+def _is_foreign(found, _get):
     """A title with a foreign or alternate name: TMDB's English title is not its original one."""
     return pool.norm(found.get('title')) != pool.norm(found.get('original_title'))
 
@@ -204,6 +204,10 @@ def _draw_one(get, kind, taken, rng, today):
         if '{lang}' in path:
             fill['lang'] = rng.choice(FOREIGN_LANGUAGES)
         status, page = get(path.format(**fill))
+        last = (page or {}).get('total_pages') or 0
+        if status == 200 and not (page or {}).get('results') and 0 < last < fill['page']:
+            fill['page'] = rng.randint(1, last)  # a short list (a language with few films): a page within it
+            status, page = get(path.format(**fill))
         if status != 200:
             raise pool.TmdbError(f'TMDB answered HTTP {status} for a {kind} list, so nothing was drawn.')
         entries = list((page or {}).get('results') or [])

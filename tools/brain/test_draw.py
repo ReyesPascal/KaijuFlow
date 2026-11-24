@@ -1,4 +1,5 @@
-"""Tests for draw.py (the title draw for real-use checks and its ledger), with a fake TMDB. No network.
+"""Tests for draw.py (the title draw for real-use checks and its ledger), with a fake TMDB and captured answers.
+No network, except `--capture` (below), which asks the real TMDB on request only.
 
     python3 -I -m unittest discover -s tools/brain -p 'test_draw.py'
 """
@@ -9,6 +10,7 @@ import json
 import os
 import random
 import tempfile
+import time
 import unittest
 import sys
 import urllib.parse
@@ -189,6 +191,23 @@ class DrawTest(unittest.TestCase):
             run_draw(t, kinds={'popular-film': 1})
         self.assertEqual(str(e.exception), 'TMDB answered HTTP 503 for a popular-film list, so nothing was drawn.')
 
+    def test_a_page_past_a_short_list_s_end_is_asked_again_within_it(self):
+        t = FakeTmdb()
+        t.film(1, 'Le Film', 2000, original='Le Film Original')
+        t.lists['with_original_language='] = [1]
+        real_get = t.get
+
+        def get(path):  # a list of two pages: TMDB answers a later page empty, with the list's page count
+            status, data = real_get(path)
+            page = int(dict(urllib.parse.parse_qsl(path.partition('?')[2])).get('page', 1))
+            return (status, {**data, 'total_pages': 2}) if page <= 2 else (status, {'results': [], 'total_pages': 2})
+        draw.TRIES, tries = 1, draw.TRIES
+        try:
+            got = draw.draw(get, [], {'foreign': 1}, random.Random(3), TODAY)
+        finally:
+            draw.TRIES = tries
+        self.assertEqual(got[0][1], 'tt0000001')
+
     def test_a_rare_kind_draws_from_older_or_little_known_titles(self):
         got = run_draw(world(), kinds={'rare-film': 1})
         self.assertEqual(got[0][1:], ['tt0000701', 'Old Film', 'rare-film', '1971-05-01'])
@@ -349,12 +368,13 @@ def capture(folder, seed=7):
     """Captures TMDB's real answers to one draw of each kind into `folder`/answers.json, with the metadata key of
     KaijuFlow's test copy (never written: it is only in the request URLs). After a change to the order of the draw's
     TMDB calls or its random picks: python3 -I tools/brain/test_draw.py --capture tools/brain/fixtures/<day>-tmdb-draw"""
-    get, answers = draw.pool.tmdb_getter(common.DEFAULT_TEST_DIR), {}
+    began = time.monotonic()
+    get, answers = draw.pool.tmdb_getter(os.environ.get('TEST_DIR', common.DEFAULT_TEST_DIR)), {}
 
     def keep(path):
         answers[path] = list(get(path))
         return tuple(answers[path])
-    today, kinds = datetime.date.today().isoformat(), {k: 1 for k in draw.KINDS}
+    today, kinds = datetime.datetime.now(datetime.timezone.utc).date().isoformat(), {k: 1 for k in draw.KINDS}
     drawn = draw.draw(keep, [], kinds, random.Random(seed), today)
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, 'answers.json'), 'w') as f:
@@ -363,12 +383,14 @@ def capture(folder, seed=7):
                             'test_draw.py replays them.',
                    'seed': seed, 'today': today, 'kinds': kinds, 'drawn': drawn, 'answers': answers},
                   f, ensure_ascii=False, indent=1)
-    return drawn
+    return drawn, round(time.monotonic() - began)
 
 
 if __name__ == '__main__':
     if sys.argv[1:2] == ['--capture']:
-        for title in capture(sys.argv[2]):
+        drawn, took = capture(sys.argv[2])
+        for title in drawn:
             print(title)
+        print(f'done in {took} s')
     else:
         unittest.main()
