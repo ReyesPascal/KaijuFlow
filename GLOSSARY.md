@@ -131,11 +131,11 @@ The first Source in a side's list for a title. Two top picks are the same Source
 _Avoid_: first result, winner
 
 **Fail**:
-A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md`.
+A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md` ("Real-use checks" for a check: it passes on zero fails).
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Nothing to play**:
-A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail.
+A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
 _Avoid_: no results (search may have found Sources that are all dead), fail (when nothing could play)
 
 **Real-use check**:
@@ -143,7 +143,7 @@ A check that plays the way a viewer watches: new titles each time, the live inde
 _Avoid_: speed test, tuning test (both replay a Recording), soak test
 
 **Quick check**:
-A real-use check of 5 new titles, cold, ended as soon as each video starts: a fast look at how a change does.
+A real-use check of 5 new titles, cold, ended as soon as each video starts: a fast look at how a change does. Run with `brainrun.py check --quick`; its rules are in `tools/brain/docs/rules.md` ("Real-use checks").
 _Avoid_: smoke test, short run (a short run replays a Recording)
 
 **Full check**:
@@ -155,11 +155,11 @@ Playing one failed title again, live, after a fix, to prove the fix: a single ti
 _Avoid_: rerun, tuning test
 
 **Check miss**:
-A Source the health check passed that the Backend then refused, or whose video froze: the check was wrong even when a fallback saved the play. It is counted apart, and each one becomes a ticket.
+A Source the health check passed that the Backend then refused, or whose video froze: the check was wrong even when a fallback saved the play. It is counted apart, and each one becomes a ticket. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
 _Avoid_: fail (when a fallback played), false positive
 
 **Slow play**:
-A play whose video arrives, but more than 60 s after the press, when a viewer would have given up. It is not a fail; it is counted and named apart, as the plays to speed up.
+A play whose video arrives, but more than 60 s after the press, when a viewer would have given up. It is not a fail; it is counted and named apart, as the plays to speed up. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
 _Avoid_: fail (video arrived), timeout
 
 **Next-episode play**:

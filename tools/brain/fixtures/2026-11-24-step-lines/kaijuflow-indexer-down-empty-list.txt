@@ -1,0 +1,6 @@
+2026-11-24T06:00:46.966057554Z [KF-STEP] {"step":"indexer_page","source":"NinjaCentral","ms":3,"ok":false,"t":"2026-11-24T06:00:46.965Z","ref":"tt1375666","page":1}
+2026-11-24T06:00:46.969125032Z [KF-STEP] {"step":"list_filter","ms":2,"ok":true,"t":"2026-11-24T06:00:46.968Z","ref":"tt1375666","results":0,"kept":0}
+2026-11-24T06:00:46.969128599Z [KF-STEP] {"step":"list_sort","ms":0,"ok":true,"t":"2026-11-24T06:00:46.969Z","ref":"tt1375666"}
+2026-11-24T06:00:46.969923526Z [KF-STEP] {"step":"list_build","ms":1,"ok":true,"t":"2026-11-24T06:00:46.969Z","ref":"tt1375666","streams":0}
+2026-11-24T06:00:46.970224736Z [KF-STEP] {"step":"head_start","ms":0,"ok":true,"t":"2026-11-24T06:00:46.970Z","ref":"tt1375666"}
+2026-11-24T06:00:46.971382473Z [KF-STEP] {"step":"list","ms":591,"ok":true,"t":"2026-11-24T06:00:46.971Z","ref":"tt1375666","cache":"miss","streams":0,"cpu_ms":54,"gc_ms":0,"gc_n":0,"loop_max_ms":2,"loop_p99_ms":2,"elu":0.13,"heap_mb":267}

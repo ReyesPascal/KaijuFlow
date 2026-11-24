@@ -485,17 +485,27 @@ def _flat(rel, text):
     return br.flatten(json.loads(text)) if rel.endswith(".json") else br.flatten_yaml(text)
 
 
+def _json_put(node, parts, value):
+    """Sets the setting `parts` (a dotted name, split) in a JSON object; `indexers[*]` sets it in every entry of the list."""
+    part, rest = parts[0], parts[1:]
+    if part.endswith("[*]"):
+        for item in node.get(part[:-3]) or []:
+            if isinstance(item, dict) and rest:
+                _json_put(item, rest, value)
+        return
+    if not rest:
+        node[part] = value
+        return
+    if not isinstance(node.get(part), dict):
+        node[part] = {}
+    _json_put(node[part], rest, value)
+
+
 def _json_set(text, settings):
     """The JSON config with each setting (a dotted name) replaced by its value; everything else as it was."""
     data = json.loads(text)
     for name, value in settings.items():
-        *parents, last = name.split(".")
-        node = data
-        for p in parents:
-            if not isinstance(node.get(p), dict):
-                node[p] = {}
-            node = node[p]
-        node[last] = value
+        _json_put(data, name.split("."), value)
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
@@ -640,9 +650,10 @@ def apply_expected(test_dir, side, expected_path=None, stamp=None):
         raise ValueError("%s cannot be read" % rel)
     new = (_json_set if rel.endswith(".json") else _yaml_set)(text, settings)
     before, after = _flat(rel, text), _flat(rel, new)
-    if outside_named(before, settings) != outside_named(after, settings):
+    names = [n for wild in settings for n in brainrun.expand_names(wild, before)]  # indexers[*]: one name per indexer
+    if outside_named(before, names) != outside_named(after, names):
         raise ValueError("writing the expected settings would change other settings of %s; nothing was written" % name)
-    changes = _changes(before, after, list(settings))
+    changes = _changes(before, after, names)
     if not changes:
         return ["%s: nothing changed; %s already holds the expected settings." % (name, rel)]
     saved = _backup(test_dir, side, path, stamp or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()))

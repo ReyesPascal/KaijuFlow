@@ -5,9 +5,11 @@
            [--rebuild-image] [--provider-limit 100] [--no-wait]
     python3 -I tools/brain/brainrun.py record --name baseline --store <standin-store> --list <title-list> [--key-file PATH]
            [--runs-root DIR] [--one-page] [--titles-file titles.json] [--tries 1] [--rebuild-image]   (record, or top up)
-    python3 -I tools/brain/brainrun.py preflight [--for run|record] --store <standin-store> --list <title-list>
+    python3 -I tools/brain/brainrun.py preflight [--for run|record|check] --store <standin-store> --list <title-list>
            [--rebuild-image] [--provider-limit 100] [--key-file PATH]   (the setup check alone; a run starts with it)
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke [--one-page]   (stand-in reachability check, see README)
+    python3 -I tools/brain/brainrun.py check --quick [--name quick-check] [--runs-root DIR] [--ledger FILE] [--key-file PATH]
+           [--rebuild-image]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
 indexer time for every answer unless --no-wait; every visit waits the fixed Browse pause between its list and
@@ -33,6 +35,7 @@ import datetime
 import ipaddress
 import json
 import os
+import random
 import re
 import shlex
 import shutil
@@ -48,7 +51,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I lea
 import allowance  # noqa: E402
 import brainreport as br  # noqa: E402
 import common  # noqa: E402
+import draw  # noqa: E402
 import indexer_standin  # noqa: E402
+import pool  # noqa: E402
+import quickcheck  # noqa: E402
 import runcheck  # noqa: E402
 import runs  # noqa: E402
 import testbed  # noqa: E402
@@ -134,6 +140,11 @@ def _read_text(path):
         return None
 
 
+def _key_path(cfg):
+    """The key file: --key-file, else the test folder's indexers.json."""
+    return cfg.get('key_file') or os.path.join(cfg['test_dir'], 'indexers.json')
+
+
 def snapshot_settings(test_dir):
     """Settings of every side with secrets removed: {side: {dotted key: value}}; the settings command's reader (testbed.py)."""
     return testbed.read_settings(test_dir)
@@ -181,12 +192,10 @@ def is_best_entry(stream):
     return '/play/stream/ultimate-fallback' in str(stream.get('url', ''))
 
 
-def visit_answer(got, tries, play=None, seek=None, pause_s=0, sleep=time.sleep):
-    """One visit's result from one common.get() of a side's list address (status None: the copy did not answer), then the
-    top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same.
-    A list with something to play is read for `pause_s` seconds first, the Browse pause (#205, rules.md "Browse pause"):
-    `browse_pause_s` says how long it waited; it is in neither `list_s` nor `start_s`, so title to video leaves it out."""
-    play, seek = play or common.play_stream, seek or common.seek_reads
+def read_list(got):
+    """One common.get() of a side's list address read as a list: ({'list_status', 'list_s', 'note', 'sources'}, the
+    Streams). A copy that did not answer, or answered with an error or bad JSON, has no Streams and a note saying why;
+    `sources` leaves the Best entry out. A run's visit and a check's visit both read their list here."""
     st, h, body, t = got
     out = {'list_status': st, 'list_s': round(t.get('total', t['ready']), 2), 'note': None}
     try:
@@ -196,6 +205,16 @@ def visit_answer(got, tries, play=None, seek=None, pause_s=0, sleep=time.sleep):
     if st != 200:
         out['note'] = h.get('error') or f'HTTP {st}'
     out['sources'] = sum(1 for s in streams if not is_best_entry(s))
+    return out, streams
+
+
+def visit_answer(got, tries, play=None, seek=None, pause_s=0, sleep=time.sleep):
+    """One visit's result from one common.get() of a side's list address (status None: the copy did not answer), then the
+    top `tries` Streams played. The real world and the fakes both build a visit here, so a copy that is down looks the same.
+    A list with something to play is read for `pause_s` seconds first, the Browse pause (#205, rules.md "Browse pause"):
+    `browse_pause_s` says how long it waited; it is in neither `list_s` nor `start_s`, so title to video leaves it out."""
+    play, seek = play or common.play_stream, seek or common.seek_reads
+    out, streams = read_list(got)
     out['browse_pause_s'] = pause_s if streams[:tries] and pause_s else 0
     if out['browse_pause_s']:
         sleep(pause_s)
@@ -272,7 +291,7 @@ class RealIO:
 
     def setting_conflicts(self):
         """Sentences for a key file whose dropped-parameter setting differs from the one the list was recorded with."""
-        key = self.cfg.get('key_file') or os.path.join(self.cfg['test_dir'], 'indexers.json')
+        key = _key_path(self.cfg)
         return indexer_standin.setting_conflicts(_read_json(key) or {}, self.cfg['store'], self.cfg['listname'])
 
     def recording_state(self):
@@ -336,7 +355,7 @@ class RealIO:
         cmd = [sys.executable, '-I', script, '--mode', mode, '--store', self.cfg['store'],
                '--list', self.cfg['listname'], '--port', str(port), '--bind', '0.0.0.0']
         if mode == 'record':
-            cmd += ['--config', self.cfg.get('key_file') or os.path.join(self.cfg['test_dir'], 'indexers.json')]
+            cmd += ['--config', _key_path(self.cfg)]
         elif not wait:
             cmd.append('--no-wait')
         proc = subprocess.Popen(cmd, stderr=log, stdout=subprocess.DEVNULL)
@@ -404,6 +423,35 @@ class RealIO:
         list_cpu = cpu_used(before, cpu_sample())
         out = visit_answer(got, tries, pause_s=browse_pause_s, sleep=self.sleep)
         return {**out, 'list_cpu': list_cpu}
+
+    def check_visit(self, kind, vid, browse_pause_s):
+        got = common.get(f'{list_base(self.cfg)}/stream/{kind}/{vid}.json', timeout=180, limit=0)
+        return check_visit_answer(got, lambda s: common.play_stream(s, timeout=quickcheck.PLAY_TIMEOUT_S), browse_pause_s, self.sleep)
+
+    def draw_titles(self, check, kinds):
+        """New titles of the kinds from TMDB (draw.draw), written to the ledger before they are played."""
+        today = self.now()
+        titles = draw.draw(pool.tmdb_getter(self.cfg['test_dir']), draw.read_ledger(self.cfg['ledger']), kinds,
+                           random.Random(), today.date().isoformat(), say=lambda line: print(f'drawn {line}', flush=True))
+        draw.add_to_ledger(self.cfg['ledger'], titles, check, today.isoformat(timespec='seconds'))
+        return titles
+
+    def title_names(self, title):
+        return quickcheck.tmdb_names(pool.tmdb_getter(self.cfg['test_dir']), title)
+
+    def allowance_left(self):
+        return allowance.left(self.cfg)
+
+    def open_check_store(self, run_dir):
+        """The check's own empty store for the stand-in, in the test folder; the stand-in and the cap rule read it from cfg."""
+        path = os.path.join(self.cfg['test_dir'], CHECK_STORE_DIR, os.path.basename(run_dir))
+        os.makedirs(path)
+        self.cfg['store'], self.cfg['listname'] = path, CHECK_LIST
+
+    def close_check_store(self):
+        store = self.cfg.get('store') or ''
+        if os.path.basename(os.path.dirname(store)) == CHECK_STORE_DIR:
+            shutil.rmtree(store, ignore_errors=True)
 
     def logs(self, container, since):
         if container not in self.testbed.TEST_CONTAINERS:
@@ -809,6 +857,18 @@ def _show(value):
     return json.dumps(value, ensure_ascii=False)
 
 
+def expand_names(name, flat):
+    """A setting name of the expected settings file as the copy's settings name it: `indexers[*].movieSearchMethod` is one
+    name per entry the copy has (`indexers[NinjaCentral].movieSearchMethod`, ...), so a rule holds for every indexer without
+    the file naming one; any other name is itself."""
+    if '[*]' not in name:
+        return [name]
+    head, _, tail = name.partition('[*]')
+    found = re.compile(re.escape(head) + r'\[([^\]]+)\]')
+    entries = sorted({m.group(1) for k in flat for m in [found.match(k)] if m})
+    return [f'{head}[{e}]{tail}' for e in entries]
+
+
 def setting_differences(expected, settings, file=None):
     """One sentence per setting of a test copy that differs from the expected settings; [] when every copy matches.
 
@@ -828,7 +888,7 @@ def setting_differences(expected, settings, file=None):
             copy_name, have = testbed.SETTINGS[side]['short'], settings.get(side) or {}
             if not have or '(file missing)' in have:  # a config that cannot be read: the other preflight checks say so
                 continue
-            for name, value in entry['settings'].items():
+            for name, value in ((n, v) for wild, v in entry['settings'].items() for n in expand_names(wild, have)):
                 flat = _as_yaml_read(value, name) if side in YAML_COPIES else br.flatten(value, name)
                 want, got = _settings_at(flat, name), _settings_at(have, name)
                 gaps = []  # a setting, a rule or a section one of the two lacks as a whole, each named once
@@ -861,15 +921,18 @@ def setting_differences(expected, settings, file=None):
 
 
 def preflight(mode, cfg, io, seen=None):
-    """Checks the setup before a record ('record') or a run ('run'). Returns plain sentences, one per problem; [] means go.
+    """Checks the setup before a record ('record'), a run ('run') or a real-use check ('check', #270). Returns plain sentences,
+    one per problem; [] means go.
 
-    Record only: the key file. Run only: the machine is idle and the recording exists. Everything else is checked in both.
-    `seen`, when given, gets the readings the checks judged (a run only): 'load', and 'machine', the power state, the CPU
+    Record and check: the key file (the stand-in asks the real indexers). Run and check: the machine is idle. Run only: the
+    recording exists. Check only: the indexer allowance holds what the check may ask (allowance.left). Everything else is
+    checked in all three.
+    `seen`, when given, gets the readings the checks judged (a run or a check): 'load', and 'machine', the power state, the CPU
     policy and the CPU probe taken after the load check ({'power', 'governor', 'energy_preference', 'cpu_probe_ms'}, #262),
     so the run keeps what was judged.
     """
-    if mode not in ('record', 'run'):
-        raise ValueError("preflight mode must be 'record' or 'run'")
+    if mode not in ('record', 'run', 'check'):
+        raise ValueError("preflight mode must be 'record', 'run' or 'check'")
     problems, rebuilt = [], False
     port = cfg.get('standin_port', 1340)
 
@@ -902,9 +965,9 @@ def preflight(mode, cfg, io, seen=None):
         problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder.")
     readable = [s for s in indexer_sides if s not in unreadable]
 
-    # 2. (record only) the key file names exactly the indexers every test copy has switched on
-    if mode == 'record':
-        path = cfg.get('key_file') or os.path.join(cfg['test_dir'], 'indexers.json')
+    # 2. (record and check) the key file names exactly the indexers every test copy has switched on
+    if mode in ('record', 'check'):
+        path = _key_path(cfg)
         state, key = io.key_state(path)
         if state == 'missing':
             problems.append(f'The key file {path} is missing: create it with one entry per indexer before recording.')
@@ -947,8 +1010,8 @@ def preflight(mode, cfg, io, seen=None):
     if not io.port_free(port):
         problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (an earlier indexer stand-in?) and try again.")
 
-    # 7. (run only) the machine is idle (#217); after an image build by this preflight, once the build's own load has settled
-    if mode == 'run':
+    # 7. (run and check) the machine is idle (#217); after an image build by this preflight, once the build's own load has settled
+    if mode in ('run', 'check'):
         load = io.load_average()
         if rebuilt and load >= BUSY_LOAD:
             print(f"Waiting up to {SETTLE_AFTER_BUILD_S // 60} minutes for the image build's load to settle (1-minute load average "
@@ -1037,8 +1100,25 @@ def preflight(mode, cfg, io, seen=None):
     if power == 'battery':
         problems.append(f'The machine runs on battery (no Mains supply in {POWER_SUPPLY_ROOT} is online), which slows the CPU and a '
                         'timed run with it: plug it in and run the preflight again.')
-    if mode == 'run' and seen is not None:
+    if mode in ('run', 'check') and seen is not None:
         seen['machine'] = {'power': power, **io.cpu_policy(), 'cpu_probe_ms': probe}
+
+    # 12. (check only, #270) every switched-on indexer has what the check may ask of it left in its daily allowance
+    if mode == 'check':
+        left, problem = io.allowance_left()
+        want = quickcheck.need(sum(quickcheck.QUICK_KINDS.values()))
+        if problem:
+            problems.append(problem)  # the limits file is missing or wrong: the sentence says what to fill in
+        else:
+            for slug in sorted({slug for s in readable for slug in rep['enabled'][s]}):
+                have = left.get(allowance.norm(slug))
+                if have is None:
+                    problems.append(f'The limits file has no entry for {slug}, so its allowance cannot be checked: add one.')
+                    continue
+                for kind in allowance.KINDS:
+                    if have[kind] < want[kind]:
+                        problems.append(f'{slug} has {have[kind]} {allowance.KIND_NAMES[kind]} left today, and the check may need '
+                                        f'{want[kind]}: wait for its reset (brainrun.py usage shows the allowance).')
     return problems
 
 
@@ -1051,9 +1131,9 @@ def preflight_command(mode, cfg, io):
     if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
         print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
-        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if mode == 'run' else ''
+        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if mode in ('run', 'check') else ''
         machine = (f'; the machine is plugged in{idle}, HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
-                   + (' and the recording is complete' if mode == 'run' else ''))
+                   + {'run': ' and the recording is complete', 'check': " and the indexer allowance holds the check's requests"}.get(mode, ''))
         print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
         if 'machine' in seen:
             print(f"CPU probe: {br.probe_text(seen['machine'])}.")
@@ -1331,6 +1411,156 @@ def write_run_ending(cfg, io, run, started, logbuf):
     br.append_index_row(os.path.join(root, 'INDEX.md'), {
         'date': run['started'], 'name': cfg['name'], 'result': result, 'changed': shown,
         'headline': headline, 'folder': os.path.basename(run_dir)})
+
+
+# --------------------------------------------------------------------------- the quick check (#270, spec #268, ADR 0010)
+
+CHECK_LIST = 'check'  # the stand-in's list name for a check's live answers, in the check's own store (emptied after it)
+CHECK_STORE_DIR = 'check-answers'  # in the test folder: never in the run folder, which backup.sh pushes
+EXIT_FAILS, EXIT_NO_VERDICT = 4, 2  # check --quick: a play failed; the cap rule stopped it (0 pass, 1 setup problem or failure)
+
+
+def check_visit_answer(got, play, pause_s=0, sleep=time.sleep):
+    """What a check saw of one title: its list (one common.get() of the list address), then, when the list has the Best
+    entry, the Browse pause and one press of Best (`play(stream)`, common.play_stream's result), nothing else played.
+    The real world and the fakes both build a visit here, so a copy that is down looks the same."""
+    out, streams = read_list(got)
+    best = next((s for s in streams if is_best_entry(s)), None)
+    out.update(play=None, browse_pause_s=0, best=best is not None)
+    if best is not None:
+        if pause_s:
+            sleep(pause_s)
+            out['browse_pause_s'] = pause_s
+        out['play'] = play(best)
+    return out
+
+
+def collect_check_visit(cfg, io, title, logbuf):
+    """One title of a check: its list, the Browse pause, one press of Best; then KaijuFlow's play step lines for it
+    (quickcheck.visit_steps), its AltMount imports and any "limit reached" line in either log."""
+    kind, vid, label = title[:3]
+    t0 = io.now()
+    http = io.check_visit(kind, vid, cfg['browse_pause'])
+    t1 = io.now()
+    since = br.iso(t0 - datetime.timedelta(seconds=1))
+    kf_text, be_text = io.logs(KF_CONTAINER, since), io.logs(ALTMOUNT_CONTAINER, since)
+    for c, text in ((KF_CONTAINER, kf_text), (ALTMOUNT_CONTAINER, be_text)):
+        logbuf.setdefault(c, []).append(f'--- {label} {br.iso(t0)}\n{br.scrub_text(text)}')
+    lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
+    return {'title': list(title), 'label': label, 'id': vid, 't_start': br.iso(t0), 't_end': br.iso(t1), **http,
+            'steps': quickcheck.visit_steps(br.parse_step_lines(kf_text), vid, since),
+            'imports': [i for i in br.altmount_imports(be_text) if lo <= br.parse_ts(i['start']) <= hi],
+            'limit': br.limit_event(kf_text + '\n' + be_text, cfg['indexers'])}
+
+
+def quick_check_all(cfg, io):
+    """The quick check (#270): the preflight for a check, a run folder, 5 new titles drawn (and written to the ledger
+    first), the test copies reset, the stand-in in record mode on the check's own empty store (so every answer comes from
+    the live indexer, and its LIMIT_REACHED marker and RECORD lines work as in a record: the cap rule and the allowance
+    count it), then each title once: its list, the Browse pause, one press of Best, stopped at the first video. The first
+    "limit reached" stops the check with no verdict. Ctrl-C or SIGTERM stops it as it stops a run. The ending is written
+    however it ends (write_check_ending)."""
+    seen = {}
+    problems = io.preflight('check', seen)
+    if problems:
+        raise PreflightFailed(problems)
+    started = io.now()
+    run_dir = br.create_run_dir(cfg['runs_root'], cfg['name'], started)
+    os.makedirs(os.path.join(run_dir, 'logs'))
+    check = {'kind': 'quick check', 'name': cfg['name'], 'status': 'ok', 'started': br.iso(started), 'dir': run_dir,
+             'folder': os.path.basename(run_dir), 'titles': [], 'visits': [], 'null': None, 'stopped': None, 'error': None,
+             'indexers': list(cfg['indexers']), 'browse_pause_s': cfg['browse_pause'], 'settings': {}, 'commit': None,
+             'head': None, 'dirty': None, 'start_load': round(seen['load'], 2) if 'load' in seen else None,
+             'machine': seen.get('machine'), 'stage': 'the draw', 'playing': None}
+    logbuf, handle, failure, restore_signals = {}, None, None, lambda: None
+    try:
+        try:
+            check['settings'] = io.snapshot()
+            check['head'], check['dirty'] = io.git_info()
+            check['commit'] = io.image_label()
+            _write(os.path.join(run_dir, 'settings.json'), json.dumps(check['settings'], indent=1, sort_keys=True))
+            check['titles'] = [list(t) for t in io.draw_titles(f"quick check {check['folder']}", quickcheck.QUICK_KINDS)]
+            _write(os.path.join(run_dir, 'titles.json'), json.dumps(check['titles'], indent=1))
+            planned = len(check['titles'])
+            check['stage'] = 'the reset'
+            io.reset(ALL_TESTBED, progress_log(io, 0, planned))
+            io.open_check_store(run_dir)
+            handle = io.start_standin(os.path.join(run_dir, 'logs', 'standin.log'), mode='record')
+            check['stage'] = 'the plays'
+            for title in check['titles']:
+                check['playing'] = {'side': 'kaijuflow', 'phase': 'cold', 'round': None, 'title': title[2]}  # stop_note's shape
+                v = collect_check_visit(cfg, io, title, logbuf)
+                check['visits'].append(v)
+                check['playing'] = None
+                play = v['play'] or {}
+                print(f"{line_prefix(io, len(check['visits']), planned)} {title[2]}: "
+                      f"{'video' if play.get('plays') else 'no video'} list {v['list_s']} s start {play.get('first_byte_s')} s", flush=True)
+                _check_cap(io, {'limit': v['limit'], 'side': 'KaijuFlow', 'title': title[2], 't_end': v['t_end']}, since=started)
+                io.sleep(cfg['settle'])
+        except CapReached as e:
+            check['status'], check['null'] = 'null', {'indexer': e.indexer, 'time': e.time, 'where': e.where}
+            if check['visits']:  # the play the limit cut says nothing of KaijuFlow: kept in raw.json, not judged
+                check['visits'][-1]['cut_by_limit'] = True
+        except KeyboardInterrupt as e:  # Ctrl-C or SIGTERM: the titles that finished are kept and judged, no verdict
+            check['status'] = 'stopped'
+            check['stopped'] = stop_note(io, e, check['stage'], len(check['visits']), len(check['titles']), check['playing'])
+            check['stopped_text'] = br.stopped_text(check['stopped'])
+            restore_signals = finish_after_stop(check['stopped'], 'check', 'report.md, raw.json, meta.json and the INDEX.md row')
+        finally:
+            try:
+                if handle:
+                    handle.stop()
+                    late = io.marker()  # a limit after the last title's check (a late grab of the Walk) still stops it
+                    if late and check['status'] == 'ok':
+                        check['status'] = 'null'
+                        check['null'] = {'indexer': late.get('indexer', 'unknown'), 'time': late.get('time', '?'),
+                                         'where': 'indexer stand-in LIMIT_REACHED.json, after the last title'}
+            finally:
+                io.stop_all()
+                io.close_check_store()
+    except (draw.Refused, pool.TmdbError) as e:  # the draw could not be made: its one sentence, no traceback
+        check['status'], check['error'] = 'failed', str(e)
+    except Exception as e:  # noqa: BLE001
+        check['status'], check['error'] = 'failed', br.scrub_text(f'{type(e).__name__}: {e}')
+        failure = e
+    try:
+        write_check_ending(cfg, io, check, started, logbuf)
+    finally:
+        restore_signals()
+    if failure:
+        raise failure
+    return check
+
+
+def write_check_ending(cfg, io, check, started, logbuf):
+    """The ending of every check, finished or not: the logs, report.md (quickcheck.render_report), raw.json (the visits
+    and each one's outcome), meta.json and the INDEX.md row. A check names no recording, so no run is ever judged
+    against it (runs.previous)."""
+    run_dir = check['dir']
+    finished = io.now()
+    check['finished'], check['seconds'] = br.iso(finished), round((finished - started).total_seconds(), 3)
+    for c, parts in logbuf.items():
+        _write(os.path.join(run_dir, 'logs', c + '.log'), '\n'.join(parts) + '\n')
+
+    def names(title):
+        try:
+            return io.title_names(title)
+        except Exception:  # noqa: BLE001  (TMDB down: judge says the other names could not be read)
+            return None
+    check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t)) for v in quickcheck.judged(check)]
+    check['verdict'] = quickcheck.verdict(check, check['outcomes'])
+    check['headline'] = quickcheck.headline(check, check['outcomes'])
+    _write(os.path.join(run_dir, 'report.md'), quickcheck.render_report(check, check['outcomes']))
+    _write(os.path.join(run_dir, 'raw.json'), json.dumps({'status': check['status'], 'visits': check['visits'],
+                                                          'outcomes': check['outcomes']}, indent=1))
+    meta = {k: check.get(k) for k in ('kind', 'name', 'status', 'verdict', 'headline', 'started', 'finished', 'seconds', 'commit',
+                                      'head', 'dirty', 'titles', 'indexers', 'null', 'stopped', 'error', 'browse_pause_s',
+                                      'start_load', 'machine')}
+    _write(os.path.join(run_dir, 'meta.json'), json.dumps(meta, indent=1, sort_keys=True))
+    result = {'pass': 'pass', 'fail': 'FAIL'}.get(check['verdict']) or {'null': 'NULL'}.get(check['status'], check['status'])
+    br.append_index_row(os.path.join(cfg['runs_root'], 'INDEX.md'), {
+        'date': check['started'], 'name': cfg['name'], 'result': result, 'changed': [], 'headline': check['headline'],
+        'folder': check['folder']})
 
 
 # --------------------------------------------------------------------------- the record command (spec #72, ticket #75)
@@ -1638,8 +1868,9 @@ def build_parser():
     ap.add_argument('cmd', choices=['run', 'record', 'smoke', 'preflight', 'check', 'usage'])
     ap.add_argument('--run', dest='run_dir', help='check only: the run folder to check; exits non-zero when it cannot serve as a baseline')
     ap.add_argument('--no-wait', action='store_true', help='run only: replay indexer answers at once instead of waiting the recorded indexer time')
-    ap.add_argument('--for', dest='mode', choices=['run', 'record'], default='run', help='preflight only: check the setup for a run or for a record pass')
-    ap.add_argument('--name', default='run')
+    ap.add_argument('--for', dest='mode', choices=['run', 'record', 'check'], default='run',
+                    help='preflight only: check the setup for a run, a record pass or a quick check')
+    ap.add_argument('--name', help='the run folder\'s label: run, or quick-check for check --quick')
     ap.add_argument('--runs-root', default=DEFAULT_RUNS_ROOT)
     ap.add_argument('--store')
     ap.add_argument('--list', dest='listname')
@@ -1651,16 +1882,35 @@ def build_parser():
     ap.add_argument('--one-page', action='store_true', help='add the fourth side: KaijuFlow, one page per indexer')
     ap.add_argument('--sides', help='run only: play only these sides, comma-separated: ' + ', '.join(ALL_SIDES) + ' (a short run)')
     ap.add_argument('--rounds', type=int, help='run only: 1 plays cold 1 and warm 1 only, 2 (the default) the full plan (a short run)')
-    ap.add_argument('--quick', action='store_true', help='run only: shorthand for --sides kaijuflow --rounds 1 (a short run; does not imply --no-wait)')
+    ap.add_argument('--quick', action='store_true', help='check: the quick check, 5 new titles played live (#270); run: shorthand for '
+                    '--sides kaijuflow --rounds 1 (a short run; does not imply --no-wait)')
+    ap.add_argument('--ledger', help='check --quick only: the titles already played (default <runs root>/titles-played.json)')
     ap.add_argument('--titles-file')
     ap.add_argument('--tries', type=int, default=1)
     ap.add_argument('--settle', type=float, default=3, help='seconds to pause after every play (default 3)')
     return ap
 
 
+def quick_check_command(cfg, io):
+    """`check --quick`: runs the quick check and prints its verdict line and folder. Exit 0 pass, 4 a play failed,
+    2 the cap rule stopped it, 130 stopped by Ctrl-C or SIGTERM, 1 a setup problem or a failure."""
+    try:
+        with sigterm_stops():
+            check = quick_check_all(cfg, io)
+    except PreflightFailed as e:
+        for p in e.problems:
+            print(p)
+        return 1
+    print(check['headline'])
+    print(f"Folder: {check['dir']}")
+    if check['verdict']:
+        return 0 if check['verdict'] == 'pass' else EXIT_FAILS
+    return {'null': EXIT_NO_VERDICT, 'stopped': EXIT_INTERRUPTED}.get(check['status'], 1)
+
+
 def topup_command(a):
     """The record command that tops up this recording, as a line the owner can paste."""
-    parts = ['python3', '-I', 'tools/brain/brainrun.py', 'record', '--name', a.name, '--store', a.store or '', '--list', a.listname or '']
+    parts = ['python3', '-I', 'tools/brain/brainrun.py', 'record', '--name', a.name or 'run', '--store', a.store or '', '--list', a.listname or '']
     if a.key_file:
         parts += ['--key-file', a.key_file]
     if a.titles_file:
@@ -1673,8 +1923,8 @@ def topup_command(a):
 def run_selection(a):
     """(sides or None, rounds) from the run's selectors, or a sentence that says what is wrong with them."""
     if a.cmd != 'run':
-        if a.sides is not None or a.rounds is not None or a.quick:
-            return None, 2, '--sides, --rounds and --quick are only for run'
+        if a.sides is not None or a.rounds is not None or (a.quick and a.cmd != 'check'):
+            return None, 2, '--sides and --rounds are only for run, --quick for run and check'
         return None, 2, None
     if a.quick and (a.sides is not None or a.rounds is not None):
         return None, 2, '--quick is --sides kaijuflow --rounds 1 and cannot be combined with --sides or --rounds'
@@ -1699,25 +1949,32 @@ def main(argv):
     sides, rounds, problem = run_selection(a)
     if problem:
         ap.error(problem)
-    if a.cmd == 'check':
+    if a.cmd == 'check' and not a.quick:
         if not a.run_dir:
-            ap.error('--run is needed')
+            ap.error('--run is needed (or --quick for a quick check)')
         return runcheck.check_command(a.run_dir)
-    if a.cmd not in ('preflight', 'usage') or (a.cmd == 'preflight' and a.mode == 'run'):
+    if a.cmd == 'check' and a.run_dir:
+        ap.error('--run is for checking a run folder; a quick check (--quick) plays new titles and takes no --run')
+    if a.cmd not in ('preflight', 'usage', 'check') or (a.cmd == 'preflight' and a.mode == 'run'):
         if not a.store or not a.listname:
             ap.error('--store and --list are needed')
     td = a.test_dir
     users = (_read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
     titles = [tuple(t) for t in _read_json(a.titles_file)] if a.titles_file else common.TITLES
     listdir = os.path.join(a.store or '', a.listname or '')
-    cfg = dict(name=a.name, runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
+    cfg = dict(name=a.name or 'run', runs_root=a.runs_root, store=a.store, listname=a.listname, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),
                one_page=a.one_page, sides=sides, rounds=rounds, titles=titles,
                partial_titles=partial_titles(titles, a.titles_file), tries=a.tries, settle=a.settle, browse_pause=BROWSE_PAUSE_S,
                indexers=sorted(d for d in os.listdir(listdir) if os.path.isdir(os.path.join(listdir, d))) if a.store and os.path.isdir(listdir) else [],
                rebuild_image=a.rebuild_image, limit=a.provider_limit, key_file=a.key_file, standin_port=testbed.STANDIN_PORT,
                wait=not a.no_wait, topup_command=topup_command(a))
+    if a.cmd == 'check' or (a.cmd == 'preflight' and a.mode == 'check'):
+        cfg.update(name=a.name or 'quick-check', indexers=read_key_file(_key_path(cfg))[1],
+                   ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'))
     started = time.time()
+    if a.cmd == 'check':
+        return quick_check_command(cfg, RealIO(cfg))
     if a.cmd == 'usage':
         print('\n'.join(allowance.usage_lines(cfg)))
         return 0

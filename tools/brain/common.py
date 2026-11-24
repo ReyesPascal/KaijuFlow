@@ -63,14 +63,15 @@ def listed_size(text):
     return found.group(1) if found else None
 
 
-def play_stream(stream):
-    """One 64 KiB read at the start of a Stream: does it play, and how fast. `title` keeps the first 140 characters of the
-    Stream's list text; `listed_size` is read from the whole text first, so a long release name cannot cut it off."""
+def play_stream(stream, timeout=120):
+    """One 64 KiB read at the start of a Stream: does it play, and how fast (waited on for `timeout` seconds). `title`
+    keeps the first 140 characters of the Stream's list text; `listed_size` is read from the whole text first, so a long
+    release name cannot cut it off."""
     text = ' '.join((stream.get('name', '') + ' ' + stream.get('title', '')).split())
     url = stream.get('url', '')
     if not url:
         return {'plays': False, 'note': 'no url (external player stream?)'}
-    st, h, body, t = get(url, '0-65535', timeout=120, limit=65536)
+    st, h, body, t = get(url, '0-65535', timeout=timeout, limit=65536)
     size = total_size(st, h)
     ctype = (h.get('Content-Type') or h.get('content-type') or '').split(';')[0]
     ok = st in (200, 206) and len(body) >= 1024 and size != FAILURE_SIZE

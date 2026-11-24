@@ -193,6 +193,16 @@ def usage_lines(cfg, now=None, stats_files=None):
     return table(limits, used) + [COLUMNS, CAVEAT]
 
 
+def left(cfg, now=None, stats_files=None):
+    """({normalized name: {'search': n, 'download': n}} left since each indexer's last reset, None) or (None, the problem
+    sentence when the limits file cannot be used). What a real-use check's preflight holds against what it may ask (#270)."""
+    limits, used, problem = _compute(cfg, now or datetime.datetime.now(datetime.timezone.utc), stats_files)
+    if problem:
+        return None, problem
+    return {slug: {kind: lim[kind] - used[slug]['standin'][kind] - used[slug]['copies'][kind] for kind in KINDS}
+            for slug, lim in limits.items()}, None
+
+
 def last_complete_recording(runs_root, listname):
     """(folder name, {indexer slug: {'search': n, 'download': n}}) of the newest complete record folder of this list, or None.
 
