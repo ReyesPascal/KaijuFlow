@@ -578,7 +578,8 @@ export const playTimeScenarios = [
     // indexer's copy of the same upload arrives meanwhile, so Best fetches the Release's NZB from it and plays it.
     // Without the late copy the Release's only indexer refused, and Best would find nothing to play.
     id: 'a-late-copy-of-a-release-joins-its-sources-in-the-walk',
-    run: w => withIndexer(w, w.second.entry, async () => {
+    // One Source at a time, so the Walk reaches the Release only once the dead one's check is done.
+    run: w => withSettings(w, { candidateCount: 1 }, () => withIndexer(w, w.second.entry, async () => {
       const { id, rel } = offerLateCopy(w, 'latecopy');
       try {
         const streams = await w.list('movie', id);
@@ -589,7 +590,7 @@ export const playTimeScenarios = [
       } finally {
         endLateCopy(w, 'latecopy');
       }
-    }),
+    })),
   },
   {
     // #301 with #300: the late copy joins the Release in the list's fallback group too, so a clicked list entry with no

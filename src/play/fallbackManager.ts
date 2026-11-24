@@ -88,16 +88,20 @@ export function createFallbackGroup(id: string, candidates: FallbackCandidate[],
 
 /**
  * Late candidates (#301): the ones a list's group does not hold yet (same NZB link and release name) are put at its
- * end, so the list's entries keep their places. One disk write when any came. Nothing when the group is gone.
+ * end, so the list's entries keep their places; one it holds takes the late one's fields but its Search Flow mark,
+ * so a late copy of a Release joins its Sources (`sources`, #300). One disk write. Nothing when the group is gone.
  */
 export function addToFallbackGroup(id: string, candidates: FallbackCandidate[]): void {
   const group = getFallbackGroup(id);
   if (!group) return;
   const key = (c: FallbackCandidate) => `${c.nzbUrl}\u0000${c.title}`;
-  const held = new Set(group.candidates.map(key));
-  const fresh = candidates.filter(c => !held.has(key(c)));
-  if (fresh.length === 0) return;
-  group.candidates.push(...fresh);
+  const held = new Map(group.candidates.map(c => [key(c), c]));
+  for (const c of candidates) {
+    const mine = held.get(key(c));
+    if (!mine) { group.candidates.push(c); continue; }
+    const { flow: _flow, flowWhy: _why, proof: _proof, ...fields } = c;
+    Object.assign(mine, fields);
+  }
   saveFallbackGroupsToDisk();
 }
 

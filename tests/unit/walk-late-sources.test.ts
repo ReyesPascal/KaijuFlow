@@ -12,7 +12,7 @@ function walkOver(flows: ('sure' | 'maybe')[], inFlight: number) {
   const marks = [...flows];
   const walk = new Walk({
     size: marks.length, inFlight, open: true,
-    isDead: () => false, indexerOf: () => 'NinjaCentral', hits: new Map(),
+    isDead: () => false, indexersOf: () => ['NinjaCentral'], hits: new Map(),
     isMaybe: index => marks[index] === 'maybe',
   });
   /** Late Sources put in the list at `at`, as the adapter does. */
@@ -24,8 +24,8 @@ const kinds = (ds: WalkDecision[]) => ds.map(d => ('index' in d ? `${d.type} ${d
 test('a Walk whose Sources all failed waits for the late ones, walks them, and plays one', () => {
   const { walk, insert } = walkOver(['sure', 'sure'], 2);
   assert.deepEqual(kinds(walk.start()), ['grab 0', 'grab 1']);
-  walk.on({ type: 'grabFailed', index: 0, badSource: true });
-  assert.deepEqual(kinds(walk.on({ type: 'grabFailed', index: 1, badSource: true })), ['markDead 1'], 'no end: more may come');
+  walk.on({ type: 'grabFailed', index: 0, badSource: true, refused: [] });
+  assert.deepEqual(kinds(walk.on({ type: 'grabFailed', index: 1, badSource: true, refused: [] })), ['markDead 1'], 'no end: more may come');
   assert.equal(walk.done, false);
 
   assert.deepEqual(kinds(insert(2, ['sure'])), ['grab 2'], 'the late Source is walked');
@@ -38,7 +38,7 @@ test('a Walk whose Sources all failed waits for the late ones, walks them, and p
 test('a Walk whose Sources all failed ends when the list is whole and nothing more came', () => {
   const { walk } = walkOver(['sure'], 1);
   walk.start();
-  assert.deepEqual(kinds(walk.on({ type: 'grabFailed', index: 0, badSource: true })), ['markDead 0']);
+  assert.deepEqual(kinds(walk.on({ type: 'grabFailed', index: 0, badSource: true, refused: [] })), ['markDead 0']);
   assert.deepEqual(kinds(walk.on({ type: 'closed' })), ['settleNone ran-out']);
   assert.equal(walk.done, true);
 });
@@ -70,6 +70,6 @@ test('a held maybe leaves its place in the Walk to a late sure Source, not to an
   walk.on({ type: 'grabbed', index: 0 });
   assert.deepEqual(kinds(walk.on({ type: 'checked', index: 0, verdict: 'healthy' })), [], 'the next maybe waits too: no grab spent on it');
   assert.deepEqual(kinds(insert(1, ['sure'])), ['grab 1'], 'one at a time, yet the late sure Source is walked');
-  walk.on({ type: 'grabFailed', index: 1, badSource: true });
+  walk.on({ type: 'grabFailed', index: 1, badSource: true, refused: [] });
   assert.deepEqual(kinds(walk.on({ type: 'closed' })), ['prepare 0'], 'the list whole: the held maybe plays');
 });
