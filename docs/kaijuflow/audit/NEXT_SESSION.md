@@ -17,7 +17,9 @@ What the next session starts with (`docs/agents/resume.md`). The ending session 
 
     /mattpocock-skills:retro the #239 build: follow ~/kaijuflow-notes/reviews/239/retro-brief.md
 
-After the retro: #249 (replay), then #250 (grouped run). #249 and #250 each need the owner's go, on an idle machine. PR #252 merges on the owner's word.
+After the retro: #249 (replay), then #250 (grouped run), each on an idle machine under the owner's standing go for live tests (Owner's decisions). PR #252 merges on the owner's word.
+
+**Clean-up when the build is done:** the worktrees under `.claude/worktrees/` (r2-*, review-target-239, review-fixup-239, the ticket ones).
 
 **Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (voice "azelma", repeats until the notification is closed) at every stop-and-ask. Questions: AskUserQuestion plus `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered.
 
@@ -46,7 +48,7 @@ Two maps: #239 (the deepening spec, `frontier.py 239`) and #183 (`frontier.py`; 
 
 Recording for every run: `--store ~/kaijuflow-test/store --list kf-189 --titles-file tools/brain/fixed-list.json`. Each run's change report goes in its run folder as `change-report.html` and is published as its own page in the #189 report's style (generator `~/kaijuflow-notes/reports/run-report/make_report.py`, `--before` required).
 
-Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings UI, its flow, first-time setup and the name "Ultimate Fallback". Research: `~/kaijuflow-notes/reports/KF UI design.md`, screenshots https://claude.ai/artifact/9uLC6XHL1c8nVW3jVLpr5U. A working beta with an update feature (owner, 2026-11-23: "at what point will i have a working beta with update feature"; added with "yes add it"): not planned yet; what "beta" and "update feature" mean (who installs it, a notice of a new version or a one-click update of the container) is for the grilling, after #250 is kept and PR #252 is on main, and fits with the settings UI and first-time setup above.
+Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings UI, its flow, first-time setup and the name "Ultimate Fallback". Research: `~/kaijuflow-notes/reports/KF UI design.md`, screenshots https://claude.ai/artifact/9uLC6XHL1c8nVW3jVLpr5U. A working beta with an update feature (owner, 2026-11-23: "at what point will i have a working beta with update feature"; added with "yes add it"): not planned yet; what "beta" and "update feature" mean (who installs it, a notice of a new version or a one-click update of the container) is for the grilling, after #250 is kept and PR #252 is on main, and fits with the settings UI and first-time setup above. Use PostersPlus (https://github.com/elfhosted/PostersPlus, "a modern poster overlay") with KaijuFlow (owner, 2026-11-23: "is this forkable?", then "yes add it to ideas"): public, forking allowed, AGPL-3.0, while KaijuFlow is MIT, so copying its code in would bring AGPL's terms; running it as its own service beside KaijuFlow would not. Start with `/research`, then a grilling, after #250.
 
 ## Runs and recordings on this machine
 - Everything before 2026-11-20 compared three setups and is not compared with: Test 1 (`2026-11-15T115540Z-baseline`, #153), `~/kaijuflow-notes/brain-runs/archive/`, the 2026-11-13 baseline recording.
@@ -57,6 +59,7 @@ Owner's ideas waiting for a `/grill-with-docs` (not tickets): redo the settings 
 - 2026-11-20 (spec #183, all "yes"): the health-check pass list (ADR 0009); no fails first, then fastest cold title to video; fallback on (from #190); one fixed recording replayed every run; comparison code deleted; NzbDAV removed; other test copies stopped and kept; tuning may cut any part of the path.
 - 2026-11-20 (evening): tests on Wi-Fi; one grouped run, no noise band, every run idle; merge plan PRs on green without asking.
 - 2026-11-23: top up `kf-189` and re-run the baseline; build the retro fixes ("do everything"); `prwatch.py` ("make sure it knows when things are ready to merge"); hand off to a fresh session at stopping points with no typing ("i dont want to have to type or hit enter"); the six deepening candidates plus #228 become one new spec after #219. Grilling of the deepening spec (#239): "yes to all" on every question (Walk rules, Unscramble retry, one Previous run, closing grouped run); seams and tickets "yes"; agents always shown in herdr.
+- 2026-11-23 (#239's build): standing go for any live tests ("you have my go for any live tests"): #249's replay, #250's grouped run and its halving runs, a top-up told in one line; build decisions on #239's comments.
 - Standard filter rules (#109), secrets outside both repos (#114, `tools/brain/backup.sh`): see git history of this note.
 
 ## Gotchas
