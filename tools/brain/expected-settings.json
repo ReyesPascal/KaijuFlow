@@ -1,5 +1,5 @@
 {
- "about": "The settings every test copy is expected to have; the preflight of brainrun.py compares each copy with this file (tools/brain/docs/rules.md). It holds the standard sort and filter rules the owner defined in issue #109 on 2026-11-13: KaijuFlow's default filter object, plus the largest single file (maxFileSize, 30 GB for films and 10 GB for episodes, in bytes) and the drop rule \"No disc images\". KaijuFlow alone (#185): its fallback is on (ultimateFallback.enabled); a fallback counts as played. Since #190 that is the Play-time check: the list goes out unchecked with the Best entry on top; Best checks 3 Sources at a time (candidateCount) from the top down, at most 30 grabs per Walk (#228, not a setting), and plays the first healthy one in list order (preferenceMode priority), begun as soon as the list is asked for, the Head start (whenToResolve on-results, #206; only the newest list request has one), and AltMount gets only the Source played, the next one only when it fails, and none of the other healthy Sources Best checked (#192; there is no backup setting since #192's review); a clicked list entry that fails walks on down the list, whatever its setting says (not named here: its name reads as a login to the settings reader). Ultimate Fallback \"On Search\" in the settings UI is whenToResolve on-results. Every indexer searches with Ultimate Text Search (search method \"text\" for films, TV and anime; indexers[*] names each indexer the copy has, so the file names none; #270), so a real-use check plays the shipped defaults. The baseline (#189) ran before #190 and played one try per title. No host, address, login or key belongs here.",
+ "about": "The settings every test copy is expected to have; the preflight of brainrun.py compares each copy with this file (tools/brain/docs/rules.md). It holds the standard sort and filter rules the owner defined in issue #109 on 2026-11-13: KaijuFlow's default filter object, plus the largest single file (maxFileSize, 30 GB for films and 10 GB for episodes, in bytes) and the drop rule \"No disc images\". KaijuFlow alone (#185): its fallback is on (ultimateFallback.enabled); a fallback counts as played. Since #190 that is the Play-time check: the list goes out unchecked with the Best entry on top; Best checks 3 Sources at a time (candidateCount) from the top down, at most 30 grabs per Walk (#228, not a setting), and plays the first healthy one in list order (preferenceMode priority), begun as soon as the list is asked for, the Head start (whenToResolve on-results, #206; only the newest list request has one), and AltMount gets only the Source played, the next one only when it fails, and none of the other healthy Sources Best checked (#192; there is no backup setting since #192's review); a clicked list entry that fails walks on down the list, whatever its setting says (not named here: its name reads as a login to the settings reader). Ultimate Fallback \"On Search\" in the settings UI is whenToResolve on-results. Every indexer searches with Ultimate Text Search (search method \"text\" for films, TV and anime; indexers[*] names each indexer the copy has, so the file names none; #270), so a real-use check plays the shipped defaults. The dev switch (devDiagnostics, #280) is on: it is off in a release and on in the test copies only, so every step line says dev:true and the diagnostic lines and fields behind it are written. The baseline (#189) ran before #190 and played one try per title. No host, address, login or key belongs here.",
  "expected": [
   {
    "copies": ["kaijuflow"],
@@ -141,6 +141,12 @@
     "indexers[*].tvSearchMethod": ["text"],
     "indexers[*].animeMovieSearchMethod": ["text"],
     "indexers[*].animeTvSearchMethod": ["text"]
+   }
+  },
+  {
+   "copies": ["kaijuflow"],
+   "settings": {
+    "devDiagnostics": true
    }
   }
  ]
