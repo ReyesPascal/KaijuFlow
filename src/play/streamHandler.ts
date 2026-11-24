@@ -527,7 +527,7 @@ export async function handleStream(
     }
   }
 
-  // A failed list entry walks on through the whole list (#190; its attempts cap was deleted in #228).
+  // A failed list entry walks on down the whole list (#190), a Walk whose limits (30 grabs) bound it (#255).
   const maxCandidates = fallbackEnabled ? candidates.length : 1;
   // rc/ci are read first from the in-`t` envelope (so they survive iOS handoff
   // truncation). safeNum guards against NaN leaking from a malformed in-`t`
