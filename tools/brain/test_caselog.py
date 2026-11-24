@@ -15,6 +15,7 @@ import casebook
 import caselog
 import clues
 import diagnosis
+import drill
 from test_diagnosis import DEAD_PACK, INDEXER_DOWN, READ_ERROR, SIC, TWO_REFUSALS, casebook_copy, stored_check
 from test_evidence import run_failed_check
 from test_quickcheck import read
@@ -306,10 +307,28 @@ class SolvedTest(CaseWrites):
         log = logs(self.cases)[self.id]
         self.assertEqual((log['status'], log['conclusion']['passed_on']), ('proved', [1, 2]))
         code, out = case_cmd(self.cases, 'repeat', self.id, os.path.join(self.run_dir, 'evidence', '01-218-witcher-two-refusals'))
-        self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 1 already'))
+        self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 1 already (check)'))
         code, out = case_cmd(self.cases, 'repeat', self.id, INDEXER_DOWN)
         self.assertEqual(code, 1)
         self.assertTrue(out.startswith("refused: no failure in that evidence folder has this Case log's fingerprint"), out)
+
+    def test_a_drill_down_that_repeats_the_failure_joins_as_a_repeat_and_proves_the_case(self):
+        self.hold()
+        self.conclude()
+        root, drilled = stored_check(self, name='2026-11-25T090000Z-drill-down', plays=(TWO_REFUSALS,))
+        folder = os.path.join(drilled, 'evidence', '01-218-witcher-two-refusals')
+        with open(os.path.join(folder, 'evidence.json')) as f:
+            meta = json.load(f)
+        put_json(os.path.join(folder, 'evidence.json'), dict(meta, kind=drill.KIND))  # as a Drill-down keeps it
+
+        summary = diagnosis.after_check(drilled, root, cases=self.cases)
+
+        log = logs(self.cases)[self.id]
+        self.assertEqual([o['how'] for o in log['occurrences']], ['check', 'repeat'])
+        self.assertEqual((log['status'], log['conclusion']['passed_on']), ('proved', [1, 2]))
+        self.assertEqual(summary['cases'], [{'id': self.id, 'status': 'proved', 'occurrences': 2, 'new': False}])
+        code, out = case_cmd(self.cases, 'repeat', self.id, folder)
+        self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 2 already (repeat)'))
 
     def test_a_solved_case_written_up_as_an_entry_passes_the_casebook_format_and_index_test(self):
         self.hold()

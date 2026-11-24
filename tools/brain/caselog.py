@@ -275,35 +275,66 @@ def _note(log, kind, item, by, t=None):
     return item
 
 
-def open_or_join(cases, folder, ev, failure, diagnosed, library=None):
-    """Opens the Case log of one unproved failure, or adds this occurrence to the one with its fingerprint, and writes
-    the code's attempt for it. Returns (id, whether the log is new, whether the occurrence is new)."""
-    cid = case_id(failure)
-    case_dir = os.path.join(cases, cid)
-    new = not os.path.exists(os.path.join(case_dir, CASE))
-    t = _now()
-    log = _new_log(failure, cid, t) if new else load(case_dir)
-    where = os.path.relpath(folder, case_dir)
-    if any(os.path.normpath(os.path.join(case_dir, o['evidence'])) == os.path.normpath(folder) and
-           o['release'] == failure['release'] for o in log['occurrences']):
-        return cid, False, False
+def _how(ev):
+    """`repeat` for the evidence folder of a play repeated at will (a Drill-down's, #272), else `check`."""
+    import drill  # noqa: PLC0415  (drill imports diagnosis, which imports this module)
+    return 'repeat' if ev.meta.get('kind') == drill.KIND else 'check'
+
+
+def _join(log, case_dir, folder, ev, failure, rules, library=None, diagnosed=None, how=None):
+    """Adds one occurrence (the evidence folder's failure) to the log and writes the code's attempt for it: its path,
+    what changed since the last good check and the leads Diagnosis tried (`diagnosed`), the library run once. With a
+    conclusion, its recipe runs on the new occurrence and the status follows. `how` defaults to what the evidence
+    folder's check was (_how). The line it says."""
     meta = ev.meta
     n = len(log['occurrences']) + 1
-    log['occurrences'].append({'n': n, 'evidence': where, 'check': meta.get('check'), 'label': meta.get('label'),
-                               'release': failure['release'], 'date': (meta.get('t_start') or '')[:10],
-                               'rules': diagnosed.get('rules'), 'how': 'check'})
-    for obs in (path_observation(ev, failure), changed_observation(ev)):
+    how = how or _how(ev)
+    log['occurrences'].append({'n': n, 'evidence': os.path.relpath(folder, case_dir), 'check': meta.get('check'),
+                               'label': meta.get('label'), 'release': failure['release'],
+                               'date': (meta.get('t_start') or '')[:10], 'rules': rules, 'how': how})
+    t = _now()
+    for obs in (path_observation(ev, failure),) + ((changed_observation(ev),) if diagnosed is not None else ()):
         for q in obs['quotes']:
             q['occurrence'] = n
         _note(log, 'observations', {'occurrence': n, **obs}, 'code', t)
-    for lead in diagnosed.get('leads') or []:
+    for lead in (diagnosed or {}).get('leads') or []:
         _note(log, 'observations', {'occurrence': n, 'says': _lead_text(lead),
                                     'quotes': [{'occurrence': n, 'clue': c['clue'], 'text': c['facts'][0]}
                                                for c in lead.get('clues') or [] if c.get('facts')]}, 'code', t)
     names = sorted(clues.CLUES if library is None else library)
-    done = [c for lead in diagnosed.get('leads') or [] for c in lead.get('clues') or []]
+    done = [c for lead in (diagnosed or {}).get('leads') or [] for c in lead.get('clues') or []]
     ran, skipped = run_clues(log, case_dir, n, names, library, 'code', done)
     _note(log, 'attempts', {'occurrence': n, 'ran': ran, 'skipped': skipped, 'next': None}, 'code', t)
+    line = f'occurrence {n} added ({how})'
+    c = log['conclusion']
+    if c:
+        c['passed_on'], against = _recipe_passes(log, case_dir, c['recipe'], library)
+        if against:  # the new occurrence says the concluded cause was not it: the case is open again
+            c['against'] = [{'occurrence': k, 'why': why} for k, why in against]
+            log['status'] = OPEN
+            line += f'; the recipe says no on it ({against[0][1]}): open again'
+        else:
+            c['result'] = log['status'] = _result(log, c['passed_on'])
+            line += f"; now {c['result']}"
+    return line
+
+
+def _occurrence_of(log, case_dir, folder, release=None, any_release=True):
+    return next((o for o in log['occurrences'] if evidence_folder(case_dir, o) == os.path.normpath(folder)
+                 and (any_release or o['release'] == release)), None)
+
+
+def open_or_join(cases, folder, ev, failure, diagnosed, library=None):
+    """Opens the Case log of one unproved failure, or adds this occurrence to the one with its fingerprint (as a
+    `repeat` when a Drill-down played it again), and writes the code's attempt for it. Returns (id, whether the log is
+    new, whether the occurrence is new)."""
+    cid = case_id(failure)
+    case_dir = os.path.join(cases, cid)
+    new = not os.path.exists(os.path.join(case_dir, CASE))
+    log = _new_log(failure, cid, _now()) if new else load(case_dir)
+    if _occurrence_of(log, case_dir, folder, failure['release'], any_release=False):
+        return cid, False, False
+    _join(log, case_dir, folder, ev, failure, diagnosed.get('rules'), library, diagnosed)
     save(case_dir, log)
     return cid, new, True
 
@@ -558,9 +589,9 @@ def repeat(cases, cid, folder, library=None):
     d = case_dir_of(cases, cid)
     log = load(d)
     folder = os.path.normpath(os.path.abspath(folder))
-    if any(evidence_folder(d, o) == folder for o in log['occurrences']):
-        n = next(o['n'] for o in log['occurrences'] if evidence_folder(d, o) == folder)
-        raise Refused(f'that evidence folder is occurrence {n} already')
+    had = _occurrence_of(log, d, folder)
+    if had:
+        raise Refused(f"that evidence folder is occurrence {had['n']} already ({had['how']})")
     ev = evidence.read(folder)
     rules = diagnosis.load_rules()
     found = [dict(f, fingerprint=diagnosis.fingerprint(f, ev, rules)) for f in diagnosis.failures(ev)]
@@ -568,28 +599,7 @@ def repeat(cases, cid, folder, library=None):
     if mine is None:
         raise Refused("no failure in that evidence folder has this Case log's fingerprint: "
                       + '; '.join(f['fingerprint'] for f in found))
-    meta = ev.meta
-    n = len(log['occurrences']) + 1
-    log['occurrences'].append({'n': n, 'evidence': os.path.relpath(folder, d), 'check': meta.get('check'),
-                               'label': meta.get('label'), 'release': mine['release'],
-                               'date': (meta.get('t_start') or '')[:10], 'rules': rules['version'], 'how': 'repeat'})
-    obs = path_observation(ev, mine)
-    for q in obs['quotes']:
-        q['occurrence'] = n
-    _note(log, 'observations', {'occurrence': n, **obs}, 'code')
-    ran, skipped = run_clues(log, d, n, sorted(clues.CLUES if library is None else library), library, 'code')
-    _note(log, 'attempts', {'occurrence': n, 'ran': ran, 'skipped': skipped, 'next': None}, 'code')
-    line = f'occurrence {n} added (repeat)'
-    c = log['conclusion']
-    if c:
-        c['passed_on'], against = _recipe_passes(log, d, c['recipe'], library)
-        if against:  # the repeat says the concluded cause was not it: the case is open again
-            c['against'] = [{'occurrence': n, 'why': why} for n, why in against]
-            log['status'] = OPEN
-            line += f'; the recipe says no on it ({against[0][1]}): open again'
-        else:
-            c['result'] = log['status'] = _result(log, c['passed_on'])
-            line += f"; now {c['result']}"
+    line = _join(log, d, folder, ev, mine, rules['version'], library, how='repeat')
     save(d, log)
     return f'{cid}: {line}'
 

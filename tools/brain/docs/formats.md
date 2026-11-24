@@ -315,7 +315,7 @@ What Diagnosis keeps for a failure with no proved cause (#287, spec #279; `tools
 
 | Field | Meaning |
 |---|---|
-| `occurrences` | `n`, `evidence` (its evidence folder, relative to the log's folder), `check`, `label`, `release` (the failed Source, or null for the play's own failure), `date`, `rules`, `how` (`check`, or `repeat`: a Drill-down or replay that repeated it at will, `case repeat`) |
+| `occurrences` | `n`, `evidence` (its evidence folder, relative to the log's folder), `check`, `label`, `release` (the failed Source, or null for the play's own failure), `date`, `rules`, `how` (`check`, or `repeat`: a Drill-down or replay that repeated it at will: a Drill-down's own failure joins its log as one by itself, a replay through `case repeat`) |
 | `observations` | `n`, `by` (`code` or `agent`), `t`, `occurrence`, `says`, `quotes`. Code writes, for each occurrence: the path (the play's or the Source's step lines in order, and the first that was not ok, its line quoted), what changed since the last quick check under the runs root that passed (the commit, AltMount's `image`, the settings, quoted from both folders), and each lead Diagnosis tried |
 | `hypotheses` | `n`, `by`, `t`, `says`, `refuted_if` (the result that would refute it), `quotes`, `status` (`open`, `refuted`, `holds`), `result` (`says`, `quotes`, `t`) |
 | `clue_runs` | `clue`, `occurrence`, `answer`, `facts`, `t`, `by` (`diagnosis`: a lead's recipe; `code`: every Clue in the library, run once on each new occurrence; `agent`). A Clue is run on an occurrence once, never again |
