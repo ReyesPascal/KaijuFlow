@@ -11,16 +11,13 @@ KaijuFlow with AltMount as its one Backend, as fast and lean as possible; KaijuF
 ## Next command
 What the next session starts with (`docs/agents/resume.md`). The ending session starts it itself with `~/.local/bin/kf-next` when a plan gives the go ("Fresh session"); the owner types only what a plan does not cover.
 
-**The owner types** (the skill runs only when typed, so no `kf-next`), in a fresh herdr pane:
+**State (2026-11-23):** #239's build and both review rounds are done. Round 2's fix jobs 2, 3, 4 and 5 are merged into `deepen-239` (tip `98b3c29`; Job 1 was dropped: planted bugs). Build, unit, both type-checks, `check:brain` and integration pass on the tip. PR #252 is ready, CI green. Records: `~/kaijuflow-notes/reviews/239/round-2/fix-status.md`.
 
-    /mattpocock-skills:implement-spec #239
+**The owner types**, in a fresh herdr pane (the skill runs only when typed):
 
-The build of the deepening spec. #239's "Building it" was not grilled: the owner's standing decisions hold (nothing builds beside a run; plan PRs merge on green; agents show in herdr, owner 2026-11-23: "agents should always show in herdr in agents place from now on"; `kf-alert`; fresh session at stopping points). What #183's build settled per build (builders' model and effort, how many panes at once, the tab) is asked of the owner when `implement-spec` starts; #183's "Building it" is the precedent. `/code-review`, then `/codex-review`, over the integration branch before its PR is ready. #249's replay and #250's grouped run each need the owner's go, on an idle machine, after the build. #194 and #195 stay the owner's, on #183.
+    /mattpocock-skills:retro the #239 build: follow ~/kaijuflow-notes/reviews/239/retro-brief.md
 
-## Deepening spec #239 (grilled 2026-11-23, owner: "yes to all")
-- **Tickets** (`python3 -I tools/brain/frontier.py 239`): play path #228 (Walk module, replace once, 30 grabs) → #243 (grabs by ADR 0004 kind), #244 (Walk ends on the next list request) → #246 (play context) → #247 (Source memory) → #248 (delivery, keep-alive); #245 (Unscramble cap and read-error retry) after #228. Tools: #240 (stand-in 503 for a miss), #241 (runs module, one Previous run) → #242 (step lines). Then #249 (warm-list diagnosis, replay) and #250 (closing grouped run against #219's run; not kept → split Walk changes | the rest, then halve).
-- **Facts found in the grilling:** #228's walk runs away *before* the play, while a fallback prepares (a failed grab pulls twice); the walk's grab forgets a 404; #219's new fallbacks were Unscramble read-errors (then an upload AltMount rejects), not AltMount; the warm-list path does no new work (the same step got slower: whole process, not proven); old runs are read from `raw.json`, so step lines don't break them. Detail in #239 and the tickets.
-- **Written:** GLOSSARY (**Walk** new; Best entry, Head start, Unscramble, Delivery method), ADR 0004 "The walk's grabs", ADR 0005 amended 2026-11-23.
+After the retro: the review report (`~/kaijuflow-notes/reviews/239/report-design.md`), then #249 (replay), then #250 (grouped run). #249 and #250 each need the owner's go, on an idle machine. PR #252 merges on the owner's word.
 
 **Alerts:** `~/.local/bin/kf-alert "<what to type next>"` (voice "azelma", repeats until the notification is closed) at every stop-and-ask. Questions: AskUserQuestion plus `~/.local/bin/kf-ask "<question>"`, `kf-ask clear` once answered.
 
