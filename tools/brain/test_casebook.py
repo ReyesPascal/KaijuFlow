@@ -1,6 +1,7 @@
 """Tests for casebook.py: the Casebook's entry files, their format and the generated index (#281)."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -262,6 +263,37 @@ class ProvedTest(unittest.TestCase):
             self.assertEqual(len(casebook.problems(folder)), 1)
         with mock.patch.dict(casebook.clues.CLUES, {'unscramble-read-error': None, 'altmount-missing-volumes': None}):
             self.assertEqual(casebook.problems(folder), [])
+
+
+DRAFT = [f'A{n}' for n in range(1, 13)] + [f'B{n}' for n in range(1, 9)] + ['C1', 'C2'] + [f'D{n}' for n in range(1, 8)]
+
+
+class RepoCasebookTest(unittest.TestCase):
+    """The Casebook in the repo (tools/brain/casebook/), converted from the casebook sweep's draft (2026-11-24)."""
+
+    def test_the_repo_casebook_keeps_the_format_and_its_index_is_current(self):
+        self.assertEqual(casebook.problems(), [])
+
+    def test_every_cause_of_the_draft_is_one_entry(self):
+        labels = {}
+        for name in casebook.entry_files(casebook.FOLDER):
+            _, body = casebook.read_entry(os.path.join(casebook.FOLDER, name))
+            for label in re.findall(r'\(draft ([A-E][0-9]+)\)', body['History']):
+                labels.setdefault(label, []).append(name)
+        self.assertEqual({label: len(labels.get(label, [])) for label in DRAFT}, {label: 1 for label in DRAFT})
+
+    def test_causes_only_a_replayed_test_has_are_test_only_and_old_ones_without_evidence_say_so(self):
+        entries, _ = casebook.load()
+        by_label = {}
+        for fields in entries.values():
+            _, body = casebook.read_entry(os.path.join(casebook.FOLDER, fields['file']))
+            for label in re.findall(r'\(draft ([A-E][0-9]+)\)', body['History']):
+                by_label[label] = fields
+        self.assertEqual({label for label, f in by_label.items() if f['whose'] == 'test-only'} & {'C1', 'C2'}, {'C1', 'C2'})
+        # Logs before 2026-11-12 were lost with the old machine; Test 2's cancelled record was deleted (ADR 0008).
+        self.assertEqual(sorted(label for label, f in by_label.items() if f['confirm'] == casebook.NO_EVIDENCE),
+                         ['A10', 'A11', 'A4', 'A5', 'A6', 'A8', 'A9', 'D6'])
+        self.assertEqual([f['id'] for f in entries.values() if f['status'] in casebook.PROVED], [])
 
 
 class CommandTest(unittest.TestCase):
