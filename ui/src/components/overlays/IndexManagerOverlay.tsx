@@ -88,15 +88,6 @@ interface IndexManagerOverlayProps {
   tvdbPreferEnglishTitle: boolean;
   setTvdbPreferEnglishTitle: React.Dispatch<React.SetStateAction<boolean>>;
 
-  // Indexer priority dedup
-  indexerPriorityDedup: boolean;
-  setIndexerPriorityDedup: React.Dispatch<React.SetStateAction<boolean>>;
-  indexerPriority: string[];
-  setIndexerPriority: React.Dispatch<React.SetStateAction<string[]>>;
-  dedupDraggedItem: string | null;
-  setDedupDraggedItem: React.Dispatch<React.SetStateAction<string | null>>;
-  dedupDragOverItem: string | null;
-  setDedupDragOverItem: React.Dispatch<React.SetStateAction<string | null>>;
   easynewsEnabled: boolean;
 
   // EasyNews
@@ -230,14 +221,6 @@ export function IndexManagerOverlay({
   setAliasTitleFallback,
   tvdbPreferEnglishTitle,
   setTvdbPreferEnglishTitle,
-  indexerPriorityDedup,
-  setIndexerPriorityDedup,
-  indexerPriority,
-  setIndexerPriority,
-  dedupDraggedItem,
-  setDedupDraggedItem,
-  dedupDragOverItem,
-  setDedupDragOverItem,
   easynewsEnabled,
   setEasynewsEnabled,
   easynewsUsername,
@@ -798,78 +781,6 @@ export function IndexManagerOverlay({
                   </label>
                 </div>
 
-                {/* Indexer Priority Dedup */}
-                <div className="pt-3 border-t border-slate-700/30 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <label htmlFor="indexer-priority-dedup" className="flex-1 cursor-pointer">
-                      <div className="text-sm font-medium text-slate-300">Indexer Priority Deduplication</div>
-                      <div className="text-xs text-slate-500 mt-0.5">When duplicate NZBs are found across indexers (same title + size), keep only the copy from the highest-priority indexer. Note: even identical uploads may have different articles across indexers.</div>
-                    </label>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        id="indexer-priority-dedup"
-                        checked={indexerPriorityDedup}
-                        onChange={(e) => {
-                          const enabled = e.target.checked;
-                          setIndexerPriorityDedup(enabled);
-                          if (enabled && indexerPriority.length === 0) {
-                            const names: string[] = [];
-                            if (indexManager === 'newznab') {
-                              config?.indexers.filter(i => i.enabled).forEach(i => names.push(i.name));
-                            } else {
-                              (config?.syncedIndexers || []).filter(i => i.enabledForSearch).forEach(i => names.push(i.name));
-                            }
-                            if (easynewsEnabled) names.push('EasyNews');
-                            setIndexerPriority(names);
-                          }
-                        }}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
-                    </label>
-                  </div>
-
-                  {indexerPriorityDedup && indexerPriority.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-xs text-slate-500">Drag to reorder indexer priority (top = highest priority):</div>
-                      {indexerPriority.map((name, idx) => (
-                        <div
-                          key={name}
-                          draggable
-                          onDragStart={() => setDedupDraggedItem(name)}
-                          onDragOver={(e) => { e.preventDefault(); setDedupDragOverItem(name); }}
-                          onDragEnd={() => { setDedupDraggedItem(null); setDedupDragOverItem(null); }}
-                          onDrop={() => {
-                            if (dedupDraggedItem && dedupDraggedItem !== name) {
-                              const newOrder = [...indexerPriority];
-                              const fromIdx = newOrder.indexOf(dedupDraggedItem);
-                              const toIdx = newOrder.indexOf(name);
-                              if (fromIdx !== -1 && toIdx !== -1) {
-                                newOrder.splice(fromIdx, 1);
-                                newOrder.splice(toIdx, 0, dedupDraggedItem);
-                                setIndexerPriority(newOrder);
-                              }
-                            }
-                            setDedupDraggedItem(null);
-                            setDedupDragOverItem(null);
-                          }}
-                          className={clsx(
-                            'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all cursor-grab active:cursor-grabbing',
-                            dedupDragOverItem === name && dedupDraggedItem !== name
-                              ? 'border-primary-500/50 bg-primary-500/10'
-                              : 'border-slate-700/50 bg-slate-800/50 hover:bg-slate-700/50',
-                            dedupDraggedItem === name && 'opacity-50'
-                          )}
-                        >
-                          <GripVertical className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
-                          <span className="text-xs font-mono text-slate-500 w-5">#{idx + 1}</span>
-                          <span className="text-slate-300 text-sm">{name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* EasyNews — supplemental search source */}

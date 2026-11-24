@@ -2,8 +2,8 @@
  * Result Processor — orchestration layer
  *
  * Ties together the two processing stages:
- *  - deduplicateAndPreFilter: content-only passes (cacheable) — junk strip,
- *    indexer-priority dedup, remake filter.
+ *  - deduplicateAndPreFilter: content-only passes (cacheable) — remake filter
+ *    (the same upload on several indexers is already one Release, #299).
  *  - applyUserFilters: user-preference passes (re-run on every request) —
  *    URL dedup, multi-episode filter, quality filters, sort, stream limits.
  *
@@ -13,27 +13,24 @@
  */
 
 import { config, getTvAllowMultiEpisode } from '../config/index.js';
-import { stripBareArchiveParts, deduplicateByUrl, deduplicateByPriority, deduplicateByIndexerContent } from './dedup.js';
+import { stripBareArchiveParts, deduplicateByUrl, deduplicateByIndexerContent } from './dedup.js';
 import { applyRemakeFilter, applyMultiEpisodeFilter, applyQualityFilters, applyRankedRules } from './filters.js';
 import { sortResults } from './sort.js';
 import { applyStreamLimits } from './limits.js';
 
 // Re-export the individual passes so downstream callers can import from
 // resultProcessor without caring about the submodule split.
-export { stripBareArchiveParts, deduplicateByUrl, deduplicateByPriority, deduplicateByIndexerContent } from './dedup.js';
+export { stripBareArchiveParts, deduplicateByUrl, deduplicateByIndexerContent } from './dedup.js';
 export { applyRemakeFilter, applyMultiEpisodeFilter, applyQualityFilters, applyRankedRules } from './filters.js';
 export { sortResults } from './sort.js';
 export { applyStreamLimits } from './limits.js';
 
 /**
- * Content-dependent pre-processing: dedup-by-priority, remake filter.
+ * Content-dependent pre-processing: the remake filter.
  * These steps depend on the content, not user preferences — safe to cache.
  */
 export function deduplicateAndPreFilter(allResults: any[], hasRemake?: boolean, episodeName?: string, year?: string, titleYear?: string): { results: any[]; deprioritizedPacks: any[] } {
-  let results = deduplicateByPriority(allResults);
-  const { results: remakeFiltered, deprioritizedPacks } = applyRemakeFilter(results, hasRemake, episodeName, year, titleYear);
-  results = remakeFiltered;
-
+  const { results, deprioritizedPacks } = applyRemakeFilter(allResults, hasRemake, episodeName, year, titleYear);
   return { results, deprioritizedPacks };
 }
 

@@ -71,7 +71,6 @@ export interface SearchConfig {
   seasonPackPagination?: boolean;
   seasonPackAdditionalPages?: number;
   skipAnimeTitleResolve?: boolean;
-  indexerPriorityDedup?: boolean;
   urlDedup?: boolean;
   junkFilter?: boolean;
   seriesPackKeywords?: string[];
@@ -160,7 +159,6 @@ export interface Config {
   easynewsTimeout?: number;
   easynewsMode?: 'ddl' | 'nzb';
   easynewsHealthCheck?: boolean;
-  indexerPriority?: string[];
   streamDisplayConfig?: StreamDisplayConfig;
   zyclopsEndpoint?: string;
 }

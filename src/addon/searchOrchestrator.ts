@@ -14,7 +14,7 @@ import { ProwlarrSearcher } from '../searchers/prowlarrSearcher.js';
 import { NzbhydraSearcher } from '../searchers/nzbhydraSearcher.js';
 import { EasynewsSearcher } from '../searchers/easynewsSearcher.js';
 import { UsenetIndexer, type IndexerCaps } from '../types.js';
-import { waysOf, idWaysOf, foundBy, mergeFound, logSearchLines, logStrictAlone, type AskedIndexer, type SearchWay } from './kaijuSearch.js';
+import { waysOf, idWaysOf, foundBy, mergeFound, mergeReleases, logSearchLines, logStrictAlone, type AskedIndexer, type SearchWay } from './kaijuSearch.js';
 import { withFlowTitle, withSearchIndexer, droppedBy, flowTitleOf, markSources } from '../parsers/searchFlow.js';
 import { logStep, devSwitchOn } from '../utils/stepTiming.js';
 
@@ -77,11 +77,14 @@ export function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
 }
 
 /**
- * Kaiju Search (#285): the indexers' and EasyNews's search at once, both inside the title's Search Flow. With the dev
- * switch on, a `search` line when the strict rule alone would have left nothing of what both found.
+ * Kaiju Search (#285): the indexers' and EasyNews's search at once, both inside the title's Search Flow. The indexers'
+ * Sources come back as Releases (#299, `mergeReleases`): an upload several indexers have is listed once, with its
+ * Source on each. With the dev switch on, a `search` line when the strict rule alone would have left nothing of what
+ * both found.
  */
 export async function kaijuSearch(ctx: SearchContext): Promise<{ indexer: any[]; easynews: any[] }> {
-  const [indexer, easynews] = await Promise.all([indexManagerSearch(ctx), easynewsSearch(ctx)]);
+  const [sources, easynews] = await Promise.all([indexManagerSearch(ctx), easynewsSearch(ctx)]);
+  const indexer = mergeReleases(sources);
   if (devSwitchOn()) logStrictAlone(searchLog(ctx), markSources([...indexer, ...easynews], flowTitleOf(ctx)));
   return { indexer, easynews };
 }

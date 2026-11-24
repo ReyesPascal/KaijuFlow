@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8" ?> 
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+<channel>
+<atom:link href="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvYXBpP2NhdD01MDAwJmV4dGVuZGVkPTEmcT1HaXJsZnJpZW5kcyUyMFMwNEUwNCZ0PXNlYXJjaCZhcGlrZXk9e0tFWX0" rel="self" type="application/rss+xml" />
+<title>NinjaCentral</title>
+<description>NinjaCentral Feed</description>
+<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEv</link>
+<language>en-gb</language>
+<webMaster>admin@ninjacentral.co.za (NinjaCentral)</webMaster>
+<category></category>
+<image>
+	<url>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvdGVtcGxhdGVzL25pbmphL2ltYWdlcy9uaW5qYS1ib3JkZXJlZC5wbmc</url>
+	<title>NinjaCentral</title>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEv</link>
+	<description>Visit NinjaCentral - Home of the NZB Harvester</description>
+</image>
+
+<newznab:response offset="0" total="7" />
+<item>
+	<title>IMPACT.x.Nightline.S04E04.Ne-yo.My.Four.Girlfriends.1080p.DSNP.WEB-DL.AAC2.0.H.264-RAWR</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy80NDU0MWZmMjM2NWUxMTdhNTgzZGZjOGQ2MzZlYmU3OQ</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzQ0NTQxZmYyMzY1ZTExN2E1ODNkZmM4ZDYzNmViZTc5Lm56YiZpPXtVU0VSfSZyPXtLRVl9</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy80NDU0MWZmMjM2NWUxMTdhNTgzZGZjOGQ2MzZlYmU3OSNjb21tZW50cw</comments> 	
+	<pubDate>Mon, 26 Jan 2026 20:20:28 +0100</pubDate> 
+	<category>TV &gt; HD</category> 	
+	<description>IMPACT.x.Nightline.S04E04.Ne-yo.My.Four.Girlfriends.1080p.DSNP.WEB-DL.AAC2.0.H.264-RAWR</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzQ0NTQxZmYyMzY1ZTExN2E1ODNkZmM4ZDYzNmViZTc5Lm56YiZpPXtVU0VSfSZyPXtLRVl9" length="1627528298" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5040" />
+		<newznab:attr name="size" value="1627528298" />
+	<newznab:attr name="guid" value="44541ff2365e117a583dfc8d636ebe79" />
+	<newznab:attr name="sha1" value="615ecf2c3aa4608e5d32a08abfc829846553c554" />
+	<newznab:attr name="files" value="30" />
+	<newznab:attr name="poster" value="ccc39a6cab0152ce42eee608a5056264 &lt;bNJOR9k1u@YvWDp6Vz27.n9&gt;" />
+	<newznab:attr name="season" value="S04" />
+	<newznab:attr name="episode" value="E04" />
+	<newznab:attr name="tvtitle" value="Impact X Nightline" />
+	<newznab:attr name="grabs" value="6" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Mon, 26 Jan 2026 19:57:14 +0100" />
+	<newznab:attr name="group" value="alt.binaries.tv" />
+
+</item>
+<item>
+	<title>IMPACT.x.Nightline.S04E04.Ne-Yo.My.Four.Girlfriends.1080p.DSNP.WEB-DL.AAC2.0.H.264-RAWR</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy84OWNmYzZlMDYyNTZiNjg5NDM1NjgxOGNmYzZmMjY0Mg</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzg5Y2ZjNmUwNjI1NmI2ODk0MzU2ODE4Y2ZjNmYyNjQyLm56YiZpPXtVU0VSfSZyPXtLRVl9</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy84OWNmYzZlMDYyNTZiNjg5NDM1NjgxOGNmYzZmMjY0MiNjb21tZW50cw</comments> 	
+	<pubDate>Mon, 26 Jan 2026 19:50:27 +0100</pubDate> 
+	<category>TV &gt; HD</category> 	
+	<description>IMPACT.x.Nightline.S04E04.Ne-Yo.My.Four.Girlfriends.1080p.DSNP.WEB-DL.AAC2.0.H.264-RAWR</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzg5Y2ZjNmUwNjI1NmI2ODk0MzU2ODE4Y2ZjNmYyNjQyLm56YiZpPXtVU0VSfSZyPXtLRVl9" length="1607217411" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5040" />
+		<newznab:attr name="size" value="1607217411" />
+	<newznab:attr name="guid" value="89cfc6e06256b6894356818cfc6f2642" />
+	<newznab:attr name="sha1" value="49cc45c4724377e805c154b35ceb9fd1a3d15e38" />
+	<newznab:attr name="files" value="5" />
+	<newznab:attr name="poster" value="eos &lt;sdfsdfsdf@4324234wsdfsdf&gt;" />
+	<newznab:attr name="season" value="S04" />
+	<newznab:attr name="episode" value="E04" />
+	<newznab:attr name="tvtitle" value="Impact X Nightline" />
+	<newznab:attr name="grabs" value="3" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Mon, 26 Jan 2026 19:49:39 +0100" />
+	<newznab:attr name="group" value="alt.binaries.ninja.raphael" />
+
+</item>
+<item>
+	<title>Girlfriends.S04E04.720p.HDTV.x264-REGRET</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy83MjhkNDg5YTYzMmM5YmFiOWQxYTE4ZmUxZTVjYTkwMg</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzcyOGQ0ODlhNjMyYzliYWI5ZDFhMThmZTFlNWNhOTAyLm56YiZpPXtVU0VSfSZyPXtLRVl9</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy83MjhkNDg5YTYzMmM5YmFiOWQxYTE4ZmUxZTVjYTkwMiNjb21tZW50cw</comments> 	
+	<pubDate>Sun, 07 May 2023 02:30:02 +0200</pubDate> 
+	<category>TV &gt; HD</category> 	
+	<description>Girlfriends.S04E04.720p.HDTV.x264-REGRET</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzcyOGQ0ODlhNjMyYzliYWI5ZDFhMThmZTFlNWNhOTAyLm56YiZpPXtVU0VSfSZyPXtLRVl9" length="609810415" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5040" />
+		<newznab:attr name="size" value="609810415" />
+	<newznab:attr name="guid" value="728d489a632c9bab9d1a18fe1e5ca902" />
+	<newznab:attr name="sha1" value="891d5694bd9d570bf872b4106abae37a3e6899df" />
+	<newznab:attr name="files" value="27" />
+	<newznab:attr name="poster" value="WtF[NZB] &lt;freestuff@for.all&gt;" />
+	<newznab:attr name="season" value="S04" />
+	<newznab:attr name="episode" value="E04" />
+	<newznab:attr name="tvtitle" value="Girlfriends" />
+	<newznab:attr name="tvairdate" value="Mon, 06 Oct 2003 00:00:00 +0200" />
+	<newznab:attr name="grabs" value="12" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="1" />
+	<newznab:attr name="info" value="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvYXBpP3Q9Z2V0bmZvJmlkPTcyOGQ0ODlhNjMyYzliYWI5ZDFhMThmZTFlNWNhOTAyJmFwaWtleT17S0VZfSZyYXc9MQ" />
+	<newznab:attr name="usenetdate" value="Sun, 07 May 2023 02:14:53 +0200" />
+	<newznab:attr name="group" value="alt.binaries.wtfnzb.charlie" />
+
+</item>
+<item>
+	<title>Girlfriends.Guide.to.Divorce.S04E04.Rule.49.Let.It.Shine.1080p.WEBRip.DD5.1.H265-d3g</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy81MzhiY2ZiYzA5OTZkMjNhNjQwNDA3OTAyMGIyYzRmYg</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzUzOGJjZmJjMDk5NmQyM2E2NDA0MDc5MDIwYjJjNGZiLm56YiZpPXtVU0VSfSZyPXtLRVl9</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy81MzhiY2ZiYzA5OTZkMjNhNjQwNDA3OTAyMGIyYzRmYiNjb21tZW50cw</comments> 	
+	<pubDate>Wed, 26 Apr 2023 17:46:01 +0200</pubDate> 
+	<category>TV &gt; HD</category> 	
+	<description>Girlfriends.Guide.to.Divorce.S04E04.Rule.49.Let.It.Shine.1080p.WEBRip.DD5.1.H265-d3g</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzUzOGJjZmJjMDk5NmQyM2E2NDA0MDc5MDIwYjJjNGZiLm56YiZpPXtVU0VSfSZyPXtLRVl9" length="1512282773" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5040" />
+		<newznab:attr name="size" value="1512282773" />
+	<newznab:attr name="guid" value="538bcfbc0996d23a6404079020b2c4fb" />
+	<newznab:attr name="sha1" value="a33e65968c76a31b21ff08c17a7d19233c392ca5" />
+	<newznab:attr name="files" value="36" />
+	<newznab:attr name="poster" value="KYlNPnXc2Ve5w_Hw1RxNff-ICgv9@L2EKW56Z.DXt" />
+	<newznab:attr name="season" value="S04" />
+	<newznab:attr name="episode" value="E04" />
+	<newznab:attr name="tvtitle" value="Girlfriends Guide to Divorce" />
+	<newznab:attr name="tvairdate" value="Thu, 07 Sep 2017 00:00:00 +0200" />
+	<newznab:attr name="grabs" value="3" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Wed, 26 Apr 2023 16:59:31 +0200" />
+	<newznab:attr name="group" value="alt.binaries.tv" />
+
+</item>
+<item>
+	<title>Girlfriends.S04E04.WEB-DL.DDP2.0.H.264-Squalor</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy81YmMwNDI0OTUzZjcxMGQzZjQzMTU2Yjg0OWJlOGMzMA</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzViYzA0MjQ5NTNmNzEwZDNmNDMxNTZiODQ5YmU4YzMwLm56YiZpPXtVU0VSfSZyPXtLRVl9</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy81YmMwNDI0OTUzZjcxMGQzZjQzMTU2Yjg0OWJlOGMzMCNjb21tZW50cw</comments> 	
+	<pubDate>Sun, 24 Apr 2022 15:24:42 +0200</pubDate> 
+	<category>TV &gt; HD</category> 	
+	<description>Girlfriends.S04E04.WEB-DL.DDP2.0.H.264-Squalor</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzViYzA0MjQ5NTNmNzEwZDNmNDMxNTZiODQ5YmU4YzMwLm56YiZpPXtVU0VSfSZyPXtLRVl9" length="184667246" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5040" />
+		<newznab:attr name="size" value="184667246" />
+	<newznab:attr name="guid" value="5bc0424953f710d3f43156b849be8c30" />
+	<newznab:attr name="sha1" value="7f20d2024d18a54abdca4fabde73898fe425366c" />
+	<newznab:attr name="files" value="9" />
+	<newznab:attr name="poster" value="Bob &lt;bob@home.mex&gt;" />
+	<newznab:attr name="season" value="S04" />
+	<newznab:attr name="episode" value="E04" />
+	<newznab:attr name="tvtitle" value="Girlfriends" />
+	<newznab:attr name="tvairdate" value="Mon, 06 Oct 2003 00:00:00 +0200" />
+	<newznab:attr name="grabs" value="4" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Sat, 05 Feb 2022 14:40:26 +0100" />
+	<newznab:attr name="group" value="alt.binaries.etc" />
+
+</item>
+<item>
+	<title>Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy9jOWZjZWMwMjc1OTY4NWUyYTBiNGE4OWM1NmJjNzI4OQ</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiL2M5ZmNlYzAyNzU5Njg1ZTJhMGI0YTg5YzU2YmM3Mjg5Lm56YiZpPXtVU0VSfSZyPXtLRVl9</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy9jOWZjZWMwMjc1OTY4NWUyYTBiNGE4OWM1NmJjNzI4OSNjb21tZW50cw</comments> 	
+	<pubDate>Thu, 29 Dec 2022 17:26:53 +0100</pubDate> 
+	<category>TV &gt; HD</category> 	
+	<description>Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiL2M5ZmNlYzAyNzU5Njg1ZTJhMGI0YTg5YzU2YmM3Mjg5Lm56YiZpPXtVU0VSfSZyPXtLRVl9" length="193428257" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5040" />
+		<newznab:attr name="size" value="193428257" />
+	<newznab:attr name="guid" value="c9fcec02759685e2a0b4a89c56bc7289" />
+	<newznab:attr name="sha1" value="513c99460b7f9e3651817123feaf4db3fba1ae16" />
+	<newznab:attr name="files" value="10" />
+	<newznab:attr name="poster" value="VMrbkz39964ds7-OyKvJXPDBHqN@Xjc06trT.uQ7" />
+	<newznab:attr name="season" value="S04" />
+	<newznab:attr name="episode" value="E04" />
+	<newznab:attr name="tvtitle" value="Girlfriends" />
+	<newznab:attr name="tvairdate" value="Mon, 06 Oct 2003 00:00:00 +0200" />
+	<newznab:attr name="grabs" value="3" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Mon, 01 Nov 2021 21:36:21 +0100" />
+	<newznab:attr name="group" value="alt.binaries.wood" />
+
+</item>
+<item>
+	<title>Girlfriends.Guide.To.Divorce.S04E04.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb</title>
+	<guid isPermaLink="true">@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy82YjBlOWNiYjBkNmViOWQyMzJiMzFjOGIzYjFlNThmMQ</guid>
+	<link>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzZiMGU5Y2JiMGQ2ZWI5ZDIzMmIzMWM4YjNiMWU1OGYxLm56YiZpPXtVU0VSfSZyPXtLRVl9</link>
+	<comments>@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZGV0YWlscy82YjBlOWNiYjBkNmViOWQyMzJiMzFjOGIzYjFlNThmMSNjb21tZW50cw</comments> 	
+	<pubDate>Mon, 06 Apr 2020 05:52:25 +0200</pubDate> 
+	<category>TV &gt; HD</category> 	
+	<description>Girlfriends.Guide.To.Divorce.S04E04.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb</description>
+	<enclosure url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvZ2V0bnpiLzZiMGU5Y2JiMGQ2ZWI5ZDIzMmIzMWM4YjNiMWU1OGYxLm56YiZpPXtVU0VSfSZyPXtLRVl9" length="1196866017" type="application/x-nzb" />
+	<newznab:attr name="category" value="5000" />
+	<newznab:attr name="category" value="5040" />
+		<newznab:attr name="size" value="1196866017" />
+	<newznab:attr name="guid" value="6b0e9cbb0d6eb9d232b31c8b3b1e58f1" />
+	<newznab:attr name="sha1" value="d41caa7730264dfba12c9a04d9ddbdad31584ea6" />
+	<newznab:attr name="files" value="30" />
+	<newznab:attr name="poster" value="0LR6HRs-F6Eo-3dDZV@JWMGdzTWp.omJ" />
+	<newznab:attr name="season" value="S04" />
+	<newznab:attr name="episode" value="E04" />
+	<newznab:attr name="tvtitle" value="Girlfriends Guide to Divorce" />
+	<newznab:attr name="tvairdate" value="Thu, 07 Sep 2017 00:00:00 +0200" />
+	<newznab:attr name="grabs" value="5" />
+	<newznab:attr name="comments" value="0" />
+	<newznab:attr name="password" value="0" />
+	<newznab:attr name="nfo" value="0" />
+	<newznab:attr name="usenetdate" value="Mon, 06 Apr 2020 05:39:18 +0200" />
+	<newznab:attr name="group" value="alt.binaries.ath" />
+
+</item>
+
+</channel>
+</rss>
