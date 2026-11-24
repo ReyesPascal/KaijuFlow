@@ -1247,6 +1247,58 @@ export const playTimeScenarios = [
     run: w => assertRefusingIndexerSkipped(w, w.refusing, 'refused-three', 3),
   },
   {
+    // #255: a clicked list entry's walk-on is a Walk too (GLOSSARY: Walk). Its Sources are walked one at a time, so
+    // an indexer refusing every grab (429) is asked once, then its other Sources are passed by for the rest of the
+    // walk-on, said once; a Healthy Source from another indexer below still plays, and no refused Source is dead.
+    id: 'a-list-entry-walk-on-asks-a-refusing-indexer-once-and-skips-it',
+    run: w => assertRefusingIndexerSkipped(w, w.refusing, 'entry-refused', 1, { listEntry: true }),
+  },
+  {
+    // #255, a 200 with a Newznab error payload (code 500, its request limit) is a refusal too, as for Best's Walk.
+    id: 'a-list-entry-walk-on-asks-an-indexer-answering-an-error-payload-once-and-skips-it',
+    run: w => assertRefusingIndexerSkipped(w, w.limited, 'entry-limited', 1, { listEntry: true }),
+  },
+  {
+    // #255: 40 Sources the indexer says are gone (404) from a clicked list entry down. The walk-on marks each one it
+    // grabs dead, stops after 30 grabs, says so once, and the play ends as when the list runs out: the failure video.
+    // The 10 below the 30th are not grabbed, so they stay in the list.
+    id: 'a-list-entry-walk-on-of-gone-sources-stops-at-30-grabs-and-marks-them-dead',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
+      const tags = [...Array(40).keys()].map(i => `entrygone-${i + 1}`);
+      const { id, sources } = offerMovie(w, tags.map(tag => ({ tag, kind: 'gone' })));
+      const { result: r, lines } = await withLogs(async () => {
+        const streams = await w.list('movie', id);
+        assert.equal(entryTitle(streams[1]), sources[0].title, 'the top Source is the first list entry');
+        return play(streams[1].url, undefined, 60000);
+      });
+      assertFailureVideo(r);
+      assertWalkStoppedAt30(w, lines, 'entrygone-', tags);
+      const again = (await w.list('movie', id)).filter(e => !isBest(e)).map(entryTitle);
+      for (const s of sources.slice(0, 30)) assert.ok(!again.includes(s.title), `${s.tag} is dead: the list no longer offers it`);
+      for (const s of sources.slice(30)) assert.ok(again.includes(s.title), `${s.tag} was not grabbed: still offered`);
+    }),
+  },
+  {
+    // #255, the limits cost no play: a Healthy Source below a few gone Sources plays from a clicked list entry, each
+    // gone Source grabbed once and marked dead, and only the played Source handed to AltMount.
+    id: 'a-list-entry-plays-a-healthy-source-below-gone-sources',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
+      const specs = [1, 2, 3, 4, 5].map(i => ({ tag: `entrybelow-gone-${i}`, kind: 'gone' })).concat([{ tag: 'entrybelow-ok-6' }, { tag: 'entrybelow-ok-7' }]);
+      const { id, sources } = offerMovie(w, specs);
+      const before = w.backend.submitted.length;
+      const streams = await w.list('movie', id);
+      const r = await play(streams[1].url);
+      assert.equal(r.status, 200, 'the list entry plays');
+      assertBytes(r.body, sources[5].media, 'the first Healthy Source below the gone ones plays');
+      assert.deepEqual(w.backend.submitted.slice(before), ['entrybelow-ok-6'], 'only the played Source reaches AltMount');
+      const gone = w.backend.grabs.filter(g => g.tag.startsWith('entrybelow-gone-')).map(g => g.tag);
+      assert.deepEqual([...gone].sort(), specs.slice(0, 5).map(s => s.tag).sort(), 'each gone Source grabbed once');
+      const again = (await w.list('movie', id)).filter(e => !isBest(e)).map(entryTitle);
+      for (const s of sources.slice(0, 5)) assert.ok(!again.includes(s.title), `${s.tag} is dead: the list no longer offers it`);
+      assert.ok(again.includes(sources[5].title), 'the played Source is still offered');
+    }),
+  },
+  {
     // ADR 0004, "The walk's grabs" (#243): a link the indexer says is gone (404) is a Source failure. The Walk marks
     // each gone Source dead and walks on, so the next play's Walk does not grab them again. AltMount is down for the
     // first play, so that Walk ends without a play (its Healthy Source stays alive) and the next press walks again.
@@ -1550,8 +1602,10 @@ async function askOnce(url, timeoutMs = 30000) {
  * With a larger candidateCount, already in-flight grabs still reach the refuser, so the bound is one request per slot.
  * The skip is logged once, Best plays Healthy, and no refused Source is dead.
  */
-function assertRefusingIndexerSkipped(w, refuser, prefix, candidateCount = 1) {
-  return withSettings(w, { candidateCount }, () => withIndexer(w, refuser.entry, async () => {
+function assertRefusingIndexerSkipped(w, refuser, prefix, candidateCount = 1, { listEntry = false } = {}) {
+  // A clicked list entry walks on alone: the Head start off, so no Best run meets the refusal first (#255).
+  const settings = listEntry ? { candidateCount, whenToResolve: 'on-tile-selection' } : { candidateCount };
+  return withSettings(w, settings, () => withIndexer(w, refuser.entry, async () => {
     const id = `tt${nextImdb++}`;
     const refused = [1, 2, 3, 4].map(i => ({ tag: `${prefix}-${i}`, title: `KaijuFlow.PlayTime.${prefix}-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
     for (const s of refused) s.link = refuser.nzbLink(s.tag);
@@ -1563,10 +1617,11 @@ function assertRefusingIndexerSkipped(w, refuser, prefix, candidateCount = 1) {
     const { result: r, lines } = await withLogs(async () => {
       const streams = await w.list('movie', id);
       assert.equal(streams.slice(1).map(entryTitle).join(' | '), [...refused, ok].map(s => s.title).join(' | '), 'the refusing indexer\'s Sources are on top');
-      return play(streams[0].url);
+      return play(streams[listEntry ? 1 : 0].url);
     });
-    assert.equal(r.status, 200, 'Best plays');
-    assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
+    const who = listEntry ? 'the clicked list entry' : 'Best';
+    assert.equal(r.status, 200, `${who} plays`);
+    assertBytes(r.body, ok.media, `${who} plays the Healthy Source of the other indexer`);
     assert.deepEqual(refuser.grabbedTags.slice(before), refused.slice(0, candidateCount).map(s => s.tag),
       `the refusing indexer is asked at most ${candidateCount} time${candidateCount === 1 ? '' : 's'}, once per in-flight slot`);
     const skip = new RegExp(`${refuser.entry.name}.*skipped for the rest of the Walk`);
