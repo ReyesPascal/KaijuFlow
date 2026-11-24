@@ -19,7 +19,7 @@ const asked: string[] = [];
 const interceptor = axios.interceptors.request.use((cfg: InternalAxiosRequestConfig) => {
   const url = new URL(cfg.url ?? '');
   const params = new URLSearchParams(Object.entries(cfg.params ?? {})
-    .filter(([k]) => k !== 'api_key').map(([k, v]) => [k, String(v)]));
+    .filter(([k]) => k !== 'api_key').map(([k, v]): [string, string] => [k, String(v)]));
   const key = `${url.pathname.replace(/^\/3/, '')}${params.size ? `?${params}` : ''}`;
   asked.push(`${url.host}${key}`);
   const reply = url.host === 'v3-cinemeta.strem.io' && url.pathname === '/meta/movie/tt0211915.json' ? [200, cinemeta]
