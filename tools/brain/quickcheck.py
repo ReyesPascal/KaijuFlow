@@ -83,14 +83,21 @@ def _markers(tokens):
     return episodes, seasons
 
 
-# The words a release may put between an episode's show name and its marker, all seen in the recordings' release names
-# (a country, `REACHER.TV`, a season pack's `complete`); beside them a year and a TVDB number (`The Witcher (2019)
-# (362696) - S01E01`). Any other word there is a longer show around the name: `Squid.Game.The.Challenge.S01E01`,
-# `The.Witcher.Blood.Origin.S01E01`.
-SHOW_TAGS = {'us', 'uk', 'au', 'nz', 'ca', 'tv', 'complete', 'uncensored'}
-SHOW_GAP = 3  # at most this many of them
-FILM_GAP = 5  # a film's name may be followed by this many words before its year (another name, an edition, a language)
-VIDEO_TAG = re.compile(r'\d{3,4}p|[2348]k|3d')  # words with digits that may stand among them (`Vol.3.IMAX.1080p.2023`)
+# The words a release may put between an episode's show name and its marker, each seen there in the recordings' release
+# names (`The.Witcher.US.S01E01`, `Utopia.UK.S01E01`, `Utopia.AU.S01`, `REACHER.TV.S01E01`, `Game.of.Thrones.complete
+# .S01-S08`); beside them a year and a TVDB number (`The Witcher (2019) (362696) - S01E01`). Any other word there is a
+# longer show around the name: `Squid.Game.The.Challenge.S01E01`, `The.Witcher.Blood.Origin.S01`.
+SHOW_TAGS = {'us', 'uk', 'au', 'tv', 'complete'}
+# The words a release may put between a film's name and its year, each seen there in the recordings' release names: an
+# edition, a language, a 3D or video tag (`Vol.3.IMAX.1080p.2023`, `Deadpool.and.Wolverine.GERMAN.2024`,
+# `Akira.Special.Edition.1988`, `Joker nl subs 2019`). Any other word there is a longer film around the name
+# (`Inception.The.Cobol.Job.2010`, `Avatar.Pandoras.Box.2009`); a title in another language fits through TMDB's other
+# names of it (`Avatar.Aufbruch.nach.Pandora.Extended.Collectors.Edition.2009`).
+FILM_TAGS = {'imax', '3d', '2d', 'hsbs', '3dbd', 'uhd', 'multi', 'german', 'en', 'nl', 'eng', 'ukr', 'subs', 'anime',
+             'se', 'ue', 'special', 'extended', 'collector', 'collectors', 's', 'edition', 'theatrical',
+             'cut', 'remastered'}
+VIDEO_TAG = re.compile(r'\d{3,4}p|4k')  # a resolution among them (`Avatar.720P.(2009)`, `IMAX.2160p.4k.2023`)
+UMLAUTS = str.maketrans({'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'Ä': 'Ae', 'Ö': 'Oe', 'Ü': 'Ue', 'ß': 'ss'})
 
 
 def _after(rel, name):
@@ -104,22 +111,19 @@ def _year(word):
 
 
 def _film_year(rel, j):
-    """The year that dates a film whose name ends before word j: the first year within FILM_GAP words, past words with no
-    digit (`Blade.Runner.The.Final.Cut.1982`, `Avatar.Aufbruch.nach.Pandora.2009`) and video tags. None when another
-    number comes first (`Inside.Out.2.2024` is not Inside Out) or there is no year."""
-    for k in range(j, min(j + FILM_GAP + 1, len(rel))):
-        w = rel[k]
+    """The year that dates a film whose name ends before word j, past any FILM_TAGS and resolutions; None when another
+    word or number comes first (`Inside.Out.2.2024` is not Inside Out, `Inception.The.Cobol.Job.2010` not Inception)."""
+    for w in rel[j:]:
         if _year(w):
             return _year(w)
-        if re.search(r'\d', w) and not VIDEO_TAG.fullmatch(w):
+        if not (w in FILM_TAGS or VIDEO_TAG.fullmatch(w)):
             return None
     return None
 
 
 def _episode_start(rel, j):
-    """Whether an episode, season or date marker starts at word j, past at most SHOW_GAP show tags, years and TVDB numbers."""
-    for k in range(j, min(j + SHOW_GAP + 1, len(rel))):
-        w = rel[k]
+    """Whether an episode, season or date marker starts at word j, past any SHOW_TAGS, years and TVDB numbers."""
+    for k, w in enumerate(rel[j:], j):
         if re.fullmatch(r's\d{1,3}(e\d{1,4})*|\d{1,2}x\d{1,3}|season', w) or (_year(w) and k + 2 < len(rel)
                                                                              and rel[k + 1].isdigit() and rel[k + 2].isdigit()):
             return True
@@ -133,9 +137,9 @@ def right_title(release, title, names=()):
     [type, id, label, kind, date]; `names` are other names of it (TMDB's original and alternative titles), tried when the
     label's name does not fit.
 
-    A film's name is followed, within a few words with no other number, by a year within one of its release year
-    (releases are dated by their own release), so a sequel does not count. An episode's show name is followed by its
-    marker, past only show tags, years and TVDB numbers (SHOW_TAGS), so a longer show around it does not count; the marker
+    A film's name is followed by a year within one of its release year (releases are dated by their own release), past
+    only edition, language and video tags (FILM_TAGS), so a sequel or a longer film around it does not count. An episode's
+    show name is followed by its marker, past only show tags, years and TVDB numbers (SHOW_TAGS); the marker
     is its episode (S01E02, 1x02, in a range S01E01-E03), or its season when the release is a season pack (KaijuFlow picks
     the file inside), or its air date (a daily show, 2026.11.20). A why that starts "the name" is one another name of the
     title may mend."""
@@ -143,7 +147,9 @@ def right_title(release, title, names=()):
     rel = words(release)
     m = EPISODE_LABEL.match(label) if title_type == 'series' else None
     name = m.group(1) if m else label
-    spots = [j for n in (name, *names) for j in _after(rel, words(n))]
+    tried = [name, *names]
+    tried += [n.translate(UMLAUTS) for n in tried if n.translate(UMLAUTS) != n]  # Einzelgänger as released: Einzelgaenger
+    spots = [j for n in tried for j in _after(rel, words(n))]
     if not spots:
         return False, f'the name "{name}" is not in it'
     if title_type == 'movie':
@@ -218,7 +224,7 @@ def _empty_list(steps):
     """(outcome, why) of a list with no Source. Nothing to play only when it is shown that nothing would have played:
     every indexer page answered and KaijuFlow's `list_filter` line says what its search kept (its name match, junk strip
     and remake filter done) and what its filters (dead marks, the user's) left: `the list held no Source: KaijuFlow's
-    search kept 12 releases and its filters kept none`. An indexer that did not answer, or no `list_filter` line (the
+    search kept 12 Sources and its filters kept none`. An indexer that did not answer, or no `list_filter` line (the
     list's handler failed), is a fail."""
     down = [s for s in steps if s.get('step') == 'indexer_page' and not s.get('ok')]
     if down:
@@ -228,7 +234,7 @@ def _empty_list(steps):
     if not f or f.get('results') is None:
         return FAIL, "the list held no Source, and KaijuFlow's log has no list_filter line, so it is not shown that nothing would play"
     n, kept = f['results'], f.get('kept') or 0
-    return NOTHING, (f"the list held no Source: KaijuFlow's search kept {n} release{'' if n == 1 else 's'} and its filters "
+    return NOTHING, (f"the list held no Source: KaijuFlow's search kept {n} Source{'' if n == 1 else 's'} and its filters "
                      f"kept {kept or 'none'}")
 
 

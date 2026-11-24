@@ -33,7 +33,8 @@ def names():
     keys = ['inside out 2', 'pushing daisies e09', 'avatar', 'spider-verse', 'hitcher', '7th time loop', 'space 1999 e04',
             'pushing daisies pack', 'avatar german', 'misanthrope e02', 'chernobyl 1x02', 'chernobyl s01.e02', 'got 2011 s02e03',
             'breaking bad 1x01', 'squid game challenge', 'witcher blood origin', 'guardians imax', 'thief german', 'witcher sonarr',
-            'reacher tv']
+            'reacher tv', 'inception cobol job', 'oppenheimer real story', 'avatar pandoras box', 'deadpool german', 'witcher us',
+            'utopia uk', 'utopia au pack', 'got complete', 'akira special edition']
     return dict(zip(keys, lines))
 
 
@@ -85,13 +86,40 @@ class RightTitleTest(unittest.TestCase):
         ok, why = self.ok('inside out 2', ['movie', 'tt2096673', 'Inside Out', 'popular-film', '2015-06-17'])
         self.assertEqual((ok, why), (False, 'the name "Inside Out" is not followed by a year (2015 wanted)'))  # the sequel
 
-    def test_words_between_a_films_name_and_its_year_are_another_name_or_an_edition(self):
+    def test_editions_languages_and_video_tags_may_stand_between_a_films_name_and_its_year(self):
         self.assertEqual(self.ok('guardians imax', ['movie', 'tt6791350', 'Guardians of the Galaxy Vol. 3', 'popular-film',
                                                     '2023-05-03']), (True, ''))  # IMAX and 1080p before the year
-        self.assertEqual(self.ok('thief german', ['movie', 'tt0083190', 'Thief', 'rare-film', '1981-03-27']), (True, ''))
-        self.assertEqual(self.ok('avatar german', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15']), (True, ''))
+        self.assertEqual(self.ok('deadpool german', ['movie', 'tt6263850', 'Deadpool & Wolverine', 'popular-film', '2024-07-24']),
+                         (True, ''))
+        self.assertEqual(self.ok('akira special edition', ['movie', 'tt0094625', 'Akira', 'anime', '1988-07-16']), (True, ''))
+
+    def test_every_allowed_tag_was_seen_in_a_real_release_of_the_right_film(self):
+        rows = [line.split('\t') for line in read(HERE, 'fixtures', '2026-11-24-release-names', 'film-tags.tsv').splitlines()]
+        seen = set()
+        for label, year, other, release in rows:
+            title = ['movie', 'tt1', label, 'popular-film', f'{year}-06-01']
+            self.assertEqual(qc.right_title(release, title, [other] if other else []), (True, ''), release)
+            rel = qc.words(release)
+            for n in [other or label]:  # the name it fits through
+                for j in qc._after(rel, qc.words(n)):
+                    seen |= set(rel[j:next((k for k in range(j, len(rel)) if qc._year(rel[k])), j)])
+        self.assertEqual(seen - {'1080p', '2160p', '720p', '4k'}, qc.FILM_TAGS)
+
+    def test_a_longer_film_around_the_name_is_another_film(self):
+        for key, label, date in (('inception cobol job', 'Inception', '2010-07-15'), ('oppenheimer real story', 'Oppenheimer', '2023-07-19'),
+                                 ('avatar pandoras box', 'Avatar', '2009-12-15')):
+            ok, why = self.ok(key, ['movie', 'tt1', label, 'popular-film', date])
+            self.assertEqual((ok, why), (False, f'the name "{label}" is not followed by a year ({date[:4]} wanted)'), key)
+
+    def test_a_title_in_another_language_fits_through_another_name_of_it(self):
+        title = ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15']
+        self.assertEqual(self.ok('avatar german', title), (False, 'the name "Avatar" is not followed by a year (2009 wanted)'))
+        self.assertEqual(self.ok('avatar german', title, ['Avatar: Aufbruch nach Pandora']), (True, ''))
+        thief = ['movie', 'tt0083190', 'Thief', 'rare-film', '1981-03-27']
+        self.assertFalse(self.ok('thief german', thief)[0])
+        self.assertEqual(self.ok('thief german', thief, ['Der Einzelgänger']), (True, ''))  # released as Einzelgaenger
         ok, why = self.ok('spider-verse', ['movie', 'tt0145487', 'Spider-Man', 'popular-film', '2002-05-01'])
-        self.assertEqual((ok, why), (False, 'its year is 2023, not 2002'))  # a longer film is told apart by its year
+        self.assertFalse(ok)
 
     def test_a_longer_show_around_the_name_is_another_show(self):
         ok, why = self.ok('squid game challenge', ['series', 'tt10919420:1:1', 'Squid Game S01E01', 'popular-episode', '2021-09-17'])
@@ -104,6 +132,12 @@ class RightTitleTest(unittest.TestCase):
         self.assertEqual(self.ok('witcher sonarr', witcher), (True, ''))  # The Witcher (2019) (362696) - S01E01
         self.assertEqual(self.ok('reacher tv', ['series', 'tt9288030:1:1', 'Reacher S01E01', 'popular-episode', '2022-02-04']),
                          (True, ''))
+        self.assertEqual(self.ok('witcher us', witcher), (True, ''))
+        utopia = ['series', 'tt2384811:1:1', 'Utopia S01E01', 'popular-episode', '2013-01-15']
+        self.assertEqual(self.ok('utopia uk', utopia), (True, ''))
+        self.assertEqual(self.ok('utopia au pack', utopia), (True, ''))
+        self.assertEqual(self.ok('got complete', ['series', 'tt0944947:2:3', 'Game of Thrones S02E03', 'popular-episode',
+                                                  '2012-04-15']), (True, ''))
 
     def test_a_release_without_the_name_is_the_wrong_title(self):
         ok, why = self.ok('hitcher', ['movie', 'tt0499549', 'Avatar', 'popular-film', '2009-12-15'])
@@ -152,9 +186,7 @@ class RightTitleTest(unittest.TestCase):
         title = ['series', 'tt1:3:7', 'Some Show S03E07', 'popular-episode', '2024-05-01']
         for release, right in (('Some.Show.S03E06-E08.1080p.WEB', True), ('Some.Show.S03E06E07.1080p', True),
                                ('Some.Show.S01-S04.COMPLETE.1080p', True), ('Some.Show.Season.3.1080p', True),
-                               ('Some.Show.UK.S03E07.1080p', True), ('Some.Show.1080p.WEB', False),
-                               ('Some.Show.US.2005.S03E07', True),
-                               ('Some.Show.Complete.Season.3', True), ('Some.Show.Uncensored.S03E07', True)):
+                               ('Some.Show.1080p.WEB', False)):
             self.assertEqual(qc.right_title(release, title)[0], right, release)
 
     def test_a_daily_show_is_known_by_its_air_date(self):
@@ -268,7 +300,7 @@ class JudgeTest(unittest.TestCase):
     def test_nothing_to_play_needs_every_source_said_no(self):
         counted = qc.judge(visit(sources=0, best=False, steps=[{'step': 'list_filter', 'results': 12, 'kept': 0}]))
         self.assertEqual((counted['outcome'], counted['why']),
-                         ('nothing to play', "the list held no Source: KaijuFlow's search kept 12 releases and its filters kept none"))
+                         ('nothing to play', "the list held no Source: KaijuFlow's search kept 12 Sources and its filters kept none"))
         dead = [{'step': 'play_check', 'title': f'Rel.{i}.2026', 'ok': False, 'status': 'blocked'} for i in range(3)]
         o = qc.judge(visit(sources=3, plays=False, steps=dead))
         self.assertEqual((o['outcome'], o['why']), ('nothing to play', 'every Source KaijuFlow looked at failed its check (3 of 3)'))
@@ -284,7 +316,7 @@ class JudgeTest(unittest.TestCase):
         answered = [dict(kept[0], ok=True), kept[1]]
         o = qc.judge(visit(sources=0, best=False, steps=answered))
         self.assertEqual((o['outcome'], o['why']),
-                         ('nothing to play', "the list held no Source: KaijuFlow's search kept 0 releases and its filters kept none"))
+                         ('nothing to play', "the list held no Source: KaijuFlow's search kept 0 Sources and its filters kept none"))
         o = qc.judge(visit(sources=0, best=False))  # no list_filter line: the list's handler failed
         self.assertEqual(o['outcome'], 'fail')
         self.assertIn('no list_filter line', o['why'])
@@ -454,9 +486,14 @@ class CheckWorld:
         if not self.up:
             return brainrun.check_visit_answer((None, {'error': 'connection refused'}, b'', {'ready': 0.0}), None)
         self.takes(2.0)
+        release = self.plays.get(vid)
+        if release == 'indexer down':  # as KaijuFlow logs a search the indexer did not answer, and the empty list after it
+            for line in ({'step': 'indexer_page', 'source': 'NinjaCentral', 'ok': False, 'page': 1},
+                         {'step': 'list_filter', 'ok': True, 'results': 0, 'kept': 0}):
+                self.log.append(f'{t_list} [KF-STEP] ' + json.dumps({**line, 'ms': 1, 'ref': vid, 't': t_list}))
+            return brainrun.check_visit_answer((200, {}, b'{"streams": []}', {'ready': 2.0, 'total': 2.0}), None, pause_s, self.sleep)
         body = json.dumps({'streams': [BEST, {'name': 'KaijuFlow', 'title': 'A'}, {'name': 'KaijuFlow', 'title': 'B'}]}).encode()
         got = (200, {}, body, {'ready': 2.0, 'total': 2.0})
-        release = self.plays.get(vid)
 
         def press(stream):
             self.takes(3.0)
@@ -591,6 +628,15 @@ class QuickCheckRunTest(unittest.TestCase):
         self.assertIn('No verdict: the check failed: TMDB gave no new rare-film title in 8 pages', out)
         self.assertNotIn(('reset', tuple(brainrun.ALL_TESTBED)), world.calls)
         self.assertIn('| quick-check | failed |', read(cfg['runs_root'], 'INDEX.md'))
+
+    def test_an_indexer_that_does_not_answer_fails_the_check(self):
+        world = CheckWorld()
+        world.plays['tt0000003'] = 'indexer down'
+        cfg = check_cfg(self)
+        code, out = run_check(cfg, world)
+        self.assertEqual(code, brainrun.EXIT_FAILS, out)
+        report = read(cfg['runs_root'], '2026-11-25T100000Z-quick-check', 'report.md')
+        self.assertIn('the list held no Source, and NinjaCentral did not answer its search (page 1)', report)
 
     def test_tmdb_failing_the_draw_ends_the_check_with_its_sentence(self):
         cfg = check_cfg(self)
