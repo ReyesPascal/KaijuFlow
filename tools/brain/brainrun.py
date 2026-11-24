@@ -55,6 +55,7 @@ import draw  # noqa: E402
 import diagnosis  # noqa: E402
 import evidence  # noqa: E402
 import indexer_standin  # noqa: E402
+import nntp  # noqa: E402
 import pool  # noqa: E402
 import quickcheck  # noqa: E402
 import runcheck  # noqa: E402
@@ -474,6 +475,11 @@ class RealIO:
                 return f.read()
         except OSError:
             return None
+
+    def usenet(self):
+        """The live Clues' one read-only connection to the test copy's AltMount provider (#284), opened at its first
+        command."""
+        return nntp.Usenet(login=nntp.provider(test_dir=self.cfg['test_dir']))
 
     def secret_values(self):
         """The test copies' secret values (key files, logins, keys), for scrubbing what a check keeps; never shown."""
@@ -1588,8 +1594,9 @@ def write_check_ending(cfg, io, check, started, logbuf):
             return None
     check['outcomes'] = [quickcheck.judge(v, names=lambda t=v['title']: names(t)) for v in quickcheck.judged(check)]
     save_evidence(io, check)
-    try:  # Diagnosis runs by itself on a check with a failure (#283); its report section says if it could not
-        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'])
+    try:  # Diagnosis runs by itself on a check with a failure (#283), the live read-only Clues first (#284); its report
+        # section says if it could not
+        check['diagnosis'] = diagnosis.after_check(run_dir, cfg['runs_root'], usenet=io.usenet)
     except Exception as e:  # noqa: BLE001  (the check's report and verdict come first)
         check['diagnosis'] = None
         check['diagnosis_error'] = br.scrub_text(f'{type(e).__name__}: {e}')

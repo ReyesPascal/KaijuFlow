@@ -7,11 +7,17 @@ import copy
 import json
 import os
 import unittest
+from unittest import mock
 
+import brainrun
 import clues
+import diagnosis
 import evidence
+import indexer_standin
 import nntp
 import yenc
+from test_evidence import CHECK, FailedPlayWorld
+from test_quickcheck import CheckWorld, check_cfg, read, run_check
 from test_diagnosis import DEAD_PACK, HHWEB, READ_ERROR, SIC, TWILIGHT, TWO_REFUSALS
 from test_settings import SECRET, make_copies
 
@@ -94,6 +100,41 @@ class ProviderTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError) as e:
             nntp.provider(test_dir='/nonexistent-test-dir')
         self.assertIn('altmount-kf/config/config.yaml', str(e.exception))
+
+
+class FakeServer:
+    """Stands in for nntp.Conn at the network's edge: keeps the login it was opened with, answers STAT 223."""
+    opened = []
+
+    def __init__(self, host, port, user, pw):
+        FakeServer.opened.append((host, port, user, pw))
+        self.sent, self.s = [], self
+        self.f = None
+
+    def sendall(self, data):
+        self.sent.append(data)
+
+    def line(self):
+        return '223 0 <x>'
+
+    def cmd(self, c):
+        return '205 bye'
+
+    def close(self):
+        pass
+
+
+class RealConnectionTest(unittest.TestCase):
+    def test_the_checks_connection_logs_in_to_the_test_copys_provider_at_its_first_command_only(self):
+        td = make_copies(self)
+        FakeServer.opened = []
+        with mock.patch.object(nntp, 'Conn', FakeServer):
+            usenet = brainrun.RealIO({'test_dir': td}).usenet()
+            self.assertEqual(FakeServer.opened, [])
+            self.assertEqual(usenet.stat(['a@b', 'c@d']), [223, 223])
+            usenet.stat(['e@f'])
+            usenet.close()
+        self.assertEqual(FakeServer.opened, [('news.example', 563, SECRET, SECRET)])
 
 
 class AltMountAnswerTest(unittest.TestCase):
@@ -209,6 +250,71 @@ class CrcTest(unittest.TestCase):
     def test_articles_the_provider_lost_cannot_tell(self):
         got = clues.run_live('segment-crc-bad', Kept(DEAD_NZB), {'release': 'aAF'}, Replay())
         self.assertEqual(got['answer'], "can't tell", got['facts'])
+
+
+class LiveWorld(FailedPlayWorld):
+    """The captured failed play (test_evidence), with a news server giving the recorded answers: the NZB the check
+    stored for the failed Source (HHWEB) is a real recorded one, SiC's (`sic-asrequested.nzb`)."""
+
+    def __init__(self, usenet=None, **kw):
+        super().__init__(**kw)
+        self.opened, self.make = [], usenet or Replay
+
+    def open_check_store(self, run_dir):
+        super().open_check_store(run_dir)
+        d = os.path.join(self.root, 'store', 'check', 'ninjacentral')
+        for token, title in indexer_standin.nzb_titles(d).items():
+            if title == HHWEB:
+                with open(SIC_NZB, 'rb') as src, open(os.path.join(d, indexer_standin.cache_key('nzb', [('token', token)]) + '.body'), 'wb') as f:
+                    f.write(src.read())
+
+    def usenet(self):
+        u = self.make()
+        self.opened.append(u)
+        return u
+
+
+def run_live_check(case, world):
+    cfg = check_cfg(case)
+    world.case = case
+    code, out = run_check(cfg, world)
+    return os.path.join(cfg['runs_root'], CHECK, 'evidence', '01-the-witcher-s01e01'), world
+
+
+class AfterACheckTest(unittest.TestCase):
+    def test_a_check_with_a_failure_asks_the_live_clues_once_right_after_it_ends(self):
+        folder, world = run_live_check(self, LiveWorld())
+        [usenet] = world.opened  # one connection for the whole check
+        self.assertTrue(usenet.closed)
+        live = json.loads(read(folder, evidence.LIVE))
+        self.assertEqual(sorted(live['clues']), sorted(clues.LIVE))
+        kept = live['clues']['articles-missing'][HHWEB]
+        self.assertEqual(kept['answer'], 'no', kept)
+        self.assertEqual(kept['facts'], ['STAT of all 1872 articles of 1 file (par2 left out): 0 missing (430 when asked '
+                                         'twice), 0 other answers'])
+        self.assertEqual(live['clues']['segment-crc-bad'][HHWEB]['answer'], 'no')
+        self.assertEqual(usenet.asked, 1872 + 3)
+        [f] = json.loads(read(folder, diagnosis.STORED))['failures']  # Diagnosis ran after them, as before
+        self.assertEqual(f['verdict'], 'found')
+
+    def test_a_check_with_no_failure_asks_nothing_live(self):
+        class World(CheckWorld):
+            opened = []
+
+            def usenet(self):
+                self.opened.append(1)
+                return Replay()
+        cfg, world = check_cfg(self), World()
+        run_check(cfg, world)
+        self.assertEqual(world.opened, [])
+
+    def test_a_connection_that_cannot_open_is_said_and_diagnosis_goes_on(self):
+        def refuse():
+            raise OSError('connection refused')
+        folder, world = run_live_check(self, LiveWorld(usenet=refuse))
+        self.assertEqual(json.loads(read(folder, evidence.LIVE))['error'], 'OSError: connection refused')
+        [f] = json.loads(read(folder, diagnosis.STORED))['failures']
+        self.assertEqual(f['verdict'], 'found')
 
 
 if __name__ == '__main__':
