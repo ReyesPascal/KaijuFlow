@@ -4,7 +4,7 @@ What the files and lines look like: expected settings, the title draw and its le
 
 ## Expected settings (`expected-settings.json`)
 
-The settings every test copy is expected to have are in `tools/brain/expected-settings.json`; the preflight compares each copy with it ([The expected settings](rules.md#the-expected-settings)). Change the standard there and in the test copies together.
+The settings every test copy is expected to have are in `tools/brain/expected-settings.json`; the preflight compares each copy with it. Change the standard there and in the test copies together.
 
 ```json
 {"about": "...",

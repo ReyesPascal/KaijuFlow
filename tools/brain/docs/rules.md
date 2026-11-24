@@ -6,33 +6,12 @@ Rules name no indexer: which indexers are switched on, and their daily limits, a
 
 ## Machine and power
 
-### Plugged in, idle only for a full check
-
-Every check starts plugged in, and a full check outside a standing go also waits for an idle machine (1-minute load under 1.0), while a quick check and a drill-down start at once and keep the load they saw.
-
-- **Why:** "no all test idle" (owner, 2026-11-20, #183); a busy laptop made #205's cold lists 30–70% slower; on battery the same code listed 20–25% slower (#249; owner, 2026-11-24: "Power check first"); the quick check starts at once (owner, spec #298, #303).
-- **Enforced by:** `brainrun.preflight` checks 7 and 10 (`test_preflight.py`).
-
 ### Suites take turns
 
 Test suites hold the suite lock (`flock ~/.local/share/kf-run/suite.lock`) so they wait for each other, and no builder works while a full check plays.
 
 - **Why:** #279's and #286's build plans (parallel builders' suites and builds load the machine a check measures on).
 - **Enforced by:** `flock` on the lock (`~/.local/share/kf-run/implementer-brief.md` gives it); no builder by hand.
-
-### Each check keeps its machine reading
-
-A check takes the CPU probe once the load is judged and keeps the load, the power state, the CPU policy and the probe in its `meta.json`, and the probe judges nothing.
-
-- **Why:** #249's replays ran on battery and no record said so (#262).
-- **Enforced by:** `brainrun.preflight` (`cpu_probe_ms`, `seen['machine']`; `test_preflight.py`).
-
-### The network the test copies were set up for
-
-Tests run on Wi-Fi, with `HOST_IP` and KaijuFlow's `altmountUrl` among this machine's addresses and the router answering `news.newshosting.com` with no 10.x address.
-
-- **Why:** "i want to do the rest of the tests on wifi" (owner, 2026-11-20); a stale `altmountUrl` failed every play on 2026-11-20 and the router answered a dead 10.x address on 2026-11-17 (#217).
-- **Enforced by:** `brainrun.preflight` checks 8 and 9 (`read_pinned`, `read_dns`; `test_preflight.py`); Wi-Fi itself by hand.
 
 ### The test image holds the commit's code
 
@@ -47,13 +26,6 @@ KaijuFlow's health-check cap plus its AltMount's 25 connections stay at or under
 
 - **Why:** the Newshosting plan (owner, 2026-11-09, `testbed.PROVIDER_LIMIT`); 25 is the 2026-11-13 baseline's setting.
 - **Enforced by:** `brainrun.preflight` check 4 (the sum); AltMount's 25 by hand (`expected-settings.json` names no AltMount setting).
-
-### Only the test copies
-
-A test touches only `kaijuflow-test` and `altmount-kf-test`, while `uu-test`, `nzbdav-test` and `altmount-addon-test` stay stopped and kept with their configs, and stopping one that is up is a live step that needs the owner's go.
-
-- **Why:** "other test copies stopped and kept" (owner, spec #183, 2026-11-20); there is no live stack on this machine.
-- **Enforced by:** `testbed.py` and `compose.test.yaml` know the two copies only (#187); `brainrun.preflight` check 3 keeps KaijuFlow's indexers on the stand-in; the rest by hand.
 
 ## Indexers and allowance
 
@@ -78,13 +50,6 @@ The preflight refuses a check unless every switched-on indexer has the check's s
 - **Why:** every title is searched on every indexer, while the Walk's 30 grabs are shared, taken from whichever indexer has the Source (owner's pick on #286, 2026-11-24, when an indexer with 100 downloads a day joined one with 450).
 - **Enforced by:** `brainrun.preflight` check 11 (`allowance.left`, `quickcheck.NEED_PER_TITLE`; `test_allowance.py`, `test_preflight.py`); `brainrun.py usage` shows Used, Limit and Left.
 
-### The cap rule
-
-The first "limit reached" from any indexer stops the check at once with no verdict (`NULL`, exit 2), the play it cut kept but not judged, and the work waits for that indexer's reset.
-
-- **Why:** a limit says nothing of KaijuFlow; ADR 0010: "The cap rule still stops a check at the first 'limit reached'"; a real viewer never hits a limit (owner, 2026-11-24, spec #298).
-- **Enforced by:** `brainrun._check_cap`, `brainreport.limit_event` (`LIMIT_RE`; `test_quickcheck.py`).
-
 ## The preflight
 
 ### Every refusal names its fix
@@ -103,13 +68,6 @@ A check starts only when every switched-on indexer answers one caps request, sen
 
 ## Test copies and settings
 
-### The expected settings
-
-Every test copy holds exactly the values in `tools/brain/expected-settings.json`: the #109 sort and filter rules (30 GB films, 10 GB episodes, "No disc images"), Ultimate Fallback on with the Play-time check's settings (`whenToResolve` on-results, the Head start) and the dev switch on (`devDiagnostics`, #280).
-
-- **Why:** the 2026-11-13 baseline ran on copies that had lost their rules, and every film's top pick was a 66 to 91 GB file (#109); the dev switch writes the step lines a check reads.
-- **Enforced by:** `brainrun.preflight` check 5 (`setting_differences`, `load_expected_settings`; `test_preflight.py`).
-
 ### A test copy changes only through the tools
 
 A test copy is never edited by hand: its expected settings go in with `testbed.py apply <copy>` or the preflight's `--fix`, its indexers with `testbed.py indexer`, the standard changes in the file and the copy together, and the preflight decides whether to rebuild or apply.
@@ -123,13 +81,6 @@ A check resets the two test copies once, after drawing its titles and before its
 
 - **Why:** each title is new, so each play is cold (#268).
 - **Enforced by:** `brainrun.quick_check_all`, `brainrun.drill_all` (`test_quickcheck.py`, `test_drill.py`).
-
-### AltMount's own settings
-
-The expected settings name AltMount's settings only once they are tuned with the owner's go.
-
-- **Why:** spec #183, "AltMount tuning" (#194, the owner's).
-- **Enforced by:** no tool; by hand.
 
 ## Checks and verdicts
 
@@ -203,32 +154,11 @@ Live Clues read Usenet over one read-only connection (STAT, BODY checked in memo
 - **Why:** #279's standing go covers "any live read-only Clues" (#284).
 - **Enforced by:** `nntp.Usenet`, `clues.py`.
 
-### KaijuFlow is measured alone
-
-No check compares KaijuFlow with Usenet Ultimate, NzbDAV or AltMount direct.
-
-- **Why:** "forget speed testing against the rest" (owner, 2026-11-20, spec #183).
-- **Enforced by:** by hand (#187 deleted the comparison code).
-
 ### What AltMount streams changes only on evidence
 
 The health check's pass list changes only when a check or a drill-down shows AltMount streaming or refusing a kind, and an unproven kind (RAR4 set, encrypted archive with password, ZIP) is probed on the AltMount test copy only when titles fail for lack of a playable Source.
 
 - **Why:** "proven only" (owner, 2026-11-20, ADR 0009).
-- **Enforced by:** no tool; by hand.
-
-### Long commands and their logs
-
-A long command runs in the shell's background mode under a hard `timeout`, its output in a log that ends with the exit code, watched through the one filter the runbook gives and stopped at the first `Error`, never another filter or a `cat` of the whole log.
-
-- **Why:** not written down (the 2026-11-24 audit found no source); the runbook has always given one filter.
-- **Enforced by:** no tool; by hand.
-
-### The Speed Check page
-
-The Speed Check page is published only when the owner asks.
-
-- **Why:** not written down (the 2026-11-24 audit found no source).
 - **Enforced by:** no tool; by hand.
 
 ### Retired commands stay retired
@@ -261,27 +191,6 @@ Tests compare bytes with `assertBytes` (`tests/integration/parity/bytes.mjs`), n
 - **Why:** `deepEqual`'s mismatch diff over bytes can take tens of GB.
 - **Enforced by:** `tests/unit/byte-compare-guard.test.ts`.
 
-### Parity pins the ADRs
-
-Parity scenarios run against the fake AltMount, the one Backend, and pin the ADRs' behaviour, and a second Backend reaches Parity through the same slot first.
-
-- **Why:** ADR 0001 (amended 2026-11-20), ADR 0002 (#17), ADR 0003 (#19), ADR 0004 (#20, #51, #86).
-- **Enforced by:** `tests/integration/parity/` (`bad-range-full-file`, `unreachable-backend-not-dead`, `indexer-unavailable-not-dead`, `first-byte-400-or-dropped-not-dead`, `first-byte-404-dead`).
-
-### Test doubles are honest
-
-A test double refuses what the real thing refuses, and a reader of another program's output (and every fake Backend's reply) is tested on a sample captured from the real program, captured again when it changes.
-
-- **Why:** a fake that says yes hid a visit to a stopped copy, and invented lines look as we expect while real output does not (2026-11-10; [review-standards.md](../../../docs/agents/review-standards.md) 1 and 2).
-- **Enforced by:** review; `tests/unit/fake-backend-shape.test.ts` (fixtures in `tests/fixtures/backends/`).
-
-### Shared setup has one path
-
-Two commands that need the same setup call one shared step for it.
-
-- **Why:** record and run started the one-page side differently (2026-11-10; review-standards.md 3).
-- **Enforced by:** review.
-
 ### A test reaches the caller
 
 A test goes through the code that uses the change, not just the new helper.
@@ -289,32 +198,11 @@ A test goes through the code that uses the change, not just the new helper.
 - **Why:** #131's test passed while the coordinator never used the value (2026-11-15; review-standards.md 4).
 - **Enforced by:** review.
 
-### Reviews
-
-An integration branch is reviewed with `/code-review` (Fable high) then `/codex-review` before its PR is marked ready, the verified findings go to one Opus-high fix-up, and that fix-up's own diff gets the same two reviews before it merges.
-
-- **Why:** the owner's usual picks (#279, #239); #239's round-1 fix-up merged unreviewed and a later review of it found three real bugs.
-- **Enforced by:** no tool; by hand.
-
-### Builders
-
-Implementers, fix-ups and the diagnosing agent each run as a herdr Claude agent in the `agents` tab (Opus high, at most 5 at once), watched by the lead, and a builder pushes, runs its local suites and reports `DONE <branch> <sha>` without waiting on CI.
-
-- **Why:** "agents always shown in herdr" (owner, 2026-11-23); "One pane per agent", "5 at once", "Opus high" and "fix the loop for good" (owner, 2026-11-20, after three panes hung in their own CI wait).
-- **Enforced by:** `~/.local/share/kf-run/implementer-brief.md`, `panewatch.py`; the rest by hand.
-
 ### Words and ADRs
 
 Output uses the GLOSSARY's terms, and a contradiction of an ADR is said out loud, never made silently.
 
 - **Why:** [domain.md](../../../docs/agents/domain.md), the domain-docs skill's rule.
-- **Enforced by:** no tool; by hand.
-
-### Tuning may cut anything
-
-A tuning change may cut any part of the play path.
-
-- **Why:** owner, 2026-11-20 (spec #183, all "yes").
 - **Enforced by:** no tool; by hand.
 
 ## The tracker and git
@@ -325,13 +213,6 @@ Work gets a ticket before it starts, as a sub-issue of the map (#183) with its o
 
 - **Why:** an order agreed only in chat is lost, and `frontier.py` reads only the tracker.
 - **Enforced by:** `frontier.py` (warns on a "Blocked by" body; `test_frontier.py`).
-
-### The owner's words, and deciding without asking
-
-An "Owner's decision" comment, a spec's decisions and an ADR quote the owner's own words, rule changes are listed for the owner before `/to-tickets`, and under a standing go every open choice takes the recommended option, written on the ticket as "Decided under the standing go (<date>)" with its reason, stopping only for a login, secret or paid service.
-
-- **Why:** "have it do everything automatic with a standing go for everything so i can leave computer" (owner, 2026-11-24, #279).
-- **Enforced by:** no tool; by hand.
 
 ### One home per rule
 

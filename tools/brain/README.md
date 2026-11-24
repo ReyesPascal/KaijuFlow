@@ -2,7 +2,7 @@
 
 Scripts for checks on Brain (the owner's server), first written for the 1338 Brain check (2026-11-09). Every rule (the owner's go, the test copies, indexers, connection caps, and the rest) is in **[docs/rules.md](docs/rules.md)**, its one home; the steps are in **[RUNBOOK.md](RUNBOOK.md)**.
 
-Run them with `python3 -I` from the repo root, as [Long commands and their logs](docs/rules.md#long-commands-and-their-logs) says: a check's log ends with the exit code the runbook's command line appends, and is watched through the runbook's one filter.
+Run them with `python3 -I` from the repo root: a check's log ends with the exit code the runbook's command line appends, and is watched through the runbook's one filter.
 
 `common.py` holds the timed HTTP read and a Stream play; a check's titles are drawn new each time by `draw.py` (ADR 0010).
 

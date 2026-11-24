@@ -2,9 +2,9 @@
 
 KaijuFlow is tested by real-use checks ([ADR 0010](../../docs/adr/0010-testing-plays-as-a-real-viewer-watches.md)): new titles every time, the live indexers, one cold press of Best per title. This page gives the steps. Every rule they follow is in [docs/rules.md](docs/rules.md), linked here by its name; this page restates none.
 
-**The rules a check runs under:** [When to check, and who says go](docs/rules.md#when-to-check-and-who-says-go), [Only the test copies](docs/rules.md#only-the-test-copies), [Plugged in, idle only for a full check](docs/rules.md#plugged-in-idle-only-for-a-full-check), [Indexers change only through the indexer command](docs/rules.md#indexers-change-only-through-the-indexer-command), [Every indexer request goes through the stand-in, untouched](docs/rules.md#every-indexer-request-goes-through-the-stand-in-untouched), [The allowance](docs/rules.md#the-allowance), [The cap rule](docs/rules.md#the-cap-rule), [Connection caps](docs/rules.md#connection-caps), [How a title is played](docs/rules.md#how-a-title-is-played), [The verdict and the report](docs/rules.md#the-verdict-and-the-report), [After a check](docs/rules.md#after-a-check), [The guard](docs/rules.md#the-guard), [Retired commands stay retired](docs/rules.md#retired-commands-stay-retired) (the archived recording path: [archive/README.md](archive/README.md)).
+**The rules a check runs under:** [When to check, and who says go](docs/rules.md#when-to-check-and-who-says-go), [Indexers change only through the indexer command](docs/rules.md#indexers-change-only-through-the-indexer-command), [Every indexer request goes through the stand-in, untouched](docs/rules.md#every-indexer-request-goes-through-the-stand-in-untouched), [The allowance](docs/rules.md#the-allowance), [Connection caps](docs/rules.md#connection-caps), [How a title is played](docs/rules.md#how-a-title-is-played), [The verdict and the report](docs/rules.md#the-verdict-and-the-report), [After a check](docs/rules.md#after-a-check), [The guard](docs/rules.md#the-guard), [Retired commands stay retired](docs/rules.md#retired-commands-stay-retired) (the archived recording path: [archive/README.md](archive/README.md)).
 
-Every command runs from the repo root. Long ones follow [Long commands and their logs](docs/rules.md#long-commands-and-their-logs), with this one filter:
+Every command runs from the repo root. Long ones use this one filter:
 
 ```
 timeout 1h python3 -I tools/brain/brainrun.py check --quick --rebuild-image > check.log 2>&1; echo "EXIT $?" >> check.log
@@ -71,7 +71,7 @@ A quick check (up to 60 searches and 150 downloads) and a drill-down (12 and 30)
 
 ## Publish the page
 
-The "KaijuFlow Speed Check" page is https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD. It shows real-use checks: the newest check's verdict, its fails and its totals, then every check given. When to publish: [The Speed Check page](docs/rules.md#the-speed-check-page).
+The "KaijuFlow Speed Check" page is https://claude.ai/artifact/VUydiLAYH9gbJ63FtXk3qD. It shows real-use checks: the newest check's verdict, its fails and its totals, then every check given.
 
 1. Build: `python3 -I tools/brain/checkpage.py <check folder> [<check folder> ...] --out <folder>`. It writes `index.html` into `<folder>` and publishes nothing ([formats](docs/formats.md#the-speed-check-page-checkpagepy)).
 2. Look before publishing: `cd ~/.local/share/kf-render && node <repo>/tools/brain/render.mjs <folder>/index.html <folder>/shots 1280 390`, fix anything it flags (TOO WIDE, CUT OFF, SQUEEZED), and open the screenshots.

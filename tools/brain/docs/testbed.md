@@ -23,7 +23,7 @@ Recipe (from the repo root; `testbed.py` runs every Docker command through the t
 4. Emptiness check alone: `python3 -I tools/brain/testbed.py check [side ...]` (database tables, the Backend's own API/WebDAV listing, leftover files, cache files). Exit 1 and `NOT EMPTY: ...` lines otherwise.
 5. Stop when done: `python3 -I tools/brain/testbed.py stop`. `status` lists the test containers.
 
-Never start a stopped test copy of before #185 beside them ([Only the test copies](rules.md#only-the-test-copies), [Connection caps](rules.md#connection-caps); `testbed.py settings` prints the connection budget). Tests of the scripts (no Docker): `npm run check:brain`, as CI runs them.
+Never start a stopped test copy of before #185 beside them ([Connection caps](rules.md#connection-caps); `testbed.py settings` prints the connection budget). Tests of the scripts (no Docker): `npm run check:brain`, as CI runs them.
 
 ## Indexers (#302)
 

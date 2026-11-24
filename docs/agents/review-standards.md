@@ -1,6 +1,6 @@
 # Review standards
 
-Four rules for reviewing a change, with the mistake each one comes from (rules 1 to 3 on 2026-11-10, rule 4 on 2026-11-15). Their one home is `tools/brain/docs/rules.md` ("Reviews", "Test doubles are honest", "Shared setup has one path", "A test reaches the caller"); this page keeps their examples for a reviewer.
+Four rules for reviewing a change, with the mistake each one comes from (rules 1 to 3 on 2026-11-10, rule 4 on 2026-11-15). Rule 4's one home is `tools/brain/docs/rules.md` ("A test reaches the caller"); this page keeps their examples for a reviewer.
 
 **A fix-up is reviewed too.** Before a review's fix-up branch merges into the integration branch, run `/mattpocock-skills:code-review` and `/codex-review` on the fix-up's own diff (base: the integration tip it branched from), and fix what survives on the same branch. One review per fix-up. Why: #239's round 1 fix-up merged unreviewed, and a later review of its diff alone found three real bugs in it.
 
