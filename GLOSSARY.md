@@ -69,7 +69,7 @@ The health check run when a Source is clicked rather than before the stream list
 _Avoid_: lazy check, on-demand check, deferred check, list-time check (deleted)
 
 **Best entry**:
-The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source. The search down the list is its **Walk**.
+The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays the first Healthy Source of the list, found by a Play-time check a few Sources at a time from the top down until one is healthy or the list runs out, rather than one chosen Source. The search down the list is its **Walk**. The Walk tries the sure Sources first, then the maybes, each group in list order (Search Flow, #282); the list a viewer sees keeps its own sort.
 _Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a list)
 
 **Walk**:
