@@ -36,6 +36,8 @@ import { waysOf } from './kaijuSearch.js';
 import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams } from './streamBuilder.js';
 import { recall } from '../play/sourceMemory.js';
+import { releaseSourcesOf } from './kaijuSearch.js';
+import type { ReleaseSource } from '../play/types.js';
 import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
 import { isDatabaseLoaded } from '../anime/animeDatabase.js';
@@ -300,7 +302,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
       if (!config.filterDeadNzbs) return results;
       const SELF_URL = getSelfUrl(); // must match the EasyNews NZB URLs the play side marks dead
       const manifestKey = requestContext.getStore()?.manifestKey || '';
-      const isDead = (nzbUrl: string, title: string) => recall({ nzbUrl, title }, play).dead !== undefined;
+      const isDead = (nzbUrl: string, title: string, sources?: ReleaseSource[]) => recall({ nzbUrl, title, sources }, play).dead !== undefined;
       const before = results.length;
       const removed: { title: string; indexer: string }[] = [];
       const filtered = results.filter(r => {
@@ -311,7 +313,8 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
           if (meta.sig) nzbParams.set('sig', meta.sig);
           dead = isDead(`${SELF_URL}/${manifestKey}/easynews/nzb?${nzbParams.toString()}`, r.title);
         } else {
-          dead = isDead(r.link, r.title);
+          // A Release is dead when one of its Sources carries the Release's mark (#300).
+          dead = isDead(r.link, r.title, releaseSourcesOf(r));
         }
         if (dead) removed.push({ title: r.title, indexer: r.indexerName || r.origin });
         return !dead;

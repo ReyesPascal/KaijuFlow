@@ -39,6 +39,8 @@ export async function grabNzb(
   // Check if NZB was already downloaded during health checks
   let nzbContent = getCachedNzbContent(nzbUrl);
   let freshlyDownloaded = false;
+  let downloadStart = 0;
+  let downloadMs: number | undefined; // the indexer's download time, kept with the grab (#300: the fastest indexer)
   if (nzbContent) {
     console.log(`${logPrefix}  \u{1F4BE} Using cached NZB from health check (${nzbContent.length} bytes)`);
   } else {
@@ -60,6 +62,7 @@ export async function grabNzb(
     stop?.addEventListener('abort', onStop, { once: true });
 
     let nzbResponse: { ok: boolean; status: number; statusText: string; text: () => Promise<string> };
+    downloadStart = Date.now();
     try {
       nzbResponse = await proxyFetch(nzbUrl, {
         headers: { 'User-Agent': downloadUserAgent },
@@ -94,6 +97,7 @@ export async function grabNzb(
     } finally {
       stop?.removeEventListener('abort', onStop);
     }
+    downloadMs = Date.now() - downloadStart;
     console.log(`${logPrefix}  \u2705 NZB downloaded (${nzbContent.length} bytes)`);
     freshlyDownloaded = true;
   }
@@ -117,7 +121,7 @@ export async function grabNzb(
   // fetch happens inside that route's POST to easynews.com, not in this
   // proxyFetch (which just loops back to the local handler).
   if (freshlyDownloaded && indexerForLog.toLowerCase() !== 'easynews') {
-    trackGrab(indexerForLog, title);
+    trackGrab(indexerForLog, title, downloadMs);
   }
 
   return nzbContent;

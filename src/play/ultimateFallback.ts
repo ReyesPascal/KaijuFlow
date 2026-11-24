@@ -17,11 +17,12 @@ import { NntpConnectionPool } from '../health/nntpConnection.js';
 import { logPrepareStart } from './streamCache.js';
 import { remember, recall } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
-import { walkGrab } from '../backends/nzbGrab.js';
+import { grabRelease, refusedBy } from './releaseGrab.js';
+import { sourcesOf } from './sourceMemory.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { sourceFailure, isSourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
-import type { FallbackCandidate, StreamData } from './types.js';
+import type { FallbackCandidate, ReleaseSource, StreamData } from './types.js';
 import type { UltimateFallbackConfig } from '../types.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
 import { checkSource, isHealthy, enabledHealthCheckProviders } from './playTimeCheck.js';
@@ -270,6 +271,8 @@ const nothingToPlay = (message: string) => Object.assign(new Error(message), { w
 
 /** What the adapter holds for one Source of the Walk: the Backend's job, what the check and the prepare found. */
 interface SourceRun {
+  /** The Release's Source whose NZB the grab fetched (#300): the one checked and handed to the Backend. */
+  source?: ReleaseSource;
   nzoId?: string;
   cancelled?: boolean;
   containerType?: string;
@@ -348,12 +351,18 @@ export async function ultimateFallbackFromCandidates(
       size: list.length,
       inFlight: Math.max(1, settings.candidateCount),
       isDead: index => recall(list[index], play).dead !== undefined,
-      indexerOf: index => list[index].indexerName,
+      indexersOf: index => sourcesOf(list[index]).map(s => s.indexerName ?? ''),
       hits: new Map([...hits].map(([index, data]) => [index, data.videoPath])),
     });
     const runs = new Map<number, SourceRun>();
     const runOf = (index: number): SourceRun => { let r = runs.get(index); if (!r) runs.set(index, r = {}); return r; };
     const name = (index: number) => `#${index + 1} ${list[index].title}`;
+    // The Source a Release plays from: the one its grab fetched, or its first (a library hit needs no grab).
+    const played = (index: number): FallbackCandidate => {
+      const c = list[index];
+      const s = runs.get(index)?.source;
+      return s ? { ...c, nzbUrl: s.nzbUrl, indexerName: s.indexerName, searchExitIp: s.searchExitIp ?? c.searchExitIp } : c;
+    };
 
     let finish!: () => void;
     const finished = new Promise<void>(resolve => { finish = resolve; });
@@ -377,7 +386,7 @@ export async function ultimateFallbackFromCandidates(
       };
       // The check samples the file AltMount is told to play (#203): the episode selector it is sent.
       const used = pool;
-      checkSource({ ...list[index], episodePattern: filePattern }, used)
+      checkSource({ ...played(index), episodePattern: filePattern }, used)
         .then(result => {
           if (checking.get(index) !== mine) return;
           runOf(index).containerType = result.containerType;
@@ -410,7 +419,7 @@ export async function ultimateFallbackFromCandidates(
 
     // The Backend prepare: submit (the grab's NZB), wait for the job, find the video, probe its first byte.
     const prepare = async (index: number): Promise<void> => {
-      const c = list[index];
+      const c = played(index);
       const r = runOf(index);
       const logPrefix = `${tag} [prepare #${index + 1}] `;
       try {
@@ -430,7 +439,7 @@ export async function ultimateFallbackFromCandidates(
         if (r.cancelled) return;
         await backend.probe(video, { logPrefix, title: c.title, source: c.indexerName });
         if (r.cancelled) return;
-        remember({ source: c, play, ready: video });
+        remember({ source: { ...c, sources: undefined }, play, ready: video });
         r.video = video;
         console.log(`${logPrefix}✅ Stream ready: ${c.title}`);
         post({ type: 'prepared', index, videoPath: video.videoPath });
@@ -450,13 +459,17 @@ export async function ultimateFallbackFromCandidates(
         case 'grab': {
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
-          // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab.
-          walkGrab(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
-            .then(() => post({ type: 'grabbed', index: d.index }), (err: Error) => {
+          // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab. The Release's NZB comes
+          // from its fastest indexer, or another's when that fetch fails (#300).
+          grabRelease(c, { play, skips: indexer => walk.skips(indexer), logPrefix: `${tag} [grab #${d.index + 1}] `, stop: controller.signal })
+            .then(({ source, refused }) => {
+              runOf(d.index).source = source;
+              post({ type: 'grabbed', index: d.index, refused });
+            }, (err: Error) => {
               if (controller.signal.aborted) return;
               runOf(d.index).grabError = err;
               console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
-              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err) });
+              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err), refused: refusedBy(err) });
             });
           return;
         }
@@ -464,7 +477,7 @@ export async function ultimateFallbackFromCandidates(
           check(d.index);
           return;
         case 'prepare':
-          console.log(`${tag} 🚀 Submitting ${name(d.index)} [${list[d.index].indexerName}] to the Backend`);
+          console.log(`${tag} 🚀 Submitting ${name(d.index)} [${played(d.index).indexerName}] to the Backend`);
           void prepare(d.index);
           return;
         case 'cancel': {
@@ -486,7 +499,7 @@ export async function ultimateFallbackFromCandidates(
             sessionResolve(data, c.title);
             console.log(`${tag} ✅ Resolved via library in ${seconds()}s`);
           } else {
-            console.log(`${tag} ✅ Resolved in ${seconds()}s — ${c.title} [${c.indexerName}]`);
+            console.log(`${tag} ✅ Resolved in ${seconds()}s — ${c.title} [${played(d.index).indexerName}]`);
             sessionResolve(runOf(d.index).video!, c.title);
           }
           return;

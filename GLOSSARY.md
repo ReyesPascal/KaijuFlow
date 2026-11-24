@@ -85,7 +85,7 @@ What a play of a list is for: the title's type, season, episode, aired date and 
 _Avoid_: play params, episode info, session data
 
 **Source memory**:
-What KaijuFlow remembers of Sources across plays and restarts: the ready ones (the Backend made their video, so a later play reuses it) and the dead ones (bad Sources, ADR 0004, kept out of lists and walks). A play remembers what it learned and recalls a Source as its play context asks for it; the memory alone decides how a Source is keyed, so a Source remembered by one play is found by another for the same episode, a dated one included (#247). A dead mark is the Source's for every episode when its link is gone or the check blocked it, otherwise its episode's, unless a season pack fails whole before any episode of it played.
+What KaijuFlow remembers of Sources across plays and restarts: the ready ones (the Backend made their video, so a later play reuses it) and the dead ones (bad Sources, ADR 0004, kept out of lists and walks). A play remembers what it learned and recalls a Source as its play context asks for it; the memory alone decides how a Source is keyed, so a Source remembered by one play is found by another for the same episode, a dated one included (#247). A dead mark is the Source's for every episode when its link is gone or the check blocked it, otherwise its episode's, unless a season pack fails whole before any episode of it played. A dead mark on a Release covers its Source on every indexer, except a link one indexer says is gone, which is that Source's alone (#300).
 _Avoid_: NZB database, healthy cache, stream cache (the prepares under way)
 
 **Disc image**:
