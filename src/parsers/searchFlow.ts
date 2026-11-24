@@ -255,17 +255,38 @@ export function flowTitleOf(ctx: {
   };
 }
 
+/** The kinds of extra proof that make a maybe sure (#286): the ID search returned it too, the video file inside its NZB
+ *  fits, its runtime or its size fits, or it fits another TMDB/TVDB name of the title. */
+export type FlowProof = 'id' | 'nzb video' | 'runtime' | 'size' | 'other name';
+
+/** A Source of a title's list as Search Flow marks it: its release name, and what Kaiju Search knows of it. */
+export interface FlowSource { title: string; foundBy?: ('id' | 'name')[] }
+
+/** A marked Source: sure or maybe with why, and the extra proof that made it sure, when one did. */
+export type Marked<T> = T & { flow: FlowMark['flow']; flowWhy: string; proof?: FlowProof };
+
+/** The extra proof a maybe has in its list, with why; none when it has none. */
+function listProof(source: FlowSource, title: FlowTitle, loose: boolean): { proof: FlowProof; why: string } | undefined {
+  if (loose && source.foundBy?.includes('id')) return { proof: 'id', why: 'the ID search returned it too' };
+  return undefined;
+}
+
 /**
  * Mark every Source of a title's list sure or maybe, with why (`flow`, `flowWhy`). Every Source in it has stayed: the
  * searchers dropped what Search Flow drops (`nameKeeps`), and a result found by ID, which no name rule drops, is marked
- * too; one neither rule fits by its name is a maybe that says so. New objects; the list's order is kept.
+ * too; one neither rule fits by its name is a maybe that says so. A maybe with extra proof (#286) is sure, with the
+ * proof (`proof`) and why, and its name's why after it. New objects; the list's order is kept.
  */
-export function markSources<T extends { title: string }>(sources: T[], title: FlowTitle): (T & { flow: FlowMark['flow']; flowWhy: string })[] {
+export function markSources<T extends FlowSource>(sources: T[], title: FlowTitle): Marked<T>[] {
   return sources.map(source => {
     const v = searchFlow(source.title, title);
-    return v.flow === 'dropped'
-      ? { ...source, flow: 'maybe' as const, flowWhy: `${v.why}; the loose rule does not fit it either` }
-      : { ...source, flow: v.flow, flowWhy: v.why };
+    if (v.flow === 'sure') return { ...source, flow: v.flow, flowWhy: v.why };
+    const loose = v.flow === 'maybe';
+    const why = loose ? v.why : `${v.why}; the loose rule does not fit it either`;
+    const proved = listProof(source, title, loose);
+    return proved
+      ? { ...source, flow: 'sure' as const, flowWhy: `${proved.why}; by its name alone: ${why}`, proof: proved.proof }
+      : { ...source, flow: 'maybe' as const, flowWhy: why };
   });
 }
 

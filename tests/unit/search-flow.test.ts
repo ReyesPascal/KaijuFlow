@@ -133,3 +133,19 @@ test('a list from an indexer asked by name and by ID keeps every loose match, ma
     indexer.close();
   }
 });
+
+// --------------------------------------------------------------------------- extra proof (#286)
+
+/** A row of the table as a Source of a title's list, with what Kaiju Search knows of it. */
+function source(r: Row, more: Record<string, unknown> = {}) {
+  return { title: r.release, indexerName: 'FakeIdx', size: 4 * 1024 ** 3, ...more };
+}
+
+test('a maybe the ID search returned too is sure; the same release found by name alone stays a maybe', () => {
+  const joker = row('Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs', 'Joker');
+  const [both] = markSources([source(joker, { foundBy: ['id', 'name'] })], titleOf(joker));
+  assert.deepEqual([both.flow, both.proof, both.flowWhy],
+    ['sure', 'id', 'the ID search returned it too; by its name alone: the name "Joker" is not followed by a year (2019 wanted)']);
+  const [named] = markSources([source(joker, { foundBy: ['name'] })], titleOf(joker));
+  assert.deepEqual([named.flow, named.proof], ['maybe', undefined]);
+});
