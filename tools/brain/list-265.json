@@ -1,0 +1,22 @@
+[
+  ["movie", "tt6751668", "Parasite", "easy"],
+  ["movie", "tt0499549", "Avatar", "easy"],
+  ["movie", "tt6263850", "Deadpool & Wolverine", "easy"],
+  ["movie", "tt22022452", "Inside Out 2", "easy"],
+  ["movie", "tt9603212", "Mission: Impossible - Dead Reckoning Part One", "easy"],
+  ["movie", "tt9362722", "Spider-Man: Across the Spider-Verse", "easy"],
+  ["series", "tt3032476:1:1", "Better Call Saul S01E01", "easy"],
+  ["series", "tt4786824:1:1", "The Crown S01E01", "easy"],
+  ["series", "tt9288030:1:1", "Reacher S01E01", "easy"],
+  ["series", "tt5875444:1:1", "Slow Horses S01E01", "easy"],
+  ["movie", "tt0082085", "Blow Out", "hard"],
+  ["movie", "tt0113568", "Ghost in the Shell", "hard"],
+  ["movie", "tt1977895", "Resolution", "hard"],
+  ["movie", "tt0093777", "Prince of Darkness", "hard"],
+  ["movie", "tt0087995", "Repo Man", "hard"],
+  ["movie", "tt0091209", "The Hitcher", "hard"],
+  ["series", "tt2543312:2:4", "Halt and Catch Fire S02E04", "hard"],
+  ["series", "tt0072564:1:1", "Space: 1999 S01E01", "hard"],
+  ["series", "tt1355642:1:1", "Fullmetal Alchemist: Brotherhood S01E01", "hard"],
+  ["series", "tt0925266:1:1", "Pushing Daisies S01E01", "hard"]
+]
