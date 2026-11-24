@@ -24,6 +24,7 @@ READ_ERROR = os.path.join(CAPTURES, '219-witcher-read-error')  # HHWEB: read-err
 TWO_REFUSALS = os.path.join(CAPTURES, '218-witcher-two-refusals')  # HHWEB read-error, then SiC refused for its extension
 DEAD_PACK = os.path.join(CAPTURES, '189-twilight-dead-pack')  # an unchecked season pack, AltMount's fast-fail refused it
 INDEXER_DOWN = os.path.join(CAPTURES, '265-inception-indexer-down')  # the search had no answer: an empty list
+LOG_CUT = os.path.join(CAPTURES, '287-girlfriends-log-cut')  # video came, the log copied before its played line (#287)
 HHWEB = 'The.Witcher.S01E01.The.Ends.Beginning.2160p.NF.WEB-DL.DDP5.1.Atmos.DV.HEVC-HHWEB'
 SIC = 'The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested'
 TWILIGHT = 'The.Twilight.Zone.(1959).S02.(1080p.BDRip.x265.10bit.FLAC.2.0.-.Frys).[TAoE]'
@@ -96,6 +97,7 @@ CLUE_CAPTURES = [
     ('check-passed-source', TWO_REFUSALS, SIC, DEAD_PACK, TWILIGHT),
     ('altmount-extension-refused', TWO_REFUSALS, SIC, TWO_REFUSALS, HHWEB),
     ('articles-missing', DEAD_PACK, TWILIGHT, TWO_REFUSALS, SIC),  # asked live (#284), the answers kept in live.json
+    ('log-cut-at-press', LOG_CUT, None, READ_ERROR, HHWEB),  # the play's own failure (no Source failed); the log goes on
 ]
 # Every confirming recipe that runs (all its Clues built), the same way.
 RECIPE_CAPTURES = [

@@ -191,6 +191,43 @@ def check_passed_source(evidence, failure):
     return CANT, ['this build writes no play_check lines, and its list-time check does not say which Sources it passed']
 
 
+PRESS = '/stream hit'
+CUT_GAP_S = 2  # how soon after the press's /stream hit the visit ended, for a copy cut there to be a read too early
+
+
+@clue('log-cut-at-press', "Was KaijuFlow's log copied before it held the press's played line (video came, and the copy "
+      'ends at the /stream hit)?')
+def log_cut_at_press(evidence, failure):
+    """A race of the check (#287): KaijuFlow writes its played line just before it serves, but Docker stores a line a few
+    ms after it is written, and the check reads the log right after its 64 KiB read. A copy read in that gap ends at the
+    press's /stream hit: no line stamped after it, the visit's end a moment later. A copy that goes on past the press
+    was not cut there."""
+    played = [s for s in evidence.steps if s.get('step') == 'played']
+    if played:
+        return NO, [step_text(played[-1])]
+    outcome = evidence.meta.get('outcome') or {}
+    if not outcome.get('video'):
+        return CANT, ['no video came, so no played line was due']
+    hits = [line for line in evidence.kf_lines if PRESS in line and _ts(line)]
+    if not hits:
+        return CANT, ["KaijuFlow's log holds no /stream hit: the press is not in the copy"]
+    hit = hits[-1]
+    at = _ts(hit)
+    after = [line for line in evidence.kf_lines if (_ts(line) or at) > at]
+    if after:
+        return NO, [hit, after[-1]]
+    try:
+        end = br.parse_ts(evidence.meta['t_end'])
+    except (KeyError, TypeError, ValueError):
+        return CANT, [hit, 'the evidence names no end of the visit (t_end)']
+    gap_ms = round((end - at).total_seconds() * 1000)
+    facts = [hit, f'no KaijuFlow line is stamped after it; the visit ended (t_end {evidence.meta["t_end"]}) {gap_ms} ms '
+                  'after it']
+    if 0 <= gap_ms <= CUT_GAP_S * 1000:
+        return YES, facts
+    return CANT, facts
+
+
 @clue('altmount-extension-refused', "Did AltMount refuse the Source's file for its extension?")
 def altmount_extension_refused(evidence, failure):
     return _altmount_said(evidence, failure, r'does not match allowed extensions', 'the file does not match allowed extensions')
