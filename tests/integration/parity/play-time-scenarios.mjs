@@ -243,7 +243,61 @@ const isBest = s => s.name.includes('KaijuFlow ▶ Best');
 /** The release name a list entry plays (from its tile envelope). */
 const entryTitle = s => JSON.parse(Buffer.from(new URL(s.url).searchParams.get('t'), 'base64url').toString()).title;
 
+/**
+ * Offer movie Releases for a new title on the suite's indexer and on the second one (#299), in list order (same
+ * quality, sizes going down). Each spec: { tag, on: 'both' | 'one', apart? (the second indexer's size, off by this
+ * fraction) }. The second indexer's copy has its own link. Returns { id, releases: [{ tag, title, size }] }.
+ */
+function offerReleases({ backend, indexer, second }, specs) {
+  const id = `tt${nextImdb++}`;
+  const first = [], other = [];
+  const releases = specs.map((spec, i) => {
+    const title = `KaijuFlow.PlayTime.${spec.tag}.2026.2160p.WEB-DL.H265-GRP`;
+    const size = (20 - i) * GB;
+    first.push({ title, size, link: backend.addMovie(spec.tag, title, mediaFor(spec.tag)) });
+    if (spec.on === 'both') other.push({ title, size: Math.round(size * (1 + (spec.apart ?? 0.004))), link: second.nzbLink(`${spec.tag}-second`) });
+    return { tag: spec.tag, title, size };
+  });
+  indexer.offer(id, first);
+  second.offer(id, other);
+  return { id, releases };
+}
+
 export const playTimeScenarios = [
+  {
+    // Releases (#299; GLOSSARY: Release): an upload the second indexer has too (its own link, a size 0.4 % off) is
+    // listed once; one whose second copy is 2 % off in size is two uploads, listed twice.
+    id: 'an-upload-on-two-indexers-is-listed-once',
+    async run(w) {
+      await withIndexer(w, w.second.entry, async () => {
+        const { id, releases: [same, apart, alone] } = offerReleases(w, [{ tag: 'rel-same', on: 'both' }, { tag: 'rel-apart', on: 'both', apart: 0.02 }, { tag: 'rel-alone', on: 'one' }]);
+        const streams = await w.list('movie', id);
+        assert.ok(isBest(streams[0]), 'Best on top');
+        assert.deepEqual(streams.slice(1).map(entryTitle).sort(), [same.title, apart.title, apart.title, alone.title].sort(),
+          'the same upload once; the same name 2 % apart in size twice');
+      });
+    },
+  },
+  {
+    // The stream limits (per resolution, per quality, total) count Releases (#299): with a limit of 2 and the top two
+    // Releases on both indexers, the list holds those two Releases, not one Release twice.
+    id: 'the-stream-limits-count-releases',
+    async run(w) {
+      const saved = w.configData.movieFilters;
+      try {
+        await withIndexer(w, w.second.entry, async () => {
+          for (const limit of ['maxStreamsPerResolution', 'maxStreamsPerQuality', 'maxStreams']) {
+            w.configData.movieFilters = { ...w.config.filters, [limit]: 2 };
+            const { id, releases: [a, b] } = offerReleases(w, [{ tag: `lim-${limit}-a`, on: 'both' }, { tag: `lim-${limit}-b`, on: 'both' }, { tag: `lim-${limit}-c`, on: 'one' }]);
+            const streams = await w.list('movie', id);
+            assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle), [a.title, b.title], `${limit} 2: the top two Releases`);
+          }
+        });
+      } finally {
+        w.configData.movieFilters = saved;
+      }
+    },
+  },
   {
     // The list goes out at once, sorted and unchecked, with the Best entry on top and the full list below: it waits
     // for no check (the Head start's checks answer after it).

@@ -95,7 +95,6 @@ function buildConfigResponse(config: Config) {
     autoPlay: config.autoPlay,
     streamDisplayConfig: config.streamDisplayConfig,
     syncedIndexers: config.syncedIndexers,
-    indexerPriority: config.indexerPriority,
     zyclopsEndpoint: config.zyclopsEndpoint,
   };
 }

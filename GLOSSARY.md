@@ -15,8 +15,12 @@ _Avoid_: Usenet Ultimate (when you mean KaijuFlow), original
 ### Finding and playing
 
 **Source**:
-One NZB that search found for a title, whether or not it is complete. A Source might be streamed; it is not yet a Stream.
-_Avoid_: result, release, NZB (when you mean the search result), "source" for code
+One NZB that search found for a title on one indexer, whether or not it is complete. A Source might be streamed; it is not yet a Stream.
+_Avoid_: result, release (when you mean one indexer's copy), NZB (when you mean the search result), "source" for code
+
+**Release**:
+One upload of a title, found as one Source on each indexer that has it. The list shows a Release once, and the Play-time check checks it once; when one indexer's NZB cannot be fetched, the Release's Source on another indexer is used.
+_Avoid_: duplicate, copy
 
 **Healthy Source**:
 A Source that passed a health check, so its articles are believed to be available.
