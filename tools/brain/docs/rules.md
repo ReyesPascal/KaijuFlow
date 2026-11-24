@@ -175,7 +175,7 @@ A command of the replayed Recording, archived by #273, runs only when the owner 
 Briefs and merge checks run `npm run check` (CI's command) and then `npm run test:integration`, one suite at a time while working and the full run before DONE.
 
 - **Why:** plain `tsc` skips the test files; CI runs `npm run check`.
-- **Enforced by:** CI.
+- **Enforced by:** CI (`npm run check` in `.github/workflows/ci.yml`).
 
 ### The test runners' conditions
 
@@ -196,7 +196,7 @@ Tests compare bytes with `assertBytes` (`tests/integration/parity/bytes.mjs`), n
 A test goes through the code that uses the change, not just the new helper.
 
 - **Why:** #131's test passed while the coordinator never used the value (2026-11-15; review-standards.md 4).
-- **Enforced by:** review.
+- **Enforced by:** by hand (review).
 
 ### Words and ADRs
 
@@ -219,7 +219,7 @@ Work gets a ticket before it starts, as a sub-issue of the map (#183) with its o
 A rule is written only in this file, as one sentence, why and enforced by, and every other doc (the runbook, the handoff note, GLOSSARY.md, the ADRs) links it by name.
 
 - **Why:** the 2026-11-24 audit found most rules in three to five places, and one gone stale made an agent ask the owner for a step ADR 0010 had retired (spec #298 stories 42–45).
-- **Enforced by:** the rules check (#309); `/srule` writes a new rule here (#310).
+- **Enforced by:** the rules check (`rulescheck.py`, `test_rules_check.py`: every rule names its enforcer, a tool or test as code or "by hand"; no rule or runbook line names an indexer or a retired command); `/srule` writes a new rule here (#310).
 
 ### Check before claiming
 

@@ -63,6 +63,7 @@ RETIRED_WORDS = (
     (re.compile(r'--no-wait\b'), lambda m: '--no-wait (the retired replay wait)'),
     (re.compile(r'\btop(?:ped|ping)?[- ](?:it )?up\b', re.I), lambda m: f'{m.group(0)} (a retired step: a top-up of a Recording)'),
     (re.compile(r'\b(grouped|halving) runs?\b', re.I), lambda m: f'{m.group(0)} (a retired run)'),
+    (re.compile(r'\bproof[- ]replays?\b', re.I), lambda m: f'{m.group(0)} (a retired step of the record command)'),
 )
 
 
