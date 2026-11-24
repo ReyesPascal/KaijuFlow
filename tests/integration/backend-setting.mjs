@@ -42,9 +42,13 @@ try {
   const healthChecks = { ...OLD_LIST_TIME, providers: [provider], maxTotalConnections: 9, verifyTlsCertificates: false, autoQueueMode: 'top' };
   // Its fallback settings: the old default, Best on a press (before #206), backups (before #192) and the list entry's attempts cap (before #228).
   const ultimateFallback = { enabled: true, candidateCount: 3, whenToResolve: 'on-tile-selection', desiredBackups: 1, backupProcessingLimit: 2, maxAttempts: 4 };
-  const old = { indexers: [], cacheEnabled: true, cacheTTL: 9000, indexManager: 'newznab',
+  const OLD_METHODS = { movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb', 'text'], animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'] };
+  const old = { cacheEnabled: true, cacheTTL: 9000, indexManager: 'newznab',
     altmountUrl: fake, altmountApiKey: GOOD, ...NZBDAV_KEYS, ...OLD_PLAY, healthChecks, ultimateFallback,
-    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, enabledForHealthCheck: false, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] }] };
+    // Its search methods (before #285), on a synced and a direct indexer and in the search settings.
+    indexers: [{ name: 'Direct', url: 'http://direct.example/api', apiKey: 'k', enabled: true, ...OLD_METHODS }],
+    searchConfig: { movieSearchMethod: 'text', tvSearchMethod: 'imdb', useTextSearchForAnime: true, includeSeasonPacks: true }, useTextSearch: true,
+    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, enabledForHealthCheck: false, ...OLD_METHODS }] };
   fs.mkdirSync(root + '/config', { recursive: true });
   fs.writeFileSync(configFile, JSON.stringify(old));
 
@@ -111,6 +115,20 @@ try {
     const { json } = await call('GET', '/api/config');
     for (const k of Object.keys(OLD_LIST_TIME)) assert.equal(json.healthChecks[k], undefined, k);
     assert.equal(json.healthChecks.maxTotalConnections, 9);
+  });
+
+  await check('an old config loses the search methods, on every indexer and in the search settings; the rest is kept (#285)', async () => {
+    const d = diskConfig();
+    for (const k of Object.keys(OLD_METHODS)) {
+      assert.equal(k in d.indexers[0], false, `indexers[0].${k} on disk`);
+      assert.equal(k in d.syncedIndexers[0], false, `syncedIndexers[0].${k} on disk`);
+    }
+    for (const k of ['movieSearchMethod', 'tvSearchMethod', 'useTextSearchForAnime']) assert.equal(k in d.searchConfig, false, `searchConfig.${k}`);
+    assert.equal('useTextSearch' in d, false);
+    assert.equal(d.indexers[0].name, 'Direct'); assert.equal(d.searchConfig.includeSeasonPacks, true);
+    const { json } = await call('GET', '/api/config');
+    assert.equal('movieSearchMethod' in json.indexers[0], false, 'in the config the UI reads');
+    assert.equal('useTextSearch' in json, false);
   });
 
   await check('an old config on Best-on-a-press gets the Head start, and loses the backup settings and the attempts cap (#206, #192, #228)', async () => {

@@ -32,10 +32,6 @@ export interface Indexer {
   enabled: boolean;
   website?: string;
   logo?: string;
-  movieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
-  tvSearchMethod?: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
-  animeMovieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
-  animeTvSearchMethod?: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
   caps?: IndexerCaps;
   pagination?: boolean;
   maxPages?: number;
@@ -48,10 +44,6 @@ export interface SyncedIndexer {
   id: string;
   name: string;
   enabledForSearch: boolean;
-  movieSearchMethod: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
-  tvSearchMethod: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
-  animeMovieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
-  animeTvSearchMethod?: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
   capabilities?: IndexerCaps;
   logo?: string;
   pagination?: boolean;
@@ -77,7 +69,6 @@ export interface SearchConfig {
   includeMultiSeasonPacks?: boolean;
   seasonPackPagination?: boolean;
   seasonPackAdditionalPages?: number;
-  useTextSearchForAnime?: boolean;
   skipAnimeTitleResolve?: boolean;
   indexerPriorityDedup?: boolean;
   urlDedup?: boolean;
@@ -90,8 +81,6 @@ export interface SearchConfig {
   tvdbPreferEnglishTitle?: boolean;
   aliasTitleFallback?: boolean;
   cacheEmptyResults?: boolean;
-  movieSearchMethod?: string;
-  tvSearchMethod?: string;
 }
 
 // Mirrors backend SERIES_PACK_KEYWORDS. Keep alphabetical so chip order is stable.
@@ -265,10 +254,6 @@ export interface NewIndexerForm {
   apiKey: string;
   website: string;
   logo: string;
-  movieSearchMethod: string[];
-  tvSearchMethod: string[];
-  animeMovieSearchMethod: string[];
-  animeTvSearchMethod: string[];
   caps: IndexerCaps | null;
   pagination: boolean;
   maxPages: number;
@@ -283,10 +268,6 @@ export interface EditIndexerForm {
   enabled: boolean;
   website: string;
   logo: string;
-  movieSearchMethod: string[];
-  tvSearchMethod: string[];
-  animeMovieSearchMethod: string[];
-  animeTvSearchMethod: string[];
   caps: IndexerCaps | null;
   pagination: boolean;
   maxPages: number;

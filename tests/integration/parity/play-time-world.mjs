@@ -69,7 +69,8 @@ export async function createPlayTimeWorld({ root, listen }) {
   // request limit). Each joins the settings only in the scenarios that use it.
   const refusing = await createFakeIndexer(listen, { refuseGrabs: { status: 429 } });
   const limited = await createFakeIndexer(listen, { refuseGrabs: { status: 200, body: '<?xml version="1.0" encoding="UTF-8"?>\n<error code="500" description="Request limit reached"/>' } });
-  const indexerEntry = (name, url) => ({ name, url, apiKey: 'synthetic-indexer-key', enabled: true, movieSearchMethod: ['imdb'], tvSearchMethod: ['imdb'] });
+  // Caps unknown: Kaiju Search asks each by IMDb and by name (#285); the fake answers a name query with nothing.
+  const indexerEntry = (name, url) => ({ name, url, apiKey: 'synthetic-indexer-key', enabled: true });
   refusing.entry = indexerEntry('Refusing', refusing.url);
   limited.entry = indexerEntry('Limited', limited.url);
   Object.assign(configData, {

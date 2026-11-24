@@ -14,7 +14,20 @@ const DELETED: Record<string, string[]> = {
   // Backups (#192): only the Source being played is prepared, the next only when it fails. The list entry's attempts
   // cap (#228): a failed list entry walks on through the whole list, as the cap's default did.
   ultimateFallback: ['desiredBackups', 'backupProcessingLimit', 'maxAttempts'],
+  // The old global search methods (Kaiju Search, #285: every indexer is asked by ID and by name at once).
+  searchConfig: ['movieSearchMethod', 'tvSearchMethod', 'useTextSearchForAnime'],
 };
+
+/** Settings deleted from every indexer entry (direct `indexers` and synced `syncedIndexers`), and why. */
+const DELETED_PER_INDEXER: Record<'indexers' | 'syncedIndexers', string[]> = {
+  // The per-indexer search methods (Kaiju Search, #285).
+  indexers: ['movieSearchMethod', 'tvSearchMethod', 'animeMovieSearchMethod', 'animeTvSearchMethod'],
+  // The per-indexer list-time check choice (#191), and the search methods (#285).
+  syncedIndexers: ['enabledForHealthCheck', 'movieSearchMethod', 'tvSearchMethod', 'animeMovieSearchMethod', 'animeTvSearchMethod'],
+};
+
+/** Top-level settings deleted: the legacy text-search switch the search methods came from (#285). */
+const DELETED_TOP = ['useTextSearch'];
 
 /** Env vars of the deleted settings: set, they are ignored (startup says so). */
 export const DELETED_ENV = ['HEALTH_CHECK_ENABLED', 'ULTIMATE_FALLBACK_DESIRED_BACKUPS', 'ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT',
@@ -28,11 +41,14 @@ export function dropDeletedSettings(c: Record<string, unknown>): boolean {
     if (!s || typeof s !== 'object') continue;
     for (const k of keys) if (k in s) { delete s[k]; changed = true; }
   }
-  // The per-indexer list-time check choice (#191).
-  if (Array.isArray(c.syncedIndexers)) {
-    for (const si of c.syncedIndexers as Record<string, unknown>[]) {
-      if (si && typeof si === 'object' && 'enabledForHealthCheck' in si) { delete si.enabledForHealthCheck; changed = true; }
+  for (const [list, keys] of Object.entries(DELETED_PER_INDEXER)) {
+    const entries = c[list];
+    if (!Array.isArray(entries)) continue;
+    for (const e of entries as Record<string, unknown>[]) {
+      if (!e || typeof e !== 'object') continue;
+      for (const k of keys) if (k in e) { delete e[k]; changed = true; }
     }
   }
+  for (const k of DELETED_TOP) if (k in c) { delete c[k]; changed = true; }
   return changed;
 }

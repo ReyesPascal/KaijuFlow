@@ -35,3 +35,23 @@ test('a config without them is left as it is', () => {
   assert.deepEqual(c, { cacheTTL: 9000, healthChecks: { providers: [provider] }, ultimateFallback: { enabled: true } });
   assert.equal(dropDeletedSettings({}), false);
 });
+
+// Kaiju Search (#285): every indexer is asked by ID and by name at once, so the per-indexer movie and TV search
+// method settings (and their anime twins, and the old global ones they came from) go from an old config.
+test('the search method settings are dropped from every indexer and from the search settings; the rest stays', () => {
+  const methods = { movieSearchMethod: ['text'], tvSearchMethod: ['imdb', 'text'], animeMovieSearchMethod: ['text'], animeTvSearchMethod: ['text'] };
+  const caps = { movieSearchParams: ['q', 'imdbid'], tvSearchParams: ['q', 'tvdbid'] };
+  const c: Record<string, unknown> = {
+    useTextSearch: true,
+    searchConfig: { movieSearchMethod: 'text', tvSearchMethod: 'imdb', useTextSearchForAnime: true, includeSeasonPacks: true },
+    indexers: [{ name: 'NinjaCentral', url: 'https://ninja.example', apiKey: 'k', enabled: true, caps, ...methods }],
+    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, capabilities: caps, ...methods }],
+  };
+  assert.equal(dropDeletedSettings(c), true);
+  assert.deepEqual(c, {
+    searchConfig: { includeSeasonPacks: true },
+    indexers: [{ name: 'NinjaCentral', url: 'https://ninja.example', apiKey: 'k', enabled: true, caps }],
+    syncedIndexers: [{ id: '1', name: 'Ninja', enabledForSearch: true, capabilities: caps }],
+  });
+  assert.equal(dropDeletedSettings(c), false, 'a second startup finds nothing to drop');
+});

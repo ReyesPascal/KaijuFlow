@@ -827,63 +827,62 @@ class CheckPreflightTest(unittest.TestCase):
         self.assertIn('There is no limits file yet', text)
 
 
-class SearchMethodRuleTest(unittest.TestCase):
-    """The expected settings' rule for every indexer (`indexers[*]`): Ultimate Text Search, the shipped default (#270)."""
+class IndexerRuleTest(unittest.TestCase):
+    """The expected settings' rule for every indexer (`indexers[*]`, #270), tried on a per-indexer setting (`timeout`)."""
 
-    def test_the_committed_file_holds_ultimate_text_search_and_on_search(self):
+    def test_the_committed_file_holds_on_search_and_no_search_method(self):
         wanted = {}
         for entry in brainrun.load_expected_settings():
             wanted.update(entry['settings'])
         self.assertEqual(wanted['ultimateFallback.whenToResolve'], 'on-results')  # "On Search" in the settings UI
-        for kind in ('movie', 'tv', 'animeMovie', 'animeTv'):
-            self.assertEqual(wanted[f'indexers[*].{kind}SearchMethod'], ['text'])
+        self.assertEqual([k for k in wanted if 'SearchMethod' in k], [])  # Kaiju Search has nothing to set (#285)
 
-    def test_an_indexer_on_another_search_method_is_named(self):
-        expected = [{'copies': ['kaijuflow'], 'settings': {'indexers[*].movieSearchMethod': ['text']}}]
-        have = {'kaijuflow': {'indexers[NinjaCentral].name': 'NinjaCentral', 'indexers[NinjaCentral].movieSearchMethod[0]': 'text',
-                              'indexers[altHUB].name': 'altHUB', 'indexers[altHUB].movieSearchMethod[0]': 'imdb'}}
+    def test_an_indexer_with_another_value_is_named(self):
+        expected = [{'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}}]
+        have = {'kaijuflow': {'indexers[NinjaCentral].name': 'NinjaCentral', 'indexers[NinjaCentral].timeout': 15,
+                              'indexers[altHUB].name': 'altHUB', 'indexers[altHUB].timeout': 8}}
         self.assertEqual(brainrun.setting_differences(expected, have), [
-            'KaijuFlow has indexers[altHUB].movieSearchMethod entry 1 set to "imdb", but the expected settings file says "text" '
-            "(the first entry that differs): change the test copy's config, or the file if the copy's value is the intended one."])
-        have['kaijuflow']['indexers[altHUB].movieSearchMethod[0]'] = 'text'
+            'KaijuFlow has indexers[altHUB].timeout set to 8, but the expected settings file says 15'
+            ": change the test copy's config, or the file if the copy's value is the intended one."])
+        have['kaijuflow']['indexers[altHUB].timeout'] = 15
         self.assertEqual(brainrun.setting_differences(expected, have), [])
 
-    def test_the_preflight_refuses_a_copy_whose_indexers_lack_the_search_method(self):
+    def test_the_preflight_refuses_a_copy_whose_indexers_lack_the_setting(self):
         td = make_copies(self)
         cfg = make_cfg(td)
         path = os.path.join(td, 'config', 'config.json')
         with open(path) as f:
             config = json.load(f)
-        del config['indexers'][0]['tvSearchMethod']
+        del config['indexers'][0]['timeout']
         with open(path, 'w') as f:
             json.dump(config, f)
         path = os.path.join(os.path.dirname(td), 'expected-settings.json')
         with open(cfg['expected_settings']) as f:
             data = json.load(f)
-        data['expected'].append({'copies': ['kaijuflow'], 'settings': {'indexers[*].tvSearchMethod': ['text']}})
+        data['expected'].append({'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}})
         with open(path, 'w') as f:
             json.dump(data, f)
         problems = brainrun.preflight('record', cfg, FakeWorld(cfg))
-        self.assertEqual([p.split(',')[0] for p in problems if 'SearchMethod' in p], ['KaijuFlow has no indexers[NinjaCentral].tvSearchMethod setting'])
+        self.assertEqual([p.split(',')[0] for p in problems if '.timeout' in p], ['KaijuFlow has no indexers[NinjaCentral].timeout setting'])
 
-    def test_apply_writes_the_method_into_every_indexer(self):
+    def test_apply_writes_the_setting_into_every_indexer(self):
         td = make_copies(self)
         path = os.path.join(td, 'config', 'config.json')
         with open(path) as f:
             config = json.load(f)
         for ix in config['indexers']:
-            ix.update(tvSearchMethod=['imdb'], movieSearchMethod=['imdb'])
+            ix.update(timeout=8, maxPages=2)
         with open(path, 'w') as f:
             json.dump(config, f)
         expected = os.path.join(os.path.dirname(td), 'e.json')
         with open(expected, 'w') as f:
-            json.dump({'expected': [{'copies': ['kaijuflow'], 'settings': {'indexers[*].tvSearchMethod': ['text']}}]}, f)
+            json.dump({'expected': [{'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}}]}, f)
         lines = testbed.apply_expected(td, 'kaijuflow', expected, stamp='20261125T100000Z')
         self.assertIn('KaijuFlow: 3 settings changed in config/config.json.', lines)
         with open(os.path.join(td, 'config', 'config.json')) as f:
             config = json.load(f)
-        self.assertEqual([ix['tvSearchMethod'] for ix in config['indexers']], [['text']] * 3)
-        self.assertEqual([ix['movieSearchMethod'] for ix in config['indexers']], [['imdb']] * 3)  # nothing else touched
+        self.assertEqual([ix['timeout'] for ix in config['indexers']], [15] * 3)
+        self.assertEqual([ix['maxPages'] for ix in config['indexers']], [2] * 3)  # nothing else touched
         self.assertEqual(testbed.apply_expected(td, 'kaijuflow', expected), [
             'KaijuFlow: nothing changed; config/config.json already holds the expected settings.'])
 

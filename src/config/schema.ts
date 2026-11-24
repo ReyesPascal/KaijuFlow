@@ -68,7 +68,6 @@ export interface ConfigData {
   proxyUrl?: string;
   proxyIndexers?: Record<string, boolean>;
   searchConfig?: SearchConfig;
-  useTextSearch?: boolean;
   includeSeasonPacks?: boolean;
   cardOrder?: string[];
   userAgents?: {

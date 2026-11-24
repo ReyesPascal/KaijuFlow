@@ -895,8 +895,8 @@ def _show(value):
 
 
 def expand_names(name, flat):
-    """A setting name of the expected settings file as the copy's settings name it: `indexers[*].movieSearchMethod` is one
-    name per entry the copy has (`indexers[NinjaCentral].movieSearchMethod`, ...), so a rule holds for every indexer without
+    """A setting name of the expected settings file as the copy's settings name it: `indexers[*].timeout` is one
+    name per entry the copy has (`indexers[NinjaCentral].timeout`, ...), so a rule holds for every indexer without
     the file naming one; any other name is itself."""
     if '[*]' not in name:
         return [name]

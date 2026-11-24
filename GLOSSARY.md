@@ -249,9 +249,9 @@ The record of a failure with no proved cause yet: every observation, hypothesis 
 _Avoid_: ticket (a ticket is for a fix), notes, incident
 
 **Kaiju Search**:
-KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer supports: IMDb, TMDB, TVDB, TVmaze) and by name (the title's other names too) at once, the answers merged and each Source listed once, then sorted by Search Flow. It ships in the release; it learns in dev.
+KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer's capabilities list: IMDb, TMDB, TVDB, TVmaze; IMDb when they are unknown) and by name (the title's other names too) at once, the answers merged and each Source listed once with the ways that found it, then sorted by Search Flow. There is nothing to set: no search method. It ships in the release; it learns in dev.
 _Avoid_: Ultimate text search, search method, text search (one way of asking only)
 
 **Search Flow**:
-What Kaiju Search does with each result: the loose rule (the inherited name match) decides what stays; the strict rule (the right title, with only seen tags between the name and the year or episode) only sorts, never removes, into **sure** (passes strict) and **maybe** (loose only); extra proof (the ID search returned it too, the video file name inside the NZB fits, runtime or size fits, another TMDB/TVDB name fits) makes a maybe sure. Best tries sure Sources first.
+What Kaiju Search does with each result: the loose rule (the inherited name match) decides what stays, and nothing the strict rule passes is dropped (#282); the strict rule (the right title, with only seen tags between the name and the year or episode) only sorts, never removes, into **sure** (passes strict) and **maybe** (loose only); extra proof (the ID search returned it too, the video file name inside the NZB fits, runtime or size fits, another TMDB/TVDB name fits) makes a maybe sure. Best tries sure Sources first.
 _Avoid_: Name rule, name filter, strict filter

@@ -10,12 +10,13 @@
  * Auth: HTTP Basic Auth (username:password)
  */
 
+import { nameKeeps } from '../parsers/searchFlow.js';
 import axios from 'axios';
 import type { NZBSearchResult } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS } from '../types.js';
 import { config } from '../config/index.js';
 import { getLatestVersions } from '../versionFetcher.js';
-import { isTextSearchMatch, stripDiacritics, tagSeasonPack, runSeriesPackQueries, getSeriesPackAdditionalPages, getSeasonPackAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
+import { stripDiacritics, tagSeasonPack, runSeriesPackQueries, getSeriesPackAdditionalPages, getSeasonPackAdditionalPages, extractSeasonTokens, normalizeTitle, extractTitleFromRelease } from '../parsers/titleMatching.js';
 import { slog, withSubBuffer } from '../parsers/searchLogger.js';
 
 const EASYNEWS_SEARCH_URL = 'https://members.easynews.com/2.0/search/solr-search/';
@@ -89,7 +90,7 @@ export class EasynewsSearcher {
         return withSubBuffer(`Movie text search "${t}"`, async () => {
           slog(`🔍 Query ${this.timeoutLabel()}: "${q}"`);
           const r = await this.search(q);
-          const f = r.filter(x => isTextSearchMatch(t, x.title, year, country, undefined, titleYear));
+          const f = r.filter(x => nameKeeps(t, x.title, year, country, undefined, titleYear));
           if (r.length !== f.length) {
             const kept = new Set(f);
             const removed = r.filter(x => !kept.has(x));
@@ -106,10 +107,10 @@ export class EasynewsSearcher {
         slog(`🔍 Query ${this.timeoutLabel()}: "${query}"`);
         const results = await this.search(query);
         const before = results.length;
-        const f = results.filter(r => isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear));
+        const f = results.filter(r => nameKeeps(title, r.title, year, country, additionalTitles, titleYear));
         if (before !== f.length) {
           slog(`   📦 Title filter: ${before} → ${f.length}`);
-          results.filter(r => !isTextSearchMatch(title, r.title, year, country, additionalTitles, titleYear))
+          results.filter(r => !nameKeeps(title, r.title, year, country, additionalTitles, titleYear))
             .forEach(r => slog(`      ✂️  ${r.title}`));
         }
         return f;
@@ -126,7 +127,7 @@ export class EasynewsSearcher {
         const altFiltered = await withSubBuffer(`Movie alt-title retry: "${altQuery}"`, async () => {
           slog(`🔄 Query: "${altQuery}"`);
           const altResults = await this.search(altQuery);
-          const f = altResults.filter(r => isTextSearchMatch(altTitle, r.title, year, country, undefined, titleYear));
+          const f = altResults.filter(r => nameKeeps(altTitle, r.title, year, country, undefined, titleYear));
           if (altResults.length !== f.length) {
             const kept = new Set(f);
             const removed = altResults.filter(x => !kept.has(x));
@@ -149,7 +150,7 @@ export class EasynewsSearcher {
         return withSubBuffer(`Alias fallback: "${q}"`, async () => {
           slog(`🔍 Query: "${q}"`);
           const r = await this.search(q);
-          const f = r.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+          const f = r.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
           if (r.length !== f.length) {
             const kept = new Set(f);
             const removed = r.filter(x => !kept.has(x));
@@ -209,7 +210,7 @@ export class EasynewsSearcher {
       tasks.push(withSubBuffer(`TV text search [EasyNews] "${epQuery}"`, async () => {
         slog(`🔍 [EasyNews] Query ${this.timeoutLabel()}: "${epQuery}"`);
         const r = await this.search(epQuery);
-        const f = r.filter(x => isTextSearchMatch(t, x.title, year, country, parallelAltEnabled ? undefined : additionalTitles, titleYear));
+        const f = r.filter(x => nameKeeps(t, x.title, year, country, parallelAltEnabled ? undefined : additionalTitles, titleYear));
         if (r.length !== f.length) {
           const kept = new Set(f);
           const removed = r.filter(x => !kept.has(x));
@@ -227,7 +228,7 @@ export class EasynewsSearcher {
         tasks.push(withSubBuffer(`Season pack [EasyNews]: ${packQuery}`, async () => {
           slog(`🔍 [EasyNews] Query: "${packQuery}"`);
           const r = await this.search(packQuery, spAdditionalPages);
-          const matched = r.filter(x => isTextSearchMatch(t, x.title, year, country, parallelAltEnabled ? undefined : additionalTitles, titleYear));
+          const matched = r.filter(x => nameKeeps(t, x.title, year, country, parallelAltEnabled ? undefined : additionalTitles, titleYear));
           const tagged = tagSeasonPack(matched, season, episodesInSeason);
           if (r.length !== tagged.length) {
             const keptHashes = new Set(tagged.map(p => p.easynewsMeta!.hash));
@@ -245,7 +246,7 @@ export class EasynewsSearcher {
       tasks.push(withSubBuffer(`Multi-season fanout [EasyNews]: ${fanoutQuery}`, async () => {
         slog(`🔍 [EasyNews] Query: "${fanoutQuery}"`);
         const r = await this.search(fanoutQuery, seriesPackPages);
-        const titleMatched = r.filter(x => isTextSearchMatch(title, x.title, year, country, additionalTitles, titleYear));
+        const titleMatched = r.filter(x => nameKeeps(title, x.title, year, country, additionalTitles, titleYear));
         const fanoutPacks = tagSeasonPack(titleMatched, season, episodesInSeason);
         if (r.length !== fanoutPacks.length) {
           const keptHashes = new Set(fanoutPacks.map(p => p.easynewsMeta!.hash));
@@ -265,7 +266,7 @@ export class EasynewsSearcher {
         const r = await runSeriesPackQueries({
           searchFn: (q) => this.search(q, seriesPackPages),
           title, season, episodesInSeason,
-          isTitleMatch: (rt) => isTextSearchMatch(title, rt, year, country, additionalTitles, titleYear),
+          isTitleMatch: (rt) => nameKeeps(title, rt, year, country, additionalTitles, titleYear),
           searchConfig: config.searchConfig,
           logPrefix: 'EasyNews',
         });
@@ -309,7 +310,7 @@ export class EasynewsSearcher {
         const altFiltered = await withSubBuffer(`Alt-title retry [EasyNews]: "${altQuery}"`, async () => {
           slog(`🔄 [EasyNews] Query: "${altQuery}"`);
           const altResults = await this.search(altQuery);
-          const f = altResults.filter(r => isTextSearchMatch(altTitle, r.title, year, country, undefined, titleYear));
+          const f = altResults.filter(r => nameKeeps(altTitle, r.title, year, country, undefined, titleYear));
           if (altResults.length !== f.length) {
             const kept = new Set(f);
             const removed = altResults.filter(x => !kept.has(x));
@@ -326,7 +327,7 @@ export class EasynewsSearcher {
               const altPackResults = await this.search(altPackQuery, spAdditionalPages);
               const existingHashes = new Set(altFiltered.map(r => r.easynewsMeta!.hash));
               const titleMatched = altPackResults
-                .filter(r => isTextSearchMatch(altTitle, r.title, year, country, undefined, titleYear))
+                .filter(r => nameKeeps(altTitle, r.title, year, country, undefined, titleYear))
                 .filter(r => !existingHashes.has(r.easynewsMeta!.hash));
               const tagged = tagSeasonPack(titleMatched, season, episodesInSeason);
               if (altPackResults.length !== tagged.length) {
@@ -375,7 +376,7 @@ export class EasynewsSearcher {
           return withSubBuffer(`Absolute fallback: "${absQuery}"`, async () => {
             slog(`🔍 Query: "${absQuery}"`);
             const r = await this.search(absQuery);
-            const f = r.filter(x => isTextSearchMatch(t, stripAbsEp(x.title), year, country, undefined, titleYear) && seasonOk(x.title));
+            const f = r.filter(x => nameKeeps(t, stripAbsEp(x.title), year, country, undefined, titleYear) && seasonOk(x.title));
             if (r.length !== f.length) {
               const kept = new Set(f);
               const removed = r.filter(x => !kept.has(x));
@@ -394,7 +395,7 @@ export class EasynewsSearcher {
           const absFiltered = await withSubBuffer(`Absolute fallback: "${absQuery}"`, async () => {
             slog(`🔍 Query: "${absQuery}"`);
             const absResults = await this.search(absQuery);
-            const f = absResults.filter(r => isTextSearchMatch(candTitle, stripAbsEp(r.title), year, country, undefined, titleYear) && seasonOk(r.title));
+            const f = absResults.filter(r => nameKeeps(candTitle, stripAbsEp(r.title), year, country, undefined, titleYear) && seasonOk(r.title));
             if (absResults.length !== f.length) {
               const kept = new Set(f);
               const removed = absResults.filter(x => !kept.has(x));
@@ -451,7 +452,7 @@ export class EasynewsSearcher {
               return normExpected.length > 0 && extractedNorm.startsWith(normExpected);
             });
           } else {
-            f = dateFiltered.filter(x => isTextSearchMatch(alias, x.title, year, country, undefined, titleYear));
+            f = dateFiltered.filter(x => nameKeeps(alias, x.title, year, country, undefined, titleYear));
           }
           if (dateFiltered.length !== f.length) {
             const kept = new Set(f);
