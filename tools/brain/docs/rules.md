@@ -1,110 +1,429 @@
-# Brain tools: rules and settings
+# Rules
 
-How a real-use check is judged (the quick check and the drill-down), the Browse pause, the cap rule, the preflight, the settings table, the expected settings, what KaijuFlow plays and the indexer allowance. The rules of the replayed Recording, retired by ADR 0010, are archived in [archive/rules-retired.md](../archive/rules-retired.md). Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
+This file is the one home of every standing rule for KaijuFlow's work: how checks run and are judged, the test setup, building, the tracker, secrets and sessions. Every rule is a heading (its name), one sentence, then **Why** (the owner's words with the date, or the incident and its ticket) and **Enforced by** (a tool or test, or "by hand"). History is in git and the tickets; how the code does it is in its docstrings. Other docs give the steps and link a rule here by its name; they do not restate it.
 
-## Real-use checks (#270, spec #268, ADR 0010)
+Rules name no indexer: which indexers are switched on, and their daily limits, are the key file's (`python3 -I tools/brain/testbed.py indexer list`). The rules of the replayed Recording, retired by ADR 0010, are archived in [archive/rules-retired.md](../archive/rules-retired.md). Words are defined in [GLOSSARY.md](../../../GLOSSARY.md), "Measuring". Back to the [runbook](../RUNBOOK.md) or the [index](../README.md).
 
-The main measure of KaijuFlow: new titles each time, the live indexer, one cold press of Best per title ([GLOSSARY](../../../GLOSSARY.md), "Real-use check"). The full check (#271) and the drill-down (#272) follow these rules too, with their own additions.
+## Machine and power
 
-**The quick check.** `python3 -I tools/brain/brainrun.py check --quick [--rebuild-image] [--fix]` (standing go, #268) plays 5 new titles: 2 popular films, 1 rare or older film, 1 popular episode, 1 rare or older episode (`quickcheck.KINDS`, drawn by `draw.py`'s draw and written to the ledger before they are played). It:
+### Plugged in, idle only for a full check
 
-1. runs the preflight for a check (`preflight --for check`, [below](#settings-table-and-preflight-spec-72-ticket-74)), and stops before drawing anything when it fails; with `--fix` it runs the preflight's safe fixes first (#303). It does not wait for an idle machine: it starts at once and keeps the load in `meta.json` (`start_load`);
-2. draws the titles, then resets the test copies once (each title is new, so each play is cold);
-3. starts the indexer stand-in in record mode on the check's own empty store (`<test dir>/check-answers/<check folder>`, deleted after the check): every answer comes from the live indexer, as at home, and the stand-in's `LIMIT_REACHED.json` and `RECORD` lines let the cap rule and the allowance count the check;
-4. per title: asks KaijuFlow for the list, waits the [Browse pause](#browse-pause-205), presses Best once (the Best entry on top of the list, nothing else), and waits for the first video bytes, at most 300 s (`quickcheck.PLAY_TIMEOUT_S`); the check stops reading there. It reads KaijuFlow's step lines of the visit (`indexer_page`, `list_filter`, `play_check`, `played`, `play_failed`; [formats](formats.md#step-lines-kf-step)).
+Every check starts plugged in, and a full check outside a standing go also waits for an idle machine (1-minute load under 1.0), while a quick check and a drill-down start at once and keep the load they saw.
 
-**Cap rule.** The first "limit reached" (the stand-in's marker, or a limit line in KaijuFlow's or AltMount's log) stops the check at once with **no verdict**: the INDEX.md row says `NULL` and report.md says which indexer and when. The marker is read after every title and once more when the stand-in has stopped, so a late grab that hits the limit counts too. The play the limit cut is kept in `raw.json` (`cut_by_limit`) but not judged: it says nothing of KaijuFlow. Ctrl-C or SIGTERM stops it the same way, as `stopped`.
+- **Why:** "no all test idle" (owner, 2026-11-20, #183); a busy laptop made #205's cold lists 30–70% slower; on battery the same code listed 20–25% slower (#249; owner, 2026-11-24: "Power check first"); the quick check starts at once (owner, spec #298, #303).
+- **Enforced by:** `brainrun.preflight` checks 7 and 10 (`test_preflight.py`).
 
-**Allowance check.** The preflight refuses a check when the indexers KaijuFlow has switched on have less left today than the check may ask: 12 searches and 30 downloads per title (a few pages and title variants, and the Walk's 30-grab stop; `quickcheck.NEED_PER_TITLE`), so 60 and 150 for a quick check, plus one search per indexer for the preflight's caps request (check 12). Searches are counted per indexer, because every title is searched on every indexer; downloads are counted once across them all, because the Walk's 30 grabs are shared, taken from whichever indexer has the Source (owner's pick on #286, 2026-11-24, when DrunkenSlug's 100 a day joined NinjaCentral's 450). An indexer that runs out mid-check stops it under the cap rule, with no verdict. Left is counted as `brainrun.py usage` counts it ([Indexer allowance](#indexer-allowance-spec-77-ticket-87)); a key file with no daily limits for a switched-on indexer refuses too, naming the `testbed.py indexer add` command.
+### Suites take turns
 
-**What a play is.** Each title gets one outcome (`quickcheck.judge`), from what its press gave and KaijuFlow's step lines:
+Test suites hold the suite lock (`flock ~/.local/share/kf-run/suite.lock`) so they wait for each other, and no builder works while a full check plays.
 
-- **Fail**: no video (an error, the failure video, no answer in 300 s), when at least one Source passed its check or was tried, or when not every Source was checked; a list that did not come or had no Best entry; or video of the **wrong title or episode**. The right title is matched on the release name KaijuFlow's `played` line names (`quickcheck.right_title`): a film's name and a year within one of its release year; an episode's show name and its episode (`S01E02`, `1x02`, or inside a range `S01E01-E03`), or its season when the release is a season pack (KaijuFlow picks the file in it), or its air date for a daily show (`2026.11.20`). Case, accents and punctuation do not matter. When the label's name is not in the release, TMDB's original and alternative names of the title are tried too, so a foreign or alternate name counts. Video whose release KaijuFlow's log does not name is a fail, since the right title cannot be told. A film's name must be followed by its year, past only edition, language, 3D and resolution tags (`quickcheck.FILM_TAGS`, each seen there in a real release of the right film: `Vol.3.IMAX.1080p.2023`, `Deadpool.and.Wolverine.GERMAN.2024`, `Akira.Special.Edition.1988`), so a sequel (`Inside.Out.2.2024` for Inside Out) or a longer film around the name (`Inception.The.Cobol.Job.2010`, `Oppenheimer The Real Story-2023`) is not the film; a title in another language fits through TMDB's other names (`Avatar.Aufbruch.nach.Pandora.2009`; an umlaut is also tried as released, `Einzelgaenger` for Einzelgänger). An episode's show name must be followed by its marker, past only show tags (`US`, `UK`, `AU`, `TV`, `Complete`, `quickcheck.SHOW_TAGS`), years and TVDB numbers (`The Witcher (2019) (362696) - S01E01`): any other word there is a longer show around the name (`Squid.Game.The.Challenge.S01E01` is not Squid Game). A tag a right release uses but no recording has shown yet fails the play; the fail's ticket names the release, so the tag is added once a real release shows it. Words before the name are not matched, so a title inside a longer one that ends with it still passes (`Dead.Heat.1995` for Heat, `Not.Some.Show.S02E05` for Some Show). When the release name does not show the title (a why that starts "the name") and KaijuFlow's `played` line names the video file played (`video`, dev switch on, #286), the file's name is matched the same way: a maybe whose file fits played the right title, and its odd word (the one word between the name and the year or episode that kept the strict rule from passing it, `quickcheck.odd_word`) is offered in the report's "Allowed words offered" with its release as proof, to add through normal review (both copies of the rule and a row in the shared table); a release with more than one such word (another name of the title) offers none. A release name that says another year, season or episode is the wrong title whatever its file. Without a `video` field, what is matched is the release name: a season pack of the right season passes whichever episode KaijuFlow picks inside it, and an episode's year or country tag is not matched. Anime by absolute episode numbers is not matched yet (a full check's hard case, #271).
-- **Slow play**: video, the right title, but more than 60 s after the press (`quickcheck.SLOW_PLAY_S`). Not a fail; named apart.
-- **Check miss**: a Source whose check passed (`play_check` ok) and that then failed for the play (`play_failed`: AltMount refused it, or its first byte failed). Counted even when a fallback saved the play, and once per release (the Head start and the press may both try it).
-- **Fallback**: a Source that failed for the play before the video, or before the play gave up; counted per release. A title's fallbacks and whether its play ended in video are listed; with none, the report says "Fallbacks not tested this time".
-- **Nothing to play**: the list held no Source, or every Source in it was checked and every check said no. Not a fail; the report lists every Source KaijuFlow looked at and what its check said, and for an empty list how many Sources KaijuFlow's search kept (after its name match) and how many its filters left (its `list_filter` line). With several indexers switched on (#304), a title is judged on the list it got when one indexer was down (no `indexer_page` of it with `ok` true) and another answered; the down one is named. Only when every switched-on indexer was down is it **nothing to play: indexers down**, never a fail. An empty list with no `list_filter` line is a fail, since it is not shown that nothing would play.
+- **Why:** #279's and #286's build plans (parallel builders' suites and builds load the machine a check measures on).
+- **Enforced by:** `flock` on the lock (`~/.local/share/kf-run/implementer-brief.md` gives it); no builder by hand.
 
-**The verdict.** **Pass on zero fails**; one fail fails the check. A check that the cap rule stopped, that was stopped, or that failed has no verdict. Slow plays, check misses, fallbacks and nothing to play never change it. The command exits 0 on pass, 4 on fail, 2 when the cap rule stopped it, 130 when it was stopped, 1 on a setup problem or a failure.
+### Each check keeps its machine reading
 
-**The report.** `report.md` opens with the verdict and the fails (`Pass: 0 fails in 5 titles.` or `Fail: 1 of 5 titles failed (Second Film).`), then slow plays, check misses, fallbacks, nothing-to-play titles with each Source's check, and the typical title to video (the median over the plays that gave the right video: the list plus the start, the Browse pause left out), then the indexer table (#304): per switched-on indexer the searches and downloads the stand-in sent it, its pages' answer time (median and slowest), how many lists went out before its last page came, and how many plays came from a Release only its search found (by the Release merge's name match; "not known" when the dev switch's `search` lines are missing). It ends with a ready-to-file ticket text for each fail and each check miss, whose fix a drill-down on that title proves. Totals only: no per-title table and no comparison with an earlier check, since every check plays other titles. Folder layout: [formats](formats.md#check-folder).
+A check takes the CPU probe once the load is judged and keeps the load, the power state, the CPU policy and the probe in its `meta.json`, and the probe judges nothing.
 
-**The drill-down** (#272, spec #279). `python3 -I tools/brain/brainrun.py drill --title <imdb id> [--episode S01E02] [--entry ID ...]` (standing go, #268), the command a fix ticket names, plays one failed title again to prove its fix. It follows the quick check's steps 1 to 4 on that one title, with the quick check's outcome, verdict, report and exit codes; the preflight's allowance is one title's (12 searches, 30 downloads, and the caps request's one search). The title is not drawn and not added to the ledger again: it is named as the newest earlier evidence folder of it names it, else by TMDB. Its play always keeps an [evidence folder](formats.md#evidence-folder), a play that went fine too, and Diagnosis runs on it as after a check. Its suspected causes are the Casebook entries proved on the title's earlier evidence folders under the runs root, and every `--entry`; each one's confirming recipe of Clues runs on every failure of the drill's play, and the entry is marked **proved fixed** when the title played with no failure (no fail, fallback or slow play), **reopened** when a failure appeared (the cause proved again, or a new failure: a fix that moved the problem does not count), or **not marked** when it has no fix to prove (`fix: none yet`) or no confirming test that runs (`proved fixed` and `reopened` claim proof). A drill with no verdict marks nothing. `diagnosis.py record <drill folder>` writes the marks on the entries ([formats](formats.md#drill-down)). `--full`, watched with a skip as in the full check, waits for the full check's watch (#271) and is refused until then.
+- **Why:** #249's replays ran on battery and no record said so (#262).
+- **Enforced by:** `brainrun.preflight` (`cpu_probe_ms`, `seen['machine']`; `test_preflight.py`).
 
-**Settings.** The expected settings hold the shipped defaults a check plays: Ultimate Fallback on "On Search" (`whenToResolve` on-results, the Head start). There is no search method to set: Kaiju Search asks every indexer by ID and by name at once (#285) ([Expected settings](#expected-settings-109)).
+### The network the test copies were set up for
 
-## Browse pause (#205)
+Tests run on Wi-Fi, with `HOST_IP` and KaijuFlow's `altmountUrl` among this machine's addresses and the router answering `news.newshosting.com` with no 10.x address.
 
-Owner's decision, 2026-11-20 (#205): a fixed 5 s pause between a title's list and its play, left out of title to video. What follows from it:
+- **Why:** "i want to do the rest of the tests on wifi" (owner, 2026-11-20); a stale `altmountUrl` failed every play on 2026-11-20 and the router answered a dead 10.x address on 2026-11-17 (#217).
+- **Enforced by:** `brainrun.preflight` checks 8 and 9 (`read_pinned`, `read_dns`; `test_preflight.py`); Wi-Fi itself by hand.
 
-- **Every title of a check waits it.** Between a title's list arriving and the press of Best, the check waits the **Browse pause** ([GLOSSARY](../../../GLOSSARY.md)), 5 s, standing for a viewer reading the page; so work KaijuFlow begins when the list is asked for (the Head start, #206) has those seconds to show in the start. A list with no Best entry waits none. It is fixed (`brainrun.BROWSE_PAUSE_S`): no flag sets another length.
-- **Not part of title to video.** Title to video is the list plus the start: the pause is in neither (`brainrun.check_visit_answer`).
-- **Said in the check record.** `meta.json` has `browse_pause_s`, and every visit in `raw.json` has the seconds it waited ([formats](formats.md#check-folder)).
+### The test image holds the commit's code
 
-## Cap rule
+The `kaijuflow:test` image is built from the repository's clean commit and rebuilt only when a build input changed, so a drill-down whose fix is in the image rebuilds first.
 
-**Cap rule.** The first "limit reached" from any indexer stops the check at once with no verdict ([Real-use checks](#real-use-checks-270-spec-268-adr-0010), "Cap rule"): the stand-in's `LIMIT_REACHED.json`, or a limit line in KaijuFlow's or AltMount's log. The log wordings matched are the ones they print (`brainreport.LIMIT_RE`): the indexer's "Request limit reached" text as AltMount and KaijuFlow pass it on, `HTTP 429`, KaijuFlow's "Failed to download NZB from X: 429" and the stand-in's `LIMIT_REACHED indexer=`; loose phrases such as "api limit" are not matched. The check is recorded as NULL in INDEX.md with the indexer and time. The stand-in and the test copies are stopped.
+- **Why:** a docs-only commit should not force a rebuild (#113); an image from a dirty tree cannot name the code that ran.
+- **Enforced by:** `brainrun.preflight` check 1 (`image_state`, `BUILD_INPUTS`, held in line with the `Dockerfile` by `test_preflight.py`); `--rebuild-image` and `--fix` rebuild.
 
-## Settings table and preflight (spec #72, ticket #74)
+### Connection caps
 
-**Settings command.** `python3 -I tools/brain/testbed.py settings [--limit 100]` prints every test copy's settings as a table and the connection budget (per copy, total, provider limit), read straight from the copies' config files (KaijuFlow's `config.json`, its AltMount's `config.yaml`). Keys, logins and passwords are never printed. It replaces the hand-written table in SETTINGS.md. The run record's `settings.json` comes from the same reader (`testbed.read_settings`), so the table and the "what changed" list agree. The connection budget counts the NewsHosting login only: KaijuFlow's health-check cap, and for its AltMount every provider entry on the same Usenet host as the main provider, backup flag or not. An entry on another host (a backup login) has its own limit: it is shown beside the count (`+ other host max N, own limit`) and not added.
+KaijuFlow's health-check cap plus its AltMount's 25 connections stay at or under the provider's limit of 100.
 
-**Preflight.** `python3 -I tools/brain/brainrun.py preflight [--for check [--full [--standing-go]]] [--rebuild-image] [--fix] [--provider-limit 100] [--key-file PATH]` prints one plain sentence per problem and exits 1, or exits 0 with `Setup is right for a check ...`. Every sentence names the command or the step that fixes it (#303).
+- **Why:** the Newshosting plan (owner, 2026-11-09, `testbed.PROVIDER_LIMIT`); 25 is the 2026-11-13 baseline's setting.
+- **Enforced by:** `brainrun.preflight` check 4 (the sum); AltMount's 25 by hand (`expected-settings.json` names no AltMount setting).
 
-**`--fix`** (#303; `preflight`, `check --quick`, `drill`) runs the safe fixes, then the preflight again, whose sentences are the answer: the image rebuilt when it is not current (as `--rebuild-image`), the expected settings written into a copy that differs (`testbed.py apply <copy>`, check 5), the key file made readable only by its owner (`chmod 600`, check 2), and an indexer switched on or off in KaijuFlow to match the key file (`testbed.py indexer on|off <slug>`, check 2; the key file says which are on). The test copies are stopped first when a fix writes a config, and each changed file is backed up into the test folder's `backups/`. It repeats while a fix shows a new safe one (an open key file hides which indexers it switches on), at most 3 times (`brainrun.FIX_ROUNDS`). It never touches power, the machine's addresses (`HOST_IP`, `altmountUrl`), DNS, the allowance or an indexer's key: an indexer neither file has an entry for needs `testbed.py indexer add`, whose key comes from the stash and limits from the owner. Each sentence `--fix` acts on says so (`--fix runs it`); `brainrun.Problem` carries the fix with the sentence, and `brainrun.checked` is the one path the preflight command and every check take. `check --quick` and `drill` start with the same check and stop before creating a check folder when it fails. Checks:
+### Only the test copies
 
-1. the `kaijuflow:test` image holds the code of the repository's commit and the tree is clean. The image's `kaijuflow.commit` label names the commit it was built from; the image is current when that is the repository's commit, or when no build input differs between the two (`git diff --quiet <image commit> HEAD -- <build inputs>`). So only a commit that changes the code in the image asks for a rebuild; a commit that touches only docs, tools or tests does not. The build inputs are listed once, in `brainrun.BUILD_INPUTS`: what the `Dockerfile` copies into the image, plus the `Dockerfile`, `.dockerignore` and `.gitattributes`, which can change what a build sees (the repository has no `.gitattributes` today, but one would steer the `git archive` the image is built from, so it stays on the list); a test holds the list in line with the `Dockerfile`. An image without a label, or from a commit the repository does not have, is not current. `--rebuild-image` builds an image that is not current from the commit itself, an archive of `HEAD` piped into `docker build --label kaijuflow.commit=<commit> -t kaijuflow:test -`, so untracked or ignored files can never get into an image whose label names that commit; it never builds from a dirty tree and leaves a current image alone;
-2. the key file (default `<test dir>/indexers.json`) exists, is readable only by the owner, and switches on exactly the indexers KaijuFlow has switched on (an entry with `"enabled": false` is off, one with no switch on; only names and switches are read, so per-indexer settings are fine);
-3. every indexer address in KaijuFlow (also switched-off ones, plus Easynews when on) is `http://host.docker.internal:1340/<slug>` with or without `/api`. Checks 2 and 3 read KaijuFlow's config only: KaijuFlow searches and AltMount only streams, so the test copy of AltMount has its indexers switched off (`testbed.py indexer` switches them off) and the preflight does not read them (#302);
-4. the caps add up to at most the provider limit (default 100): KaijuFlow's health-check cap (`healthChecks.maxTotalConnections`, every check and provider together; 8, KaijuFlow's default, when its config names none) and its AltMount's connections (25 in the settings of the 2026-11-13 baseline). Until #191 the preflight read the list-time check's worker count (`healthChecks.maxConnections`, 12 then), which went with that check; the preflight checks the sum;
-5. every test copy has the sort and filter settings of the expected settings file `tools/brain/expected-settings.json` (see [Expected settings](#expected-settings-109) below);
-6. the stand-in's port 1340 is free;
-7. a full check (`--full`) outside a standing go (`--standing-go`, which the lead passes; #303): the machine is idle: its 1-minute load average is below 1.0 (`brainrun.BUSY_LOAD`; owner: "all test idle"; a busy laptop made the cold lists of #205's baseline with the Browse pause 30 to 70% slower). When this preflight has just built the image (`--rebuild-image`), the build's own load is let settle first: the check polls every 10 s for up to 3 minutes (`brainrun.SETTLE_AFTER_BUILD_S`) and judges the load once it is under 1.0 or the time is up; without a build it judges at once. A full check's `meta.json` keeps the reading the preflight judged as `start_load`; a quick check, a drill-down and a full check under a standing go read the load without judging it and keep it the same way (owner, spec #298: the quick check starts at once). Once the load is judged (after a build's wait too), the preflight takes the **CPU probe** (#262): a fixed single-thread piece of integer arithmetic (`brainrun.probe_work`, `brainrun.PROBE_ROUNDS` steps, about 1 s on Brain plugged in), the same work every check, timed in whole milliseconds (`brainrun.cpu_probe_ms`), in the Python that runs `brainrun.py`. It judges nothing: a check keeps it in `meta.json` `machine` with the power state and the CPU policy, so a check whose CPU was slower says so ([formats](formats.md#check-folder)), and a preflight that passes prints it (`CPU probe: 1012 ms (governor powersave, energy preference performance).`);
-8. (owner, #217): the pinned addresses are this machine's now: `HOST_IP` in the test folder's `.env` and the host of KaijuFlow's `altmountUrl` (in `config/config.json`) are among the addresses `ip -j addr show` lists, compared as addresses, not as text (on 2026-11-20 a stale `altmountUrl` made every play fail while the preflight passed). A missing one stops too, and so does an `altmountUrl` that names no host (no `http://` in front); an `altmountUrl` on a host name (not an address) is left to Docker. When `ip` fails or lists no address the preflight says so and stops. Only these two values are read from the files, which hold secrets (the guard hook's reason), and only the address is printed, never a login in the URL;
-9. (owner, #217): Newshosting's DNS is not sinkholed: the router (192.168.4.1) answers `news.newshosting.com` (`dig +short`) with at least one address and none in 10.x (it answered with a dead 10.x address on 2026-11-17). A lookup that fails (no `dig`, no server reached, no answer within 30 s) stops too, and the sentence says how it failed;
-10. (owner, #262): the machine is plugged in. It refuses when `/sys/class/power_supply/` (`brainrun.POWER_SUPPLY_ROOT`) lists a supply of type `Mains` (the AC adapter) and none of them is online (`online` is `1`; one that cannot be read counts as not online), with one sentence saying to plug it in. A machine that lists no `Mains` supply (a desktop) passes. A USB-C port is type `USB`, not `Mains`, and does not count. Why: in #249's replays the same code (47ccc06) listed 20-25% slower than in its own #218 run, the laptop on battery, and no run record said so;
-11. (#270): every switched-on indexer has, left today, the check's searches (and the caps request's one), and together they have its downloads ([Real-use checks](#real-use-checks-270-spec-268-adr-0010), "Allowance check"; `allowance.left`).;
-12. (#303) last, and only when every other check passed: every switched-on indexer answers one caps request (`t=caps`), sent through the stand-in's own code in record mode on loopback (`brainrun.ping_caps`, an empty store of its own, deleted after, so it always reaches the real indexer). An error answer (a Newznab `<error>`, such as DrunkenSlug's wrong-key reply `tests/fixtures/indexer-caps/drunkenslug-error-wrong-key.xml`), another HTTP status, an answer that is not caps, or no answer refuses the check, naming the `testbed.py indexer add` command (the key again from the stash) or `indexer off`. Each request is one search: its RECORD or ERROR line goes into `<runs root>/caps-pings.log`, which the allowance counts. Only the test tools send it; KaijuFlow sends none of its own. A limit answer refuses too. An indexer that runs out mid-check still stops the check under the cap rule, with no verdict.
+A test touches only `kaijuflow-test` and `altmount-kf-test`, while `uu-test`, `nzbdav-test` and `altmount-addon-test` stay stopped and kept with their configs, and stopping one that is up is a live step that needs the owner's go.
 
-Indexers are compared by the slug in the indexer stand-in's address, because each copy names them its own way (for example `IndexerOne` in one copy and `indexerone` in another). Every sentence is plain: the key-file fix reads "make the key file readable only by you (run: chmod 600 <path>)", and "the indexer stand-in" is explained once, in the first address sentence. The tools carry no indexer names. A check folder's `commit` is the image label (the code that ran); its `head` is the repository's HEAD, which is a later commit after a docs-only change.
+- **Why:** "other test copies stopped and kept" (owner, spec #183, 2026-11-20); there is no live stack on this machine.
+- **Enforced by:** `testbed.py` and `compose.test.yaml` know the two copies only (#187); `brainrun.preflight` check 3 keeps KaijuFlow's indexers on the stand-in; the rest by hand.
 
-**For code.** `brainrun.preflight('check', cfg, io)` returns a list of sentences, `[]` meaning go, and `brainrun.preflight_command('check', cfg, io)` prints them and returns the exit code (the modes `run` and `record` are the archive's, used only with `--revive`). `io` is the runner's IO object (`RealIO`); a check's also answers `allowance_left` and `caps_answers` (#303), and with `--fix` `fix` and `stop_all`. `brainrun.checked(mode, cfg, io, seen)` is the preflight with `--fix`'s rounds, the one path the preflight command and every check take. A dict passed as `preflight(..., seen=)` gets what the checks judged: the load (`seen['load']`), which the check keeps as `start_load`, and the machine (`seen['machine']`: `power`, `governor`, `energy_preference`, `cpu_probe_ms`), which it keeps as `machine`. The readers alone: `brainrun.read_machine_addresses`, `read_pinned(test_dir)`, `read_dns(name, server)`, which raise `brainrun.LookupFailed` saying how a lookup failed, tested on output captured on Brain in `fixtures/2026-11-20-machine/`; `brainrun.read_power(root)` (`ac` or `battery`) and `read_cpu_policy(root)`, tested on `/sys` files captured on Brain in `fixtures/2026-11-24-power/`. The image decision alone is `brainrun.image_state(label, head, inputs_changed)`: `current`, `stale`, `unknown` or `missing`. The settings comparison alone is `brainrun.setting_differences(expected, settings, file)`; `cfg['expected_settings']` names another file than the committed one (the tests use it). Tests: `test_settings.py`, `test_preflight.py`.
+## Indexers and allowance
 
-## Expected settings (#109)
+### Indexers change only through the indexer command
 
-**Why.** The 2026-11-13 baseline ran on test copies that had lost their sort and filter rules, and nothing noticed: on KaijuFlow every film's top pick was a 66 to 91 GB file. The old rules could not be recovered, so the owner defined standard ones in issue #109, and the preflight now holds every copy to them.
+An indexer is added, switched on or off, or removed in the test setup only with `testbed.py indexer add|on|off|remove` (agents may run it, the test copies stopped), the default key file is the only one used (never `--key-file`), and the test copy of AltMount has no indexers switched on.
 
-**The file.** `tools/brain/expected-settings.json` ([format](formats.md#expected-settings-expected-settingsjson)) holds, for KaijuFlow, the whole `movieFilters` and `tvFilters`: KaijuFlow's default sort and filter object, plus the largest single file (`maxFileSize`: 30 GB for films, 10 GB for episodes, written in bytes) and the drop rule "No disc images"; and its fallback on (#185) with the Play-time check's settings (#190: `candidateCount` 3, `preferenceMode` priority, `whenToResolve` on-results, the Head start since #206; the attempts cap `maxAttempts` was deleted in #228, a Walk makes at most 30 grabs; only the Source played is prepared, with no backup setting, #192). A setting name may stand for every indexer the copy has (`indexers[*].timeout`, #270), so the file names none, and `testbed.py apply` writes the setting into each; the search methods it held until #285 are gone (Kaiju Search asks every indexer by ID and by name, and an old config loses them at startup). KaijuFlow's AltMount has no ranking of its own; the file names its settings only when they are tuned (the owner's go, spec #183 "AltMount tuning"; `testbed.py apply altmount-kf` writes them). The file is in the repository, so it holds no host, address, login or key; an entry with a secret name is refused. To change the standard, change the file and the test copy together (`testbed.py apply kaijuflow`).
+- **Why:** adding the second indexer took four hand edits agents were blocked from (owner, 2026-11-24, when the second indexer was switched on; spec #298); KaijuFlow searches and AltMount only streams (#302).
+- **Enforced by:** `testbed.py indexer` (`test_testbed_indexer.py`); `brainrun.preflight` check 2 (key file mode and switches; `--fix` switches KaijuFlow to match); `--key-file` by hand.
 
-**The comparison.** Both sides are read the same way (`testbed.read_settings`, the reader behind the settings table and `settings.json`), so no secret can reach a sentence. For every setting the file names, the copy must hold exactly the file's value. A setting given as a whole section (`movieFilters`) is compared as a whole, both ways: a value that differs, a value the copy lacks, and a value the copy has and the file does not are each a difference. KaijuFlow uses `movieFilters` and `tvFilters` in place of its default rules as a whole, so an extra or a missing value there changes the ranking. One sentence per difference:
+### Every indexer request goes through the stand-in, untouched
 
-```
-KaijuFlow has movieFilters.maxFileSize set to 53687091200, but the expected settings file (tools/brain/expected-settings.json) says 32212254720: change the test copy's config, or the file if the copy's value is the intended one.
-KaijuFlow has no tvFilters.rules setting, but the expected settings file has one.
-KaijuFlow has a movieFilters.minFileSize setting that the expected settings file does not have.
-KaijuFlow has movieFilters.sortOrder entry 2 set to "size", but the expected settings file says "quality" (the first entry that differs).
-```
+Every indexer address in KaijuFlow's test copy is the stand-in's, and the stand-in, on the check's own empty store, passes each answer on as the indexer sent it, so KaijuFlow's own filters choose.
 
-- The first sentence names the file and says what to do; the others stay short.
-- An order (`sortOrder`, `resolutionPriority` and the like) is one setting: one sentence names the first entry that differs.
-- A section or a rule that is missing as a whole, or that only the copy has, is named once, not once per value in it.
-- A copy whose config cannot be read is left to the checks that say so. A file that cannot be used costs one sentence (`The expected settings file cannot be used (expected-settings.json, entry 1: ...): fix the file.`) and the preflight fails.
+- **Why:** no test may reach a real indexer around the cap rule and the allowance, and a check plays as at home (#185, ADR 0010).
+- **Enforced by:** `brainrun.preflight` checks 3 and 6 (`testbed.standin_slug`, port 1340 free); `indexer_standin.py` (`test_indexer_standin.py`).
 
-## What KaijuFlow plays
+### The allowance
 
-**[ADR 0009](../../../docs/adr/0009-health-check-passes-what-altmount-streams.md)** (replacing ADR 0008): KaijuFlow's health check passes only what AltMount is shown to stream: plain video, stored RAR5, stored 7z; it blocks every other archive and any NZB with no file it can name.
+The preflight refuses a check unless every switched-on indexer has the check's searches left today (12 per title, plus one for its caps request) and together they have its downloads (30 per title), counted against the daily limits in the key file.
 
-## Indexer allowance (spec #77, ticket #87)
+- **Why:** every title is searched on every indexer, while the Walk's 30 grabs are shared, taken from whichever indexer has the Source (owner's pick on #286, 2026-11-24, when an indexer with 100 downloads a day joined one with 450).
+- **Enforced by:** `brainrun.preflight` check 11 (`allowance.left`, `quickcheck.NEED_PER_TITLE`; `test_allowance.py`, `test_preflight.py`); `brainrun.py usage` shows Used, Limit and Left.
 
-**Limits in the key file (#302).** Each indexer's daily limits sit in its entry of the key file (default `~/kaijuflow-test/indexers.json`, outside the repo), beside its address and key; the separate `limits.json` is no longer read. `testbed.py indexer add` writes them ([testbed.md](testbed.md#indexers-302)). Example: `tools/brain/indexers.example.json`.
+### The cap rule
 
-```json
-{"indexers": {"ninjacentral": {"url": "https://indexer.example", "apikey": "...", "enabled": true,
-                               "search_per_day": 2000, "download_per_day": 450, "reset": "rolling-24h"}}}
-```
+The first "limit reached" from any indexer stops the check at once with no verdict (`NULL`, exit 2), the play it cut kept but not judged, and the work waits for that indexer's reset.
 
-- `search_per_day`: the daily limit of search (API) requests. `download_per_day`: the daily limit of NZB downloads. Whole numbers.
-- `reset`: `"rolling-24h"` (the last 24 hours count; NinjaCentral's reply carries no usage fields and the reset is not confirmed, so this is the safe reading) or a clock time such as `"04:00"`, read in UTC unless the entry also has `"timezone": "Europe/Berlin"`.
-- The name is matched to the stand-in's indexer name and the copies' names ignoring case, spaces and dashes.
+- **Why:** a limit says nothing of KaijuFlow; ADR 0010: "The cap rule still stops a check at the first 'limit reached'"; a real viewer never hits a limit (owner, 2026-11-24, spec #298).
+- **Enforced by:** `brainrun._check_cap`, `brainreport.limit_event` (`LIMIT_RE`; `test_quickcheck.py`).
 
-**`python3 -I tools/brain/brainrun.py usage [--key-file PATH] [--test-dir DIR] [--runs-root DIR]`** prints, per indexer, `Used`, `Limit` and `Left` for searches and for downloads since the indexer's last reset. Used adds up two things: the stand-in's real requests in the check folders (and the old record folders; `RECORD` and `ERROR` lines of each `logs/standin.log`; `api` is a search, `nzb` is a download) and the counts the live copy keeps (`queryHistory` and `grabHistory` in its `config/stats.json`, read-only). The test copies are not counted: they only talk to the stand-in, so their counters never measure real indexer hits. A copy keeps only its latest hundred entries of each, and the command counts this machine only; it says so. Without a key file, or with no limits in it, it prints one sentence naming the `testbed.py indexer add` command. It never contacts an indexer. Code: `allowance.py`; tests: `test_allowance.py`.
+## The preflight
+
+### Every refusal names its fix
+
+The preflight says each problem in one plain sentence that names the command or step that fixes it, and `--fix` runs only the safe fixes (the image rebuilt, the expected settings written, the key file made private, an indexer switched to match the key file), never power, the machine's addresses, DNS, the allowance or an indexer's key.
+
+- **Why:** "a refusal is one step from fixed", and a check should start without rounds of refusals, while power, addresses, DNS and the allowance stay the owner's (spec #298 stories 10–12, #303).
+- **Enforced by:** `brainrun.Problem`, `brainrun.checked` (`FIX_ROUNDS`; `test_preflight_fix.py`).
+
+### Every switched-on indexer answers before titles are drawn
+
+A check starts only when every switched-on indexer answers one caps request, sent by the test tools only and counted as one search.
+
+- **Why:** a wrong key, an expired account or a down indexer is caught before titles are drawn, without slowing real use (spec #298 stories 15–16, #303).
+- **Enforced by:** `brainrun.preflight` check 12 (`ping_caps`, `caps-pings.log`; `test_caps_ping.py`).
+
+## Test copies and settings
+
+### The expected settings
+
+Every test copy holds exactly the values in `tools/brain/expected-settings.json`: the #109 sort and filter rules (30 GB films, 10 GB episodes, "No disc images"), Ultimate Fallback on with the Play-time check's settings (`whenToResolve` on-results, the Head start) and the dev switch on (`devDiagnostics`, #280).
+
+- **Why:** the 2026-11-13 baseline ran on copies that had lost their rules, and every film's top pick was a 66 to 91 GB file (#109); the dev switch writes the step lines a check reads.
+- **Enforced by:** `brainrun.preflight` check 5 (`setting_differences`, `load_expected_settings`; `test_preflight.py`).
+
+### A test copy changes only through the tools
+
+A test copy is never edited by hand: its expected settings go in with `testbed.py apply <copy>` or the preflight's `--fix`, its indexers with `testbed.py indexer`, the standard changes in the file and the copy together, and the preflight decides whether to rebuild or apply.
+
+- **Why:** the tools back the config up and print each change, never a secret (#109, #302, #303).
+- **Enforced by:** `testbed.py apply` (`test_apply_settings.py`), `testbed.py indexer`, `brainrun.checked` (`--fix`).
+
+### One reset per check
+
+A check resets the two test copies once, after drawing its titles and before its first play.
+
+- **Why:** each title is new, so each play is cold (#268).
+- **Enforced by:** `brainrun.quick_check_all`, `brainrun.drill_all` (`test_quickcheck.py`, `test_drill.py`).
+
+### AltMount's own settings
+
+The expected settings name AltMount's settings only once they are tuned with the owner's go.
+
+- **Why:** spec #183, "AltMount tuning" (#194, the owner's).
+- **Enforced by:** no tool; by hand.
+
+## Checks and verdicts
+
+### When to check, and who says go
+
+A quick check runs after any change to playing, health checks or search before it merges, and a full check (once #271 builds it) before work is called done, after an indexer is added or when the owner asks; quick checks and drill-downs have a standing go, a full check needs the owner's go each time or a standing go that names it (`--standing-go`), and any other live step needs the owner's go.
+
+- **Why:** ADR 0010 (owner, 2026-11-24); the owner's "yes" to the standing go (#268); a check spends real indexer requests.
+- **Enforced by:** by hand (`--full` is refused until #271).
+
+### New titles every time
+
+Every check draws new titles from TMDB by kind, never by hand and never from a fixed pool, skips every title in the ledger and writes them to it before they are played.
+
+- **Why:** "they wont be doing tests over and over and playing the same file over and over" (owner, 2026-11-24, ADR 0010).
+- **Enforced by:** `draw.py titles` (`test_draw.py`).
+
+### How a title is played
+
+A quick check plays 5 titles (2 popular films, 1 rare or older film, 1 popular episode, 1 rare or older episode), each by asking for its list, waiting the fixed 5 s Browse pause, pressing Best once and waiting at most 300 s for video, and title to video leaves the pause out.
+
+- **Why:** ADR 0010: "one cold play per title"; the pause stands for a viewer reading the page (owner, 2026-11-20, #205: "yes to all").
+- **Enforced by:** `quickcheck.QUICK_KINDS`, `PLAY_TIMEOUT_S`; `brainrun.BROWSE_PAUSE_S`, `check_visit_answer` (`test_quickcheck.py`).
+
+### What is a fail
+
+A title fails when no video came while some Source passed, was tried or was left unchecked, when no list or no Best entry came, when the video is the wrong title or episode or its release is not named, and a new allowed word joins the match only once a release a check played shows it, through review, in both copies of the rule and the shared table.
+
+- **Why:** "a fail is a fail" (owner, 2026-11-24); a wrong title tests KaijuFlow's name search, Kaiju Search (ADR 0010, #285).
+- **Enforced by:** `quickcheck.judge`, `right_title`, `FILM_TAGS`, `SHOW_TAGS`, `odd_word` (`test_quickcheck.py`, the shared table `tests/fixtures/release-names/table.tsv`); allowed words by review.
+
+### What is reported but is not a fail
+
+A slow play (right video after 60 s), a check miss, a fallback and nothing to play (every Source checked said no, or every switched-on indexer down) are reported and never fail a title, a title one indexer missed is judged on the list the others gave, and no extra test second-guesses a Source's reason.
+
+- **Why:** "a slow play is not a fail intnernallty but externally to a user it is a given up" (owner, 2026-11-24); "really no Source" is shown, not assumed (#268 story 13); one indexer's outage is not blamed on a title that had Sources (spec #298, #304).
+- **Enforced by:** `quickcheck.judge`, `_empty_list`, `SLOW_PLAY_S` (`test_quickcheck.py`).
+
+### The verdict and the report
+
+A check passes on zero fails, one stopped by the cap rule, by hand or by a failure has no verdict, and its `report.md` gives verdict and fails first, then totals and the indexer table, with no per-title table and no comparison with an earlier check.
+
+- **Why:** "the top prioirty is zero failed plays because thats the whole point of the health checking systems" (owner, 2026-11-24); titles differ from check to check, so speed differences are noise (ADR 0010).
+- **Enforced by:** `quickcheck.verdict`, `render_report`; `brainrun.quick_check_command` (exit codes; `test_quickcheck.py`).
+
+### After a check
+
+After a check, its ticket texts are filed (one per fail and per check miss), `diagnosis.py record <folder>` runs in a worktree and its Casebook changes are committed, `tools/brain/backup.sh` backs it up and the handoff note names it, while fix tickets Diagnosis files during a build wait for the owner.
+
+- **Why:** "Every fail becomes a ticket naming the title" (ADR 0010); the check itself leaves the repo clean; #279's "Building it" keeps fix tickets for the owner under #183.
+- **Enforced by:** `quickcheck.ticket_texts`; Diagnosis files a proved KaijuFlow cause's ticket itself (`fixing.py`, `--tickets-dry-run`); `unreported.py` lists checks the note misses; the rest by hand.
+
+### A fix is proved by a drill-down
+
+A fix is proved by `brainrun.py drill` on that one title, live, once the fix is merged, which marks each suspected cause proved fixed (no failure at all), reopened (any failure) or not marked.
+
+- **Why:** "Its fix is proven by drilling down on that title alone, played again live, not by a new full check" (ADR 0010); a fix that moves the problem does not count.
+- **Enforced by:** `brainrun.drill_all`, `drill.py`, `diagnosis.py` (`test_drill.py`).
+
+### Diagnosis keeps its records only through its tools
+
+`casebook/index.json` is never edited by hand, an entry claims proved only with a confirming recipe whose Clues all exist, and the diagnosing agent works a Case log only through `diagnosis.py case` commands.
+
+- **Why:** a claim of proof must rest on a test that runs (#281, #287).
+- **Enforced by:** `casebook.py check` (`test_casebook.py` checks the repo's Casebook); `caselog.py` (`test_caselog.py`).
+
+### Live Clues only read
+
+Live Clues read Usenet over one read-only connection (STAT, BODY checked in memory) and save nothing but their answers.
+
+- **Why:** #279's standing go covers "any live read-only Clues" (#284).
+- **Enforced by:** `nntp.Usenet`, `clues.py`.
+
+### KaijuFlow is measured alone
+
+No check compares KaijuFlow with Usenet Ultimate, NzbDAV or AltMount direct.
+
+- **Why:** "forget speed testing against the rest" (owner, 2026-11-20, spec #183).
+- **Enforced by:** by hand (#187 deleted the comparison code).
+
+### What AltMount streams changes only on evidence
+
+The health check's pass list changes only when a check or a drill-down shows AltMount streaming or refusing a kind, and an unproven kind (RAR4 set, encrypted archive with password, ZIP) is probed on the AltMount test copy only when titles fail for lack of a playable Source.
+
+- **Why:** "proven only" (owner, 2026-11-20, ADR 0009).
+- **Enforced by:** no tool; by hand.
+
+### Long commands and their logs
+
+A long command runs in the shell's background mode under a hard `timeout`, its output in a log that ends with the exit code, watched through the one filter the runbook gives and stopped at the first `Error`, never another filter or a `cat` of the whole log.
+
+- **Why:** not written down (the 2026-11-24 audit found no source); the runbook has always given one filter.
+- **Enforced by:** no tool; by hand.
+
+### The Speed Check page
+
+The Speed Check page is published only when the owner asks.
+
+- **Why:** not written down (the 2026-11-24 audit found no source).
+- **Enforced by:** no tool; by hand.
+
+### Retired commands stay retired
+
+A command of the replayed Recording, archived by #273, runs only when the owner asks for it, with `--revive`, and old run folders stay in the archive.
+
+- **Why:** "ARCHIVE THE OLD STUFF AND STOP IT FROM COMING BACK UNLESS WE TELL IT TO" (owner, 2026-11-24, spec #298); ADR 0010 retired the path.
+- **Enforced by:** `retired.gate` (exit 5); `test_live_docs.py` fails when a live doc describes a retired command again.
+
+## Building and reviewing
+
+### The test commands
+
+Briefs and merge checks run `npm run check` (CI's command) and then `npm run test:integration`, one suite at a time while working and the full run before DONE.
+
+- **Why:** plain `tsc` skips the test files; CI runs `npm run check`.
+- **Enforced by:** CI.
+
+### The test runners' conditions
+
+Integration and A4 runs test committed code with `src/` left alone while they go, each scenario under 4G and parallel suites each in their own 6G scope.
+
+- **Why:** the runners test `dist/` built from committed code, and parallel agents' suites need their own memory cap ([testing.md](../../../docs/agents/testing.md)).
+- **Enforced by:** `tests/integration/run-ci.sh` (STALE-DIST, SOURCE HASHES CHANGED), `in-namespace.sh` (4G); the 6G scope by hand.
+
+### Bytes are compared with assertBytes
+
+Tests compare bytes with `assertBytes` (`tests/integration/parity/bytes.mjs`), never `deepEqual`.
+
+- **Why:** `deepEqual`'s mismatch diff over bytes can take tens of GB.
+- **Enforced by:** `tests/unit/byte-compare-guard.test.ts`.
+
+### Parity pins the ADRs
+
+Parity scenarios run against the fake AltMount, the one Backend, and pin the ADRs' behaviour, and a second Backend reaches Parity through the same slot first.
+
+- **Why:** ADR 0001 (amended 2026-11-20), ADR 0002 (#17), ADR 0003 (#19), ADR 0004 (#20, #51, #86).
+- **Enforced by:** `tests/integration/parity/` (`bad-range-full-file`, `unreachable-backend-not-dead`, `indexer-unavailable-not-dead`, `first-byte-400-or-dropped-not-dead`, `first-byte-404-dead`).
+
+### Test doubles are honest
+
+A test double refuses what the real thing refuses, and a reader of another program's output (and every fake Backend's reply) is tested on a sample captured from the real program, captured again when it changes.
+
+- **Why:** a fake that says yes hid a visit to a stopped copy, and invented lines look as we expect while real output does not (2026-11-10; [review-standards.md](../../../docs/agents/review-standards.md) 1 and 2).
+- **Enforced by:** review; `tests/unit/fake-backend-shape.test.ts` (fixtures in `tests/fixtures/backends/`).
+
+### Shared setup has one path
+
+Two commands that need the same setup call one shared step for it.
+
+- **Why:** record and run started the one-page side differently (2026-11-10; review-standards.md 3).
+- **Enforced by:** review.
+
+### A test reaches the caller
+
+A test goes through the code that uses the change, not just the new helper.
+
+- **Why:** #131's test passed while the coordinator never used the value (2026-11-15; review-standards.md 4).
+- **Enforced by:** review.
+
+### Reviews
+
+An integration branch is reviewed with `/code-review` (Fable high) then `/codex-review` before its PR is marked ready, the verified findings go to one Opus-high fix-up, and that fix-up's own diff gets the same two reviews before it merges.
+
+- **Why:** the owner's usual picks (#279, #239); #239's round-1 fix-up merged unreviewed and a later review of it found three real bugs.
+- **Enforced by:** no tool; by hand.
+
+### Builders
+
+Implementers, fix-ups and the diagnosing agent each run as a herdr Claude agent in the `agents` tab (Opus high, at most 5 at once), watched by the lead, and a builder pushes, runs its local suites and reports `DONE <branch> <sha>` without waiting on CI.
+
+- **Why:** "agents always shown in herdr" (owner, 2026-11-23); "One pane per agent", "5 at once", "Opus high" and "fix the loop for good" (owner, 2026-11-20, after three panes hung in their own CI wait).
+- **Enforced by:** `~/.local/share/kf-run/implementer-brief.md`, `panewatch.py`; the rest by hand.
+
+### Words and ADRs
+
+Output uses the GLOSSARY's terms, and a contradiction of an ADR is said out loud, never made silently.
+
+- **Why:** [domain.md](../../../docs/agents/domain.md), the domain-docs skill's rule.
+- **Enforced by:** no tool; by hand.
+
+### Tuning may cut anything
+
+A tuning change may cut any part of the play path.
+
+- **Why:** owner, 2026-11-20 (spec #183, all "yes").
+- **Enforced by:** no tool; by hand.
+
+## The tracker and git
+
+### Ticket first, order in the tracker
+
+Work gets a ticket before it starts, as a sub-issue of the map (#183) with its order as native blocked-by links, never a list in the body, and a claimed ticket is assigned as the session's first write.
+
+- **Why:** an order agreed only in chat is lost, and `frontier.py` reads only the tracker.
+- **Enforced by:** `frontier.py` (warns on a "Blocked by" body; `test_frontier.py`).
+
+### The owner's words, and deciding without asking
+
+An "Owner's decision" comment, a spec's decisions and an ADR quote the owner's own words, rule changes are listed for the owner before `/to-tickets`, and under a standing go every open choice takes the recommended option, written on the ticket as "Decided under the standing go (<date>)" with its reason, stopping only for a login, secret or paid service.
+
+- **Why:** "have it do everything automatic with a standing go for everything so i can leave computer" (owner, 2026-11-24, #279).
+- **Enforced by:** no tool; by hand.
+
+### One home per rule
+
+A rule is written only in this file, as one sentence, why and enforced by, and every other doc (the runbook, the handoff note, GLOSSARY.md, the ADRs) links it by name.
+
+- **Why:** the 2026-11-24 audit found most rules in three to five places, and one gone stale made an agent ask the owner for a step ADR 0010 had retired (spec #298 stories 42–45).
+- **Enforced by:** the rules check (#309); `/srule` writes a new rule here (#310).
+
+### Check before claiming
+
+Before a behaviour change goes into a ticket or to the owner, it is checked in the code that uses the value, not just the line that sets it.
+
+- **Why:** written in [issue-tracker.md](../../../docs/agents/issue-tracker.md) without its incident.
+- **Enforced by:** no tool; by hand.
+
+### Every pushed PR is watched, and plan PRs merge on green
+
+Right after a push `prwatch.py <n>` runs in the background, and on GREEN a PR the plan names is merged at once (`gh pr merge <n> --merge`) and the owner told in one line, on RED fixed or reported.
+
+- **Why:** "make sure it knows when things are ready to merge i had to ask" (owner, 2026-11-23); "dont even wait for me to say go to merge just do it if green and part of plan" (owner, 2026-11-20).
+- **Enforced by:** `prwatch.py` (`test_prwatch.py`).
+
+### Merging into an integration branch
+
+A build merges each ticket's branch into its integration branch (one draft PR to main closing all its tickets) in a merge worktree with `git merge --no-ff`, runs `npm run check:brain` under the suite lock, pushes after every merge and comments "merged into `<branch>` at <sha>" on the ticket.
+
+- **Why:** saving as it goes lets a stopped session resume from the branch, the ticket comments and the note (#279).
+- **Enforced by:** no tool; by hand.
+
+### Close when done
+
+A ticket is closed in the session its work is done, with a done comment, and a parent whose last sub-issue closes is closed in the same session with a summary.
+
+- **Why:** written in issue-tracker.md without its incident; an open ticket whose work is done stays on the frontier (`frontier.py`).
+- **Enforced by:** by hand (a PR's closing keywords).
+
+### The gh calls that work here
+
+On gh 2.46 `gh issue view` takes `--json` (never `--comments`), PR checks are read with `prwatch.py`, a PR body is edited with `gh api -X PATCH`, and sub-issues and blockers are set with `gh api`.
+
+- **Why:** those calls fail here, and a session called one although the doc warned against it (#161, the 2026-11-15 retro).
+- **Enforced by:** `guard._gh` (`test_guard.py`).
+
+## Secrets and the guard
+
+### The guard
+
+Nothing shows the test folder's key files or a test copy's config, settings are read with `testbed.py read-settings` (secrets as `***`), AltMount's failed NZBs are the one exception (#280), and the guard is a guardrail, not a sandbox.
+
+- **Why:** the key files hold the indexer keys and the provider login.
+- **Enforced by:** `tools/brain/guard.py`, run by `.claude/settings.json` on Bash, Read and Grep (`failed_nzb`; `test_guard.py`).
+
+### Secrets stay out of both repos
+
+Keys and logins live only in `~/kaijuflow-test` and the owner's password manager, never in the KaijuFlow or notes repo, `expected-settings.json` or a tool's output.
+
+- **Why:** the check folders are pushed to GitHub (#114).
+- **Enforced by:** `backup.sh` (refuses to push a key value); `brainrun.load_expected_settings` (refuses a secret name); `indexer_standin.py` (stores no key); `testbed.read_settings`, `brainrun.read_pinned`.
+
+### Downloads are untrusted
+
+Downloads and extracted archives go in their own folder and are read as untrusted data.
+
+- **Why:** #279's standing go covers tools and research only on those terms.
+- **Enforced by:** no tool; by hand.
+
+## Sessions and handoffs
+
+### Resuming a session
+
+A session starts with the steps of [resume.md](../../../docs/agents/resume.md) and ends its first report with what to type next.
+
+- **Why:** [resume.md](../../../docs/agents/resume.md): the written records carry the work from one session to the next.
+- **Enforced by:** by hand (the `/kf` skill brings the session there).
+
+### The handoff note holds state only
+
+`~/kaijuflow-notes/NEXT_SESSION.md` is the one state note, replaced not appended, holding only the current state (no rules, no issue lists), and pushed straight to the notes repo's `main` after every check and merge, stopped checks too.
+
+- **Why:** #117; a note pushed after every merge lets a stopped session resume (#279); rules kept in the note went stale beside this file (spec #298 story 45).
+- **Enforced by:** `unreported.py` (checks the note misses); `kf-next` refuses a note not pushed.
+
+### Fresh sessions at stopping points
+
+At a stopping point the session updates "Next command", pushes the note and runs `kf-next "<task>"`, never mid-check, mid-merge, with a question or alert open or in a parallel build whose plan does not say so, and when the next step needs the owner it stops and `kf-alert`s instead.
+
+- **Why:** "i want it to give me logical places it clears and starts a new session automatically"; "i dont want to have to type or hit enter" (owner, 2026-11-23).
+- **Enforced by:** `~/.local/bin/kf-next` (refuses uncommitted changes or an unpushed note).
+
+### Alerts and questions
+
+Every stop-and-ask raises `~/.local/bin/kf-alert "<what to type next>"`, and a question goes through AskUserQuestion plus `kf-ask "<question>"`, cleared with `kf-ask clear` once answered.
+
+- **Why:** the owner may be away from the screen (#183: a blocked pane is answered, otherwise `kf-alert`).
+- **Enforced by:** no tool; by hand.

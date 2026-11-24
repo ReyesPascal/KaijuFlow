@@ -20,4 +20,4 @@ Nothing else was seen, so nothing else passes.
 - More Sources than plain video only, fewer than "complete": a title whose Sources are all compressed or encrypted fails.
 - Archive inspection always runs on an archive, whatever the `archiveInspection` setting says; a header that cannot be read blocks the Source (a flaky provider costs Sources: the accepted price of "proven only").
 - Usenet Ultimate and AltMount direct are no longer compared with (spec #183), so this rule is KaijuFlow's alone with nothing to keep equal.
-- If AltMount changes what it streams, this list changes with it, from a run that shows it.
+- If AltMount changes what it streams, this list changes with it, from a run that shows it (since ADR 0010: a check or a drill-down that shows it).

@@ -864,7 +864,7 @@ NO_FIGURE = 'no figure'  # the run holds no visit to make the figure from (a sid
 
 
 def browse_pause_of(meta):
-    """The Browse pause of a run, in seconds (#205, rules.md "Browse pause"); a run from before #205 waited none."""
+    """The Browse pause of a run, in seconds (#205, rules.md "How a title is played"); a run from before #205 waited none."""
     return meta.get('browse_pause_s') or 0
 
 

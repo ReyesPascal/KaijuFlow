@@ -11,7 +11,7 @@ The replayed Recording, with its proof replays, top-ups, four cold and warm roun
 ## Consequences
 
 - When to run: a quick check after any change to playing, health checks or search, before it merges. A full check before work is called done, after an indexer is added, or when the owner asks.
-- A wrong title or episode played is a fail: the played file's name must match the title, its year and its episode. This tests Ultimate Text Search, Usenet Ultimate's name search, which KaijuFlow keeps (ADR 0006).
+- A wrong title or episode played is a fail: the played file's name must match the title, its year and its episode. This tests Ultimate Text Search, Usenet Ultimate's name search, which KaijuFlow keeps (ADR 0006; replaced by Kaiju Search in #285).
 - A check miss (a Source the health check passed that AltMount refused or that froze) is counted apart and becomes a ticket, even when a fallback saved the play. The report shows how many fallbacks happened and whether each ended in video, and says "fallbacks not tested this time" when none happened.
 - The full check's rare or older half includes, drawn by kind, a title with a foreign or alternate name, an anime, a title shared with a remake and a daily show. These are never chosen to fail. When one has no Source on any indexer it is nothing to play, not a fail, and another title of the same kind is drawn in its place.
 - Every fail becomes a ticket naming the title. Its fix is proven by drilling down on that title alone, played again live, not by a new full check.

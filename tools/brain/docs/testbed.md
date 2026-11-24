@@ -13,7 +13,7 @@ The test copies of the one setup and the 1338 test container. Back to the [runbo
 
 The test copies of the runs before #185 (`uu-test`, `nzbdav-test`, `altmount-addon-test`, with their config folders `uu/config/`, `nzbdav/config/`, `altmount-addon/config/`) stay stopped and on disk, kept, not deleted; since #187 neither `compose.test.yaml` nor `testbed.py` sets them up, resets or reads them. Their compose entries are in git history (`compose.test.yaml` before #187).
 
-All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). KaijuFlow's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59); the test copy of AltMount has its indexers switched off (#302). Settings per copy: `python3 -I tools/brain/testbed.py settings` (the hand-written `SETTINGS.md` was lost with the old machine). `python3 -I tools/brain/testbed.py apply <copy>` writes the expected settings into one copy, its config backed up into `backups/` first ([formats.md](formats.md#expected-settings-expected-settingsjson); the owner's go, [runbook](../RUNBOOK.md) step 2).
+All config folders, with secrets, are in `~/kaijuflow-test/` (`TEST_DIR`, outside the repo): `config/` (KaijuFlow), `altmount-kf/config/`, `templates/` (the clean state a reset restores) and `.env` (`JWT_SECRET`, `TEST_DIR`, `HOST_IP`: this machine's LAN IP). KaijuFlow's indexer URLs point at the stand-in (`http://host.docker.internal:1340/<slug>/api`, ticket #59); the test copy of AltMount has its indexers switched off (#302). Settings per copy: `python3 -I tools/brain/testbed.py settings` (the hand-written `SETTINGS.md` was lost with the old machine). `python3 -I tools/brain/testbed.py apply <copy>` writes the expected settings into one copy, its config backed up into `backups/` first ([formats.md](formats.md#expected-settings-expected-settingsjson); [runbook](../RUNBOOK.md#before-a-check) step 2).
 
 Recipe (from the repo root; `testbed.py` runs every Docker command through the test project and refuses any other service):
 
@@ -23,7 +23,7 @@ Recipe (from the repo root; `testbed.py` runs every Docker command through the t
 4. Emptiness check alone: `python3 -I tools/brain/testbed.py check [side ...]` (database tables, the Backend's own API/WebDAV listing, leftover files, cache files). Exit 1 and `NOT EMPTY: ...` lines otherwise.
 5. Stop when done: `python3 -I tools/brain/testbed.py stop`. `status` lists the test containers.
 
-Never start a stopped test copy of before #185 beside them (connection budget: [rules.md](rules.md#settings-table-and-preflight-spec-72-ticket-74), `testbed.py settings`). Tests of the scripts (no Docker): `npm run check:brain`, as CI runs them.
+Never start a stopped test copy of before #185 beside them ([Only the test copies](rules.md#only-the-test-copies), [Connection caps](rules.md#connection-caps); `testbed.py settings` prints the connection budget). Tests of the scripts (no Docker): `npm run check:brain`, as CI runs them.
 
 ## Indexers (#302)
 
@@ -34,6 +34,14 @@ One command adds, switches and removes an indexer in the test setup, so no file 
 - `indexer list`: each indexer's switches and limits.
 
 Every change backs each file it changes up into `<test dir>/backups/` first, writes nothing when the command cannot be done (one sentence says why), and prints only names, switches and limits, never a key or an address. Every change also switches the test copy of AltMount's indexers off (only its `stremio.indexers.newsnab[n].enabled` lines; once they are off, nothing more): KaijuFlow searches and AltMount only streams, and the preflight reads KaijuFlow's indexers only.
+
+**The key file's limits** (#302). Each indexer's daily limits sit in its entry of the key file, beside its address and key; `indexer add` writes them. Example: `tools/brain/indexers.example.json`.
+
+- `search_per_day`: the daily limit of search (API) requests. `download_per_day`: the daily limit of NZB downloads. Whole numbers.
+- `reset`: `"rolling-24h"` (the last 24 hours count: the safe reading when an indexer's reply carries no usage fields and its reset is not confirmed) or a clock time such as `"04:00"`, read in UTC unless the entry also has `"timezone": "Europe/Berlin"`.
+- The name is matched to the stand-in's indexer name and the copies' names ignoring case, spaces and dashes.
+
+**`python3 -I tools/brain/brainrun.py usage [--key-file PATH] [--test-dir DIR] [--runs-root DIR]`** prints, per indexer, `Used`, `Limit` and `Left` for searches and for downloads since the indexer's last reset, the numbers the preflight's allowance check holds a check to ([The allowance](rules.md#the-allowance)). Used counts the stand-in's real requests in the check folders (`RECORD` and `ERROR` lines of each `logs/standin.log`; `api` is a search, `nzb` a download) and the caps requests in `caps-pings.log`; the test copies are not counted, since they only talk to the stand-in. It also reads a live Usenet Ultimate copy's `stats.json` (`allowance.DEFAULT_LIVE_STATS`), which this machine does not have, so that part counts nothing here. Without a key file, or with no limits in it, it prints one sentence naming the `testbed.py indexer add` command. It never contacts an indexer. Code: `allowance.py`; tests: `test_allowance.py`.
 
 ## The 1338 test container
 

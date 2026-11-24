@@ -27,7 +27,7 @@ request is looked up or forwarded (for an indexer whose JSON answers the AltMoun
 <store>/<list>/<slug>/indexer.json (no key in it) and replay reads it from there, so replay needs no key file.
 Untouched answers (#185): every answer goes out as the indexer sent it (only its links point back at the stand-in), with
 no trimming and no filter: KaijuFlow's own filters choose, as at home. A search for a later page (offset > 0) is a request
-like any other: asked of the indexer when recording, stored, and replayed. tools/brain/docs/rules.md, "What a run is".
+like any other: asked of the indexer when recording, stored, and replayed. tools/brain/archive/rules-retired.md, "What a run is".
 """
 import argparse, signal, base64, hashlib, html, http.server, json, os, re, sys, threading, time, urllib.error, urllib.request
 from urllib.parse import urlparse, parse_qsl, quote

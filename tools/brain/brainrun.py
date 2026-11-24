@@ -66,7 +66,7 @@ ALL_TESTBED = ['altmount-kf', 'kaijuflow']  # the test copies a check resets: th
 # every side's containers: KaijuFlow's, with the [KF-STEP] lines, and its AltMount's, whose log holds the imports
 KF_CONTAINER, ALTMOUNT_CONTAINER = br.CLIENT_CONTAINER, 'altmount-kf-test'
 GRACE_S = 5
-BROWSE_PAUSE_S = 5  # the Browse pause of every run (#205): a viewer reading the page between the list and the play
+BROWSE_PAUSE_S = 5  # the Browse pause of every check (#205): a viewer reading the page between the list and the play
 EXIT_INTERRUPTED = 130  # a check: stopped by Ctrl-C or SIGTERM (130 is the shell's own code for Ctrl-C)
 
 

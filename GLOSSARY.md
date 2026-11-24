@@ -119,7 +119,7 @@ The sides that are played together, title by title in turn, through every round,
 _Avoid_: batch, phase (cold or warm is the phase)
 
 **Browse pause**:
-The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("Browse pause").
+The fixed wait in a check between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("How a title is played").
 _Avoid_: think time, settle (the settle is the pause after a play)
 
 **CPU probe**:
@@ -135,11 +135,11 @@ The first Source in a side's list for a title. Two top picks are the same Source
 _Avoid_: first result, winner
 
 **Fail**:
-A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md` ("Real-use checks" for a check: it passes on zero fails).
+A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md` ("What is a fail"; a check passes on zero fails, "The verdict and the report").
 _Avoid_: miss (a miss is a request the Recording cannot answer), error
 
 **Nothing to play**:
-A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
+A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail. The rule is in `tools/brain/docs/rules.md` ("What is reported but is not a fail").
 _Avoid_: no results (search may have found Sources that are all dead), fail (when nothing could play)
 
 **Real-use check**:
@@ -147,7 +147,7 @@ A check that plays the way a viewer watches: new titles each time, the live inde
 _Avoid_: speed test, tuning test (both replay a Recording), soak test
 
 **Quick check**:
-A real-use check of 5 new titles, cold, ended as soon as each video starts: a fast look at how a change does. Run with `brainrun.py check --quick`; its rules are in `tools/brain/docs/rules.md` ("Real-use checks").
+A real-use check of 5 new titles, cold, ended as soon as each video starts: a fast look at how a change does. Run with `brainrun.py check --quick`; its rules are in `tools/brain/docs/rules.md` ("Checks and verdicts").
 _Avoid_: smoke test, short run (a short run replays a Recording)
 
 **Full check**:
@@ -159,11 +159,11 @@ Playing one failed title again, live, after a fix, to prove the fix: a single ti
 _Avoid_: rerun, tuning test
 
 **Check miss**:
-A Source the health check passed that the Backend then refused, or whose video froze: the check was wrong even when a fallback saved the play. It is counted apart, and each one becomes a ticket. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
+A Source the health check passed that the Backend then refused, or whose video froze: the check was wrong even when a fallback saved the play. It is counted apart, and each one becomes a ticket. The rule is in `tools/brain/docs/rules.md` ("What is reported but is not a fail").
 _Avoid_: fail (when a fallback played), false positive
 
 **Slow play**:
-A play whose video arrives, but more than 60 s after the press, when a viewer would have given up. It is not a fail; it is counted and named apart, as the plays to speed up. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
+A play whose video arrives, but more than 60 s after the press, when a viewer would have given up. It is not a fail; it is counted and named apart, as the plays to speed up. The rule is in `tools/brain/docs/rules.md` ("What is reported but is not a fail").
 _Avoid_: fail (video arrived), timeout
 
 **Next-episode play**:
@@ -171,7 +171,7 @@ A play of a TV episode whose Source KaijuFlow already prepared for an earlier ep
 _Avoid_: warm start (a warm start is the same Source and episode again), binge play
 
 **Previous run** (retired by ADR 0010):
-The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its warm title to video, its fallbacks and their extra seconds against the previous run's, which never change the verdict. A run that was stopped or is short is not judged. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
+The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its warm title to video, its fallbacks and their extra seconds against the previous run's, which never change the verdict. A run that was stopped or is short is not judged. The rule is archived in `tools/brain/archive/rules-retired.md` ("Judged against the previous run").
 _Avoid_: baseline (the baseline is one run; the previous run moves on with every run), last run (it may be on another recording)
 
 **Title to video**:

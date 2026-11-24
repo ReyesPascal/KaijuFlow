@@ -83,7 +83,7 @@ class CheckPageTest(unittest.TestCase):
             self.assertIn(words, html)
         for retired_word in ('Recording', 'Round', 'baseline', 'previous run', 'warm'):
             self.assertNotIn(retired_word, html)
-        self.assertNotIn('Hunting Season', html)  # totals only: a title that played is not listed (rules.md, "The report")
+        self.assertNotIn('Hunting Season', html)  # totals only: a title that played is not listed (rules.md, "The verdict and the report")
 
     def test_every_check_given_has_a_row_newest_first_with_its_verdict(self):
         older = check_folder(self.root, '2026-11-20T090000Z-quick-check', started='2026-11-20T09:00:00.000Z', verdict='pass',

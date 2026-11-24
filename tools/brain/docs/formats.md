@@ -4,7 +4,7 @@ What the files and lines look like: expected settings, the title draw and its le
 
 ## Expected settings (`expected-settings.json`)
 
-The settings every test copy is expected to have are in `tools/brain/expected-settings.json`; the preflight compares each copy with it ([rules.md](rules.md#expected-settings-109)). Change the standard there and in the test copies together.
+The settings every test copy is expected to have are in `tools/brain/expected-settings.json`; the preflight compares each copy with it ([The expected settings](rules.md#the-expected-settings)). Change the standard there and in the test copies together.
 
 ```json
 {"about": "...",
@@ -78,7 +78,7 @@ A drawn title counts as played. The ledger is written before the title list, so 
 
 ## Check folder
 
-A real-use check (`brainrun.py check --quick`, #270; rules: [Real-use checks](rules.md#real-use-checks-270-spec-268-adr-0010)) writes a folder in the runs root, named `<start>-quick-check` (`--name` names another), and one INDEX.md row: result `pass`, `FAIL`, `NULL` (the cap rule) or `stopped`, the headline as the report's first line. It holds:
+A real-use check (`brainrun.py check --quick`, #270; rules: [Checks and verdicts](rules.md#checks-and-verdicts)) writes a folder in the runs root, named `<start>-quick-check` (`--name` names another), and one INDEX.md row: result `pass`, `FAIL`, `NULL` (the cap rule) or `stopped`, the headline as the report's first line. It holds:
 
 - `report.md`: the verdict and the fails first, then slow plays, check misses, fallbacks, nothing to play, the typical title to video and the indexer table (`quickcheck.indexer_rows`, #304), then a ticket text per fail and check miss.
 - `titles.json`: the drawn titles, `[type, id, label, kind, date]` ([the draw](#the-title-draw-and-the-ledger-drawpy)).
@@ -156,7 +156,7 @@ A **comeback** is a failure that proves an entry that was `proved fixed`. The ch
 
 ## Drill-down
 
-What a Drill-down (#272, spec #279; `tools/brain/drill.py`, rules: [The drill-down](rules.md#real-use-checks-270-spec-268-adr-0010)) keeps. Its folder is a [check folder](#check-folder) named `<start>-drill-down`, `kind` `drill-down`, its one play's [evidence folder](#evidence-folder) kept however it went, and its report the quick check's (`# Drill-down <start>`) with a **Drill-down** section after Diagnosis: one line per suspected entry, `- <id>: proved fixed: <why>.`, `- <id>: reopened: <why>.` or `- <id>: not marked <what it would be>: <why>.`. Its `diagnosis.json` summary holds `drill`:
+What a Drill-down (#272, spec #279; `tools/brain/drill.py`, rules: [A fix is proved by a drill-down](rules.md#a-fix-is-proved-by-a-drill-down)) keeps. Its folder is a [check folder](#check-folder) named `<start>-drill-down`, `kind` `drill-down`, its one play's [evidence folder](#evidence-folder) kept however it went, and its report the quick check's (`# Drill-down <start>`) with a **Drill-down** section after Diagnosis: one line per suspected entry, `- <id>: proved fixed: <why>.`, `- <id>: reopened: <why>.` or `- <id>: not marked <what it would be>: <why>.`. Its `diagnosis.json` summary holds `drill`:
 
 | Field | Meaning |
 |---|---|

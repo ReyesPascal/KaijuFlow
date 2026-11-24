@@ -6,7 +6,7 @@
     nulls_between(run, prev)  the null runs that lie between a run and its previous run
     missed_since(root, recording, when)  the preflight's own question: did the last run on a Recording since its top-up miss?
 
-The rules are in docs/rules.md ("Judged against the previous run", "Preflight"). A run folder is described in
+The rules are archived in archive/rules-retired.md ("Judged against the previous run"). A run folder is described in
 docs/formats.md.
 """
 import json
@@ -78,7 +78,7 @@ def _comparable(meta, recording):
 
 
 def previous(run):
-    """The run a run is judged against (GLOSSARY "Previous run", rules.md "Judged against the previous run"): the newest
+    """The run a run is judged against (GLOSSARY "Previous run", archive/rules-retired.md "Judged against the previous run"): the newest
     earlier finished run in the same runs root on the same Recording, not archived, not short and not marked never
     compared with, as load() reads it. None when there is none or the run names no Recording (a run from before #186).
     `run` needs its 'dir' and 'recording'; its own meta.json need not be written yet."""

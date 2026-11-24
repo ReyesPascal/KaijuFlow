@@ -4,7 +4,7 @@ A quick check (`brainrun.py check --quick`) plays 5 new titles, live, one cold p
 and stops at the first video. This module holds what it decides from what it saw, with no I/O of its own, so the tests
 can feed it any visit: whether a play is a fail (no video, or the wrong title or episode), a slow play, nothing to play,
 which Sources were check misses and fallbacks, the verdict (pass on zero fails) and report.md with a ready-to-file
-ticket text for each fail and check miss. The rules: tools/brain/docs/rules.md, "Real-use checks".
+ticket text for each fail and check miss. The rules: tools/brain/docs/rules.md, "Checks and verdicts".
 """
 import os
 import re
@@ -529,13 +529,13 @@ def ticket_texts(check, outcomes):
                         f"{where}: pressing Best on **{o['label']}** (`{tid}`, {kind}) failed: {o['why']}.\n\n"
                         f"Release played: {o['release'] or 'none'}. Sources in the list: {o['sources']}; checked: "
                         f"{checked_text(o)}.\n\n"
-                        'A fail is no video, or the wrong title or episode (tools/brain/docs/rules.md, "Real-use checks"). '
+                        'A fail is no video, or the wrong title or episode (tools/brain/docs/rules.md, "What is a fail"). '
                         'The fix is proven by a drill-down on this title.'))
         for m in o['check_misses']:
             out.append((f"Check miss: {m['release']}",
                         f"{where}: the health check passed **{m['release']}** for {o['label']} (`{tid}`), and AltMount then "
                         f"refused it: {m['reason'] or 'no reason given'}. The play {'still came, after a fallback' if o['video'] else 'gave no video'}.\n\n"
-                        'A check miss counts even when a fallback saved the play (tools/brain/docs/rules.md, "Real-use checks"). '
+                        'A check miss counts even when a fallback saved the play (tools/brain/docs/rules.md, "What is reported but is not a fail"). '
                         'The fix is proven by a drill-down on this title.'))
     return out
 
