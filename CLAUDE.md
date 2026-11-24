@@ -18,6 +18,10 @@ Default labels: needs-triage, needs-info, ready-for-agent, ready-for-human, wont
 
 Component map: `docs/kaijuflow/A3_STATIC_ARCHITECTURE.md` (read the Backend slot row before touching stream preparation). Local test commands: `package.json` scripts; gotchas (commit first, memory caps, byte checks) in `docs/agents/testing.md`.
 
+### Rules
+
+Every standing rule is in `tools/brain/docs/rules.md`. A new standing decision of the owner's goes there with `/srule`, never in the handoff note, a memory or a ticket.
+
 ### Review standards
 
 Four written rules for reviewing tests, shared setup and call sites, and the review a fix-up gets before it merges: `docs/agents/review-standards.md`.
