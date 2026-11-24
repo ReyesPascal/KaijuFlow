@@ -78,16 +78,27 @@ export interface ConfigData {
   filters?: FilterConfig;
   movieFilters?: FilterConfig;
   tvFilters?: FilterConfig;
-  // The list-time check settings (enabled, mode, sample count, Smart/Fixed, hideBlocked,
-  // maxConnections, healthCheckIndexers) were deleted in #191; an old config loses them at startup.
   healthChecks?: {
+    enabled: boolean;
+    mode?: 'full' | 'quick';           // Legacy — migrated to archiveInspection + sampleCount
+    archiveInspection?: boolean;
+    sampleCount?: 3 | 7;
     providers: UsenetProvider[];
+    nzbsToInspect: number;
+    inspectionMethod?: 'fixed' | 'smart';
+    smartBatchSize?: number;
+    smartAdditionalRuns?: number;
+    smartMinHealthy?: number;
+    autoQueueMode: 'off' | 'top' | 'all';
+    hideBlocked: boolean;
+    healthCheckIndexers?: Record<string, boolean>;
     // Legacy single-provider fields (auto-migrated to providers array)
     usenetHost?: string;
     usenetPort?: number;
     useTLS?: boolean;
     usenetUsername?: string;
     usenetPassword?: string;
+    maxConnections?: number;
     maxTotalConnections?: number;
     verifyTlsCertificates?: boolean;
   };
@@ -99,6 +110,9 @@ export interface ConfigData {
     preferenceMode?: 'priority' | 'speed';
     archiveInspection?: boolean;
     sampleCount?: 3 | 7;
+    maxAttempts?: number;
+    desiredBackups?: number;
+    backupProcessingLimit?: number;
     priorityMoviesTimeoutSeconds?: number;
     priorityTvTimeoutSeconds?: number;
     prioritySeasonPackTimeoutSeconds?: number;
@@ -112,8 +126,6 @@ export interface ConfigData {
   // row and merges case-variant indexer rows. Bumps once on update; never
   // runs again.
   staleIndexerStatsCleanupVersion?: number;
-  /** The one-time move to the Head start's whenToResolve has run (#206, headStartMigration.ts). */
-  headStartMigrated?: boolean;
 }
 
 // Load config from file or create default
@@ -136,10 +148,9 @@ function loadConfigFile(): ConfigData {
   };
 }
 
-// Save config to file (atomic: write to .tmp, then rename). The .tmp name is per process: the unit test files run in
-// parallel processes on one config file, and a shared name let one process rename another's .tmp away (ENOENT, #258).
+// Save config to file (atomic: write to .tmp, then rename)
 export function saveConfigFile(data: ConfigData): void {
-  const tmpFile = `${CONFIG_FILE}.${process.pid}.tmp`;
+  const tmpFile = CONFIG_FILE + '.tmp';
   try {
     fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmpFile, CONFIG_FILE);
@@ -182,12 +193,13 @@ const ENV_OVERRIDES: readonly string[] = [
   'PROXY_MODE', 'PROXY_URL',
   'INCLUDE_TIMEOUTS_AS_DEAD_NZBS', 'FILTER_DEAD_NZBS',
   'ENABLE_REMAKE_DETECTION', 'ALLOW_MULTI_EPISODE_FILES', 'URL_DEDUP', 'ABSOLUTE_EPISODE_FALLBACK', 'PARALLEL_ALTERNATE_TITLE_SEARCH',
-  'HEALTH_CHECK_NNTP_HOST', 'HEALTH_CHECK_NNTP_PORT',
+  'HEALTH_CHECK_ENABLED', 'HEALTH_CHECK_NNTP_HOST', 'HEALTH_CHECK_NNTP_PORT',
   'HEALTH_CHECK_NNTP_TLS', 'HEALTH_CHECK_NNTP_USER', 'HEALTH_CHECK_NNTP_PASS',
   'ZYCLOPS_ENDPOINT',
   'ULTIMATE_FALLBACK_ENABLED', 'ULTIMATE_FALLBACK_CANDIDATE_COUNT', 'ULTIMATE_FALLBACK_PREFERENCE_MODE',
   'ULTIMATE_FALLBACK_SAMPLE_COUNT',
   'ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', 'ULTIMATE_FALLBACK_USER_PICK_FALLBACK',
+  'ULTIMATE_FALLBACK_MAX_ATTEMPTS', 'ULTIMATE_FALLBACK_DESIRED_BACKUPS', 'ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT',
   'ULTIMATE_FALLBACK_PRIORITY_MOVIES_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_TV_TIMEOUT', 'ULTIMATE_FALLBACK_PRIORITY_SEASON_PACK_TIMEOUT',
   'ULTIMATE_FALLBACK_SPEED_MOVIES_TIMEOUT', 'ULTIMATE_FALLBACK_SPEED_TV_TIMEOUT', 'ULTIMATE_FALLBACK_SPEED_SEASON_PACK_TIMEOUT',
 ] as const;

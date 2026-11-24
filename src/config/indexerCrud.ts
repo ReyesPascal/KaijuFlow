@@ -10,19 +10,22 @@ import { configData, saveConfigFile } from './schema.js';
 
 /**
  * Enforce Zyclops mutual exclusion for a single indexer:
- * force enabled + disable proxy.
+ * force enabled + disable proxy and health checks.
  * Called from settingsUpdater on every save to guard against settings
- * changes that would re-enable proxy for Zyclops indexers.
+ * changes that would re-enable proxy/health checks for Zyclops indexers.
  *
  * Does NOT create a preZyclopsState snapshot — that is handled by
  * updateIndexer when Zyclops is first enabled.
  */
 export function enforceZyclopsEnabled(idx: UsenetIndexer, label?: string): void {
   if (!idx.zyclops?.enabled) return;
-  console.log(`🤖 Zyclops mutual exclusion${label ? ` (${label})` : ''}: forcing enabled + disabling proxy for ${idx.name}`);
+  console.log(`🤖 Zyclops mutual exclusion${label ? ` (${label})` : ''}: forcing enabled + disabling proxy/health checks for ${idx.name}`);
   idx.enabled = true;
   if (!configData.proxyIndexers) configData.proxyIndexers = {};
   configData.proxyIndexers[idx.name] = false;
+  if (configData.healthChecks?.healthCheckIndexers) {
+    configData.healthChecks.healthCheckIndexers[idx.name] = false;
+  }
 }
 
 export function getIndexers(): UsenetIndexer[] {
@@ -83,11 +86,15 @@ export function updateIndexer(name: string, updates: Partial<UsenetIndexer>): Us
     const snapshot = updated.zyclops?.preZyclopsState;
     const restoredEnabled = snapshot?.enabled ?? false;
     const restoredProxy = snapshot?.proxy ?? false;
+    const restoredHealthCheck = snapshot?.healthCheck ?? false;
     const logFn = snapshot ? console.log : console.warn;
-    logFn(`🤖 Zyclops disabled for ${updated.name}: restoring state (enabled=${restoredEnabled}, proxy=${restoredProxy}${snapshot ? '' : ' [defaults — no snapshot]'})`);
+    logFn(`🤖 Zyclops disabled for ${updated.name}: restoring state (enabled=${restoredEnabled}, proxy=${restoredProxy}, healthCheck=${restoredHealthCheck}${snapshot ? '' : ' [defaults — no snapshot]'})`);
     updated.enabled = restoredEnabled;
     if (!configData.proxyIndexers) configData.proxyIndexers = {};
     configData.proxyIndexers[updated.name] = restoredProxy;
+    if (configData.healthChecks?.healthCheckIndexers) {
+      configData.healthChecks.healthCheckIndexers[updated.name] = restoredHealthCheck;
+    }
     // Clear consumed snapshot so stale values can't be reused on a future disable
     if (updated.zyclops) delete updated.zyclops.preZyclopsState;
   }
@@ -105,8 +112,9 @@ export function deleteIndexer(name: string): void {
 
   configData.indexers.splice(index, 1);
 
-  // Clean up the orphaned proxy entry for the deleted indexer
+  // Clean up orphaned proxy/healthCheck entries for the deleted indexer
   if (configData.proxyIndexers) delete configData.proxyIndexers[name];
+  if (configData.healthChecks?.healthCheckIndexers) delete configData.healthChecks.healthCheckIndexers[name];
 
   saveConfigFile(configData);
 }

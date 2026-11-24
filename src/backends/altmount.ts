@@ -241,21 +241,13 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
     },
 
     async prepare(source, opts = {}) {
-      const { logPrefix = '', timeoutMs = 0, onJob, stopChecks, stop } = opts;
-      const isCancelled = () => opts.isCancelled?.() === true || stop?.aborted === true;
+      const { logPrefix = '', timeoutMs = 0, onJob, isCancelled } = opts;
       if (!settings.apiKey) throw configError('API key');
       const apiKey = settings.apiKey;
       // KaijuFlow grabs the NZB itself (proxy exit-IP check, validation, grab
       // tracking) through the shared step, and uploads it.
-      let grabbed: Awaited<ReturnType<typeof grabSourceNzb>>;
-      try {
-        grabbed = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix, stopChecks, stop });
-      } catch (err) {
-        if (isCancelled()) throw new PrepareCancelledError();
-        throw err;
-      }
-      if (isCancelled()) throw new PrepareCancelledError();
-      const { nzb, remainingMs } = grabbed;
+      const { nzb, remainingMs } = await grabSourceNzb(source, { budgetMs: timeoutMs, logPrefix });
+      if (isCancelled?.()) throw new PrepareCancelledError();
       // The setting is the ceiling; a shorter attempt budget from the caller wins.
       const settingSec = Math.max(1, settings.prepareTimeoutSec ?? 300);
       const waitSec = remainingMs > 0 ? Math.min(settingSec, Math.max(1, Math.ceil(remainingMs / 1000))) : settingSec;
@@ -283,7 +275,7 @@ export function createAltmountBackend(settings: AltmountSettings): Backend {
           // Unreachable AltMount: not the Source's fault, so not a Source failure.
           throw new Error(`AltMount is not reachable (${(err as Error).message})`);
         }
-        if (isCancelled()) {
+        if (isCancelled?.()) {
           await res.body?.cancel().catch(() => {});
           throw new PrepareCancelledError();
         }

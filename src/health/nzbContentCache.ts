@@ -2,7 +2,7 @@
  * NZB Content Cache
  *
  * Caches raw NZB XML content downloaded during health checks so that
- * the prepare (`grabNzb`) can reuse it without re-downloading from the indexer.
+ * auto-queue to the Backend can reuse it without re-downloading from the indexer.
  * This saves an API grab on indexers that count downloads.
  */
 

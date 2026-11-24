@@ -6,24 +6,20 @@
  */
 
 import { Request, Response as ExpressResponse } from 'express';
-import { config as globalConfig } from '../config/index.js';
+import { config as globalConfig, getTvAllowMultiEpisode } from '../config/index.js';
 import { pipeline } from 'stream';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
-import { getOrCreateStream, isPreparing, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, type PlaySource } from './streamCache.js';
-import { recall, keyOf } from './sourceMemory.js';
-import { logPlayed, logPlayFailed } from '../utils/stepTiming.js';
+import { findReadyStream, getOrCreateStream, getCacheKey, getDeadCacheKey, getStreamCache, isDeadNzb, isDeadNzbByUrl, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken } from './streamCache.js';
 import { getFallbackGroup } from './fallbackManager.js';
-import { getDeliveryLog, WebDav404Error, isUltimateFallbackActive } from './utils.js';
-import { episodeOf, episodeForTile, playContextOfTile, type PlayContext } from './playContext.js';
-import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, walkFoundNothing, type UfBackupStream } from './ultimateFallback.js';
+import { getDeliveryLog, WebDav404Error, buildEpisodePattern, buildDateEpisodePattern, isUltimateFallbackActive } from './utils.js';
+import { getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, ultimateFallbackOptions, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
-import { encodeTileEnvelope, parseTilePayload } from './redirectHelpers.js';
-import { serveVideo, type InlineProxy } from './delivery.js';
-import { keepAlive } from './keepAlive.js';
+import { encodeTileEnvelope, incrementRedirectCounter, parseTilePayload } from './redirectHelpers.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
+import { formatBytes } from '../parsers/metadataParsers.js';
 import { resolveBaseUrl } from '../utils/urlHelpers.js';
 import type { StreamData, FallbackCandidate } from './types.js';
 
@@ -31,7 +27,10 @@ const pipelineAsync = promisify(pipeline);
 
 // Register prepareStream into the cache to break the circular import
 // (streamCache needs to call prepareStream, but importing it directly would create a cycle)
-setPrepareFn(prepareStream);
+setPrepareFn(
+  (nzbUrl, title, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp) =>
+    prepareStream(nzbUrl, title, episodePattern, contentType, episodesInSeason, isSeasonPack, logPrefix, indexerName, searchExitIp)
+);
 
 // ============================================================================
 // Streaming Log Throttle
@@ -43,26 +42,26 @@ setPrepareFn(prepareStream);
 
 const STREAM_LOG_INTERVAL_MS = 30_000;   // 30 seconds
 const STREAM_LOG_STATE_TTL_MS = 3_600_000; // 1 hour — evict stale entries to prevent unbounded growth
+const STREMIO_TIMEOUT_MS = 60_000;       // Stremio's built-in HTTP timeout
+const STREMIO_SAFETY_MARGIN_MS = 5_000;  // Safety buffer when deciding whether to self-redirect
+const MAX_SELF_REDIRECTS = Number(process.env.PLAY_MAX_SELF_REDIRECTS) || 500; // Safety cap on self-redirects — supports large fallback chains without infinite loops
+const EXO_PLAYER_BUDGET_MS = 8_000;      // Max blocking time per post-redirect request (keeps ExoPlayer alive on Android)
 // KaijuFlow (AUDIT.md finding 5): on a fresh play request, stop waiting for the
 // first source after this long and try the next one. The first source is NOT
 // cancelled or marked dead: it keeps preparing in the stream cache, so it is
 // ready next time. Only applies when Ultimate Fallback gives a next candidate.
 // PTP 1.0.2.1 gives up on a source at ~42 s (30 s soft + 12 s hard), so 25 s
 // leaves room for the backup. 0 disables.
-// The one exception to "the next Source is prepared only when the one being
-// played fails" (#192, owner's decision on #192, 2026-11-20: keep it): a first
-// Source still loading after 25 s gets the next one beside it, and whichever is
-// ready first plays.
 const FIRST_SOURCE_SWITCH_MS = (() => {
   const raw = process.env.PLAY_FIRST_SOURCE_SWITCH_MS;
   const n = raw === undefined || raw === '' ? NaN : Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : 25_000;
 })();
 const DEDUP_CACHE_TTL_MS = 600_000;      // 10 min — covers a typical play session's seeks/probes without library-check overhead; eviction mid-session self-heals via the broken-path marker + live videoPathExists gate
-const LOBBY_LOG_THROTTLE_MS = 15_000; // Suppress repeat "Lobby: serving" lines for one video within this window (matches /stream hit throttle)
-// Self-redirects (keepAlive.ts) carry inside the `t` envelope:
-//   rc — redirect count: how many self-redirects have occurred (prevents infinite loops)
-//   ci — candidate index: which fallback candidate to resume at (avoids restarting from 0)
+const LOBBY_CACHED_LOG_THROTTLE_MS = 15_000; // Suppress repeat "cached resolve served" lines within this window (matches /stream hit throttle)
+// Self-redirect query params (internal, appended to stream URL during 302 redirects):
+//   _rc — redirect count: how many self-redirects have occurred (prevents infinite loops)
+//   _ci — candidate index: which fallback candidate to resume at (avoids restarting from 0)
 
 interface StreamLogState {
   requests: number;
@@ -74,7 +73,6 @@ interface StreamLogState {
 
 const streamLogState = new Map<string, StreamLogState>();
 const deadSkipLoggedGroups = new Map<string, number>(); // key → timestamp for TTL cleanup
-const lobbyServeLogged = new Map<string, number>(); // videoPath → when the lobby last said it serves it
 
 // Delivery log lives in utils.ts to avoid circular dep between streamCache and streamHandler.
 const lastDeliveryLog = getDeliveryLog();
@@ -124,9 +122,6 @@ function shouldLogStreamRequest(title: string, event: 'request' | 'disconnect'):
     for (const [key, ts] of deadSkipLoggedGroups) {
       if (now - ts > STREAM_LOG_STATE_TTL_MS) deadSkipLoggedGroups.delete(key);
     }
-    for (const [key, ts] of lobbyServeLogged) {
-      if (now - ts > STREAM_LOG_STATE_TTL_MS) lobbyServeLogged.delete(key);
-    }
     return false;
   }
 
@@ -155,8 +150,7 @@ function isClientDisconnect(error: unknown): boolean {
 // short-circuit seeks in inline-proxy mode so they skip library check.
 // Completely outside the cache pipeline — doesn't interfere with library checks.
 
-// It holds the video, not the Delivery method: every request is served with the method as it is now (#248).
-interface CachedDelivery { streamData: StreamData; timestamp: number; played: FallbackCandidate }
+interface CachedDelivery { streamData: StreamData; streamingMethod: 'pipe' | 'proxy' | 'direct'; timestamp: number }
 const recentDeliveries = new Map<string, CachedDelivery>();
 
 function cleanupRecentDeliveries(): void {
@@ -166,27 +160,9 @@ function cleanupRecentDeliveries(): void {
   }
 }
 
-/** Entries (address and `t` payload) whose `played` line went out in the last 15 s: one line per press, not per Range
- *  probe or seek. Each list's entries have their own payload, so every press from a new list writes its line. */
-const playedLogged = new Set<string>();
-const PLAYED_LOG_TTL_MS = 15_000;
-
-/** The press's `played` step line (#242): this Source's video is served now. */
-function logPlayedOnce(req: Request, source: { title: string; indexerName?: string }): void {
-  const entry = `${req.params.filename ?? '-'}::${typeof req.query.t === 'string' ? req.query.t : ''}::${source.title}`;
-  if (playedLogged.has(entry)) return;
-  playedLogged.add(entry);
-  setTimeout(() => playedLogged.delete(entry), PLAYED_LOG_TTL_MS).unref?.();
-  logPlayed(source.title, source.indexerName);
-}
-
-/** The lobby's line for a press of Best it serves, once per video in LOBBY_LOG_THROTTLE_MS (range probes and seeks repeat it). */
-function logLobbyServe(sessionKey: string, videoPath: string): void {
-  const now = Date.now();
-  const last = lobbyServeLogged.get(videoPath);
-  if (last !== undefined && now - last < LOBBY_LOG_THROTTLE_MS) return;
-  lobbyServeLogged.set(videoPath, now);
-  console.log(last === undefined ? `👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}` : `👑 Lobby: cached resolve served (sk=${sessionKey})`);
+/** Per-attempt budget in ms. Returns 0 (no limit) — UF uses its own per-mode timeouts. */
+function getAttemptBudgetMs(_contentType?: string, _isSeasonPack?: boolean): number {
+  return 0;
 }
 
 // ============================================================================
@@ -200,13 +176,19 @@ function logLobbyServe(sessionKey: string, videoPath: string): void {
  * 2. Hand the Source to the Backend and wait for its video
  * 3. Probe the first byte
  */
-export async function prepareStream(playSource: PlaySource, play?: PlayContext, logPrefix = ''): Promise<StreamData> {
-  const { nzbUrl, title, isSeasonPack, indexerName, searchExitIp } = playSource;
-  const contentType = play?.type || undefined;
-  // The Backend is sent the file pattern, which for a daily show also finds the file named by its aired date.
-  const episodePattern = episodeOf(play).filePattern;
+export async function prepareStream(
+  nzbUrl: string,
+  title: string,
+  episodePattern?: string,
+  contentType?: string,
+  episodesInSeason?: number,
+  isSeasonPack?: boolean,
+  logPrefix = '',
+  indexerName?: string,
+  searchExitIp?: string,
+): Promise<StreamData> {
   const backend = getActiveBackend();
-  const source: BackendSource = { nzbUrl, title, contentType, episodePattern, episodesInSeason: play?.episodesInSeason, isSeasonPack, indexerName, searchExitIp };
+  const source: BackendSource = { nzbUrl, title, contentType, episodePattern, episodesInSeason, isSeasonPack, indexerName, searchExitIp };
   const budgetStart = Date.now();
 
   console.log(`\n${logPrefix}\u{1F3AC} Preparing stream (${backend.label}): ${title}${episodePattern ? ` (selecting ${episodePattern})` : ''} [${contentType || 'unknown'}] \u23F1\uFE0F no limit`);
@@ -226,9 +208,9 @@ export async function prepareStream(playSource: PlaySource, play?: PlayContext, 
     }
   }
 
-  // Reuse what the Backend already made for the Source (the Source memory) when it is still there.
+  // Reuse what the Backend already made for the Source (ready cache) when it is still there.
   // The probe is the freshness check here (stillPrepared would send the same request).
-  const { ready } = recall(playSource, play);
+  const ready = findReadyStream(nzbUrl, title, episodePattern);
   if (ready && !isVideoPathBroken(ready.videoPath)) {
     try {
       await backend.probe(ready, { logPrefix, title, source: indexerName });
@@ -240,13 +222,14 @@ export async function prepareStream(playSource: PlaySource, play?: PlayContext, 
     }
   }
 
-  // Steps 1-3: hand the Source to the Backend and wait for its video, with no time limit of KaijuFlow's
-  // (AltMount's prepare timeout is the limit; keep-alive answers the player meanwhile).
+  // Steps 1-3: hand the Source to the Backend and wait for its video.
+  // timeoutMs 0 = no limit (the attempt budget is 0 today); with a budget, the Backend gets what is left.
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
-  // It is the only health check since #191, so it runs whatever the fallback setting.
-  await requireHealthySource(source, logPrefix);
+  if (isUltimateFallbackActive()) await requireHealthySource(source, logPrefix);
 
-  const video = await backend.prepare(source, { logPrefix });
+  const budgetMs = getAttemptBudgetMs(contentType, isSeasonPack);
+  const remainingMs = budgetMs > 0 ? Math.max(1000, budgetMs - (Date.now() - budgetStart)) : 0;
+  const video = await backend.prepare(source, { logPrefix, timeoutMs: remainingMs });
 
   // Step 4: Verify the video is actually servable (first byte).
   try {
@@ -336,9 +319,14 @@ async function sendFailureVideo(req: Request, res: ExpressResponse): Promise<voi
 // Express Handler
 // ============================================================================
 
-/** Key for Stremio request dedup: the Backend, and the Source as the play asks for it (the Source memory's key). */
-function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }, play?: PlayContext): string {
-  return `${backend.id}|${keyOf(candidate, play)}`;
+/** Key for Stremio request dedup: Backend + Source + episode pattern. */
+function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }, pattern?: string): string {
+  return `${backend.id}|` + getCacheKey(candidate.nzbUrl, candidate.title) + (pattern ? `:${pattern}` : '');
+}
+
+/** Delivery method for the first response of a Stream: the streaming-method setting. */
+function deliveryMethod(): 'pipe' | 'proxy' | 'direct' {
+  return globalConfig.playDeliveryMethod ?? 'proxy';
 }
 
 /**
@@ -349,7 +337,7 @@ function dedupKey(backend: Backend, candidate: { nzbUrl: string; title: string }
 export async function handleStream(
   req: Request,
   res: ExpressResponse,
-  proxyFn?: InlineProxy,
+  proxyFn?: (req: Request, res: ExpressResponse, videoPath: string, usePipe: boolean) => Promise<void>
 ): Promise<void> {
   const backend = getActiveBackend();
   // Express returns string[] for repeated query keys (`?t=a&t=b`). Take the
@@ -371,10 +359,11 @@ export async function handleStream(
   let indexerName: string;
   let fallbackGroupId: string | undefined;
   let contentType: string | undefined;
-  // What this play is for (#246): the play context the list made, from its fallback group, or what the tile carries.
-  let play: PlayContext | undefined;
+  let seasonParam: string | undefined;
+  let episodeParam: string | undefined;
   let tPackSessionKey: string | undefined;
   let tPackSp: string | undefined;
+  let tPackEpcount: string | undefined;
   let tPackUserPick = false;
   let tPackRc: number | undefined;
   let tPackCi: number | undefined;
@@ -395,8 +384,6 @@ export async function handleStream(
     nzbUrl = '';
     title = '';
     indexerName = '';
-    play = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.context : undefined;
-    contentType = play?.type;
   } else {
     // Regular result tile. fbg+idx points into the in-memory fallback group;
     // url/title/indexer ride along as fallbacks for when the group has been
@@ -406,10 +393,12 @@ export async function handleStream(
     nzbUrl = cand?.nzbUrl ?? payload.url ?? '';
     title = cand?.title ?? payload.title ?? '';
     indexerName = cand?.indexerName ?? payload.indexer ?? '';
-    play = group?.context ?? playContextOfTile(payload);
-    contentType = group?.context.type ?? payload.ty;
+    contentType = group?.type ?? payload.ty;
     tPackSearchExitIp = cand?.searchExitIp ?? payload.ip;
+    seasonParam = payload.season !== undefined ? String(payload.season) : undefined;
+    episodeParam = payload.episode !== undefined ? String(payload.episode) : undefined;
     tPackSp = payload.seasonpack === 1 ? '1' : undefined;
+    tPackEpcount = payload.epcount !== undefined ? String(payload.epcount) : undefined;
     tPackUserPick = true;
   }
   const userPick = tPackUserPick;
@@ -425,9 +414,26 @@ export async function handleStream(
 
   const streamStartTime = Date.now();
 
-  // The episode this play is for (e.g. "S02E05"), and for a daily show the file named by its aired date: the
-  // file picker in a season pack matches either.
+  // Build episode pattern for season pack file selection (e.g. "S02E05").
+  // When the tile envelope carries an aired-date (daily/talk shows), append
+  // a date-pattern alternation so the file picker matches either SxxExx or
+  // YYYY.MM.DD-named files inside the pack. Restricted to a single show's
+  // pack so the cross-show false-positive risk that gates the library scan's
+  // two-pass approach doesn't apply here.
+  let cachePattern: string | undefined;
+  let filePattern: string | undefined;
+  const epcountParam = tPackEpcount ?? (req.query.epcount as string | undefined);
+  const episodesInSeason = epcountParam ? parseInt(epcountParam, 10) : undefined;
   const isSeasonPackRequest = (tPackSp ?? req.query.sp) === '1';
+  if (seasonParam && episodeParam) {
+    cachePattern = buildEpisodePattern(
+      parseInt(seasonParam, 10),
+      parseInt(episodeParam, 10),
+      getTvAllowMultiEpisode(globalConfig),
+    );
+    const datePattern = buildDateEpisodePattern(payload.aired);
+    filePattern = datePattern ? `(?:${cachePattern}|${datePattern})` : cachePattern;
+  }
 
   // Build the list of candidates to try (primary first, then fallbacks).
   // Skip the initial candidate when nzbUrl/title are empty (UF tile request case):
@@ -440,6 +446,7 @@ export async function handleStream(
   }
 
   const fallbackEnabled = isUltimateFallbackActive();
+  const maxFallbacksSetting = globalConfig.ultimateFallback?.maxAttempts ?? 0; // 0 = unlimited (try all)
 
   // Check whether this request should produce detailed logs.
   // During fallback processing, a single stream title may generate multiple
@@ -466,27 +473,45 @@ export async function handleStream(
         if (nzbUrl && title) candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp });
         candidates.push(...group.candidates);
       }
-      if (verbose) console.log(`🔄 Fallback group loaded: ${candidates.length} candidates`);
+      if (verbose) {
+        const totalToTry = maxFallbacksSetting === 0
+          ? candidates.length
+          : Math.min(candidates.length, 1 + maxFallbacksSetting);
+        console.log(`🔄 Fallback group loaded: ${candidates.length} candidates (trying up to ${totalToTry})`);
+      }
+
+      // If episode info wasn't in the request URL (individual episode stream),
+      // use the group's stored episode so season pack fallbacks select the right file.
+      if (!cachePattern && group.season && group.episode) {
+        const s = parseInt(group.season, 10).toString().padStart(2, '0');
+        const e = parseInt(group.episode, 10).toString().padStart(2, '0');
+        const allowMultiEp = getTvAllowMultiEpisode(globalConfig);
+        cachePattern = allowMultiEp
+          ? `S${s}(?:[. _-]?E\\d+|-\\d{1,2})*(?:[. _-]?E${e}|-${e})(?!\\d)`
+          : `S${s}[. _-]?E${e}(?!\\d|[. _-]?E\\d|-\\d)`;
+        // Group envelope does not carry aired, so file pattern matches cache pattern here.
+        filePattern = cachePattern;
+      }
     }
   }
 
-  // A failed list entry walks on through the whole list (#190; its attempts cap was deleted in #228).
-  const maxCandidates = fallbackEnabled ? candidates.length : 1;
+  const maxCandidates = !fallbackEnabled ? 1
+    : maxFallbacksSetting === 0 ? candidates.length
+    : Math.min(candidates.length, 1 + maxFallbacksSetting);
+  const streamCacheMap = getStreamCache();
   // rc/ci are read first from the in-`t` envelope (so they survive iOS handoff
   // truncation). safeNum guards against NaN leaking from a malformed in-`t`
   // value (parseTilePayload drops non-numbers, but defense-in-depth here).
   const safeNum = (n: number | undefined): number | undefined =>
     typeof n === 'number' && !Number.isNaN(n) && n >= 0 ? n : undefined;
   const redirectCount = safeNum(tPackRc) ?? 0;
-  // The time this request may keep the player waiting, and its self-redirect (#248).
-  const keep = keepAlive(req, redirectCount, streamStartTime);
   const candidateStart = maxCandidates > 0
     ? Math.min(Math.max(0, safeNum(tPackCi) ?? 0), maxCandidates - 1)
     : 0;
   if (redirectCount > 0 || candidateStart > 0) {
     console.log(`📦 Decoded rc=${redirectCount} ci=${candidateStart} from t-envelope`);
   }
-  // Evict expired entries once before the loop
+  // Evict expired entries once before the loop so isDeadNzb() trusts existence
   cleanupExpiredCache();
   cleanupRecentDeliveries();
 
@@ -499,7 +524,7 @@ export async function handleStream(
   const isFreshRequest = candidateStart === 0;
   if (isFreshRequest && candidates.length > 0 && !isUfTileRequest) {
     {
-      const key = dedupKey(backend, candidates[0], play);
+      const key = dedupKey(backend, candidates[0], cachePattern);
       const cached = recentDeliveries.get(key);
       if (cached
         && Date.now() - cached.timestamp < DEDUP_CACHE_TTL_MS
@@ -509,8 +534,34 @@ export async function handleStream(
         // no library check, no submission. If the file is gone we fall through
         // to a fresh candidate loop via the live videoPathExists gate above.
         if (verbose) console.log(`📦 Stream dedup hit (delivered ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
-        logPlayedOnce(req, cached.played);
-        await serveVideo(req, res, cached.streamData, proxyFn);
+        const fallbackOn = isUltimateFallbackActive();
+        const sizeSuffix = cached.streamData.videoSize ? ` (${formatBytes(cached.streamData.videoSize)})` : '';
+        // Dedup the per-mode delivery log on this videoPath so repeat probes
+        // don't spam the same line. lastDeliveryLog is shared with primary delivery.
+        const lastCached = lastDeliveryLog.get(cached.streamData.videoPath);
+        const shouldLogCachedDelivery = !lastCached || lastCached.mode !== cached.streamingMethod;
+        lastDeliveryLog.set(cached.streamData.videoPath, { mode: cached.streamingMethod, at: Date.now() });
+        if (cached.streamingMethod === 'direct') {
+          const directUrl = new URL(backend.directUrl(cached.streamData.videoPath));
+          const safePath = directUrl.pathname;
+          if (shouldLogCachedDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${sizeSuffix}`);
+          res.redirect(302, directUrl.href);
+        } else if (!fallbackOn && proxyFn) {
+          // Inline proxy — no redirect, matches primary delivery path. Runs
+          // another proxyVideoStream for this request; req.on('close') ensures
+          // cleanup if the client aborts.
+          const label = cached.streamingMethod === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
+          if (shouldLogCachedDelivery) console.log(`  ${label} streaming: ${cached.streamData.videoPath}${sizeSuffix}`);
+          await proxyFn(req, res, cached.streamData.videoPath, cached.streamingMethod !== 'proxy');
+        } else {
+          const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
+          proxyUrl.searchParams.set('path', cached.streamData.videoPath);
+          proxyUrl.searchParams.set('_fb', req.originalUrl);
+          if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
+          const label = cached.streamingMethod === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
+          if (shouldLogCachedDelivery) console.log(`  ${label} 302 streaming: ${cached.streamData.videoPath}${sizeSuffix}`);
+          res.redirect(302, proxyUrl.href);
+        }
         return;
       }
     }
@@ -520,62 +571,110 @@ export async function handleStream(
   // When Ultimate-Fallback is active and the user didn't explicitly pick a
   // stream tile (user_pick=1), await its session promise instead of starting
   // our own Backend submission. Self-redirect keeps ExoPlayer alive.
-  // Set when Best's Walk ended with no Source to play (GLOSSARY: Walk): the press then shows the failure video, it
-  // does not walk the list a second time (#228).
-  let walkFoundNoSource = false;
   if (!userPick && isUltimateFallbackActive() && sessionKey) {
-    // No session for this title (no Head start: off, stopped by a newer list request, or a player that only
-    // asks at play): Best starts here, so the await-flow below picks up the new session promise.
-    if (!getSessionPromise(sessionKey)) {
+    // On-tile-selection mode: UF didn't fire on search; trigger it here so
+    // the existing await-flow below picks up the new session promise.
+    if (
+      globalConfig.ultimateFallback?.whenToResolve === 'on-tile-selection'
+      && !getSessionPromise(sessionKey)
+    ) {
       const group = fallbackGroupId ? getFallbackGroup(fallbackGroupId) : undefined;
       if (!group?.candidates?.length) {
         console.log(`👑 UF tile click but no fallback group (sk=${sessionKey}, fbg=${fallbackGroupId}) — falling through`);
       } else {
         console.log(`👑 UF fired on tile click [${sessionKey}]`);
-        // Its Walk reads the list's play context, so it looks for the episode the Head start would have (#246).
-        ultimateFallbackFromCandidates(group.context, group.candidates, globalConfig.ultimateFallback!).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
+        const ur = globalConfig.ultimateFallback!;
+        const onTileCachePattern = (group.type === 'series' && group.season && group.episode)
+          ? buildEpisodePattern(parseInt(group.season, 10), parseInt(group.episode, 10), getTvAllowMultiEpisode(globalConfig))
+          : undefined;
+        // Group envelope does not carry aired, so file pattern matches cache pattern here.
+        const onTileFilePattern = onTileCachePattern;
+        ultimateFallbackFromCandidates(
+          sessionKey, group.candidates, ultimateFallbackOptions(ur),
+          onTileCachePattern, onTileFilePattern, group.type, group.episodesInSeason,
+        ).catch(err => console.error('❌ Ultimate-Fallback error (on-tile-selection):', err));
       }
     }
     const sessionPromise = getSessionPromise(sessionKey);
-    // This press waits on the session: a newer list request no longer stops it (#206).
-    claimSession(sessionKey);
     if (sessionPromise) {
-      try {
-        const waited = await keep.wait(sessionPromise);
-        if (!waited.done) {
-          // Still walking when this request's time is up: a self-redirect keeps the player waiting.
-          keep.redirect(res);
+      const elapsed = Date.now() - streamStartTime;
+      const remainingMs = STREMIO_TIMEOUT_MS - elapsed - STREMIO_SAFETY_MARGIN_MS;
+      if (remainingMs > 0 && redirectCount < MAX_SELF_REDIRECTS) {
+        try {
+          let stremioTimer: ReturnType<typeof setTimeout>;
+          const streamData = await Promise.race([
+            sessionPromise,
+            new Promise<never>((_, reject) => {
+              stremioTimer = setTimeout(
+                () => reject(Object.assign(new Error('lobby timeout'), { isLobbyTimeout: true })),
+                remainingMs,
+              );
+            }),
+          ]).finally(() => clearTimeout(stremioTimer!));
+
+          // Verify the cached primary still exists on the Backend before serving. The broken-path marker short-circuits
+          // when /v has just observed a 4xx/5xx (PROPFIND lies for evicted content
+          // whose directory entry persists). Falls through to UF backups / fresh
+          // resolution if either signal says the file is gone.
+          if (isVideoPathBroken(streamData.videoPath) || !await backend.stillPrepared(streamData.videoPath)) {
+            throw new Error('Primary path no longer available');
+          }
+
+          // Ultimate-Fallback resolved — deliver the stream
+          const lobbyFallbackOn = isUltimateFallbackActive();
+          const mode = deliveryMethod();
+          const lastLobby = lastDeliveryLog.get(streamData.videoPath);
+          const shouldLogLobby = !lastLobby || lastLobby.mode !== mode;
+          const nowTs = Date.now();
+          // Throttle the cached-resolve log so range probes and seek bursts
+          // don't emit one line per request; only relog after the window elapses.
+          const shouldLogCached = !shouldLogLobby
+            && (!lastLobby || (nowTs - lastLobby.at) >= LOBBY_CACHED_LOG_THROTTLE_MS);
+          if (shouldLogLobby || shouldLogCached) {
+            lastDeliveryLog.set(streamData.videoPath, { mode, at: nowTs });
+          } else {
+            // Keep mode current but don't push the throttle window forward
+            lastDeliveryLog.set(streamData.videoPath, { mode, at: lastLobby!.at });
+          }
+          if (shouldLogLobby) console.log(`👑 Lobby: serving Ultimate-Fallback result for ${sessionKey}`);
+          else if (shouldLogCached) console.log(`👑 Lobby: cached resolve served (sk=${sessionKey})`);
+          const lobbySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
+          if (mode !== 'direct') {
+            const inline = proxyFn && !lobbyFallbackOn;
+            const label = mode === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
+            if (shouldLogLobby) console.log(`  ${label}${inline ? '' : ' 302'} streaming: ${streamData.videoPath}${lobbySizeSuffix}`);
+            if (inline) {
+              await proxyFn!(req, res, streamData.videoPath, mode !== 'proxy');
+            } else {
+              const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
+              proxyUrl.searchParams.set('path', streamData.videoPath);
+              proxyUrl.searchParams.set('_fb', req.originalUrl);
+              if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
+              res.redirect(302, proxyUrl.href);
+            }
+          } else {
+            res.redirect(302, backend.directUrl(streamData.videoPath));
+          }
           return;
-        }
-        const streamData = waited.value;
-
-        // Verify the cached primary still exists on the Backend before serving. The broken-path marker short-circuits
-        // when /v has just observed a 4xx/5xx (PROPFIND lies for evicted content
-        // whose directory entry persists). Falls through to UF backups / fresh
-        // resolution if either signal says the file is gone.
-        if (isVideoPathBroken(streamData.videoPath) || !await backend.stillPrepared(streamData.videoPath)) {
-          throw new Error('Primary path no longer available');
-        }
-
-        // Ultimate-Fallback resolved — deliver the stream
-        logLobbyServe(sessionKey, streamData.videoPath);
-        if (streamData.sourceTitle) {
-          const fromGroup = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.candidates.find(c => c.title === streamData.sourceTitle) : undefined;
-          logPlayedOnce(req, { title: streamData.sourceTitle, indexerName: fromGroup?.indexerName });
-        }
-        await serveVideo(req, res, streamData, proxyFn);
-        return;
-      } catch (err) {
-        // Two reasons we land here:
-        //   1. Primary path went dead mid-session — the UF tile block below
-        //      iterates the session's vetted backups and serves the next one.
-        //   2. Session promise rejected (all candidates exhausted) — no
-        //      backups to fall back to; the single-attempt path below kicks in.
-        // The "primary path no longer available" message already logged the
-        // first case; only log here for the second.
-        walkFoundNoSource = walkFoundNothing(err);
-        if ((err as Error).message !== 'Primary path no longer available') {
-          console.log(`👑 Lobby: session ended without resolution — falling through to single attempt`);
+        } catch (err) {
+          if ((err as any).isLobbyTimeout) {
+            // Stremio timeout approaching — self-redirect to keep ExoPlayer alive.
+            // Site 1 of 6: rc carried inside the `t` envelope so it survives iOS handoff.
+            const redirectUrl = incrementRedirectCounter(req);
+            console.log(`👑 Lobby: self-redirect (${Math.round((Date.now() - streamStartTime) / 1000)}s elapsed, redirect ${redirectCount + 1})`);
+            res.redirect(302, redirectUrl.href);
+            return;
+          }
+          // Two reasons we land here:
+          //   1. Primary path went dead mid-session — the UF tile block below
+          //      iterates the session's vetted backups and serves the next one.
+          //   2. Session promise rejected (all candidates exhausted) — no
+          //      backups to fall back to; the single-attempt path below kicks in.
+          // The "primary path no longer available" message already logged the
+          // first case; only log here for the second.
+          if ((err as Error).message !== 'Primary path no longer available') {
+            console.log(`👑 Lobby: session ended without resolution — falling through to single attempt`);
+          }
         }
       }
     }
@@ -596,12 +695,19 @@ export async function handleStream(
     if (usable) {
       const idxTag = usable.candidateIndex !== undefined ? `#${usable.candidateIndex} ` : '';
       console.log(`👑 Ultimate-Fallback [${sessionKey}] Primary path no longer available — falling back to backup: ${idxTag}${usable.title} [${usable.indexerName}]`);
-      await serveVideo(req, res, usable, proxyFn);
-      return;
-    }
-    if (walkFoundNoSource) {
-      console.log(`👑 UF tile: Best's Walk found no Source to play (sk=${sessionKey}) — serving failure video`);
-      await sendFailureVideo(req, res);
+      const lobbyFallbackOn = isUltimateFallbackActive();
+      const mode = deliveryMethod();
+      if (mode === 'direct') {
+        res.redirect(302, backend.directUrl(usable.videoPath));
+      } else if (proxyFn && !lobbyFallbackOn) {
+        await proxyFn(req, res, usable.videoPath, mode !== 'proxy');
+      } else {
+        const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
+        proxyUrl.searchParams.set('path', usable.videoPath);
+        proxyUrl.searchParams.set('_fb', req.originalUrl);
+        if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
+        res.redirect(302, proxyUrl.href);
+      }
       return;
     }
     // Fall-through: after UF-vetted backups exhausted, redirect to the first
@@ -616,6 +722,9 @@ export async function handleStream(
     if (nextCandidate && groupForFallthrough) {
       const remaining = groupForFallthrough.candidates.filter(c => !triedUrls.has(c.nzbUrl)).length;
       const filename = encodeURIComponent(nextCandidate.title || 'stream');
+      const seasonNum = groupForFallthrough.season ? parseInt(groupForFallthrough.season, 10) : undefined;
+      const episodeNum = groupForFallthrough.episode ? parseInt(groupForFallthrough.episode, 10) : undefined;
+      const includeSeasonPack = nextCandidate.isSeasonPack && seasonNum != null && episodeNum != null && !Number.isNaN(seasonNum) && !Number.isNaN(episodeNum);
       const fallthroughT = encodeTileEnvelope({
         url: nextCandidate.nzbUrl,
         title: nextCandidate.title,
@@ -625,7 +734,12 @@ export async function handleStream(
         ...(contentType === 'movie' || contentType === 'series' ? { ty: contentType } : {}),
         ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
         ...(sessionKey ? { sk: sessionKey } : {}),
-        ...(nextCandidate.isSeasonPack ? episodeForTile(groupForFallthrough.context) : {}),
+        ...(includeSeasonPack ? {
+          season: seasonNum,
+          episode: episodeNum,
+          seasonpack: 1 as const,
+          ...(groupForFallthrough.episodesInSeason != null ? { epcount: groupForFallthrough.episodesInSeason } : {}),
+        } : {}),
       });
       const fallthroughUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/stream/${filename}?t=${fallthroughT}`);
       console.log(`👑 UF tile: ${ufBackups?.backupStreams?.length ?? 0} UF backup(s) exhausted — falling through to fallback group (${remaining} candidate(s) remaining)`);
@@ -681,31 +795,6 @@ export async function handleStream(
     for (let i = candidateStart; i < maxCandidates; i++) candidateOrder.push(i);
   }
 
-  /** Serve a Source's video, and remember the delivery for Stremio's next requests of the play (dedup). */
-  const deliver = async (candidate: FallbackCandidate, streamData: StreamData): Promise<void> => {
-    // A disconnected player got no video, so do not remember the delivery or say it played.
-    if (req.socket.destroyed) return;
-    // Cache delivery for Stremio request dedup (10 min TTL) — populated BEFORE
-    // delivery so concurrent probes from Stremio land on the dedup path instead
-    // of triggering another prep.
-    // Key on candidates[0] (the URL the client requested) so subsequent client
-    // requests for the same click hit dedup, even when fallback-chain walked
-    // past the click and resolved a later candidate.
-    const dedupCandidate = candidates[0] ?? candidate;
-    recentDeliveries.set(dedupKey(backend, dedupCandidate, play), { streamData, timestamp: Date.now(), played: candidate });
-    // Also key on the resolved candidate's URL so direct second-clicks of the
-    // resolved tile (different click URL) also dedup.
-    if (candidate !== dedupCandidate) {
-      recentDeliveries.set(dedupKey(backend, candidate, play), { streamData, timestamp: Date.now(), played: candidate });
-    }
-    logPlayedOnce(req, candidate);
-    await serveVideo(req, res, streamData, proxyFn);
-  };
-
-  // The first Source the first-Source switch left preparing (#192), to go back to if every later one fails.
-  let warming: number | undefined;
-  let circuitAborted = false;
-
   for (const i of candidateOrder) {
     // Stop processing if the client disconnected (user backed out)
     if (req.socket.destroyed) {
@@ -714,24 +803,37 @@ export async function handleStream(
     }
 
     const candidate = candidates[i];
+    const attemptBudgetMs = getAttemptBudgetMs(contentType, candidate.isSeasonPack);
 
     // Skip candidates already known to be dead.
-    if (recall(candidate, play).dead) {
-      if (logDeadSkips) console.log(`\u23ED\uFE0F Source memory (dead, skipped) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
+    const deadKey = getDeadCacheKey(candidate.nzbUrl, cachePattern);
+    if (isDeadNzb(deadKey) || isDeadNzbByUrl(candidate.nzbUrl)) {
+      if (logDeadSkips) console.log(`\u23ED\uFE0F NZB Database (skipping dead) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
       continue;
     }
 
     // Mark dead-skip logs as shown for this group so subsequent requests don't repeat
     if (logDeadSkips) deadSkipLoggedGroups.set(deadSkipKey, Date.now());
 
-    // This request's time is up before the next Source starts: start it, so it is warming while the
-    // player follows the self-redirect, which resumes at this Source (ci).
-    if (keep.timeUp() && !req.socket.destroyed) {
-      if (!isPreparing(candidate, play)) {
-        getOrCreateStream(candidate, play, { verbose }).catch(() => {});
+    // Self-redirect to reset Stremio's 60s timer before it expires.
+    // Pre-start the candidate so it's warming in cache during redirect round-trip.
+    if (i > 0 && !req.socket.destroyed && redirectCount < MAX_SELF_REDIRECTS) {
+      const elapsed = Date.now() - streamStartTime;
+      if (elapsed + attemptBudgetMs + STREMIO_SAFETY_MARGIN_MS > STREMIO_TIMEOUT_MS) {
+        const pendingKey = getCacheKey(candidate.nzbUrl, candidate.title) + (cachePattern ? `:${cachePattern}` : '');
+        if (!streamCacheMap.has(pendingKey) && !isDeadNzb(deadKey)) {
+          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp).catch(() => {});
+        }
+        // Site 2 of 6: rc and ci carried inside `t` so iOS handoff doesn't
+        // truncate them. Without ci, the next request would restart at
+        // candidate 0 instead of resuming at i.
+        const redirectUrl = incrementRedirectCounter(req, i);
+        if (verbose) {
+          console.log(`⏰ Self-redirect to reset Stremio timer (${Math.round(elapsed / 1000)}s elapsed, redirect ${redirectCount + 1}/${MAX_SELF_REDIRECTS}, resuming at candidate ${i + 1}/${maxCandidates})`);
+        }
+        res.redirect(302, redirectUrl.href);
+        return;
       }
-      keep.redirect(res, i);
-      return;
     }
 
     try {
@@ -739,43 +841,158 @@ export async function handleStream(
         console.log(`🔄 Trying backup [${i + 1}/${maxCandidates}]: ${candidate.title} [${candidate.indexerName}]`);
       }
 
-      // The first-Source switch (#192): on a play's first request, the first Source with a next one behind it
-      // (candidateOrder holds one entry when the user's mode doesn't walk on) is waited for up to
-      // FIRST_SOURCE_SWITCH_MS, then the next is tried; the first keeps preparing in the stream cache.
-      const switchAtMs = redirectCount === 0 && FIRST_SOURCE_SWITCH_MS > 0 && i === candidateOrder[0] && candidateOrder.length > 1
-        ? Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime))
-        : undefined;
-      const waited = await keep.wait(getOrCreateStream(candidate, play, { verbose }), switchAtMs);
-      if (!waited.done) {
-        if (waited.timeUp) {
-          // Still preparing when this request's time is up: a self-redirect resumes at this Source.
-          if (!req.socket.destroyed) keep.redirect(res, i);
-          return;
+      // On post-redirect requests, cap blocking time to the ExoPlayer budget so
+      // Stremio doesn't disconnect on Android while the candidate is processing.
+      let streamData: StreamData;
+      if (redirectCount > 0) {
+        const requestElapsed = Date.now() - streamStartTime;
+        const waitMs = Math.max(1000, EXO_PLAYER_BUDGET_MS - requestElapsed);
+        let exoTimerId: ReturnType<typeof setTimeout>;
+        streamData = await Promise.race([
+          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+            .finally(() => clearTimeout(exoTimerId)),
+          new Promise<never>((_, reject) => {
+            exoTimerId = setTimeout(() => reject(Object.assign(new Error('ExoPlayer safety timeout'), { isExoTimeout: true })), waitMs);
+          })
+        ]);
+      } else if (
+        FIRST_SOURCE_SWITCH_MS > 0
+        && i === candidateOrder[0]
+        && candidateOrder.length > 1
+        && req.query.auto !== 'true'
+      ) {
+        // KaijuFlow (finding 5): first source on a fresh request with a backup
+        // available. candidateOrder already honors userPickFallback (it holds a
+        // single entry when the user's mode doesn't walk to other sources). Wait up to FIRST_SOURCE_SWITCH_MS, then move on without
+        // cancelling it (getOrCreateStream keeps it warming in pendingCache).
+        const switchWaitMs = Math.max(0, FIRST_SOURCE_SWITCH_MS - (Date.now() - streamStartTime));
+        let switchTimerId: ReturnType<typeof setTimeout>;
+        streamData = await Promise.race([
+          getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+            .finally(() => clearTimeout(switchTimerId)),
+          new Promise<never>((_, reject) => {
+            switchTimerId = setTimeout(() => reject(Object.assign(new Error('First-source switch'), { isSourceSwitch: true })), switchWaitMs);
+          })
+        ]);
+      } else {
+        // On the initial request, race against the remaining Stremio window when
+        // the attempt budget would exceed it. If the stream isn't ready in time,
+        // self-redirect so the post-redirect ExoPlayer race takes over.
+        const elapsed = Date.now() - streamStartTime;
+        const stremioRemainingMs = STREMIO_TIMEOUT_MS - elapsed - STREMIO_SAFETY_MARGIN_MS;
+        if (attemptBudgetMs > stremioRemainingMs && stremioRemainingMs > 0 && !req.socket.destroyed) {
+          let stremioTimerId: ReturnType<typeof setTimeout>;
+          streamData = await Promise.race([
+            getOrCreateStream(candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp)
+              .finally(() => clearTimeout(stremioTimerId)),
+            new Promise<never>((_, reject) => {
+              stremioTimerId = setTimeout(() => reject(Object.assign(new Error('Stremio timeout redirect'), { isExoTimeout: true })), stremioRemainingMs);
+            })
+          ]);
+        } else {
+          streamData = await getOrCreateStream(
+            candidate.nzbUrl, candidate.title, cachePattern, filePattern, contentType, episodesInSeason, candidate.indexerName, candidate.size, verbose, candidate.isSeasonPack, '', candidate.searchExitIp
+          );
         }
-        // Not a failure: leave it warming, don't mark it dead, try the next.
-        console.log(`⏩ Still preparing after ${Math.round(FIRST_SOURCE_SWITCH_MS / 1000)}s, trying next source (kept warming) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
-        warming = i;
-        continue;
       }
-      const streamData = waited.value;
 
       if (i > 0) {
         console.log(`👑 Backup stream loaded [${i + 1}/${maxCandidates}]: ${candidate.title} [${candidate.indexerName}]`);
       }
 
-      await deliver(candidate, streamData);
+      // Check again after await — client may have disconnected while waiting
+      if (req.socket.destroyed) {
+        console.log(`🔌 Client disconnected — aborting redirect for: ${candidate.title}`);
+        return;
+      }
+
+      // Auto-queue: only pre-cache the stream, don't proxy the video
+      if (req.query.auto === 'true') {
+        if (verbose) console.log(`  ✅ Auto-queue cached: ${candidate.title}`);
+        res.json({ cached: true, videoPath: streamData.videoPath });
+        return;
+      }
+
+      // Decide delivery method: pipe/proxy (buffered) or direct redirect.
+      // When fallback is off, the initial-delivery mode still forces proxy for
+      // logging/dedup consistency; /v's proxyVideoStream independently reads
+      // config on each range request, so seeks honor the user's current method.
+      const fallbackOn = isUltimateFallbackActive();
+      const mode = deliveryMethod();
+      const last = lastDeliveryLog.get(streamData.videoPath);
+      const shouldLogDelivery = !last || last.mode !== mode;
+      lastDeliveryLog.set(streamData.videoPath, { mode, at: Date.now() });
+
+      // Cache delivery for Stremio request dedup (10 min TTL) — populated BEFORE
+      // delivery so concurrent probes from Stremio land on the dedup path instead
+      // of triggering another prep.
+      // Key on candidates[0] (the URL the client requested) so subsequent client
+      // requests for the same click hit dedup, even when fallback-chain walked
+      // past the click and resolved a later candidate.
+      const dedupCandidate = candidates[0] ?? candidate;
+      const key = dedupKey(backend, dedupCandidate, cachePattern);
+      recentDeliveries.set(key, { streamData, streamingMethod: mode, timestamp: Date.now() });
+      // Also key on the resolved candidate's URL so direct second-clicks of the
+      // resolved tile (different click URL) also dedup.
+      if (candidate !== dedupCandidate) {
+        const resolvedKey = dedupKey(backend, candidate, cachePattern);
+        recentDeliveries.set(resolvedKey, { streamData, streamingMethod: mode, timestamp: Date.now() });
+      }
+
+      const deliverySizeSuffix = streamData.videoSize ? ` (${formatBytes(streamData.videoSize)})` : '';
+      if (mode !== 'direct') {
+        const inline = !fallbackOn && proxyFn;
+        const label = mode === 'pipe' ? '🔗 Pipe' : '📡 Dual-Stage Proxy';
+        if (shouldLogDelivery) console.log(`  ${label}${inline ? '' : ' 302'} streaming: ${streamData.videoPath}${deliverySizeSuffix}`);
+        if (inline) {
+          // Inline proxy — no 302, broadest player compatibility. Subsequent seeks
+          // come back to handleStream but hit recentDeliveries (10 min TTL) and
+          // skip library check + submission.
+          await proxyFn!(req, res, streamData.videoPath, mode !== 'proxy');
+        } else {
+          // Redirect to /v endpoint which adds auth + buffering + transparent reconnect
+          const proxyUrl = new URL(`${resolveBaseUrl(req)}${req.baseUrl}/v`);
+          proxyUrl.searchParams.set('path', streamData.videoPath);
+          proxyUrl.searchParams.set('_fb', req.originalUrl);
+          if (req.query._norange === '1') proxyUrl.searchParams.set('_norange', '1');
+          res.redirect(302, proxyUrl.href);
+        }
+      } else {
+        // Direct: redirect to WebDAV URL with embedded credentials (desktop players)
+        const directUrl = new URL(backend.directUrl(streamData.videoPath));
+        const safePath = directUrl.pathname;
+        if (shouldLogDelivery) console.log(`  ⇗️ Direct passthrough: → ${directUrl.hostname}${safePath}${deliverySizeSuffix}`);
+        res.redirect(302, directUrl.href);
+      }
       return;
 
     } catch (error) {
+      // KaijuFlow (finding 5): first source still preparing after the switch
+      // window. Not a failure: leave it warming, don't mark it dead, try next.
+      if ((error as any).isSourceSwitch) {
+        console.log(`\u23E9 Still preparing after ${Math.round(FIRST_SOURCE_SWITCH_MS / 1000)}s, trying next source (kept warming) [${i + 1}/${maxCandidates}]: ${candidate.title}`);
+        continue;
+      }
       // Proxy circuit aborted (VPN IP changed / baseline unavailable / etc.) -
       // every remaining candidate in the local array carries the same stale
       // searchExitIp hash and would abort identically. Break the walk; the
       // natural fall-through serves the failure video.
       if (error instanceof ProxyCircuitAbortError) {
         console.error(`🔒 🚫 Proxy circuit aborted mid-stream, stopping candidate walk. ${error.message}`);
-        circuitAborted = true;
         break;
       }
+      // Stremio / ExoPlayer timeout — candidate is still processing in cache,
+      // self-redirect to keep the player alive while we wait
+      if ((error as any).isExoTimeout && redirectCount < MAX_SELF_REDIRECTS && !req.socket.destroyed) {
+        // Site 3 of 6: rc and ci carried inside `t` for iOS-safe redirect.
+        const redirectUrl = incrementRedirectCounter(req, i);
+        if (verbose) {
+          console.log(`\u23F1\uFE0F Timeout redirect (candidate still processing, rc=${redirectCount + 1}/${MAX_SELF_REDIRECTS}, resuming at ${i + 1}/${maxCandidates})`);
+        }
+        res.redirect(302, redirectUrl.href);
+        return;
+      }
+
       if (isClientDisconnect(error)) {
         shouldLogStreamRequest(candidate.title, 'disconnect');
         return;
@@ -786,9 +1003,8 @@ export async function handleStream(
         evictReadyByVideoPath((error as WebDav404Error).videoPath);
       }
 
-      const err = error as Error;
+      const err = error as Error & { isBadSource?: boolean };
       console.error(`\u274C Stream failed [${i + 1}/${maxCandidates}] ${candidate.title}: ${err.message}`);
-      logPlayFailed(candidate.title, candidate.indexerName, err);
 
       // User-pick failure: fall straight into the UF lobby instead of walking the candidate chain.
       // The user explicitly chose this NZB; when it fails, UF's pre-vetted pool is the fallback.
@@ -797,7 +1013,7 @@ export async function handleStream(
         && sessionKey
         && isUltimateFallbackActive()
         && userPickMode === 'uf-lobby'
-        && keep.canRedirect()
+        && redirectCount < MAX_SELF_REDIRECTS
         && !res.headersSent
       ) {
         // Site 4 of 6: build a fresh UF envelope so sk + fbg + rc all survive
@@ -815,31 +1031,6 @@ export async function handleStream(
     }
   }
 
-  // In walk-on mode, every Source after the first-Source switch failed while the clicked Source is still preparing
-  // (or became ready meanwhile): go back to it instead of the failure video. Wait for it in this request's time,
-  // else a self-redirect resumes at it. The UF-lobby order below keeps its redirect behavior.
-  if (userPick && userPickMode === 'fallback-chain' && (candidateStart > 0 || warming !== undefined)
-    && !circuitAborted && !res.headersSent && !req.socket.destroyed) {
-    const first = candidates[0];
-    const recalled = recall(first, play);
-    if (!recalled.dead && (isPreparing(first, play) || (recalled.ready && !isVideoPathBroken(recalled.ready.videoPath)))) {
-      console.log(`↩️ Every later Source failed: back to the first Source, still usable [1/${maxCandidates}]: ${first.title}`);
-      try {
-        const waited = await keep.wait(getOrCreateStream(first, play, { verbose }));
-        if (!waited.done) {
-          if (!req.socket.destroyed) keep.redirect(res, 0);
-          return;
-        }
-        await deliver(first, waited.value);
-        return;
-      } catch (error) {
-        if (isClientDisconnect(error)) return;
-        console.error(`❌ Stream failed [1/${maxCandidates}] ${first.title}: ${(error as Error).message}`);
-        logPlayFailed(first.title, first.indexerName, error);
-      }
-    }
-  }
-
   // User-pick loop exhausted without serving (e.g. the clicked NZB was dead-cached and
   // `continue`d past the catch-block's lobby redirect). Fall into the UF lobby as the
   // final fallback before the failure video. Only fires when userPickFallback='uf-lobby'.
@@ -848,7 +1039,7 @@ export async function handleStream(
     && sessionKey
     && isUltimateFallbackActive()
     && userPickMode === 'uf-lobby'
-    && keep.canRedirect()
+    && redirectCount < MAX_SELF_REDIRECTS
     && !res.headersSent
   ) {
     // Site 5 of 6: same fresh-envelope pattern as site 4.

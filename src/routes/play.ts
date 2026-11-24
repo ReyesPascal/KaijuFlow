@@ -53,7 +53,7 @@ export function createPlayStreamRoutes(deps: PlayDeps): Router {
   // Throttle the /stream entry log to the first hit per entry (its address and `t` payload) per 15 s:
   // Range probes and seek bursts otherwise spam the log during active playback. The payload is part of
   // the key because every Best press goes to /stream/ultimate-fallback, and each list's Best entry has its
-  // own payload, so each press has its own line (#190).
+  // own payload: the brain tools find a visit's played Source after this line (brainreport.played_source, #190).
   const loggedStreamHits = new Set<string>();
   const STREAM_HIT_LOG_TTL_MS = 15_000;
 

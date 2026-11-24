@@ -15,7 +15,7 @@
  * original NZB with a reason, and the Backend decides (ADR 0004).
  *
  * At most one Unscramble reads first articles at a time, process-wide, first
- * come first served (#119): several Sources can be prepared at once, and
+ * come first served (#119): auto-queue prepares several Sources at once, and
  * sharing the connection cap made each one slower than its time limit.
  */
 
@@ -29,15 +29,14 @@ import { readRar5VolumeNumber } from './rar5Parser.js';
 
 /** Why the NZB came back unchanged. */
 export type UnscrambleReason =
-  | 'not-scrambled'     // no Scrambled RAR set in the NZB, from names alone (no reads made; a 7z set too, #193)
+  | 'not-scrambled'     // no Scrambled RAR set in the NZB (no reads made)
   | 'no-provider'       // no enabled health-check provider
   | 'missing-article'   // a part's first article is on no provider
   | 'read-error'        // a first article couldn't be read (connection errors on every provider)
-  | 'not-rar5'          // a part isn't RAR5 (RAR4, a 7z set under a hash name, encrypted headers)
+  | 'not-rar5'          // a part isn't RAR5 (RAR4, 7z/other split, encrypted headers)
   | 'duplicate-volume'  // two parts claim the same volume number
   | 'volume-gap'        // the real volume numbers don't cover 0..N-1
-  | 'timeout'           // the time limit ran out first
-  | 'stopped';          // the caller stopped it (its Walk ended, GLOSSARY: Walk): reads cut off, connections closed
+  | 'timeout';          // the time limit ran out first
 
 export interface UnscrambleResult {
   /** NZB text to upload: Unscrambled when `changed`, else the original. */
@@ -62,8 +61,6 @@ export interface UnscrambleOptions {
    * comes back with reason `timeout` and nothing is read.
    */
   budgetMs?: number;
-  /** Stops the call when it aborts, in the wait for the turn or mid-read: the original comes back with reason `stopped`. */
-  stop?: AbortSignal;
 }
 
 interface Part {
@@ -84,14 +81,12 @@ interface ScrambledSet {
 type ReadFailure = 'missing-article' | 'read-error' | 'not-rar5';
 
 const NUMBER_NAMED = /^(.+)\.(\d{2,3})$/;
-/** A 7z set's parts (`<name>.7z.001` ...): named as 7z, not by numbers alone, so never read (#193). */
-const SEVEN_ZIP_BASE = /\.7z$/i;
 
 /**
  * Unscramble the NZB's Scrambled RAR set(s). Waits for its turn first;
  * `timeLimitMs` counts from the start of the turn, capped by what is left of
- * `opts.budgetMs`. On timeout or a stop (`opts.stop`) reads stop, connections
- * close and the original comes back.
+ * `opts.budgetMs`. On timeout reads stop, connections close and the original
+ * comes back.
  */
 export async function unscrambleNzb(
   nzb: string,
@@ -113,46 +108,31 @@ export async function unscrambleNzb(
   ];
   if (ordered.length === 0) return done({ nzb, changed: false, reason: 'no-provider', parts });
 
-  const { stop } = opts;
-  if (stop?.aborted) return done({ nzb, changed: false, reason: 'stopped', parts });
-  let onStop = () => {};
-  const stopped = new Promise<'stopped'>(resolve => { onStop = () => resolve('stopped'); });
-  stop?.addEventListener('abort', onStop, { once: true });
+  const asked = Date.now();
+  const release = await takeTurn(opts.budgetMs === undefined ? undefined : opts.budgetMs - (asked - started));
+  waitMs = Date.now() - asked;
+  if (!release) return done({ nzb, changed: false, reason: 'timeout', parts });
+  const limitMs = opts.budgetMs === undefined ? timeLimitMs : Math.min(timeLimitMs, opts.budgetMs - (Date.now() - started));
+  const reader = new FirstArticleReader(ordered, opts.connections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), Math.max(0, limitMs)); });
   try {
-    const asked = Date.now();
-    const turn = takeTurn(opts.budgetMs === undefined ? undefined : opts.budgetMs - (asked - started));
-    const release = await Promise.race([turn, stopped]);
-    waitMs = Date.now() - asked;
-    if (release === 'stopped') {
-      // The turn may still come: it is ended at once, so the next Unscramble is not kept waiting.
-      void turn.then(end => end?.());
-      return done({ nzb, changed: false, reason: 'stopped', parts });
+    // Each number-named group is decided on its own: a non-RAR split next to
+    // a Scrambled RAR set stays as it is, and the RAR set is still renamed.
+    const renames = new Map<Part, string>();
+    let firstReason: UnscrambleReason | undefined;
+    for (const set of sets) {
+      const outcome = await Promise.race([unscrambleSet(set, reader), timedOut]);
+      if (outcome === 'timeout') return done({ nzb, changed: false, reason: 'timeout', parts });
+      if (typeof outcome === 'string') firstReason ??= outcome;
+      else for (const [part, name] of outcome) renames.set(part, name);
     }
-    if (!release) return done({ nzb, changed: false, reason: 'timeout', parts });
-    const limitMs = opts.budgetMs === undefined ? timeLimitMs : Math.min(timeLimitMs, opts.budgetMs - (Date.now() - started));
-    const reader = new FirstArticleReader(ordered, opts.connections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
-    let timer: NodeJS.Timeout | undefined;
-    const timedOut = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), Math.max(0, limitMs)); });
-    try {
-      // Each number-named group is decided on its own: a non-RAR split next to
-      // a Scrambled RAR set stays as it is, and the RAR set is still renamed.
-      const renames = new Map<Part, string>();
-      let firstReason: UnscrambleReason | undefined;
-      for (const set of sets) {
-        const outcome = await Promise.race([unscrambleSet(set, reader), timedOut, stopped]);
-        if (outcome === 'timeout' || outcome === 'stopped') return done({ nzb, changed: false, reason: outcome, parts });
-        if (typeof outcome === 'string') firstReason ??= outcome;
-        else for (const [part, name] of outcome) renames.set(part, name);
-      }
-      if (renames.size === 0) return done({ nzb, changed: false, reason: firstReason, parts });
-      return done({ nzb: applyRenames(nzb, renames), changed: true, parts: renames.size });
-    } finally {
-      clearTimeout(timer);
-      reader.stop();
-      release();
-    }
+    if (renames.size === 0) return done({ nzb, changed: false, reason: firstReason, parts });
+    return done({ nzb: applyRenames(nzb, renames), changed: true, parts: renames.size });
   } finally {
-    stop?.removeEventListener('abort', onStop);
+    clearTimeout(timer);
+    reader.stop();
+    release();
   }
 }
 
@@ -206,7 +186,7 @@ async function unscrambleSet(set: ScrambledSet, reader: FirstArticleReader): Pro
   return new Map(set.parts.map((p, i) => [p, `${set.base}.part${String(volumes[i] + 1).padStart(width, '0')}.rar`]));
 }
 
-/** Number-named files grouped by base name (a 7z set's parts left out); groups of at least two parts. */
+/** Number-named files grouped by base name; groups of at least two parts. */
 function findScrambledSets(nzb: string): ScrambledSet[] {
   const groups = new Map<string, Part[]>();
   const fileRe = /<file\b[^>]*?\bsubject\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/file>/dg;
@@ -214,7 +194,7 @@ function findScrambledSets(nzb: string): ScrambledSet[] {
     const rawSubject = m[1];
     const name = extractFilename(xmlUnescape(rawSubject)).trim();
     const numbered = NUMBER_NAMED.exec(name);
-    if (!numbered || SEVEN_ZIP_BASE.test(numbered[1])) continue;
+    if (!numbered) continue;
     const first = firstSegment(m[2]);
     if (!first) continue;
     const [subjectStart, subjectEnd] = m.indices![1];

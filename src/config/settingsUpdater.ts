@@ -8,7 +8,6 @@
 import type { UsenetProvider, SearchConfig, AutoPlayConfig, SyncedIndexer, StreamDisplayConfig } from '../types.js';
 import { DEFAULT_INDEXER_TIMEOUT_SECONDS, SERIES_PACK_KEYWORDS } from '../types.js';
 import { configData, saveConfigFile } from './schema.js';
-import { dropDeletedSettings } from './deletedSettingsMigration.js';
 import { enforceZyclopsEnabled } from './indexerCrud.js';
 import { validateRulesBlock } from '../rules/importers.js';
 
@@ -100,9 +99,21 @@ export function updateSettings(settings: {
   autoPlay?: AutoPlayConfig;
   streamDisplayConfig?: StreamDisplayConfig;
   healthChecks?: {
+    enabled: boolean;
+    mode?: 'full' | 'quick';
+    archiveInspection?: boolean;
+    sampleCount?: 3 | 7;
     providers?: UsenetProvider[];
+    nzbsToInspect: number;
+    inspectionMethod?: 'fixed' | 'smart';
+    smartBatchSize?: number;
+    smartAdditionalRuns?: number;
+    maxConnections?: number;
     maxTotalConnections?: number;
     verifyTlsCertificates?: boolean;
+    autoQueueMode?: 'off' | 'top' | 'all';
+    hideBlocked: boolean;
+    healthCheckIndexers?: Record<string, boolean>;
   };
   ultimateFallback?: {
     enabled: boolean;
@@ -112,6 +123,9 @@ export function updateSettings(settings: {
     preferenceMode?: 'priority' | 'speed';
     archiveInspection?: boolean;
     sampleCount?: 3 | 7;
+    maxAttempts?: number;
+    desiredBackups?: number;
+    backupProcessingLimit?: number;
     priorityMoviesTimeoutSeconds?: number;
     priorityTvTimeoutSeconds?: number;
     prioritySeasonPackTimeoutSeconds?: number;
@@ -368,6 +382,7 @@ export function updateSettings(settings: {
     configData.healthChecks = {
       ...settings.healthChecks,
       providers: settings.healthChecks.providers ?? existingProviders,
+      autoQueueMode: settings.healthChecks.autoQueueMode ?? configData.healthChecks?.autoQueueMode ?? 'all',
     };
   }
   if (settings.streamDisplayConfig !== undefined) {
@@ -386,9 +401,6 @@ export function updateSettings(settings: {
     ufIndexersChanged =
       JSON.stringify(configData.ultimateFallback?.healthCheckIndexers ?? {}) !== prevHcIndexersJson;
   }
-
-  // A page loaded before a setting was deleted may still send it (the list-time checks, Auto-queue, backups): it is not saved.
-  dropDeletedSettings({ healthChecks: configData.healthChecks, ultimateFallback: configData.ultimateFallback });
 
   // Enforce minimum cacheTTL when auto play is enabled
   if ((configData.autoPlay?.enabled ?? true) && configData.cacheTTL < 9000) {

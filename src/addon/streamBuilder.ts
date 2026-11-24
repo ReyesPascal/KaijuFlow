@@ -17,10 +17,8 @@ import { parseQuality, parseCodec, parseSource, parseVisualTag, parseAudioTag, p
 import type { Stream, AutoPlayConfig } from '../types.js';
 import type { HealthCheckResult } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
-import { createFallbackGroup, fallbackGroupCount, isUltimateFallbackActive, type FallbackCandidate } from '../play/index.js';
-import { timeStepSync } from '../utils/stepTiming.js';
+import { createFallbackGroup, isUltimateFallbackActive, type FallbackCandidate } from '../play/index.js';
 import { encodeTileEnvelope, toContentType } from '../play/redirectHelpers.js';
-import { episodeForTile, type PlayContext } from '../play/playContext.js';
 import { buildStreamDisplay } from './streamDisplay.js';
 import { getSelfUrl } from '../utils/selfUrl.js';
 
@@ -34,7 +32,7 @@ function bestEntryDisplay(): { name: string; title: string } {
 
 
 /** Resolve the base URL for stream/proxy URLs — uses the request's origin when available,
- *  falls back to BASE_URL env or loopback (127.0.0.1) for background tasks (health checks). */
+ *  falls back to BASE_URL env or loopback (127.0.0.1) for background tasks (auto-queue, health checks). */
 function getBaseUrl(): string {
   return requestContext.getStore()?.baseUrl || process.env.BASE_URL || getSelfUrl(1337);
 }
@@ -47,9 +45,15 @@ function getPathPrefix(): string {
 export interface StreamBuildContext {
   allResults: any[];
   healthResults: Map<string, HealthCheckResult>;
-  /** What a play of this list is for (#246): stored on the fallback group, and its episode packed into a season
-   *  pack's tile envelope for when the group is gone. */
-  play: PlayContext;
+  type: string;
+  imdbId?: string;
+  season?: number;
+  episode?: number;
+  episodesInSeason?: number;
+  /** Aired date (YYYY-MM-DD) for daily/talk-show episodes. Packed into the
+   *  per-tile envelope so the stream handler can fall back to a date-pattern
+   *  match when SxxExx fails inside a season pack. */
+  episodeAired?: string;
   now: number;
   runtime?: number;
 }
@@ -64,13 +68,15 @@ export interface StreamBuildOutput {
  * Build Stremio Stream objects from processed search results.
  */
 export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
-  const { allResults, healthResults, play, now, runtime } = ctx;
-  const { type, season, episode, sessionKey } = play;
+  const { allResults, healthResults, type, imdbId, season, episode, episodesInSeason, episodeAired, now, runtime } = ctx;
   // Normalize once and pack into every NZB tile envelope so the stream handler
   // can resolve the Backend category (Movies vs TV) even when no in-memory
   // fallback group exists (Ultimate Fallback disabled, evicted, or post-restart).
   const ty = toContentType(type);
+  // sessionKey includes manifestKey so concurrent requests from different Stremio installations
+  // don't share UF session state (avoids cross-tenant state leaks on multi-user deployments).
   const streamManifestKey = requestContext.getStore()?.manifestKey || '';
+  const sessionKey = imdbId ? `${streamManifestKey}:${type}:${imdbId}:${season ?? ''}:${episode ?? ''}` : '';
 
   // Build auto-play / binge group settings
   const autoPlay: AutoPlayConfig = config.autoPlay || { enabled: true, method: 'firstFile' as const, attributes: ['resolution', 'quality', 'edition'] as ('resolution' | 'quality' | 'edition')[] };
@@ -101,10 +107,14 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
         return { nzbUrl, title: r.title, indexerName: r.indexerName, size: r.size, isSeasonPack: r.isSeasonPack || false, searchExitIp: r.searchExitIp };
       });
 
-    // One step line (#249): the group write saves every live group to disk, so it grows with the groups held.
-    const group = fallbackCandidates;
-    timeStepSync({ step: 'fallback_group', candidates: group.length }, () => createFallbackGroup(fallbackGroupId!, group, play),
-      () => ({ groups: fallbackGroupCount() }));
+    createFallbackGroup(
+      fallbackGroupId,
+      fallbackCandidates,
+      type,
+      season?.toString(),
+      episode?.toString(),
+      episodesInSeason,
+    );
     console.log(`🔄 Created fallback group ${fallbackGroupId} with ${fallbackCandidates.length} candidates`);
   }
 
@@ -223,11 +233,12 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
       const candidateIdx = fallbackCandidates
         ? fallbackCandidates.findIndex(c => c.nzbUrl === nzbProxyUrl && c.title === result.title)
         : -1;
+      const needsEpisodeCtx = result.isSeasonPack && season !== undefined && episode !== undefined;
       const tileT = encodeTileEnvelope({
         ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
         ...(candidateIdx >= 0 ? { idx: candidateIdx } : {}),
         ...(sessionKey ? { sk: sessionKey } : {}),
-        ...(result.isSeasonPack ? episodeForTile(play) : {}),
+        ...(needsEpisodeCtx ? { season, episode, seasonpack: 1 as const, ...(episodesInSeason ? { epcount: episodesInSeason } : {}), ...(episodeAired ? { aired: episodeAired } : {}) } : {}),
         ty,
         url: nzbProxyUrl,
         title: result.title,
@@ -279,11 +290,12 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
         ? fallbackCandidates.findIndex(c => c.nzbUrl === result.link && c.title === result.title)
         : -1;
       const base = `${getBaseUrl()}${getPathPrefix()}/${streamManifestKey}/play/stream/${encodeURIComponent(streamFilename || result.title || 'stream')}`;
+      const needsEpisodeCtx = result.isSeasonPack && season !== undefined && episode !== undefined;
       const tileT = encodeTileEnvelope({
         ...(fallbackGroupId ? { fbg: fallbackGroupId } : {}),
         ...(candidateIdx >= 0 ? { idx: candidateIdx } : {}),
         ...(sessionKey ? { sk: sessionKey } : {}),
-        ...(result.isSeasonPack ? episodeForTile(play) : {}),
+        ...(needsEpisodeCtx ? { season, episode, seasonpack: 1 as const, ...(episodesInSeason ? { epcount: episodesInSeason } : {}), ...(episodeAired ? { aired: episodeAired } : {}) } : {}),
         ty,
         url: result.link,
         title: result.title,

@@ -70,6 +70,7 @@ export interface ZyclopsIndexerConfig {
   preZyclopsState?: {                  // Snapshot of settings before Zyclops was enabled — restored on disable
     enabled: boolean;
     proxy: boolean;
+    healthCheck: boolean;
   };
 }
 
@@ -325,23 +326,38 @@ export interface UsenetProvider {
   type: 'pool' | 'backup';      // Pool = primary, Backup = fallback for missing articles
 }
 
-// Health check configuration for verifying NZB availability. The check runs when a
-// Source is played (Play-time check); the list-time Smart and Fixed settings were deleted in #191.
+// Health check configuration for verifying NZB availability
 export interface HealthCheckConfig {
+  enabled: boolean;              // Enable/disable health checking
+  mode?: 'full' | 'quick';      // Legacy — migrated to archiveInspection + sampleCount
+  archiveInspection: boolean;    // Download and inspect archive headers (encryption, nested archives, video content)
+  sampleCount: 3 | 7;           // Number of article segments to sample for availability
   providers: UsenetProvider[];   // Usenet providers for article checking
-  maxTotalConnections: number;   // Total Usenet connections health checks may hold at once, all checks and providers combined (finding 6)
+  nzbsToInspect: number;         // Number of top results to health check (used in 'fixed' mode)
+  inspectionMethod: 'fixed' | 'smart'; // Fixed count vs smart stop-on-healthy
+  smartBatchSize: number;        // NZBs per batch in smart mode (1-6; default 3)
+  smartAdditionalRuns: number;   // Additional batches if threshold not met (0-5; default 1)
+  smartMinHealthy: number;       // Healthy results required before smart mode stops (1-10; default 1)
+  maxConnections: number;        // Max concurrent health check workers
+  maxTotalConnections: number;   // Total Usenet connections health checks may hold at once, all workers and providers combined (finding 6)
+  autoQueueMode: 'off' | 'top' | 'all';  // Auto-queue mode: off, top verified result, or all verified results
+  hideBlocked: boolean;          // Filter out blocked NZBs from results
   verifyTlsCertificates: boolean; // Reject NNTP servers with invalid TLS certificates (finding 7; default on)
+  healthCheckIndexers?: Record<string, boolean>; // Per-indexer health check enable/disable
 }
 
 // Ultimate-Fallback: combines retry-on-failure with Health Checking for fastest resolution
 export interface UltimateFallbackConfig {
   enabled: boolean;
-  whenToResolve: 'on-results' | 'on-tile-selection';   // When to fire UF — on the list request (the Head start, default since #206) or on a press of Best
+  whenToResolve: 'on-results' | 'on-tile-selection';   // When to fire UF — on search results or on user tile click (default on-tile-selection)
   userPickFallback: 'uf-lobby' | 'fallback-chain';      // When a list entry fails — walk on down the list (default, #190) or fall into the Best entry
   candidateCount: number;              // Sources the Play-time check checks at once, top down (1-10, default 3)
   preferenceMode: 'priority' | 'speed';  // Picks the wait times below; Best hands over the first healthy Source in list order whatever it says (#190)
   archiveInspection: boolean;
   sampleCount: 3 | 7;
+  maxAttempts: number;                 // How many Sources a failed list entry walks through (0 = all, 1-20 = cap, default 0). Best has no cap (#190).
+  desiredBackups: number;              // Target backups post-primary (0 = no replacement pulls; free library/in-flight still cache. 1-10 = target count, default 0)
+  backupProcessingLimit: number;       // Max candidates to evaluate for backup (0 = all, 1-20 = limit, default 3)
   // Per-mode Backend prepare wait times (0-90s, 0 = wait forever). Active set picked by preferenceMode at runtime.
   priorityMoviesTimeoutSeconds: number;
   priorityTvTimeoutSeconds: number;
@@ -381,6 +397,7 @@ export interface SyncedIndexer {
   id: string;                       // Prowlarr numeric ID (as string) or NZBHydra indexer name
   name: string;                     // Display name from remote service
   enabledForSearch: boolean;        // Include in searches
+  enabledForHealthCheck: boolean;   // Include in health checks
   movieSearchMethod: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
   tvSearchMethod: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
   animeMovieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];

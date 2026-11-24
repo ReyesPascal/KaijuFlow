@@ -77,7 +77,7 @@ function isProxyEnabled(): boolean {
 /**
  * Check whether proxy is enabled for a specific indexer.
  * Two cases force-bypass the HTTP proxy at every layer (search, grab,
- * the Walk's grab, health-check):
+ * prefetch, health-check):
  *  - Zyclops-routed indexers: Zyclops IS the proxy for that indexer, so an
  *    HTTP proxy on top would create a double-tunnel and a search/grab IP
  *    mismatch the verifier can't reason about.
@@ -199,16 +199,9 @@ export async function testProxyConnection(proxyUrl?: string): Promise<{ connecte
 /**
  * Probe the live exit IP through the HTTP proxy (bypasses cache).
  */
-function probeLiveProxyIp(agent?: HttpsProxyAgent<string>, stop?: AbortSignal): Promise<string> {
+function probeLiveProxyIp(agent?: HttpsProxyAgent<string>): Promise<string> {
   const httpAgent = agent || getProxyAgent();
   return new Promise<string>((resolve) => {
-    let settled = false;
-    const finish = (ip: string) => {
-      if (settled) return;
-      settled = true;
-      stop?.removeEventListener('abort', onAbort);
-      resolve(ip);
-    };
     const req = https.request({
       hostname: 'api.ipify.org',
       path: '/?format=json',
@@ -221,16 +214,13 @@ function probeLiveProxyIp(agent?: HttpsProxyAgent<string>, stop?: AbortSignal): 
       res.on('end', () => {
         try {
           const data = JSON.parse(Buffer.concat(chunks).toString());
-          finish(data.ip || PROBE_UNKNOWN);
-        } catch { finish(PROBE_UNKNOWN); }
+          resolve(data.ip || PROBE_UNKNOWN);
+        } catch { resolve(PROBE_UNKNOWN); }
       });
-      res.on('error', () => finish(PROBE_UNKNOWN));
+      res.on('error', () => resolve(PROBE_UNKNOWN));
     });
-    const onAbort = () => { req.destroy(); finish(PROBE_UNKNOWN); };
-    req.on('timeout', () => { req.destroy(); finish(PROBE_UNKNOWN); });
-    req.on('error', () => finish(PROBE_UNKNOWN));
-    if (stop?.aborted) onAbort();
-    else stop?.addEventListener('abort', onAbort, { once: true });
+    req.on('timeout', () => { req.destroy(); resolve(PROBE_UNKNOWN); });
+    req.on('error', () => resolve(PROBE_UNKNOWN));
     req.end();
   });
 }
@@ -489,27 +479,7 @@ export async function proxyFetch(
 // Dedup concurrent circuit verification probes, keyed by expected IP.
 // Concurrent grabs from the same search (same expected IP) share one probe;
 // grabs from different searches (different expected IPs) do not collide.
-type VerifyFlight = { promise: Promise<string>; controller: AbortController; waiters: number };
-const verifyInflight = new Map<string, VerifyFlight>();
-
-async function waitForVerify(flight: VerifyFlight, stop?: AbortSignal): Promise<string> {
-  if (stop?.aborted) throw new Error('Proxy verification stopped');
-  flight.waiters++;
-  let onAbort: (() => void) | undefined;
-  try {
-    if (!stop) return await flight.promise;
-    const aborted = new Promise<never>((_, reject) => {
-      onAbort = () => reject(new Error('Proxy verification stopped'));
-      stop.addEventListener('abort', onAbort, { once: true });
-      if (stop.aborted) onAbort();
-    });
-    return await Promise.race([flight.promise, aborted]);
-  } finally {
-    if (onAbort) stop?.removeEventListener('abort', onAbort);
-    flight.waiters--;
-    if (flight.waiters === 0) flight.controller.abort();
-  }
-}
+const verifyInflight = new Map<string, Promise<string>>();
 
 // Fire-and-forget the downstream cache clears shared by every rotation-detection
 // path (grab-time IP mismatch, grab-time missing baseline, keepalive rotation).
@@ -535,8 +505,7 @@ function fanOutRotationClears(): void {
  * Concurrent verifications with the same expected IP share a single probe.
  * Invalidates stale state so the next search+grab cycle starts fresh.
  */
-export async function verifyProxyCircuit(targetUrl: string, label: string, indexerName?: string, expectedIp?: string, stop?: AbortSignal): Promise<void> {
-  if (stop?.aborted) throw new Error('Proxy verification stopped');
+export async function verifyProxyCircuit(targetUrl: string, label: string, indexerName?: string, expectedIp?: string): Promise<void> {
   const proxyBypass = !isProxyApplicable(indexerName);
   const urlDirect = isDirectUrl(targetUrl);
 
@@ -587,11 +556,13 @@ export async function verifyProxyCircuit(targetUrl: string, label: string, index
   // ipify round-trip), but the success log lives OUTSIDE this dedup so every caller
   // emits one log line with its own label. Without that lift, a multi-candidate UF
   // run only logs the first caller's verify and the rest pass through silently.
-  let flight = verifyInflight.get(expectedIp);
-  if (!flight) {
-    const controller = new AbortController();
+  const inflight = verifyInflight.get(expectedIp);
+  let liveIp: string;
+  if (inflight) {
+    liveIp = await inflight;
+  } else {
     const promise = (async () => {
-      const ip = await probeLiveProxyIp(undefined, controller.signal);
+      const ip = await probeLiveProxyIp();
       if (ip === PROBE_UNKNOWN) {
         console.error(`🔒 🚫 [${label}] VPN IP probe returned unknown for ${redactOwnHost(hostname)}, ABORTING to protect account`);
         throw new ProxyCircuitAbortError(`Proxy exit IP probe returned unknown (label: ${label}). Operation [${label}] aborted to prevent account ban. Please retry.`);
@@ -621,15 +592,13 @@ export async function verifyProxyCircuit(targetUrl: string, label: string, index
       return ip;
     })();
 
-    flight = { promise, controller, waiters: 0 };
-    verifyInflight.set(expectedIp, flight);
-    const ownFlight = flight;
-    void promise.then(
-      () => { if (verifyInflight.get(expectedIp) === ownFlight) verifyInflight.delete(expectedIp); },
-      () => { if (verifyInflight.get(expectedIp) === ownFlight) verifyInflight.delete(expectedIp); },
-    );
+    verifyInflight.set(expectedIp, promise);
+    try {
+      liveIp = await promise;
+    } finally {
+      verifyInflight.delete(expectedIp);
+    }
   }
-  const liveIp = await waitForVerify(flight, stop);
 
   console.log(`🔒 [${label}] VPN IP verified for ${redactOwnHost(hostname)}, exit IP ${liveIp} matches stamp`);
 }

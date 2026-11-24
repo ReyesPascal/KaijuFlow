@@ -27,7 +27,7 @@ export class CircuitChangedError extends Error {
  * IP mismatch.
  */
 export async function downloadAndParseNzb(nzbUrl: string, userAgent: string, indexerName?: string, searchExitIp?: string): Promise<NzbParseResult> {
-  // Use cached NZB XML if available (populated by walkGrab or a prior health check)
+  // Use cached NZB XML if available (populated by prefetchNzb or a prior health check)
   let nzbXml = getCachedNzbContent(nzbUrl);
 
   if (!nzbXml) {
@@ -106,8 +106,6 @@ export async function downloadAndParseNzb(nzbUrl: string, userAgent: string, ind
         }
       }
 
-      // In segment-number order, whatever order the NZB lists them in: the archive header is the first segment (#211).
-      segments.sort((a, b) => a.number - b.number);
       files.push({ subject, segments });
     }
   }

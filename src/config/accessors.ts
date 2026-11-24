@@ -224,16 +224,29 @@ export const config: Config = {
   },
   get healthChecks(): HealthCheckConfig {
     const hc = configData.healthChecks;
+    const envEnabled = envBool('HEALTH_CHECK_ENABLED');
 
     if (!hc) {
       const defaults: HealthCheckConfig = {
+        enabled: envEnabled ?? false,
+        archiveInspection: true,
+        sampleCount: 3,
         providers: [],
+        nzbsToInspect: 6,
+        inspectionMethod: 'smart' as const,
+        smartBatchSize: 3,
+        smartAdditionalRuns: 1,
+        smartMinHealthy: 1,
+        maxConnections: 12,
         maxTotalConnections: DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
         verifyTlsCertificates: true,
+        autoQueueMode: 'all' as const,
+        hideBlocked: true,
       };
       // Inject env-based NNTP provider if configured
       const envHost = envStr('HEALTH_CHECK_NNTP_HOST');
       if (envHost) {
+        defaults.enabled = envEnabled ?? true;
         defaults.providers = [{
           id: 'env-provider',
           name: 'Primary Provider (env)',
@@ -248,12 +261,29 @@ export const config: Config = {
       }
       return defaults;
     }
+    // Migrate legacy mode field to granular controls
+    let archiveInspection = hc.archiveInspection;
+    let sampleCount = hc.sampleCount;
+    if (archiveInspection === undefined || sampleCount === undefined) {
+      const legacyMode = hc.mode || 'full';
+      archiveInspection = archiveInspection ?? (legacyMode === 'full');
+      sampleCount = sampleCount ?? (legacyMode === 'full' ? 7 : 3);
+    }
 
     // Build the result with defaults
     const result: HealthCheckConfig = {
       ...hc,
+      enabled: envEnabled ?? hc.enabled,
+      archiveInspection,
+      sampleCount,
+      inspectionMethod: hc.inspectionMethod || 'smart',
+      smartBatchSize: hc.smartBatchSize ?? 3,
+      smartAdditionalRuns: hc.smartAdditionalRuns ?? 1,
+      smartMinHealthy: hc.smartMinHealthy ?? 1,
+      maxConnections: hc.maxConnections ?? 12,
       maxTotalConnections: hc.maxTotalConnections ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
       verifyTlsCertificates: hc.verifyTlsCertificates !== false,
+      autoQueueMode: hc.autoQueueMode ?? 'all',
     };
 
     // Inject env-based NNTP provider (prepended so it takes priority)
@@ -364,7 +394,7 @@ export const config: Config = {
   get ultimateFallback(): UltimateFallbackConfig {
     const ur = configData.ultimateFallback;
     const enabled = envBool('ULTIMATE_FALLBACK_ENABLED') ?? ur?.enabled ?? false;
-    const whenToResolve = envEnum('ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', ['on-results', 'on-tile-selection']) ?? ur?.whenToResolve ?? 'on-results';
+    const whenToResolve = envEnum('ULTIMATE_FALLBACK_WHEN_TO_RESOLVE', ['on-results', 'on-tile-selection']) ?? ur?.whenToResolve ?? 'on-tile-selection';
     // A clicked list entry that fails falls back to the next Source of the list (#190); an old config's
     // 'failure-video' is read as that too, since the Play-time check always falls back.
     const savedPick = envEnum('ULTIMATE_FALLBACK_USER_PICK_FALLBACK', ['uf-lobby', 'failure-video', 'fallback-chain']) ?? ur?.userPickFallback ?? 'fallback-chain';
@@ -380,6 +410,9 @@ export const config: Config = {
     const archiveInspection = true;
     const rawSample = envInt('ULTIMATE_FALLBACK_SAMPLE_COUNT') ?? ur?.sampleCount ?? 3;
     const sampleCount: 3 | 7 = rawSample === 7 ? 7 : 3;
+    const maxAttempts = Math.max(0, Math.min(20, envInt('ULTIMATE_FALLBACK_MAX_ATTEMPTS') ?? ur?.maxAttempts ?? 0));
+    const desiredBackups = Math.max(0, Math.min(10, envInt('ULTIMATE_FALLBACK_DESIRED_BACKUPS') ?? ur?.desiredBackups ?? 0));
+    const backupProcessingLimit = Math.max(0, Math.min(20, envInt('ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT') ?? ur?.backupProcessingLimit ?? 3));
     const priorityMoviesTimeoutSeconds = Math.max(0, Math.min(90, envInt('ULTIMATE_FALLBACK_PRIORITY_MOVIES_TIMEOUT') ?? ur?.priorityMoviesTimeoutSeconds ?? UF_TIMEOUT_DEFAULTS.priority.movies));
     const priorityTvTimeoutSeconds = Math.max(0, Math.min(90, envInt('ULTIMATE_FALLBACK_PRIORITY_TV_TIMEOUT') ?? ur?.priorityTvTimeoutSeconds ?? UF_TIMEOUT_DEFAULTS.priority.tv));
     const prioritySeasonPackTimeoutSeconds = Math.max(0, Math.min(90, envInt('ULTIMATE_FALLBACK_PRIORITY_SEASON_PACK_TIMEOUT') ?? ur?.prioritySeasonPackTimeoutSeconds ?? UF_TIMEOUT_DEFAULTS.priority.seasonPack));
@@ -394,6 +427,9 @@ export const config: Config = {
       preferenceMode,
       archiveInspection,
       sampleCount,
+      maxAttempts,
+      desiredBackups,
+      backupProcessingLimit,
       priorityMoviesTimeoutSeconds,
       priorityTvTimeoutSeconds,
       prioritySeasonPackTimeoutSeconds,

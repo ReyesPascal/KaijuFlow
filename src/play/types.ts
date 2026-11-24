@@ -3,16 +3,22 @@
  * Fallback.
  */
 
-import type { PlayContext } from './playContext.js';
-
 export interface StreamData {
   nzoId: string;
   videoPath: string;
   videoSize: number;
   /** Files the Backend said it holds for this Source (names or paths), for the first-byte log line. */
   offered?: string[];
-  /** Release name of the Source, set on Best's session so a press can name what it plays (#206). */
-  sourceTitle?: string;
+}
+
+export type CacheStatus = 'pending' | 'ready' | 'failed';
+
+export interface CacheEntry {
+  status: CacheStatus;
+  promise?: Promise<StreamData>;
+  data?: StreamData;
+  error?: Error;
+  expiresAt: number;
 }
 
 export interface FallbackCandidate {
@@ -31,7 +37,9 @@ export interface FallbackCandidate {
 
 export interface FallbackGroup {
   candidates: FallbackCandidate[];
-  /** What a play of this list is for, made once when the list was built (#246). */
-  context: PlayContext;
+  type: string;
+  season?: string;
+  episode?: string;
+  episodesInSeason?: number;
   createdAt: number;
 }

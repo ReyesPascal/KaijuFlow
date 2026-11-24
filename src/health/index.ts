@@ -29,7 +29,7 @@ export {
 export {
   connectToUsenet,
   NntpConnectionPool,
-  bindHealthCheckConnectionCap,
+  setHealthCheckConnectionCap,
   bindVerifyTlsCertificates,
   DEFAULT_HEALTH_CHECK_CONNECTION_CAP,
 } from './nntpConnection.js';
@@ -40,3 +40,5 @@ export { checkArticlesDetailed, checkArticlesOnProvider, checkArticlesMultiProvi
 // Health check pipeline
 export { performHealthCheck } from './healthCheckPipeline.js';
 
+// Batch processing
+export { performBatchHealthChecks } from './batchProcessor.js';

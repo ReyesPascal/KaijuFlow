@@ -32,7 +32,7 @@ const MAX_HEALTH_CHECK_CONNECTION_CAP = 100;
 class ConnectionLimiter {
   private cap = DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
   private open = 0;
-  private waiters: Array<{ grant: () => void; cancel: () => void }> = [];
+  private waiters: Array<() => void> = [];
   private idle = new Set<() => void>();
 
   setCap(cap: number): void {
@@ -45,7 +45,7 @@ class ConnectionLimiter {
     while (excess-- > 0 && this.idle.size > 0) this.evictOneIdle();
     while (this.open < this.cap && this.waiters.length > 0) {
       this.open++;
-      this.waiters.shift()!.grant();
+      this.waiters.shift()!();
     }
   }
 
@@ -54,25 +54,12 @@ class ConnectionLimiter {
   }
 
   /** Wait for a slot. Returns a release function that is safe to call twice. */
-  async acquire(stop?: AbortSignal): Promise<() => void> {
-    this.setCap(readCap() ?? DEFAULT_HEALTH_CHECK_CONNECTION_CAP);
-    if (stop?.aborted) throw new Error('Connection stopped');
+  async acquire(): Promise<() => void> {
     if (this.open < this.cap) {
       this.open++;
     } else {
-      await new Promise<void>((resolve, reject) => {
-        const waiter = {
-          grant: () => { stop?.removeEventListener('abort', onAbort); resolve(); },
-          cancel: () => { stop?.removeEventListener('abort', onAbort); reject(new Error('Connection stopped')); },
-        };
-        const onAbort = () => {
-          const i = this.waiters.indexOf(waiter);
-          if (i >= 0) this.waiters.splice(i, 1);
-          waiter.cancel();
-        };
-        this.waiters.push(waiter);
-        stop?.addEventListener('abort', onAbort, { once: true });
-        if (stop?.aborted) onAbort();
+      await new Promise<void>(resolve => {
+        this.waiters.push(resolve);
         this.evictOneIdle();
       });
     }
@@ -92,7 +79,7 @@ class ConnectionLimiter {
 
   private releaseSlot(): void {
     if (this.open <= this.cap && this.waiters.length > 0) {
-      this.waiters.shift()!.grant(); // hand the slot straight to the next waiter
+      this.waiters.shift()!(); // hand the slot straight to the next waiter
     } else {
       this.open--;
     }
@@ -107,19 +94,12 @@ class ConnectionLimiter {
   }
 }
 
-let readCap: () => number | undefined = () => DEFAULT_HEALTH_CHECK_CONNECTION_CAP;
-
-/**
- * Bind the total health-check connection cap (the "Max Total Connections" setting,
- * `healthChecks.maxTotalConnections`, 1-100). The reader is called on every new
- * connection, a Play-time check's or Unscramble's alike, so the setting applies
- * to every one without a caller setting it first. Bound once, where the config loads.
- */
-export function bindHealthCheckConnectionCap(read: () => number | undefined): void {
-  readCap = read;
-}
-
 const limiter = new ConnectionLimiter();
+
+/** Set the total health-check connection cap (the "Max Total Connections" setting, 1-100). */
+export function setHealthCheckConnectionCap(cap: number): void {
+  limiter.setCap(cap);
+}
 
 let readVerifyTlsCertificates: () => boolean = () => true;
 
@@ -172,11 +152,11 @@ function isCertificateError(err: unknown): boolean {
  * Connect to Usenet and authenticate. Waits for a slot under the total
  * health-check connection cap; the slot is freed when the socket closes.
  */
-export async function connectToUsenet(provider: NntpProvider, stop?: AbortSignal): Promise<NntpSocket> {
-  const release = await limiter.acquire(stop);
+export async function connectToUsenet(provider: NntpProvider): Promise<NntpSocket> {
+  const release = await limiter.acquire();
   let socket: NntpSocket;
   try {
-    socket = await openAuthenticatedSocket(provider, stop);
+    socket = await openAuthenticatedSocket(provider);
   } catch (err) {
     release();
     throw err;
@@ -206,7 +186,7 @@ export function closeGracefully(socket: NntpSocket, timeoutMs = 2000): void {
   socket.end('QUIT\r\n');
 }
 
-function openAuthenticatedSocket(provider: NntpProvider, stop?: AbortSignal): Promise<NntpSocket> {
+function openAuthenticatedSocket(provider: NntpProvider): Promise<NntpSocket> {
   return new Promise((resolve, reject) => {
     let resolved = false;
 
@@ -227,7 +207,6 @@ function openAuthenticatedSocket(provider: NntpProvider, stop?: AbortSignal): Pr
 
     const cleanup = () => {
       clearTimeout(timeout);
-      stop?.removeEventListener('abort', abortHandler);
       socket.removeListener('data', dataHandler);
       socket.removeListener('error', errorHandler);
       socket.removeListener('close', closeHandler);
@@ -297,20 +276,10 @@ function openAuthenticatedSocket(provider: NntpProvider, stop?: AbortSignal): Pr
       closeHandler();
     };
 
-    const abortHandler = () => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      socket.destroy();
-      reject(new Error('Connection stopped'));
-    };
-
     socket.on('data', dataHandler);
     socket.on('error', errorHandler);
     socket.on('close', closeHandler);
     socket.on('end', endHandler);
-    if (stop?.aborted) abortHandler();
-    else stop?.addEventListener('abort', abortHandler, { once: true });
   });
 }
 
@@ -321,20 +290,12 @@ function openAuthenticatedSocket(provider: NntpProvider, stop?: AbortSignal): Pr
 export class NntpConnectionPool {
   private pools = new Map<string, NntpSocket[]>();
   private unregisterIdle = new Map<NntpSocket, () => void>();
-  /** Sockets handed out and not yet given back. */
-  private inUse = new Set<NntpSocket>();
-  private isStopped = false;
-  private stopController = new AbortController();
 
   private key(provider: { host: string; port: number; username: string }): string {
     return `${provider.host}:${provider.port}:${provider.username}`;
   }
 
-  /** stop() was called: the work this pool served was stopped, not answered. */
-  get stopped(): boolean { return this.isStopped; }
-
   async acquire(provider: NntpProvider): Promise<NntpSocket> {
-    if (this.stopped) throw new Error('Connection pool stopped');
     const k = this.key(provider);
     const stack = this.pools.get(k);
     while (stack && stack.length > 0) {
@@ -343,40 +304,17 @@ export class NntpConnectionPool {
       this.unregisterIdle.delete(socket);
       // Verify the socket is still alive
       if (!socket.destroyed && socket.writable) {
-        return this.handOut(socket);
+        return socket;
       }
       // Socket is dead, try the next one or create new
       try { socket.destroy(); } catch {}
     }
-    const socket = await connectToUsenet(provider, this.stopController.signal);
-    // Stopped while connecting: nobody is waiting for this one.
-    if (this.stopped) { socket.destroy(); throw new Error('Connection pool stopped'); }
-    return this.handOut(socket);
-  }
-
-  /** A socket its caller destroys without giving it back stays listed until the pool ends: destroying it twice is harmless. */
-  private handOut(socket: NntpSocket): NntpSocket {
-    this.inUse.add(socket);
-    return socket;
-  }
-
-  /**
-   * Stop the work this pool serves (a Walk that ended, GLOSSARY: Walk): close every connection now, the ones mid-read
-   * too, and open no more. A read under way fails; its caller's answer is not wanted.
-   */
-  stop(): void {
-    if (this.stopped) return;
-    this.isStopped = true;
-    this.stopController.abort();
-    for (const socket of this.inUse) socket.destroy();
-    this.inUse.clear();
-    this.destroyAll();
+    return connectToUsenet(provider);
   }
 
   release(provider: { host: string; port: number; username: string }, socket: NntpSocket): void {
-    this.inUse.delete(socket);
     // Someone is waiting for a slot under the cap: close instead of parking.
-    if (socket.destroyed || !socket.writable || this.isStopped) {
+    if (socket.destroyed || !socket.writable) {
       try { socket.destroy(); } catch {}
       return;
     }

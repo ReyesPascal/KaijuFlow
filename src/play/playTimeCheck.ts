@@ -1,13 +1,12 @@
 /**
  * Play-time check (GLOSSARY, spec #183, #190).
  *
- * The health check runs when a Source is about to be played, never before the
- * stream list is sent (the list-time Smart and Fixed checks were deleted in
- * #191): the list goes out at once, unchecked, with the Best entry on top when
- * Ultimate Fallback is on. Ultimate Fallback's engine is the Best entry's
- * engine; a list entry is checked when it is clicked (`prepareStream`),
- * whatever the fallback setting. KaijuFlow never hands the Backend an
- * Unchecked Source: a Source this check did not find healthy is not handed over.
+ * The health check runs when a Source is about to be played, not before the
+ * stream list is sent: the list goes out at once, unchecked, with the Best
+ * entry on top. Ultimate Fallback's engine is its engine (the Best entry);
+ * a list entry is checked when it is clicked (`prepareStream`). KaijuFlow
+ * never hands the Backend an Unchecked Source: a Source this check did not
+ * find healthy is not handed over.
  */
 
 import { config as globalConfig } from '../config/index.js';
@@ -31,8 +30,6 @@ export interface SourceToCheck {
   indexerName?: string;
   /** Proxy exit IP hash from search time, checked when grabbing the NZB. */
   searchExitIp?: string;
-  /** The episode selector AltMount is sent (#203): the check samples the file it picks. */
-  episodePattern?: string;
 }
 
 /** True for a result the Backend may be handed (the statuses the health check calls healthy). */
@@ -42,12 +39,10 @@ export function isHealthy(result: HealthCheckResult): boolean {
 
 /**
  * Check one Source before it is played: the health check with the pass rule
- * (ADR 0009, archive inspection always on). No setting turns it off; with no
- * enabled health-check provider nothing can be checked, so the answer is an
- * error and the Source is not played.
- * `pool`: share NNTP connections across the checks of one Best press. A check whose pool was stopped (its Walk
- * ended, GLOSSARY: Walk, or its checks were stopped for an Unscramble retry, ADR 0005) answered nothing: it writes no
- * play_check line.
+ * (ADR 0009, archive inspection always on). It runs whatever the list-time
+ * health-check switches say; with no enabled health-check provider nothing can
+ * be checked, so the answer is an error and the Source is not played.
+ * `pool`: share NNTP connections across the checks of one Best press.
  */
 export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPool): Promise<HealthCheckResult> {
   const t0 = Date.now();
@@ -56,10 +51,10 @@ export async function checkSource(source: SourceToCheck, pool?: NntpConnectionPo
     ? { status: 'error', message: 'No health-check provider: a Source is checked before it is played', playable: false }
     : await performHealthCheck(
       source.nzbUrl, providers, globalConfig.userAgents?.nzbDownload || getLatestVersions().chrome,
-      { archiveInspection: true, sampleCount: globalConfig.ultimateFallback?.sampleCount ?? 3, episodePattern: source.episodePattern },
+      { archiveInspection: true, sampleCount: globalConfig.ultimateFallback?.sampleCount ?? 3 },
       pool, source.indexerName, source.searchExitIp,
     );
-  if (!pool?.stopped) logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ms: Date.now() - t0 });
+  logStep({ step: 'play_check', source: source.indexerName, title: source.title, ok: isHealthy(result), status: result.status, ms: Date.now() - t0 });
   return result;
 }
 
@@ -76,7 +71,6 @@ export async function requireHealthySource(source: SourceToCheck, logPrefix = ''
     return;
   }
   console.log(`${logPrefix}❌ Play-time check: ${result.status} (${result.message}) — not handed to the Backend`);
-  // A pack blocked on its wanted episode is dead for that episode only (#203).
-  if (result.status === 'blocked') throw sourceFailure(`Play-time check: ${result.message}`, false, result.episodeOnly === true);
+  if (result.status === 'blocked') throw sourceFailure(`Play-time check: ${result.message}`);
   throw new Error(`Play-time check could not check the Source: ${result.message}`);
 }

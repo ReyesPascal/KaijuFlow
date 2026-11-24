@@ -113,11 +113,22 @@ export const MOCK_STREAM_DATA: Record<string, MockStreamData> = {
 
 export const IP_REGEX = /\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/g;
 
-// The list-time Smart and Fixed settings were deleted in #191: a Source is checked when it is played.
 export const DEFAULT_HEALTH_CHECKS = {
+  enabled: false,
+  archiveInspection: true,
+  sampleCount: 3 as 3 | 7,
   providers: [] as import('../types').UsenetProvider[],
+  nzbsToInspect: 6,
+  inspectionMethod: 'smart' as const,
+  smartBatchSize: 3,
+  smartAdditionalRuns: 1,
+  smartMinHealthy: 1,
+  maxConnections: 12,
   maxTotalConnections: 8,
   verifyTlsCertificates: true,
+  autoQueueMode: 'all' as 'off' | 'top' | 'all',
+  hideBlocked: true,
+  healthCheckIndexers: {} as Record<string, boolean>,
 };
 
 export const DEFAULT_FILTERS = {
@@ -172,13 +183,16 @@ export const DEFAULT_CARD_ORDER = ['streaming', 'indexManager', 'proxy', 'zyclop
 
 export const DEFAULT_ULTIMATE_FALLBACK = {
   enabled: false,
-  whenToResolve: 'on-results' as 'on-results' | 'on-tile-selection',
+  whenToResolve: 'on-tile-selection' as 'on-results' | 'on-tile-selection',
   // Keep in sync with src/config/accessors.ts (Play-time check defaults, #190).
   userPickFallback: 'fallback-chain' as 'uf-lobby' | 'fallback-chain',
   candidateCount: 3,
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
   sampleCount: 3 as 3 | 7,
+  maxAttempts: 0,
+  desiredBackups: 0,
+  backupProcessingLimit: 3,
   // Keep in sync with src/play/timeoutDefaults.ts (UF_TIMEOUT_DEFAULTS).
   priorityMoviesTimeoutSeconds: 30,
   priorityTvTimeoutSeconds: 15,
@@ -198,6 +212,9 @@ export const UF_PRESET_CLASSIC = {
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
   sampleCount: 3 as 3 | 7,
+  maxAttempts: 0,
+  desiredBackups: 0,
+  backupProcessingLimit: 3,
   priorityMoviesTimeoutSeconds: 30,
   priorityTvTimeoutSeconds: 15,
   prioritySeasonPackTimeoutSeconds: 30,
@@ -213,6 +230,9 @@ export const UF_PRESET_LITE = {
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
   sampleCount: 3 as 3 | 7,
+  maxAttempts: 0,
+  desiredBackups: 1,
+  backupProcessingLimit: 1,
   priorityMoviesTimeoutSeconds: 30,
   priorityTvTimeoutSeconds: 15,
   prioritySeasonPackTimeoutSeconds: 30,
@@ -228,6 +248,9 @@ export const UF_PRESET_ENHANCED = {
   preferenceMode: 'priority' as 'priority' | 'speed',
   archiveInspection: true,
   sampleCount: 3 as 3 | 7,
+  maxAttempts: 0,
+  desiredBackups: 1,
+  backupProcessingLimit: 2,
   priorityMoviesTimeoutSeconds: 30,
   priorityTvTimeoutSeconds: 15,
   prioritySeasonPackTimeoutSeconds: 30,

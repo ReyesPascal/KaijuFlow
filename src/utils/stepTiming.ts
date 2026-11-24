@@ -11,16 +11,12 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 export const STEP_LOG_TAG = '[KF-STEP]';
 
-export const STEP_NAMES = [
-  'indexer_page', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte', 'played', 'play_failed',
-  // The stream list's own steps (#249): the whole request (`list`, with the process trace), then its parts.
-  'list', 'list_filter', 'list_sort', 'list_build', 'fallback_group', 'head_start',
-] as const;
+export const STEP_NAMES = ['indexer_page', 'health_batch', 'play_check', 'nzb_fetch', 'unscramble', 'upload', 'import_wait', 'first_byte'] as const;
 export type StepName = (typeof STEP_NAMES)[number];
 
 export interface StepFields {
   step: StepName;
-  /** Source or indexer name; omit when the step has none. */
+  /** Source or indexer name; omit when the step has none (health batch). */
   source?: string;
   ok?: boolean;
   /** Title the step worked for, when known. */
@@ -55,43 +51,6 @@ export async function timeStep<T>(fields: StepFields, fn: () => Promise<T>, afte
   }
   logStep({ ...fields, ...(after?.(result) ?? {}), ms: Date.now() - t0 });
   return result;
-}
-
-/** Run a synchronous `fn`, then log one line with the elapsed time (ok=false when it throws). Never changes the result. */
-export function timeStepSync<T>(fields: StepFields, fn: () => T, after?: (result: T) => Partial<StepFields>): T {
-  const t0 = performance.now();
-  let result: T;
-  try {
-    result = fn();
-  } catch (err) {
-    logStep({ ...fields, ok: false, ms: performance.now() - t0 });
-    throw err;
-  }
-  logStep({ ...fields, ...(after?.(result) ?? {}), ms: performance.now() - t0 });
-  return result;
-}
-
-/**
- * A play's two events (#242), lines with `ms` 0: `played`, a Source's video is served to the player now; `play_failed`,
- * a Source failed for the play, with KaijuFlow's reason. The brain tools learn a visit's top pick and why it failed
- * only from these lines (brainreport.read_play), so the console lines beside them can be reworded freely.
- */
-export function logPlayed(title: string, source: string | undefined): void {
-  logStep({ step: 'played', source: source || undefined, title, ms: 0 });
-}
-
-export function logPlayFailed(title: string, source: string | undefined, err: unknown): void {
-  logStep({ step: 'play_failed', source: source || undefined, title, ms: 0, ok: false, reason: stepReason(err) });
-}
-
-/** An error's message as a step line may carry it: one line, no address (`<url>`), no file path after a colon. */
-export function stepReason(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  return (message.split('\n')[0] ?? '')
-    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
-    .replace(/:\s*\/\S.*$/, '')
-    .trim()
-    .slice(0, 200);
 }
 
 /** Time one page request to an indexer (`source` = indexer name, `page` 1 = first page). Never changes the result. */

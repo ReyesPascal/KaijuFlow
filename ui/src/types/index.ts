@@ -22,6 +22,7 @@ export interface ZyclopsIndexerConfig {
   preZyclopsState?: {
     enabled: boolean;
     proxy: boolean;
+    healthCheck: boolean;
   };
 }
 
@@ -48,6 +49,7 @@ export interface SyncedIndexer {
   id: string;
   name: string;
   enabledForSearch: boolean;
+  enabledForHealthCheck: boolean;
   movieSearchMethod: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
   tvSearchMethod: ('imdb' | 'tvdb' | 'tvmaze' | 'text')[];
   animeMovieSearchMethod?: ('imdb' | 'tmdb' | 'tvdb' | 'text')[];
@@ -139,9 +141,13 @@ export interface Config {
     general?: string;
   };
   healthChecks?: {
+    enabled: boolean;
     providers: UsenetProvider[];
-    maxTotalConnections?: number;
-    verifyTlsCertificates?: boolean;
+    nzbsToInspect: number;
+    maxConnections: number;
+    autoQueueMode: 'off' | 'top' | 'all';
+    hideBlocked: boolean;
+    healthCheckIndexers?: Record<string, boolean>;
   };
   syncedIndexers?: SyncedIndexer[];
   prowlarrUrl?: string;
@@ -194,9 +200,21 @@ export interface LogEntry {
 }
 
 export interface HealthChecksState {
+  enabled: boolean;
+  archiveInspection: boolean;
+  sampleCount: 3 | 7;
   providers: UsenetProvider[];
+  nzbsToInspect: number;
+  inspectionMethod: 'fixed' | 'smart';
+  smartBatchSize: number;
+  smartAdditionalRuns: number;
+  smartMinHealthy: number;
+  maxConnections: number;
   maxTotalConnections: number;
   verifyTlsCertificates: boolean;
+  autoQueueMode: 'off' | 'top' | 'all';
+  hideBlocked: boolean;
+  healthCheckIndexers: Record<string, boolean>;
 }
 
 export interface AutoPlayState {

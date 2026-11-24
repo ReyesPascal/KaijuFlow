@@ -11,7 +11,6 @@
     "test:unit": "node --import tsx --test --test-force-exit tests/unit/*.test.ts",
     "typecheck:tests": "tsc -p tsconfig.test.json",
     "check:brain": "bash tools/brain/check.sh",
-    "check": "npm run build && npm run test:unit && npm run typecheck:tests && npm run check:brain",
     "test:integration": "npm run build && bash tests/integration/run-ci.sh",
     "test:a4": "npm run build && bash scripts/prepare-a4-hook.sh && bash tests/a4/run-ci.sh",
     "release:patch": "bash release.sh patch",

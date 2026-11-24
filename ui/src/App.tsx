@@ -791,6 +791,11 @@ function App() {
           config={ac.config}
           healthChecks={ac.healthChecks}
           setHealthChecks={ac.setHealthChecks}
+          indexManager={ac.indexManager}
+          syncedIndexers={ac.syncedIndexers}
+          setSyncedIndexers={ac.setSyncedIndexers}
+          failedLogos={ac.failedLogos}
+          setFailedLogos={ac.setFailedLogos}
           apiFetch={apiFetch}
           easynewsHealthCheck={ac.easynewsHealthCheck}
           setEasynewsHealthCheck={ac.setEasynewsHealthCheck}
@@ -896,6 +901,8 @@ function App() {
           setInflightToggle={ac.setZyclopsInflightToggle}
           proxyIndexers={ac.proxyIndexers}
           setProxyIndexers={ac.setProxyIndexers}
+          healthChecks={ac.healthChecks}
+          setHealthChecks={ac.setHealthChecks}
         />
       )}
 
