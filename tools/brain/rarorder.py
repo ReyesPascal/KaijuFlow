@@ -8,24 +8,9 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nntp import Conn, provider  # noqa: E402
+from yenc import decode as ydecode  # noqa: E402
 
 NS = {'n': 'http://www.newzbin.com/DTD/2003/nzb'}
-
-
-def ydecode(lines):
-    out = bytearray()
-    for ln in lines:
-        if ln.startswith(b'=y'):
-            continue
-        i = 0
-        while i < len(ln):
-            c = ln[i]
-            if c == 0x3d:
-                i += 1
-                c = (ln[i] - 64) & 0xff
-            out.append((c - 42) & 0xff)
-            i += 1
-    return bytes(out)
 
 
 def vint(b, i):
