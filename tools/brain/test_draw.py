@@ -212,6 +212,23 @@ class DrawTest(unittest.TestCase):
         self.assertIn("There is no kind 'cartoon'", str(e.exception))
 
 
+class CapturedTmdbTest(unittest.TestCase):
+    """The draw on TMDB's real answers (review rule 2): one draw of every kind, captured 2026-11-24."""
+
+    def test_a_draw_on_tmdb_s_real_answers_gives_the_captured_titles(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-24-tmdb-draw',
+                               'answers.json')) as f:
+            cap = json.load(f)
+
+        def get(path):
+            self.assertIn(path, cap['answers'], 'a TMDB call the capture does not hold')
+            status, data = cap['answers'][path]
+            return status, data
+        got = draw.draw(get, [], cap['kinds'], random.Random(cap['seed']), cap['today'])
+        self.assertEqual(got, cap['drawn'])
+        self.assertEqual([g[3] for g in got], list(draw.KINDS))
+
+
 class KindsTest(unittest.TestCase):
     def test_kinds_and_counts_in_the_order_given(self):
         self.assertEqual(draw.parse_kinds('popular-film=3, anime=1,popular-film=1'),
