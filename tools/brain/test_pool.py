@@ -130,16 +130,20 @@ class PoolTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self.out))
         return code, out.strip()
 
-    def test_the_filled_pool_gives_three_speed_tests_in_a_temporary_copy(self):
+    def test_the_pools_unused_titles_give_whole_speed_tests_in_a_temporary_copy(self):
         shutil.copyfile(pool.DEFAULT_POOL, self.pool)
+        data = self.read(pool.DEFAULT_POOL)
+        room = min(len(pool.unused(data, lst, kind)) // need for lst in pool.LISTS for kind, need in pool.PER_LIST.items())
+        self.assertGreater(room, 0, 'the pool has no room for another speed test: top it up')
         drawn = []
-        for n in (2, 3, 4):
+        for n in range(room):
             out = os.path.join(self.dir.name, f'test-{n}.json')
-            code, text = self.draw(f'Test {n}', out=out)
+            code, text = self.draw(f'Test x{n}', out=out)
             self.assertEqual(code, 0, text)
             drawn += [t[1] for t in self.read(out)]
-        self.assertEqual(len(drawn), 60)
-        self.assertEqual(len(set(drawn)), 60)
+        self.assertEqual(len(drawn), 20 * room)
+        self.assertEqual(len(set(drawn)), 20 * room)
+        self.assertEqual(self.draw('Test one too many', out=os.path.join(self.dir.name, 'over.json'))[0], 1)
         self.assertFalse({tid for _, tid, _ in pool.OLD_LIST} & set(drawn))
         self.assertNotEqual(self.read(pool.DEFAULT_POOL), self.read(self.pool))  # the copy was marked, not the pool
 
