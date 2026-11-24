@@ -286,6 +286,35 @@ export const playTimeScenarios = [
     },
   },
   {
+    // The list's step lines (#249): each list request writes its parts (filters, sort, build, fallback group,
+    // Head start) and one `list` line for the whole request with a trace of the process meanwhile; the first list of
+    // a title searched, the second came from the search cache. The brain tools read a warm list's time from them.
+    id: 'a-list-writes-its-step-lines-and-process-trace',
+    async run(w) {
+      const { id } = offerMovie(w, [{ tag: 'ls-a' }, { tag: 'ls-b' }]);
+      const { lines } = await withLogs(async lines => {
+        await w.list('movie', id);
+        await bestDone(lines, id);
+        await w.list('movie', id);
+        await until(() => stepsOf(lines).filter(s => s.step === 'list').length === 2, 'two list lines');
+      });
+      const steps = stepsOf(lines).filter(s => s.ref === id);
+      const lists = steps.filter(s => s.step === 'list');
+      assert.deepEqual(lists.map(s => [s.cache, s.streams]), [['miss', 3], ['hit', 3]], 'one list line per request: Best and two Sources');
+      for (const s of lists) {
+        for (const f of ['ms', 'cpu_ms', 'gc_ms', 'gc_n', 'loop_max_ms', 'loop_p99_ms', 'heap_mb']) assert.ok(Number.isInteger(s[f]) && s[f] >= 0, `list ${s.cache}: ${f} ${s[f]}`);
+        assert.ok(s.elu >= 0 && s.elu <= 1, `list ${s.cache}: elu ${s.elu}`);
+      }
+      const parts = ['list_filter', 'list_sort', 'fallback_group', 'list_build', 'head_start'];
+      for (const name of parts) assert.equal(steps.filter(s => s.step === name).length, 2, `one ${name} line per list`);
+      const filter = steps.find(s => s.step === 'list_filter');
+      assert.deepEqual([filter.results, filter.kept], [2, 2], 'the filters saw both Sources and kept both');
+      const group = steps.find(s => s.step === 'fallback_group');
+      assert.equal(group.candidates, 2);
+      assert.ok(group.groups >= 1, 'the group write says how many groups it saved');
+    },
+  },
+  {
     // Head start, one title at a time (#206): a list request for another title stops the unfinished check of the
     // one before as it arrives, before its own search (#244), so none of its Sources reaches AltMount; a press of
     // its Best later still plays, checked then.

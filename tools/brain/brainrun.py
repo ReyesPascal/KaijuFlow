@@ -390,14 +390,67 @@ class RealIO:
 
     def visit_http(self, side, kind, vid, tries, browse_pause_s=0):
         base = list_base(self.cfg)
-        return visit_answer(common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0), tries,
-                            pause_s=browse_pause_s, sleep=self.sleep)
+        before = cpu_sample()
+        got = common.get(f'{base}/stream/{kind}/{vid}.json', timeout=180, limit=0)
+        list_cpu = cpu_used(before, cpu_sample())
+        out = visit_answer(got, tries, pause_s=browse_pause_s, sleep=self.sleep)
+        return {**out, 'list_cpu': list_cpu}
 
     def logs(self, container, since):
         if container not in self.testbed.TEST_CONTAINERS:
             raise ValueError('not a test container: ' + container)
         r = subprocess.run(['docker', 'logs', '--timestamps', '--since', since, container], capture_output=True, text=True, timeout=60)
         return r.stdout + r.stderr
+
+
+CPU_CONTAINERS = {'kaijuflow_ms': KF_CONTAINER, 'altmount_ms': ALTMOUNT_CONTAINER}
+_container_ids = {}
+
+
+def _container_cpu_us(container, run=subprocess.run, root='/sys/fs/cgroup/system.slice'):
+    """CPU a test container has used since it started, microseconds, from its cgroup (`usage_usec` of cpu.stat); None when
+    it is not up. Its id is looked up with `docker inspect` (read-only) once, and again after a reset gave it a new one."""
+    if container not in testbed.TEST_CONTAINERS:
+        raise ValueError('not a test container: ' + container)
+    for fresh in (False, True):
+        if fresh or container not in _container_ids:
+            r = run(['docker', 'inspect', '-f', '{{.Id}}', container], capture_output=True, text=True, timeout=30)
+            _container_ids[container] = r.stdout.strip() if r.returncode == 0 else ''
+        try:
+            with open(os.path.join(root, f'docker-{_container_ids[container]}.scope', 'cpu.stat')) as f:
+                return next(int(line.split()[1]) for line in f if line.startswith('usage_usec '))
+        except (OSError, StopIteration, ValueError, IndexError):
+            continue
+    return None
+
+
+def _machine_busy_ms(path='/proc/stat'):
+    """CPU the whole machine has used since boot, every core added up, in ms: /proc/stat's first line less idle and iowait
+    (clock ticks of 10 ms)."""
+    try:
+        with open(path) as f:
+            ticks = [int(x) for x in f.readline().split()[1:9]]
+        return (sum(ticks) - ticks[3] - ticks[4]) * 10
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def cpu_sample(container_cpu=_container_cpu_us, machine=_machine_busy_ms):
+    """One reading of the CPU used so far (#249): each test container's in microseconds and the machine's in ms."""
+    out = {k: container_cpu(c) for k, c in CPU_CONTAINERS.items()}
+    out['machine_ms'] = machine()
+    return out
+
+
+def cpu_used(before, after):
+    """The CPU used between two readings, in ms (`kaijuflow_ms`, `altmount_ms`, `machine_ms`); a figure either reading
+    lacks, or one that went back (a container restarted), is None."""
+    out = {}
+    for k in ('kaijuflow_ms', 'altmount_ms', 'machine_ms'):
+        a, b = before.get(k), after.get(k)
+        d = None if a is None or b is None or b < a else b - a
+        out[k] = None if d is None else round(d / 1000) if k != 'machine_ms' else d
+    return out
 
 
 def build_image(commit, repo, popen=subprocess.Popen, run=subprocess.run):
@@ -970,7 +1023,7 @@ def collect_visit(cfg, io, side, phase, rnd, title, logbuf):
             't_start': br.iso(t0), 't_end': br.iso(t1), 'list_status': http.get('list_status'),
             'list_s': http.get('list_s'), 'sources': http.get('sources'), 'start_s': http.get('start_s'),
             'seeks': http.get('seeks', {}), 'note': http.get('note'), 'tries': http.get('tries', []),
-            'browse_pause_s': http.get('browse_pause_s', 0),
+            'browse_pause_s': http.get('browse_pause_s', 0), **({'list_cpu': http['list_cpu']} if http.get('list_cpu') else {}),
             'steps': steps, 'imports': imports, 'limit': limit, 'played_source': played,
             'cause': '' if ok else play['cause'], **({'list': title[3]} if len(title) > 3 else {})}
 
