@@ -1,0 +1,21 @@
+{
+  "indexers": {
+    "ninjacentral": {
+      "url": "https://indexer.example",
+      "apikey": "<from the owner's stash; testbed.py indexer add writes it>",
+      "enabled": true,
+      "search_per_day": 2000,
+      "download_per_day": 450,
+      "reset": "rolling-24h"
+    },
+    "drunkenslug": {
+      "url": "https://other-indexer.example",
+      "apikey": "<from the owner's stash; testbed.py indexer add writes it>",
+      "enabled": true,
+      "drop_params": ["o"],
+      "search_per_day": 1000,
+      "download_per_day": 100,
+      "reset": "rolling-24h"
+    }
+  }
+}

@@ -134,7 +134,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [seriesPackKeywords, setSeriesPackKeywords] = useState<string[]>([]);
   const [seriesPackPagination, setSeriesPackPagination] = useState(true);
   const [seriesPackAdditionalPages, setSeriesPackAdditionalPages] = useState(1);
-  const [indexerPriorityDedup, setIndexerPriorityDedup] = useState(false);
   const [urlDedup, setUrlDedup] = useState(true);
   const [junkFilter, setJunkFilter] = useState(true);
   const [cacheEmptyResults, setCacheEmptyResults] = useState(true);
@@ -142,9 +141,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
   const [parallelAlternateTitleSearch, setParallelAlternateTitleSearch] = useState(false);
   const [aliasTitleFallback, setAliasTitleFallback] = useState(true);
   const [tvdbPreferEnglishTitle, setTvdbPreferEnglishTitle] = useState(true);
-  const [indexerPriority, setIndexerPriority] = useState<string[]>([]);
-  const [dedupDraggedItem, setDedupDraggedItem] = useState<string | null>(null);
-  const [dedupDragOverItem, setDedupDragOverItem] = useState<string | null>(null);
   const [tmdbKeyStatus, setTmdbKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle');
   const [tvdbKeyStatus, setTvdbKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle');
   const [showTmdbKey, setShowTmdbKey] = useState(false);
@@ -385,7 +381,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
         seriesPackKeywords: includeMultiSeasonPacks ? seriesPackKeywords : undefined,
         seriesPackPagination: includeMultiSeasonPacks ? seriesPackPagination : undefined,
         seriesPackAdditionalPages: includeMultiSeasonPacks && seriesPackPagination ? seriesPackAdditionalPages : undefined,
-        indexerPriorityDedup,
         urlDedup,
         junkFilter,
         absoluteEpisodeFallback,
@@ -394,36 +389,9 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
         tvdbPreferEnglishTitle,
         cacheEmptyResults,
       },
-      indexerPriority: indexerPriorityDedup ? indexerPriority : undefined,
     }), 300);
     return () => clearTimeout(timer);
-  }, [tmdbApiKey, tvdbApiKey, includeSeasonPacks, includeMultiSeasonPacks, seasonPackPagination, seasonPackAdditionalPages, seriesPackKeywords, seriesPackPagination, seriesPackAdditionalPages, indexerPriorityDedup, urlDedup, junkFilter, absoluteEpisodeFallback, parallelAlternateTitleSearch, aliasTitleFallback, tvdbPreferEnglishTitle, cacheEmptyResults, indexerPriority, saveSettings]);
-
-  // Keep indexer priority list in sync when indexers or EasyNews change
-  useEffect(() => {
-    if (!initialLoadDone.current || !indexerPriorityDedup) return;
-    const activeNames = new Set<string>();
-    if (indexManager === 'newznab') {
-      config?.indexers.filter(i => i.enabled).forEach(i => activeNames.add(i.name));
-    } else {
-      syncedIndexers.filter(i => i.enabledForSearch).forEach(i => activeNames.add(i.name));
-    }
-    if (easynewsEnabled) activeNames.add('EasyNews');
-
-    const updated = [...indexerPriority];
-    let changed = false;
-    for (const name of activeNames) {
-      if (!updated.includes(name)) {
-        updated.push(name);
-        changed = true;
-      }
-    }
-    const filtered = updated.filter(name => activeNames.has(name));
-    if (filtered.length !== updated.length) changed = true;
-
-    if (changed) setIndexerPriority(filtered.length > 0 ? filtered : [...activeNames]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indexerPriorityDedup, config?.indexers, syncedIndexers, easynewsEnabled, indexManager]);
+  }, [tmdbApiKey, tvdbApiKey, includeSeasonPacks, includeMultiSeasonPacks, seasonPackPagination, seasonPackAdditionalPages, seriesPackKeywords, seriesPackPagination, seriesPackAdditionalPages, urlDedup, junkFilter, absoluteEpisodeFallback, parallelAlternateTitleSearch, aliasTitleFallback, tvdbPreferEnglishTitle, cacheEmptyResults, saveSettings]);
 
   // Auto-save: proxy settings.
   // proxyMode/proxyUrl/proxyIndexers changes invalidate the previously-displayed
@@ -557,7 +525,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setSeriesPackAdditionalPages(sc?.seriesPackAdditionalPages ?? 1);
       setSeasonPackPagination(sc?.seasonPackPagination ?? true);
       setSeasonPackAdditionalPages(sc?.seasonPackAdditionalPages || 1);
-      setIndexerPriorityDedup(sc?.indexerPriorityDedup ?? false);
       setUrlDedup(sc?.urlDedup !== false);
       setJunkFilter(sc?.junkFilter !== false);
       setAbsoluteEpisodeFallback(sc?.absoluteEpisodeFallback !== false);
@@ -565,7 +532,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
       setAliasTitleFallback(sc?.aliasTitleFallback !== false);
       setTvdbPreferEnglishTitle(sc?.tvdbPreferEnglishTitle !== false);
       setCacheEmptyResults(sc?.cacheEmptyResults !== false);
-      setIndexerPriority(data.indexerPriority || []);
       setEasynewsEnabled(data.easynewsEnabled || false);
       setEasynewsUsername(data.easynewsUsername || '');
       setEasynewsPassword(data.easynewsPassword || '');
@@ -1213,7 +1179,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     seriesPackAdditionalPages, setSeriesPackAdditionalPages,
     seasonPackPagination, setSeasonPackPagination,
     seasonPackAdditionalPages, setSeasonPackAdditionalPages,
-    indexerPriorityDedup, setIndexerPriorityDedup,
     urlDedup, setUrlDedup,
     junkFilter, setJunkFilter,
     absoluteEpisodeFallback, setAbsoluteEpisodeFallback,
@@ -1221,9 +1186,6 @@ export function useAppConfig(apiFetch: ApiFetch, _authStatus: string) {
     aliasTitleFallback, setAliasTitleFallback,
     tvdbPreferEnglishTitle, setTvdbPreferEnglishTitle,
     cacheEmptyResults, setCacheEmptyResults,
-    indexerPriority, setIndexerPriority,
-    dedupDraggedItem, setDedupDraggedItem,
-    dedupDragOverItem, setDedupDragOverItem,
     tmdbKeyStatus, setTmdbKeyStatus,
     tvdbKeyStatus, setTvdbKeyStatus,
     showTmdbKey, setShowTmdbKey,

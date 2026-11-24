@@ -920,7 +920,7 @@ def recording_problems(cfg, io):
     indexer, and the last run on it missed nothing (#229). Plain sentences, one per problem."""
     problems = []
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
-    readable = [s for s in testbed.SETTINGS_SIDES if rep['indexers'].get(s) is not None]
+    readable = [s for s in brainrun.INDEXER_SIDES if rep['indexers'].get(s) is not None]
     have = io.recording()
     need = sorted({slug for s in readable for slug in rep['enabled'][s]})
     state = io.recording_state()

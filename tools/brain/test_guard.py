@@ -134,7 +134,7 @@ class SecretCommandTest(GuardCase):
             self.assertIsNone(self.bash(cmd), cmd)
 
     def test_allows_unrelated_commands(self):
-        for cmd in ('git status', 'npm run check:brain', 'cat tools/brain/expected-settings.json', 'cat tools/brain/limits.example.json',
+        for cmd in ('git status', 'npm run check:brain', 'cat tools/brain/expected-settings.json', 'cat tools/brain/indexers.example.json',
                     'grep -rn limits tools/brain', 'gh issue view 161 --json number,title,body,labels,comments', 'ls /tmp'):
             self.assertIsNone(self.bash(cmd), cmd)
 

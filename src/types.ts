@@ -117,7 +117,6 @@ export interface SearchConfig {
   seasonPackPagination?: boolean; // Enable pagination for season pack searches (default true)
   seasonPackAdditionalPages?: number;  // Additional pages for season pack searches (1-10)
   skipAnimeTitleResolve?: boolean; // Skip TVDB/TMDB title resolution for anime (Animation+Japan) to avoid Japanese titles
-  indexerPriorityDedup?: boolean;  // Deduplicate results across indexers, keeping only the copy from the highest-priority indexer (default false)
   urlDedup?: boolean;  // Remove duplicate results with identical download URLs (default true)
   junkFilter?: boolean;  // Strip bare archive parts and NZB containers from search results (default true)
   cacheEmptyResults?: boolean;  // Cache search responses that returned zero results (default true)
@@ -199,7 +198,6 @@ export interface Config {
   easynewsTimeout: number;
   easynewsMode?: 'ddl' | 'nzb'; // DDL = direct download/stream, NZB = send to download client
   easynewsHealthCheck?: boolean; // Include EasyNews NZB results in health checks (default true)
-  indexerPriority?: string[];    // Ordered indexer names for dedup priority (position 0 = highest priority)
   searchTimeoutOverride?: number; // SEARCH_TIMEOUT env var override (seconds, 1-120)
 }
 

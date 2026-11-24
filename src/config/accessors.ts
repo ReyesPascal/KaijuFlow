@@ -356,9 +356,6 @@ export const config: Config = {
   get easynewsHealthCheck() {
     return configData.easynewsHealthCheck ?? true;
   },
-  get indexerPriority() {
-    return configData.indexerPriority;
-  },
   get ultimateFallback(): UltimateFallbackConfig {
     const ur = configData.ultimateFallback;
     const enabled = envBool('ULTIMATE_FALLBACK_ENABLED') ?? ur?.enabled ?? false;

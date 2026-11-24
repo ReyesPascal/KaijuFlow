@@ -30,7 +30,7 @@ Run them with `python3 -I` from the repo root, wrapped in `timeout <seconds>`, i
 
 Start with **[RUNBOOK.md](RUNBOOK.md)**: the one-page recipe for a real-use check (preflight, the quick check, the drill-down, back up, the page). The reference pages hold the rest:
 
-- [docs/rules.md](docs/rules.md): how a real-use check (`brainrun.py check --quick`, `drill`) is judged, the Browse pause, the cap rule, the settings table and preflight, the expected settings the preflight holds the test copies to, the indexer allowance (`limits.json`, `usage`).
+- [docs/rules.md](docs/rules.md): how a real-use check (`brainrun.py check --quick`, `drill`) is judged, the Browse pause, the cap rule, the settings table and preflight, the expected settings the preflight holds the test copies to, the indexer allowance (limits in the key file, `usage`).
 - [docs/formats.md](docs/formats.md): the expected settings file (`expected-settings.json`), the title draw and its ledger, the check folder, the Speed Check page (`checkpage.py`), the evidence folder, Diagnosis (fingerprints, the masking file, the Clue format, `diagnosis.json`), Fixing, the Drill-down, Case logs, and the `[KF-STEP]` step lines.
 - [docs/testbed.md](docs/testbed.md): the test copies of the one setup (`compose.test.yaml`, `testbed.py`) and the 1338 test container.
 - [archive/README.md](archive/README.md): the replayed Recording and its process, retired by ADR 0010 and archived, not deleted (`retired.py` stops its commands unless `--revive`).

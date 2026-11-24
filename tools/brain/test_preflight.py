@@ -31,8 +31,9 @@ class FakeWorld(brainrun.RealIO):
 
     def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3,
                  machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1'), dns=('85.12.62.251', '85.12.62.214'), power='ac', probe=950,
-                 policy=(('governor', 'powersave'), ('energy_preference', 'performance'))):
+                 policy=(('governor', 'powersave'), ('energy_preference', 'performance')), allowance=None):
         super().__init__(cfg)
+        self.allowance = allowance  # {slug: {'search', 'download'}} left, given by hand; None reads the key file's limits
         self.power_, self.probe, self.policy = power, probe, dict(policy)
         self.asked = []  # the machine's readings in the order they were taken: 'load', 'probe'
         self.label, self.head, self.dirty, self.free, self.changed = label, head, dirty, free, dict(changed or {})
@@ -46,6 +47,9 @@ class FakeWorld(brainrun.RealIO):
 
     def git_info(self):
         return self.head, self.dirty
+
+    def allowance_left(self):
+        return (self.allowance, None) if self.allowance is not None else super().allowance_left()
 
     def build_inputs_changed(self, since):
         return self.changed.get(since)
@@ -96,7 +100,7 @@ class RepoWorld(FakeWorld):
     """FakeWorld whose git questions go to the real git in a small repository of its own, so only the image is answered by hand."""
 
     def __init__(self, cfg, repo, label):
-        super().__init__(cfg, label=label)
+        super().__init__(cfg, label=label, allowance=PLENTY)
         self.repo = repo
 
     git_info = brainrun.RealIO.git_info
@@ -144,13 +148,11 @@ def write_expected(td, entries=None):
     return path
 
 
+# What a check has left today in the tests of the other preflight checks (the allowance itself: test_quickcheck.py)
+PLENTY = {slug: {'search': 1000, 'download': 450} for slug in ('ninjacentral', 'drunkenslug', 'althub')}
+
+
 def make_cfg(td, **kw):
-    """A check's config on the fixture folder `td`, whose limits file (written here unless there is one) holds a check."""
-    limits = os.path.join(td, 'limits.json')
-    if not os.path.exists(limits):
-        with open(limits, 'w') as f:
-            json.dump({'indexers': {slug: {'search_per_day': 1000, 'download_per_day': 450, 'reset': 'rolling-24h'}
-                                    for slug in ('ninjacentral', 'drunkenslug', 'althub')}}, f)
     cfg = dict(test_dir=td, store=os.path.join(os.path.dirname(td), 'store'), listname='l', limit=100, standin_port=1340,
                rebuild_image=False, expected_settings=write_expected(td))
     cfg.update(kw)
@@ -170,7 +172,7 @@ class PreflightTest(unittest.TestCase):
         self.cfg = make_cfg(self.td)
 
     def world(self, **kw):
-        return FakeWorld(self.cfg, **kw)
+        return FakeWorld(self.cfg, **{'allowance': PLENTY, **kw})
 
     def assert_stops(self, mode, world, *fragments):
         code, text = run_command(mode, self.cfg, world)
@@ -379,10 +381,35 @@ class PreflightTest(unittest.TestCase):
         code, text = run_command('check', self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
-    def test_copies_must_agree_on_enabled_indexers(self):
-        # KaijuFlow's AltMount copy has DrunkenSlug switched off; the key file and KaijuFlow use it
-        self.cfg = make_cfg(make_copies(self, altkf_off=('drunkenslug',)))
-        self.assert_stops('check', self.world(), 'AltMount KaijuFlow', 'drunkenslug')
+    def test_altmounts_indexers_are_ignored_switched_off(self):
+        # #302: KaijuFlow searches and AltMount only streams, so its test copy has every indexer off, pointing anywhere
+        self.cfg = make_cfg(make_copies(self, altkf_off=('ninjacentral', 'drunkenslug'),
+                                        altkf_url=lambda s: 'https://api.real-indexer.example/api?apikey=' + SECRET))
+        for mode in ('check',):
+            code, text = run_command(mode, self.cfg, self.world())
+            self.assertEqual(code, 0, text)
+            self.assertNotIn(SECRET, text)
+
+    def test_altmounts_indexers_are_ignored_switched_on_too(self):
+        self.cfg = make_cfg(make_copies(self, altkf_off=('drunkenslug',), altkf_url=lambda s: 'https://elsewhere.example/api'))
+        code, text = run_command('check', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
+    def test_the_key_file_and_kaijuflow_must_agree_on_the_switched_on_indexers(self):
+        self.cfg = make_cfg(make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'),
+                                        key_slugs=('ninjacentral', 'drunkenslug')))
+        self.assert_stops('check', self.world(), 'KaijuFlow', 'switches on ninjacentral', 'drunkenslug')
+
+    def test_an_indexer_switched_off_in_both_the_key_file_and_kaijuflow_passes(self):
+        td = make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'))
+        path = os.path.join(td, 'indexers.json')
+        with open(path, 'w') as f:
+            json.dump({'indexers': {'ninjacentral': {'url': 'u', 'apikey': SECRET},
+                                    'drunkenslug': {'url': 'u', 'apikey': SECRET, 'enabled': False}}}, f)
+        os.chmod(path, 0o600)
+        self.cfg = make_cfg(td)
+        code, text = run_command('check', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
 
     def test_indexer_address_must_be_the_standins(self):
         td = make_copies(self, url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
@@ -606,7 +633,7 @@ class ExpectedSettingsFileTest(unittest.TestCase):
             json.dump(config, f)
         cfg = make_cfg(td)
         write_expected(td, [{'copies': ['kaijuflow'], 'settings': {'devDiagnostics': True}}])
-        code, text = run_command('check', cfg, FakeWorld(cfg))
+        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 1, text)
         self.assertIn('KaijuFlow has no devDiagnostics setting, but the expected settings file', text)
 
@@ -615,12 +642,12 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         cfg = make_cfg(td)  # then the file of the fixture folder gets the fallback entry too
         write_expected(td, [{'copies': ['kaijuflow'], 'settings': rules()},
                             {'copies': ['kaijuflow'], 'settings': {'ultimateFallback.enabled': True}}])
-        code, text = run_command('check', cfg, FakeWorld(cfg))
+        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 1, text)
         self.assertEqual([x.split(': change')[0] for x in text.splitlines() if x.strip()], [
             f"KaijuFlow has ultimateFallback.enabled set to false, but the expected settings file ({cfg['expected_settings']}) says true"])
         cfg = make_cfg(make_copies(self), expected_settings=cfg['expected_settings'])  # the fixture copy as expected: on
-        self.assertEqual(run_command('check', cfg, FakeWorld(cfg))[0], 0)
+        self.assertEqual(run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))[0], 0)
 
     def test_the_committed_file_holds_the_standard_rules_for_kaijuflow(self):
         rules_ = self.committed()
@@ -642,10 +669,10 @@ class ExpectedSettingsFileTest(unittest.TestCase):
 
     def test_the_committed_file_is_the_one_the_preflight_uses_unless_another_is_named(self):
         cfg = make_cfg(make_copies(self, kf_rules=self.committed()), expected_settings=None)
-        code, text = run_command('check', cfg, FakeWorld(cfg))
+        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 0, text)
         cfg = make_cfg(make_copies(self, kf_rules={}), expected_settings=None)
-        code, text = run_command('check', cfg, FakeWorld(cfg))
+        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 1, text)
         self.assertIn('KaijuFlow has no movieFilters setting, but the expected settings file (tools/brain/expected-settings.json) has one', text)
 
@@ -880,7 +907,7 @@ class MachineWiringTest(unittest.TestCase):
 
     def preflight(self, mode, load):
         with mock.patch.object(subprocess, 'run', self.run_), mock.patch.object(os, 'getloadavg', lambda: (load, 0.2, 0.1)):
-            return run_command(mode, self.cfg, self.World(self.cfg))
+            return run_command(mode, self.cfg, self.World(self.cfg, allowance=PLENTY))
 
     def test_a_check_reads_the_load_the_addresses_and_the_dns_from_the_machine(self):
         code, text = self.preflight('check', 0.31)
@@ -964,7 +991,7 @@ class PowerWiringTest(unittest.TestCase):
         with mock.patch.object(brainrun, 'POWER_SUPPLY_ROOT', supplies), \
                 mock.patch.object(brainrun, 'CPUFREQ_ROOT', os.path.join(POWER, 'cpufreq')), \
                 mock.patch.object(brainrun, 'PROBE_ROUNDS', 1000):
-            return brainrun.preflight(mode, self.cfg, self.World(self.cfg), seen)
+            return brainrun.preflight(mode, self.cfg, self.World(self.cfg, allowance=PLENTY), seen)
 
     def test_on_battery_a_check_stops(self):
         for mode in ('check',):

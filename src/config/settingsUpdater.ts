@@ -96,7 +96,6 @@ export function updateSettings(settings: {
   easynewsTimeout?: number;
   easynewsMode?: 'ddl' | 'nzb';
   easynewsHealthCheck?: boolean;
-  indexerPriority?: string[];
   autoPlay?: AutoPlayConfig;
   streamDisplayConfig?: StreamDisplayConfig;
   healthChecks?: {
@@ -355,9 +354,6 @@ export function updateSettings(settings: {
   }
   if (settings.easynewsHealthCheck !== undefined) {
     configData.easynewsHealthCheck = settings.easynewsHealthCheck;
-  }
-  if (settings.indexerPriority !== undefined) {
-    configData.indexerPriority = settings.indexerPriority;
   }
   if (settings.healthChecks !== undefined) {
     // Preserve providers if not included (providers are managed via CRUD endpoints)

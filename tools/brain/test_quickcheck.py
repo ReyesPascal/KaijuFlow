@@ -22,7 +22,7 @@ import quickcheck as qc
 import retired
 import testbed
 from test_preflight import FakeWorld, make_cfg, run_command
-from test_settings import SECRET, make_copies, tempdir
+from test_settings import SECRET, make_copies, put_limits, tempdir
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UTC = datetime.timezone.utc
@@ -874,9 +874,7 @@ class CheckPreflightTest(unittest.TestCase):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 300)})
 
     def limits(self, entries):
-        with open(os.path.join(self.td, 'limits.json'), 'w') as f:
-            json.dump({'indexers': {slug: {'search_per_day': s, 'download_per_day': d, 'reset': 'rolling-24h'}
-                                    for slug, (s, d) in entries.items()}}, f)
+        put_limits(os.path.join(self.td, 'indexers.json'), entries)
 
     def used(self, downloads):
         """A record folder whose stand-in log asked the real ninjacentral `downloads` NZBs just now."""
@@ -933,14 +931,22 @@ class CheckPreflightTest(unittest.TestCase):
         self.assertIn('The indexers have 30 downloads left today between them (drunkenslug 0, ninjacentral 30), '
                       'and the check may need 150', text)
 
-    def test_a_missing_limits_file_or_entry_refuses_a_check(self):
+    def test_an_indexer_without_limits_in_the_key_file_refuses_a_check_and_names_the_command(self):
+        make_copies(self, base=os.path.dirname(self.td))  # a key file with no limits in it
         self.limits({'ninjacentral': (2000, 450)})
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
-        self.assertIn('The limits file has no entry for drunkenslug', text)
-        os.remove(os.path.join(self.td, 'limits.json'))
+        self.assertEqual(code, 1, text)
+        self.assertIn('The key file has no daily limits for drunkenslug, so its allowance cannot be checked: add them '
+                      '(python3 -I tools/brain/testbed.py indexer add drunkenslug --stash <entry> --searches <n> --downloads <n>)', text)
+        self.assertNotIn(SECRET, text)
+
+    def test_a_limits_file_beside_the_key_file_is_not_read(self):
+        make_copies(self, base=os.path.dirname(self.td))
+        with open(os.path.join(self.td, 'limits.json'), 'w') as f:
+            json.dump({'indexers': {s: {'search_per_day': 2000, 'download_per_day': 450} for s in ('ninjacentral', 'drunkenslug')}}, f)
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
-        self.assertEqual(code, 1)
-        self.assertIn('There is no limits file yet', text)
+        self.assertEqual(code, 1, text)
+        self.assertIn('The key file', text)
 
 
 class IndexerRuleTest(unittest.TestCase):

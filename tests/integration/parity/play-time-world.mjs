@@ -51,7 +51,7 @@ async function createFakeIndexer(listen, { refuseGrabs } = {}) {
 
 /**
  * Start KaijuFlow's real modules (from `root`/dist) with the fakes around them. Returns the world the scenarios take:
- * { kaijuflow, backend, news, indexer, refusing, limited, tvdb, cinemeta, list, configData }.
+ * { kaijuflow, backend, news, indexer, second, refusing, limited, tvdb, cinemeta, list, config, configData }.
  */
 export async function createPlayTimeWorld({ root, listen }) {
   const load = p => import(root + '/dist/' + p + '.js');
@@ -71,6 +71,9 @@ export async function createPlayTimeWorld({ root, listen }) {
   const limited = await createFakeIndexer(listen, { refuseGrabs: { status: 200, body: '<?xml version="1.0" encoding="UTF-8"?>\n<error code="500" description="Request limit reached"/>' } });
   // Caps unknown: Kaiju Search asks each by IMDb and by name (#285); the fake answers a name query with nothing.
   const indexerEntry = (name, url) => ({ name, url, apiKey: 'synthetic-indexer-key', enabled: true });
+  // A second indexer that serves its own links as the suite's does (Releases, #299: the same upload on two indexers).
+  const second = await createFakeIndexer(listen);
+  second.entry = indexerEntry('Second', second.url);
   refusing.entry = indexerEntry('Refusing', refusing.url);
   limited.entry = indexerEntry('Limited', limited.url);
   Object.assign(configData, {
@@ -102,5 +105,5 @@ export async function createPlayTimeWorld({ root, listen }) {
     const out = await requestContext.run({ baseUrl: kaijuflow, pathPrefix: '/stremio', manifestKey: 'synthetic-manifest' }, () => addon.get('stream', type, id));
     return out.streams;
   };
-  return { kaijuflow, backend, news, indexer, refusing, limited, tvdb, cinemeta, list, configData };
+  return { kaijuflow, backend, news, indexer, second, refusing, limited, tvdb, cinemeta, list, config, configData };
 }

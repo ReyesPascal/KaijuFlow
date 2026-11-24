@@ -73,6 +73,46 @@ export function mergeFound<T extends { link?: string; title?: string; size?: num
   return out;
 }
 
+// --------------------------------------------------------------------------- Releases (#299)
+
+/** A Release's name as it is matched: lower case, with spaces, `.`, `-` and `_` removed (NZBHydra2's key). */
+export const releaseNameKey = (title: string | undefined): string => (title ?? '').toLowerCase().replace(/[\s._-]+/g, '');
+
+/** Two sizes of one upload: both known and at most 1 % apart (of the larger). */
+const sameSize = (a: number | undefined, b: number | undefined): boolean =>
+  !!a && !!b && a > 0 && b > 0 && Math.abs(a - b) <= 0.01 * Math.max(a, b);
+
+/**
+ * Merge the indexers' Sources into Releases (GLOSSARY: Release): Sources on different indexers with the same cleaned-up
+ * name (`releaseNameKey`) and a size within 1 % are one upload. A Release is listed at its first Source's place, with
+ * that Source's fields (its link, indexer and size), every way that found any of its Sources (`foundBy`), and its
+ * Sources in order (`sources`, one per indexer: two uploads of one name on the same indexer are two Releases). Its size
+ * is compared with the first Source's. Every Release has `sources`, one when a single indexer has it.
+ */
+export function mergeReleases<T extends { title?: string; size?: number; indexerName?: string; foundBy?: FoundBy[] }>(
+  sources: T[],
+): (T & { sources: T[] })[] {
+  const out: (T & { sources: T[] })[] = [];
+  const byName = new Map<string, (T & { sources: T[] })[]>();
+  for (const s of sources) {
+    const { sources: _ignored, ...source } = s as T & { sources?: unknown };
+    const key = releaseNameKey(s.title);
+    const named = byName.get(key) ?? [];
+    const release = named.find(r => sameSize(r.size, s.size) && !r.sources.some(o => (o.indexerName ?? '') === (s.indexerName ?? '')));
+    if (release) {
+      release.sources.push(source as T);
+      for (const w of s.foundBy ?? []) if (!release.foundBy?.includes(w)) release.foundBy = [...(release.foundBy ?? []), w];
+      release.foundBy?.sort((a, b) => (a === b ? 0 : a === 'id' ? -1 : 1));
+      continue;
+    }
+    const fresh = { ...(source as T), sources: [source as T] };
+    named.push(fresh);
+    byName.set(key, named);
+    out.push(fresh);
+  }
+  return out;
+}
+
 // --------------------------------------------------------------------------- the dev switch's search lines (#285)
 
 /** One indexer as a search asked it: its name, and the IDs it was asked by (none when it was asked by name only). */

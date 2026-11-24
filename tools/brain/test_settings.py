@@ -34,6 +34,21 @@ def _put(path, text):
         f.write(text)
 
 
+def put_limits(key_path, entries, reset='rolling-24h'):
+    """Writes each indexer's daily limits into its entry of the key file (#302: the limits live there), keeping the
+    file private. entries: {slug: (searches a day, downloads a day)}; a slug the file lacks gets an entry of its own."""
+    try:
+        with open(key_path) as f:
+            data = json.load(f)
+    except OSError:
+        data = {'indexers': {}}
+    for slug, (search, down) in entries.items():
+        entry = data['indexers'].setdefault(slug, {'url': 'https://real.example/api', 'apikey': SECRET})
+        entry.update(search_per_day=search, download_per_day=down, reset=reset)
+    _put(key_path, json.dumps(data))
+    os.chmod(key_path, 0o600)
+
+
 def rules(films=3000, episodes=1000):
     """Sort and filter rules in the shape KaijuFlow keeps them (`movieFilters`, `tvFilters`), cut short:
     an order, switches, a size cap and one named drop rule."""
@@ -53,7 +68,7 @@ PLAY_TIME_CHECK = {'candidateCount': 3, 'preferenceMode': 'priority', 'whenToRes
 def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabled=('althub',), caps=(12, 25),
                 url=lambda slug: 'http://host.docker.internal:1340/%s/api' % slug, key_mode=0o600, key_slugs=None,
                 altkf_off=(), backup_host='backup.example', kf_rules=None, kf_fallback=True, host_ip=HOST_IP,
-                altmount_url='http://%s:8087' % HOST_IP):
+                altmount_url='http://%s:8087' % HOST_IP, altkf_url=None):
     """A fake kaijuflow-test folder: KaijuFlow and its AltMount, the one setup (#187), plus the key file. KaijuFlow holds
     the sort and filter rules of rules() unless others are given (kf_rules: what goes into the config; {} for none), and its
     fallback is on (ultimateFallback.enabled, #185) unless kf_fallback is False, with the Play-time check's settings (#190). caps: KaijuFlow's and its AltMount's
@@ -78,7 +93,7 @@ def make_copies(case, base=None, enabled=('ninjacentral', 'drunkenslug'), disabl
         lines = ['import:', '    max_processor_workers: 2', '    segment_sample_percentage: 1',
                  'stremio:', '    indexers:', '        newsnab:']
         for s in list(enabled) + list(disabled):
-            lines += ['            - id: x_%s' % s, '              name: %s' % SHORT[s], '              url: %s' % url(s).replace('/api', ''),
+            lines += ['            - id: x_%s' % s, '              name: %s' % SHORT[s], '              url: %s' % (altkf_url or url)(s).replace('/api', ''),
                       '              api_key: ' + SECRET, '              timeout_seconds: 15',
                       '              enabled: %s' % ('true' if s in enabled and s not in altkf_off else 'false')]
         lines += ['providers:', '    - id: provider_1', '      host: news.example', '      username: ' + SECRET, '      password: ' + SECRET,

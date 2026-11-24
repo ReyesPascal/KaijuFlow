@@ -533,14 +533,6 @@ function App() {
           setAliasTitleFallback={ac.setAliasTitleFallback}
           tvdbPreferEnglishTitle={ac.tvdbPreferEnglishTitle}
           setTvdbPreferEnglishTitle={ac.setTvdbPreferEnglishTitle}
-          indexerPriorityDedup={ac.indexerPriorityDedup}
-          setIndexerPriorityDedup={ac.setIndexerPriorityDedup}
-          indexerPriority={ac.indexerPriority}
-          setIndexerPriority={ac.setIndexerPriority}
-          dedupDraggedItem={ac.dedupDraggedItem}
-          setDedupDraggedItem={ac.setDedupDraggedItem}
-          dedupDragOverItem={ac.dedupDragOverItem}
-          setDedupDragOverItem={ac.setDedupDragOverItem}
           easynewsEnabled={ac.easynewsEnabled}
           setEasynewsEnabled={ac.setEasynewsEnabled}
           easynewsUsername={ac.easynewsUsername}

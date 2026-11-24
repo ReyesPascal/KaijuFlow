@@ -37,14 +37,14 @@ class AllowanceTest(test_allowance.AllowanceTest):
 
     def test_record_preflight_without_limits_file_or_earlier_recording_says_so(self):
         text = '\n'.join(retired_run.record_preflight_lines(self.cfg, NOW, stats_files=[]))
-        self.assertIn('no limits file', text)
+        self.assertIn('no key file', text)
         self.assertIn('no earlier complete recording', text)
 
     def test_preflight_for_record_warns_but_does_not_block(self):
         copies = make_copies(self)
         cfg = make_cfg(copies, runs_root=self.runs)
         record(cfg)
-        limits_file(os.path.join(copies, 'limits.json'), search=1)
+        limits_file(os.path.join(copies, 'indexers.json'), search=1)
         record_folder(self.runs, '1-record', 'l', [api('RECORD', hours_ago(30))] * 50)
         code, text = run_command('record', cfg, FakeWorld(cfg))
         self.assertEqual(code, 0, text)
