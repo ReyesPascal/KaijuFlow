@@ -544,6 +544,10 @@
         {
           "clue": "altmount-fast-fail-refused",
           "answer": "yes"
+        },
+        {
+          "clue": "articles-missing",
+          "answer": "yes"
         }
       ],
       "occurrences": 4,

@@ -11,6 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
 import common  # noqa: E402
+import yenc  # noqa: E402
 
 ALTMOUNT_CONFIG = os.path.join('altmount-kf', 'config', 'config.yaml')
 NNTPS_PORT = 563
@@ -76,3 +77,83 @@ class Conn:
         self.s.sendall((c + '\r\n').encode())
         return self.line()
 
+
+
+class Usenet:
+    """The live Clues' one read-only connection to the provider (#284), opened at the first command and closed by
+    `close`: STAT (pipelined) and BODY only. A body is checked in memory (yenc.check) and dropped; nothing is saved."""
+    WINDOW = 100  # STATs sent before their answers are read (RFC 3977 3.5 pipelining)
+
+    def __init__(self, login=None, connect=None):
+        self._login, self._connect, self._conn = login, connect or Conn, None
+        self.connections = 0
+
+    def _c(self):
+        if self._conn is None:
+            self._conn = self._connect(*(self._login or provider()))
+            self.connections += 1
+        return self._conn
+
+    def stat(self, mids):
+        """The answer code to `STAT <mid>` for each message-id, in order (0 for an answer with no code)."""
+        out = []
+        for i in range(0, len(mids), self.WINDOW):
+            window = mids[i:i + self.WINDOW]
+            c = self._c()
+            c.s.sendall(''.join(f'STAT <{m}>\r\n' for m in window).encode())
+            for _ in window:
+                line = c.line()
+                out.append(int(line[:3]) if line[:3].isdigit() else 0)
+        return out
+
+    def body(self, mid):
+        """{'code', 'intact', 'why', 'size', 'want_size', 'crc', 'want_crc'} for `BODY <mid>`: the body yEnc-checked, not kept."""
+        c = self._c()
+        c.s.sendall(f'BODY <{mid}>\r\n'.encode())
+        status = c.line()
+        code = int(status[:3]) if status[:3].isdigit() else 0
+        if code != 222:
+            return {'code': code}
+        lines = []
+        while True:
+            ln = c.f.readline()
+            if not ln:
+                return dict(yenc.check(lines), code=code, intact=False, why='the connection ended inside the body')
+            ln = ln.rstrip(b'\r\n')
+            if ln == b'.':
+                break
+            lines.append(ln[1:] if ln.startswith(b'..') else ln)
+        return dict(yenc.check(lines), code=code)
+
+    def close(self):
+        if self._conn is not None:
+            try:
+                self._conn.cmd('QUIT')
+            except OSError:
+                pass
+            self._conn.s.close()
+            self._conn = None
+
+
+class Recorder:
+    """A Usenet that keeps every answer it gets, for a fixture of recorded NNTP answers: `answers` is {'stat': {mid:
+    [code, ...] in the order asked}, 'body': {mid: [checked body, ...]}} (a body's check, never its bytes)."""
+
+    def __init__(self, usenet):
+        self.usenet, self.answers = usenet, {'stat': {}, 'body': {}}
+        self.connections = 0
+
+    def stat(self, mids):
+        codes = self.usenet.stat(mids)
+        for m, c in zip(mids, codes):
+            self.answers['stat'].setdefault(m, []).append(c)
+        return codes
+
+    def body(self, mid):
+        got = self.usenet.body(mid)
+        self.answers['body'].setdefault(mid, []).append(got)
+        return got
+
+    def close(self):
+        self.usenet.close()
+        self.connections = self.usenet.connections

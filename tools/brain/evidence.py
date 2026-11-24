@@ -18,6 +18,7 @@ import indexer_standin  # noqa: E402
 
 FORMAT = 1  # the evidence folder's format version; a reader refuses a version it does not know
 DIR = 'evidence'  # in the check's run folder: <run folder>/evidence/<NN>-<label>/
+LIVE = 'live.json'  # the live Clues' answers, asked once right after the check (#284): diagnosis.live_clues writes it
 ANSWERS = 'answers'  # the kept indexer answers, a stand-in list: --store <evidence folder> --list answers replays them
 _SECOND = datetime.timedelta(seconds=1)
 MIN_SECRET = 6  # a secret value shorter than this is not scrubbed by value (it would blank ordinary words)
@@ -228,8 +229,8 @@ class FormatUnknown(Exception):
 
 class Saved:
     """One evidence folder as Diagnosis and the Clues read it: `meta` (evidence.json), `steps` (steps.jsonl), `kf_lines`
-    and `am_lines` (both containers' log lines), `settings`, and `nzb(release)` (the bytes of a failed Source's NZB, or
-    None)."""
+    and `am_lines` (both containers' log lines), `settings`, `live` (live.json: the live Clues' answers, {} when none ran),
+    and `nzb(release)` (the bytes of a failed Source's NZB, or None)."""
 
     def __init__(self, folder):
         self.folder = folder
@@ -246,6 +247,11 @@ class Saved:
                 self.settings = json.load(f)
         except (OSError, ValueError):
             self.settings = {}
+        try:  # the live Clues' answers, asked once right after the check (#284)
+            with open(os.path.join(folder, LIVE)) as f:
+                self.live = json.load(f)
+        except (OSError, ValueError):
+            self.live = {}
 
     def _lines(self, name):
         try:
@@ -258,6 +264,9 @@ class Saved:
         for s in self.meta.get('failed_sources') or []:
             if s.get('release') == release and s.get('nzb'):
                 return _read_bytes(os.path.join(self.folder, s['nzb']))
+        for a in self.meta.get('altmount_nzbs') or []:  # else AltMount's copy of its failed import, named after the release
+            if a.get('nzb') and os.path.basename(a.get('from') or '') == release + '.nzb':
+                return _read_bytes(os.path.join(self.folder, a['nzb']))
         return None
 
 

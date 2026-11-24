@@ -1,0 +1,24 @@
+{
+ "t": "2026-11-24T10:51:46.034Z",
+ "clues": {
+  "articles-missing": {
+   "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested": {
+    "answer": "no",
+    "facts": [
+     "STAT of all 1872 articles of 1 file (par2 left out): 0 missing (430 when asked twice), 0 other answers"
+    ]
+   }
+  },
+  "segment-crc-bad": {
+   "The.Witcher.S01E01.2160p.NF.WEB-DL.DDPA5.1.HDR.DV.HEVC-SiC-AsRequested": {
+    "answer": "no",
+    "facts": [
+     "BODY of articles 1, 937, 1872 of 3YuT.mkv (1872 articles), checked in memory and dropped",
+     "3YuT.mkv article 1: size and CRC32 match its trailer",
+     "3YuT.mkv article 937: size and CRC32 match its trailer",
+     "3YuT.mkv article 1872: size and CRC32 match its trailer"
+    ]
+   }
+  }
+ }
+}
