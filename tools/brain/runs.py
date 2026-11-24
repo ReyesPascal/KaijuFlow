@@ -116,13 +116,13 @@ def nulls_between(run, prev):
 
 def missed_since(root, recording, when):
     """(run folder, missed requests) of the newest run on this Recording that started after `when` (its last record, as
-    RECORDING.json says), of any status, a stopped or short one too; None when there is none (#229). A grab of a release
+    RECORDING.json says), of any status, a stopped or short one too, but not one marked never compared with; None when there is none (#229). A grab of a release
     the visit never played does not count (#235), when the run folder's raw.json shows the visits."""
     if not root or not when:
         return None
     for d, meta in _metas(root):
-        if meta.get('recording') != recording or 'standin_misses' not in meta:
-            continue
+        if meta.get('recording') != recording or 'standin_misses' not in meta or br.never_compared(meta):
+            continue  # a run marked never compared with (wrong titles, #265) says nothing about the recording
         if (meta.get('started') or '') <= when:
             return None
         run = load(os.path.join(root, d))

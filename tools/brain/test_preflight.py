@@ -530,6 +530,15 @@ class PreflightTest(unittest.TestCase):
                 self.assert_stops('run', self.world(), 'The last run on', f'2026-11-11T100000Z-{name}', 'missed 1 requests')
                 shutil.rmtree(self.cfg['runs_root'])
 
+    def test_a_run_marked_never_compared_with_does_not_block_the_recording(self):
+        """#265: a run made with the wrong titles is marked never compared with; its misses are not the recording's."""
+        record(self.cfg)
+        self.ran('2026-11-11T090000Z-baseline', '2026-11-11T09:00:00Z', 0)
+        self.ran('2026-11-11T100000Z-wrong-titles', '2026-11-11T10:00:00Z', 34, never_compared=True,
+                 visits=[{'ok': False, 'played_source': None, 'misses': ['ninjacentral api t=search&q=x']}])
+        code, text = run_command('run', self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+
     def test_a_record_after_the_run_that_missed_passes_a_run(self):
         self.ran('2026-11-09T100000Z-baseline', '2026-11-09T10:00:00Z', 1840)
         record(self.cfg)  # the top-up, 2026-11-10T09:00:00Z
