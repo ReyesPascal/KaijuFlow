@@ -2,7 +2,8 @@
 // The stream list is asked for through the addon's stream route and a fake indexer (as in discovery-stream),
 // then played through the real play routes against fake AltMount; the fake news server is the only
 // health-check provider. Application modules are real; indexer, news server and Backend are fake.
-// One setup for every suite that plays in it (parity-play-time-check, parity-keep-alive).
+// One setup for every suite that plays in it (parity-play-time-check, parity-keep-alive, parity-go-back-preparing,
+// parity-go-back-ready).
 import fs from 'node:fs';
 import { createFakeAltmount } from './fake-altmount.mjs';
 import { useFakeNews } from './fake-nntp.mjs';

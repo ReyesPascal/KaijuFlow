@@ -683,6 +683,8 @@ export async function handleStream(
 
   /** Serve a Source's video, and remember the delivery for Stremio's next requests of the play (dedup). */
   const deliver = async (candidate: FallbackCandidate, streamData: StreamData): Promise<void> => {
+    // A disconnected player got no video, so do not remember the delivery or say it played.
+    if (req.socket.destroyed) return;
     // Cache delivery for Stremio request dedup (10 min TTL) — populated BEFORE
     // delivery so concurrent probes from Stremio land on the dedup path instead
     // of triggering another prep.
@@ -813,25 +815,26 @@ export async function handleStream(
     }
   }
 
-  // Every Source after the first-Source switch failed, while the first is still preparing (or became ready
-  // meanwhile): go back to it instead of the failure video. Wait for it in this request's time, else a
-  // self-redirect resumes at it.
-  if (warming !== undefined && !circuitAborted && !res.headersSent && !req.socket.destroyed) {
-    const first = candidates[warming];
-    if (isPreparing(first, play) || recall(first, play).ready) {
-      console.log(`↩️ Every later Source failed: back to the first Source, still preparing [${warming + 1}/${maxCandidates}]: ${first.title}`);
+  // In walk-on mode, every Source after the first-Source switch failed while the clicked Source is still preparing
+  // (or became ready meanwhile): go back to it instead of the failure video. Wait for it in this request's time,
+  // else a self-redirect resumes at it. The UF-lobby order below keeps its redirect behavior.
+  if (userPick && userPickMode === 'fallback-chain' && (candidateStart > 0 || warming !== undefined)
+    && !circuitAborted && !res.headersSent && !req.socket.destroyed) {
+    const first = candidates[0];
+    const recalled = recall(first, play);
+    if (!recalled.dead && (isPreparing(first, play) || (recalled.ready && !isVideoPathBroken(recalled.ready.videoPath)))) {
+      console.log(`↩️ Every later Source failed: back to the first Source, still usable [1/${maxCandidates}]: ${first.title}`);
       try {
         const waited = await keep.wait(getOrCreateStream(first, play, { verbose }));
         if (!waited.done) {
-          if (!req.socket.destroyed) keep.redirect(res, warming);
+          if (!req.socket.destroyed) keep.redirect(res, 0);
           return;
         }
-        if (req.socket.destroyed) return;
         await deliver(first, waited.value);
         return;
       } catch (error) {
         if (isClientDisconnect(error)) return;
-        console.error(`❌ Stream failed [${warming + 1}/${maxCandidates}] ${first.title}: ${(error as Error).message}`);
+        console.error(`❌ Stream failed [1/${maxCandidates}] ${first.title}: ${(error as Error).message}`);
         logPlayFailed(first.title, first.indexerName, error);
       }
     }

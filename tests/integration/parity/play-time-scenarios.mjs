@@ -329,7 +329,7 @@ export const playTimeScenarios = [
       const a = offerMovie(w, [{ tag: 'stopimp-a1', kind: 'never-ready' }, { tag: 'stopimp-a2' }]);
       const b = offerMovie(w, [{ tag: 'stopimp-b1' }]);
       const before = w.backend.submitted.length;
-      const { result: streamsA } = await withLogs(async lines => {
+      const { result: streamsA, lines } = await withLogs(async lines => {
         const out = await w.list('movie', a.id);
         await until(() => w.backend.submitsFor('stopimp-a1') === 1, 'the first title\'s import');
         await w.list('movie', b.id);
@@ -337,6 +337,7 @@ export const playTimeScenarios = [
         await bestDone(lines, b.id);
         return out;
       });
+      assert.ok(lines.some(l => /\b0 dead\b/.test(l)), 'the stopped Walk reports 0 dead Sources');
       await new Promise(r => setTimeout(r, 600)); // the first title's import has failed by now (AltMount answers 408 after 300 ms)
       assert.equal(w.backend.submitsFor('stopimp-a2'), 0, 'the first title\'s next Source never reaches AltMount');
       assert.deepEqual(w.backend.submitted.slice(before), ['stopimp-a1', 'stopimp-b1'], 'the import under way, then only the newest title\'s');
@@ -532,6 +533,28 @@ export const playTimeScenarios = [
       const played = stepsOf(lines).filter(s => s.step === 'played').map(s => s.title);
       assert.deepEqual(played, [sources[0].title, sources[1].title], 'one played line for Best\'s press, one for the list entry');
     },
+  },
+  {
+    // A player that left while its list entry was preparing gets nothing, so nothing was played: no `played` line
+    // (the brain tools read a visit's played Source from it, story 29). No Head start, so only the list entry prepares.
+    id: 'a-player-that-left-writes-no-played-line',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
+      const { id, sources } = offerMovie(w, [{ tag: 'left-a' }]);
+      w.backend.slowImports('left-a', 3000);
+      try {
+        const { lines } = await withLogs(async lines => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          await assert.rejects(play(entry.url, undefined, 1000), 'the player gives up after 1 s');
+          await until(() => lines.some(l => l.includes('Stream ready') && l.includes(sources[0].title)), 'the prepare ending');
+          await new Promise(r => setTimeout(r, 500));
+        });
+        const played = stepsOf(lines).filter(s => s.step === 'played' && s.title === sources[0].title);
+        assert.equal(played.length, 0, 'no played line for a player that left');
+      } finally {
+        w.backend.slowImports('left-a', 0);
+      }
+    }),
   },
   {
     // #246: a list request writes its fallback group, with its play context, to disk once (config/fallback-groups.json).
@@ -941,15 +964,21 @@ export const playTimeScenarios = [
       const { id, sources } = offerMovie(w, [{ tag: 'noprov-a' }, { tag: 'noprov-b' }]);
       const before = w.backend.submitted.length;
       const saved = w.configData.healthChecks;
+      let lines;
       // Before the list: its Head start has no provider either.
       w.configData.healthChecks = { ...saved, providers: saved.providers.map(p => ({ ...p, enabled: false })) };
       try {
-        const streams = await w.list('movie', id);
-        assertFailureVideo(await play(streams[0].url));
-        assertFailureVideo(await play(streams[1].url));
+        const { result: streams, lines: captured } = await withLogs(async () => {
+          const streams = await w.list('movie', id);
+          assertFailureVideo(await play(streams[0].url));
+          assertFailureVideo(await play(streams[1].url));
+          return streams;
+        });
+        lines = captured;
       } finally {
         w.configData.healthChecks = saved;
       }
+      assert.ok(lines.some(l => /\b2 dead\b/.test(l)), 'the Walk reports 2 dead Sources when no provider can check them');
       assert.equal(w.backend.submitted.length, before, 'nothing reaches AltMount');
       const again = await w.list('movie', id);
       const r = await play(again[0].url);
@@ -1064,12 +1093,13 @@ export const playTimeScenarios = [
       const { id, sources } = offerMovie(w, specs);
       const before = w.backend.submitted.length;
       const streams = await w.list('movie', id);
-      const r = await play(streams[0].url);
+      const { result: r, lines } = await withLogs(() => play(streams[0].url));
       assert.equal(r.status, 200, 'Best plays');
       assertBytes(r.body, sources[5].media, 'Best plays the first Healthy Source, below the gone ones');
       assert.deepEqual(w.backend.submitted.slice(before), ['below-ok-6'], 'only the played Source reaches AltMount');
       const gone = w.backend.grabs.filter(g => g.tag.startsWith('below-gone-')).map(g => g.tag);
       assert.deepEqual([...gone].sort(), specs.slice(0, 5).map(s => s.tag).sort(), 'each gone Source grabbed once');
+      assert.ok(lines.some(l => /\b5 dead\b/.test(l)), 'the Walk reports the five failed grabs');
     },
   },
   {
@@ -1206,9 +1236,15 @@ export const playTimeScenarios = [
   {
     // ADR 0004, "The walk's grabs": an indexer that answers a grab with 200 and a Newznab error payload is sorted by
     // the payload's code, as an HTTP answer is by its status. Code 500 (its request limit) is a refusal, as a 429 is:
-    // asked once, skipped for the rest of the Walk, none of its Sources dead.
+    // asked once at a time, skipped for the rest of the Walk, none of its Sources dead.
     id: 'an-indexer-answering-an-error-payload-is-asked-once-and-skipped',
     run: w => assertRefusingIndexerSkipped(w, w.limited, 'limited'),
+  },
+  {
+    // A refusal does not cancel the other grabs already in flight: with 3 Sources at a time, the indexer is asked
+    // 3 times, then skipped for the rest of this Walk.
+    id: 'a-refusing-indexer-at-3-at-a-time-is-asked-3-times-and-skipped',
+    run: w => assertRefusingIndexerSkipped(w, w.refusing, 'refused-three', 3),
   },
   {
     // ADR 0004, "The walk's grabs" (#243): a link the indexer says is gone (404) is a Source failure. The Walk marks
@@ -1380,7 +1416,7 @@ export const keepAliveScenarios = [
       const { id, sources } = offerMovie(w, [{ tag: 'window' }]);
       w.backend.slowImports('window', 59000);
       try {
-        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 90, async () => {
+        await withSettings(w, { whenToResolve: 'on-tile-selection', priorityMoviesTimeoutSeconds: 90 }, () => withPrepareTimeout(w, 90, async () => {
           const streams = await w.list('movie', id);
           const url = streams.find(s => !isBest(s)).url;
           const r = await askOnce(url, 70000);
@@ -1392,6 +1428,80 @@ export const keepAliveScenarios = [
         }));
       } finally {
         w.backend.slowImports('window', 0);
+      }
+    },
+  },
+];
+
+/**
+ * The go-back after the first-Source switch (#192) across a self-redirect, the first Source still preparing: in a
+ * suite of its own (parity-go-back-preparing.mjs), since it waits out a player's 60 s window.
+ */
+export const goBackPreparingScenarios = [
+  {
+    // The switch leaves the first Source preparing (59 s import); the next one is still preparing when the request's
+    // 55 s are up, so the request self-redirects to it. It fails in the next request (first byte 400 at about 57 s).
+    // The first is still preparing: the play goes back to it, as it does when the next Source fails within the
+    // first request, and plays it once it is ready, instead of the failure video.
+    id: 'after-the-25-s-switch-a-next-source-failing-after-a-self-redirect-goes-back-to-the-first',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'backrd-a' }, { tag: 'backrd-b', kind: 'first-byte-400' }]);
+      w.backend.slowImports('backrd-a', 59000);
+      w.backend.slowImports('backrd-b', 30000);
+      try {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 90, async () => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          const asked = Date.now();
+          const { result: r, lines } = await withLogs(() => play(entry.url, undefined, 100000));
+          const took = Date.now() - asked;
+          assert.ok(lines.some(l => l.includes('Self-redirect') && l.includes('resuming at candidate 2')),
+            'the first request ran out of time while the next Source was preparing, and resumed at it');
+          assert.equal(w.backend.submitsFor('backrd-b'), 1, 'the next Source was tried');
+          assert.equal(r.status, 200);
+          assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms); ${lines.filter(l => /User-pick attempt|Decoded rc=|Sending Source to AltMount|Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
+          assert.ok(took >= 58000, `it played once the first Source was ready (${took} ms)`);
+          assert.equal(w.backend.submitsFor('backrd-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
+        }));
+      } finally {
+        w.backend.slowImports('backrd-a', 0);
+        w.backend.slowImports('backrd-b', 0);
+      }
+    },
+  },
+];
+
+/**
+ * The go-back after the first-Source switch (#192) across a self-redirect, the first Source ready meanwhile: in a
+ * suite of its own (parity-go-back-ready.mjs), since it takes about 60 s and each suite process has 120 s.
+ */
+export const goBackReadyScenarios = [
+  {
+    // The switch leaves the first Source preparing (ready at 30 s); the next one is still preparing when the first
+    // request's time is up (55 s, a self-redirect resumes at it) and fails at 60 s (AltMount's prepare timeout, 35 s).
+    // Every later Source has failed and the first is ready: the play goes back to it, across the self-redirect too.
+    id: 'after-the-switch-and-a-self-redirect-a-failed-next-source-goes-back-to-the-first',
+    async run(w) {
+      const { id, sources } = offerMovie(w, [{ tag: 'backok-a' }, { tag: 'backok-b' }]);
+      w.backend.slowImports('backok-a', 30000);
+      w.backend.slowImports('backok-b', 200000);
+      try {
+        await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 35, async () => {
+          const streams = await w.list('movie', id);
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === sources[0].title);
+          const asked = Date.now();
+          const { result: r, lines } = await withLogs(() => play(entry.url, undefined, 100000));
+          const took = Date.now() - asked;
+          assert.ok(lines.some(l => l.includes('Self-redirect') && l.includes('resuming at candidate 2')),
+            'the first request ran out of time while the next Source was preparing, and resumed at it');
+          assert.equal(r.status, 200);
+          assertBytes(r.body, sources[0].media, `the first Source plays, not the failure video (answered after ${took} ms); ${lines.filter(l => /User-pick attempt|Decoded rc=|Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
+          assert.ok(took >= 59000, `it played once the next Source had failed (${took} ms)`);
+          assert.equal(w.backend.submitsFor('backok-a'), 1, 'the first Source was prepared once: recalled, not handed over again');
+        }));
+      } finally {
+        w.backend.slowImports('backok-a', 0);
+        w.backend.slowImports('backok-b', 0);
       }
     },
   },
@@ -1436,11 +1546,12 @@ async function askOnce(url, timeoutMs = 30000) {
 
 /**
  * A press of Best on a title whose top four Sources come from an indexer that refuses every grab (`refuser`, one of
- * the play-time world's), then a Healthy Source of the suite's indexer. Best walks one Source at a time, so "once" is
- * exact: the refuser is asked once, the skip is logged once, Best plays the Healthy Source and no refused Source is dead.
+ * the play-time world's), then a Healthy Source of the suite's indexer. Best walks one Source at a time by default.
+ * With a larger candidateCount, already in-flight grabs still reach the refuser, so the bound is one request per slot.
+ * The skip is logged once, Best plays Healthy, and no refused Source is dead.
  */
-function assertRefusingIndexerSkipped(w, refuser, prefix) {
-  return withSettings(w, { candidateCount: 1 }, () => withIndexer(w, refuser.entry, async () => {
+function assertRefusingIndexerSkipped(w, refuser, prefix, candidateCount = 1) {
+  return withSettings(w, { candidateCount }, () => withIndexer(w, refuser.entry, async () => {
     const id = `tt${nextImdb++}`;
     const refused = [1, 2, 3, 4].map(i => ({ tag: `${prefix}-${i}`, title: `KaijuFlow.PlayTime.${prefix}-${i}.2026.2160p.WEB-DL.H265-GRP`, size: (30 - i) * GB }));
     for (const s of refused) s.link = refuser.nzbLink(s.tag);
@@ -1456,7 +1567,8 @@ function assertRefusingIndexerSkipped(w, refuser, prefix) {
     });
     assert.equal(r.status, 200, 'Best plays');
     assertBytes(r.body, ok.media, 'Best plays the Healthy Source of the other indexer');
-    assert.deepEqual(refuser.grabbedTags.slice(before), [`${prefix}-1`], 'the refusing indexer is asked once');
+    assert.deepEqual(refuser.grabbedTags.slice(before), refused.slice(0, candidateCount).map(s => s.tag),
+      `the refusing indexer is asked at most ${candidateCount} time${candidateCount === 1 ? '' : 's'}, once per in-flight slot`);
     const skip = new RegExp(`${refuser.entry.name}.*skipped for the rest of the Walk`);
     assert.equal(lines.filter(l => skip.test(l)).length, 1, 'the skip is logged once');
     const again = await w.list('movie', id);
