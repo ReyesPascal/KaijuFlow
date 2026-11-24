@@ -361,7 +361,7 @@ def add(cases, cid, write):
                                        'next': {'do': nxt['do'], 'what': nxt['what'].strip()}}, 'agent')
         line = f"attempt {item['n']} paused; next: {nxt['do']}"
     elif kind == 'conclude':
-        raise Refused('conclude is not built yet')
+        line = conclude(log, d, write)
     else:
         h = _hypothesis(log, write.get('hypothesis'))
         now = write.get('now')
@@ -373,6 +373,203 @@ def add(cases, cid, write):
         line = f"hypothesis {h['n']} now {now}"
     save(d, log)
     return f'{cid}: {line}'
+
+
+WHOSE = ('KaijuFlow', 'AltMount', 'indexer', 'Usenet', 'test-only')  # the Casebook's, less `unknown`: a cause is named
+
+
+def _recipe_passes(log, case_dir, recipe, library=None):
+    """Runs the recipe's Clues on every occurrence (each only where it has not run): (the occurrences it passed on,
+    those where a Clue gave the opposite yes or no). A can't tell is neither."""
+    passed, against = [], []
+    for o in log['occurrences']:
+        run_clues(log, case_dir, o['n'], [r['clue'] for r in recipe], library, 'agent')
+        said = {r['clue']: r['answer'] for r in log['clue_runs'] if r['occurrence'] == o['n']}
+        wrong = [r for r in recipe if said[r['clue']] != r['answer']]
+        if not wrong:
+            passed.append(o['n'])
+        elif any(said[r['clue']] in (clues.YES, clues.NO) for r in wrong):
+            r = next(r for r in wrong if said[r['clue']] in (clues.YES, clues.NO))
+            against.append((o['n'], f"{r['clue']} answered {said[r['clue']]} (wanted {r['answer']})"))
+    return passed, against
+
+
+def _result(log, passed):
+    """proved when the recipe passed on a check's occurrence and on one repeated at will (a Drill-down or a replay);
+    probable otherwise (spec #279, story 45)."""
+    how = {o['n']: o['how'] for o in log['occurrences']}
+    return 'proved' if any(how[n] == 'repeat' for n in passed) and any(how[n] == 'check' for n in passed) else 'probable'
+
+
+def conclude(log, case_dir, write, library=None):
+    """The agent's conclusion: the hypothesis that holds, every other one settled, the cause and the recipe of Clues
+    that proves it, which must pass on the Case log's occurrences. Sets the status to proved or probable."""
+    h = _hypothesis(log, write.get('hypothesis'))
+    if h['status'] != 'holds':
+        raise Refused(f"hypothesis {h['n']} does not hold yet ({h['status']})")
+    if len(log['hypotheses']) < 2:
+        raise Refused(f"keep several hypotheses at once: this Case log has {len(log['hypotheses'])}")
+    still = [str(o['n']) for o in log['hypotheses'] if o['status'] == OPEN]
+    if still:
+        raise Refused(f"refute or hold every other hypothesis first: {', '.join(still)} still open")
+    fields = {k: _text(write, k, w) for k, w in (('title', 'a conclusion names the cause in one sentence'),
+                                                 ('saw', 'a conclusion says what the viewer saw'),
+                                                 ('cause', 'a conclusion says what the cause is'))}
+    if write.get('whose') not in WHOSE:
+        raise Refused(f"whose must be one of: {', '.join(WHOSE)}")
+    import casebook  # noqa: PLC0415  (the Casebook's own list of steps)
+    if write.get('step') not in casebook.STEPS:
+        raise Refused(f"step must be one of: {', '.join(casebook.STEPS)}")
+    recipe = write.get('recipe')
+    if not isinstance(recipe, list) or not recipe or any(
+            not isinstance(r, dict) or r.get('answer') not in (clues.YES, clues.NO) or not r.get('clue') for r in recipe):
+        raise Refused('a conclusion gives its recipe: Clues, each with the answer (yes or no) that proves the cause')
+    recipe = [{'clue': r['clue'], 'answer': r['answer']} for r in recipe]
+    check_quotes(log, case_dir, write.get('quotes') or [], 'a conclusion')
+    passed, against = _recipe_passes(log, case_dir, recipe, library)
+    if against:
+        raise Refused(f'the recipe says no on occurrence {against[0][0]}: {against[0][1]}')
+    if not passed:
+        raise Refused("the recipe passed on no occurrence (a Clue could not tell): it proves nothing yet")
+    result = _result(log, passed)
+    log['conclusion'] = dict(fields, hypothesis=h['n'], whose=write['whose'], step=write['step'], recipe=recipe,
+                             quotes=write['quotes'], passed_on=passed, result=result, t=_now(), by='agent')
+    log['status'] = result
+    return f"concluded: {result} (the recipe passed on occurrence {', '.join(map(str, passed))}" + \
+        ('' if result == 'proved' else '; not repeated at will') + ')'
+
+
+def repeat(cases, cid, folder, library=None):
+    """`case repeat`: the evidence folder of a Drill-down or a replay that repeated the failure at will, added as an
+    occurrence; with a conclusion, its recipe runs on it and the status follows."""
+    import diagnosis  # noqa: PLC0415
+    d = case_dir_of(cases, cid)
+    log = load(d)
+    folder = os.path.normpath(os.path.abspath(folder))
+    if any(evidence_folder(d, o) == folder for o in log['occurrences']):
+        n = next(o['n'] for o in log['occurrences'] if evidence_folder(d, o) == folder)
+        raise Refused(f'that evidence folder is occurrence {n} already')
+    ev = evidence.read(folder)
+    rules = diagnosis.load_rules()
+    found = [dict(f, fingerprint=diagnosis.fingerprint(f, ev, rules)) for f in diagnosis.failures(ev)]
+    mine = next((f for f in found if f['fingerprint'] == log['fingerprint']), None)
+    if mine is None:
+        raise Refused("no failure in that evidence folder has this Case log's fingerprint: "
+                      + '; '.join(f['fingerprint'] for f in found))
+    meta = ev.meta
+    n = len(log['occurrences']) + 1
+    log['occurrences'].append({'n': n, 'evidence': os.path.relpath(folder, d), 'check': meta.get('check'),
+                               'label': meta.get('label'), 'release': mine['release'],
+                               'date': (meta.get('t_start') or '')[:10], 'rules': rules['version'], 'how': 'repeat'})
+    obs = path_observation(ev, mine)
+    for q in obs['quotes']:
+        q['occurrence'] = n
+    _note(log, 'observations', {'occurrence': n, **obs}, 'code')
+    ran, skipped = run_clues(log, d, n, sorted(clues.CLUES if library is None else library), library, 'code')
+    _note(log, 'attempts', {'occurrence': n, 'ran': ran, 'skipped': skipped, 'next': None}, 'code')
+    line = f'occurrence {n} added (repeat)'
+    c = log['conclusion']
+    if c:
+        c['passed_on'], against = _recipe_passes(log, d, c['recipe'], library)
+        if against:  # the repeat says the concluded cause was not it: the case is open again
+            c['against'] = [{'occurrence': n, 'why': why} for n, why in against]
+            log['status'] = OPEN
+            line += f'; the recipe says no on it ({against[0][1]}): open again'
+        else:
+            c['result'] = log['status'] = _result(log, c['passed_on'])
+            line += f"; now {c['result']}"
+    save(d, log)
+    return f'{cid}: {line}'
+
+
+# --------------------------------------------------------------------------- a solved case, written up
+
+def _value(v):
+    import casebook  # noqa: PLC0415
+    v = str(v)
+    return json.dumps(v, ensure_ascii=False) if not v or v != v.strip() or casebook.PLAIN_BAD.search(v) else v
+
+
+def _sign(log):
+    kind, where, reason = log['fingerprint'].split(' | ', 2)
+    return ' | '.join((kind, where if where != 'none' else '*', reason.replace(' | ', '*') or '*'))
+
+
+def _quote_line(log, q):
+    occ = next(o for o in log['occurrences'] if o['n'] == q['occurrence'])
+    where = f"Clue {q['clue']}" if q.get('clue') else f"`{q['file']}`"
+    return f"- {where}, {occ['check']}: \"{q['text']}\""
+
+
+def entry_text(log, entry_id):
+    """The Casebook entry a concluded Case log is written up as (tools/brain/casebook/README.md)."""
+    c = log['conclusion']
+    occs = {o['n']: o for o in log['occurrences']}
+    seen = []
+    for n in c['passed_on']:
+        o = occs[n]
+        play = os.path.join(*os.path.normpath(o['evidence']).split(os.sep)[-2:])
+        seen += [f"  - check: {_value(o['check'])}", f"    title: {_value(o['label'])}", f'    play: {_value(play)}',
+                 f"    date: {o['date']}", f"    rules: {o['rules']}"]
+    rules = occs[c['passed_on'][0]]['rules']
+    front = ['---', f'id: {entry_id}', f"title: {_value(c['title'])}", f"kind: {log['kind']}", f"step: {c['step']}",
+             f"whose: {c['whose']}", 'status: open', 'match:', f'  - rules: {rules}', f'    sign: {_value(_sign(log))}',
+             'confirm:'] + [f"  - clue: {r['clue']}\n    answer: {r['answer']}" for r in c['recipe']] + \
+        ['fix: none yet', 'seen:' if seen else 'seen: []'] + seen + ['---']
+    held = _hypothesis(log, c['hypothesis'])
+    quotes = []
+    for q in c['quotes'] + held['quotes'] + ((held.get('result') or {}).get('quotes') or []):
+        line = _quote_line(log, q)
+        if line not in quotes:
+            quotes.append(line)
+    recipe = ', '.join(f"{r['clue']} answers {r['answer']}" for r in c['recipe'])
+    checks = ', '.join(f"{occs[n]['check']} ({occs[n]['how']})" for n in c['passed_on'])
+    proof = (f"Proved: it was repeated at will ({', '.join(occs[n]['check'] for n in c['passed_on'] if occs[n]['how'] == 'repeat')})."
+             if c['result'] == 'proved' else
+             'Probable, not proved: it was not repeated at will (no Drill-down or replay has played it again).')
+    ruled = [f"- {h['says']}: refuted ({h['result']['says']}; Case log `{log['id']}`, hypothesis {h['n']})."
+             for h in log['hypotheses'] if h['status'] == 'refuted']
+    ruled += [f"- {o['says']} (Case log `{log['id']}`)." for o in log['observations']
+              if o['by'] == 'code' and ': ruled out:' in o['says']]
+    body = [
+        '', '## What the viewer saw', '', c['saw'], '',
+        '## Signs', '', f"The fingerprint: `{log['fingerprint']}`", ''] + quotes + [
+        '', '## Cause', '', c['cause'], '',
+        '## How it was proved', '', f'The confirming test is a recipe of Clues: {recipe}. It passed on {checks}. {proof}',
+        f"Written up from Case log `{log['id']}` (the notes repo, `diagnosis/cases/{log['id']}/`).", '',
+        '## Ruled out', ''] + (ruled or ['Nothing tested and rejected yet.']) + [
+        '', '## Fix', '', 'None yet.' if c['whose'] == 'KaijuFlow' else
+        f"None yet. A cause that is {c['whose']}'s gets a workaround, no ticket.", '',
+        '## History', '', f"- {c['t'][:10]}: written up from Case log `{log['id']}` ({c['result']}) by the diagnosing "
+        'agent (#287).', '']
+    return '\n'.join(front + body)
+
+
+def write_entry(cases, cid, entry_id, folder=None):
+    """`case entry`: the concluded Case log written up as a Casebook entry, the format and index checked, the index
+    written again. The Case log then names its entry and is no longer open."""
+    import casebook  # noqa: PLC0415
+    folder = casebook.FOLDER if folder is None else folder
+    d = case_dir_of(cases, cid)
+    log = load(d)
+    if not log.get('conclusion'):
+        raise Refused(f"{cid} is not concluded yet ({log['status']})")
+    if not casebook.NAME.match(entry_id):
+        raise Refused(f'an entry id is lower-case words joined by -, not {entry_id}')
+    path = os.path.join(folder, entry_id + '.md')
+    if os.path.exists(path):
+        raise Refused(f'the Casebook has an entry {entry_id} already')
+    with open(path, 'w') as f:
+        f.write(entry_text(log, entry_id))
+    try:
+        casebook.read_entry(path)
+    except casebook.FormatError as e:
+        os.remove(path)
+        raise Refused(f'the entry would break the Casebook format: {e}') from e
+    casebook.write_index(folder)
+    log['entry'] = entry_id
+    save(d, log)
+    return f'{cid}: Casebook entry {entry_id} written, index written again: commit both through review'
 
 
 def show(cases, cid):
@@ -398,6 +595,14 @@ def main(argv):
                        'result, research, ticket, ask, pause, conclude; every quote is checked against the evidence')
     p.add_argument('id')
     p.add_argument('file')
+    p = sub.add_parser('repeat', parents=[common], help='add the evidence folder of a Drill-down or a replay that '
+                       'repeated the failure at will')
+    p.add_argument('id')
+    p.add_argument('folder')
+    p = sub.add_parser('entry', parents=[common], help='write a concluded Case log up as a Casebook entry')
+    p.add_argument('id')
+    p.add_argument('entry')
+    p.add_argument('--casebook', help='the Casebook folder (default tools/brain/casebook)')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'list':
@@ -414,6 +619,10 @@ def main(argv):
             except (OSError, ValueError) as e:
                 raise Refused(f'{a.file}: not a JSON write: {e}') from e
             print(add(a.cases, a.id, write))
+        elif a.cmd == 'repeat':
+            print(repeat(a.cases, a.id, a.folder))
+        elif a.cmd == 'entry':
+            print(write_entry(a.cases, a.id, a.entry, a.casebook))
     except Refused as e:
         print(f'refused: {e}')
         return 1

@@ -10,10 +10,11 @@ import json
 import os
 import unittest
 
+import casebook
 import caselog
 import clues
 import diagnosis
-from test_diagnosis import DEAD_PACK, INDEXER_DOWN, READ_ERROR, SIC, TWO_REFUSALS, stored_check
+from test_diagnosis import DEAD_PACK, INDEXER_DOWN, READ_ERROR, SIC, TWO_REFUSALS, casebook_copy, stored_check
 from test_settings import tempdir
 
 INCEPTION_PAGE = ('{"step": "indexer_page", "source": "NinjaCentral", "ms": 3, "ok": false, "t": '
@@ -245,6 +246,97 @@ class NeverGivesUpTest(CaseWrites):
                          (1, 'refused: the next step is the owner only after an ask (a live go or a login)\n'))
         self.assertEqual(self.add({'write': 'pause', 'next': nxt}), (0, f'{self.id}: attempt 2 paused; next: research\n'))
         self.assertEqual(logs(self.cases)[self.id]['attempts'][-1]['next'], nxt)
+
+
+AM_LOG = 'logs/altmount-kf-test.log'
+SIC_REFUSED = 'level=WARN msg="File does not match allowed extensions" filename=' + SIC
+SIC_CHECKED = f'"title": "{SIC}", "status": "verified"'
+RECIPE = [{'clue': 'check-passed-source', 'answer': 'yes'}, {'clue': 'altmount-extension-refused', 'answer': 'yes'}]
+
+
+class SolvedTest(CaseWrites):
+    """SiC-AsRequested in #218: its check passed it, AltMount refused its file for the extension; the Casebook's
+    look-alike (no-extension-file-passed) has no confirming test, so the failure opens a Case log."""
+    def setUp(self):
+        self.root, self.run_dir, self.cases, _ = after(self, (TWO_REFUSALS,))
+        [self.id] = logs(self.cases)
+        sic = [{'occurrence': 1, 'file': AM_LOG, 'text': SIC_REFUSED}]
+        for h in ({'says': 'AltMount refuses the file for its name, which ends in no video extension, although the '
+                           'health check passed it', 'refuted_if': 'AltMount took the file', 'quotes': sic},
+                  {'says': "the Source's articles are gone", 'refuted_if': 'the health check passed it',
+                   'quotes': sic}):
+            self.assertEqual(self.add(dict(h, write='hypothesis'))[0], 0)
+        self.assertEqual(self.add({'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'its check verified it',
+                                   'quotes': [{'occurrence': 1, 'file': 'steps.jsonl', 'text': SIC_CHECKED}]})[0], 0)
+
+    def conclude(self, **kw):
+        write = dict({'write': 'conclude', 'hypothesis': 1, 'title': 'AltMount refused a file the check passed, for '
+                      'its extension.', 'saw': 'The play fell back to the next Source after a wait.',
+                      'cause': "The release's video file has no video extension in its name, so AltMount refuses it.",
+                      'whose': 'AltMount', 'step': 'import_wait', 'recipe': RECIPE,
+                      'quotes': [{'occurrence': 1, 'file': AM_LOG, 'text': SIC_REFUSED}]}, **kw)
+        return self.add(write)
+
+    def hold(self):
+        self.assertEqual(self.add({'write': 'result', 'hypothesis': 1, 'now': 'holds', 'says': 'AltMount said so',
+                                   'quotes': [{'occurrence': 1, 'file': AM_LOG, 'text': SIC_REFUSED}]})[0], 0)
+
+    def test_a_conclusion_needs_its_hypothesis_held_the_others_settled_and_a_recipe_that_passes(self):
+        self.assertEqual(self.conclude(), (1, 'refused: hypothesis 1 does not hold yet (open)\n'))
+        self.hold()
+        self.assertEqual(self.conclude(recipe=[{'clue': 'unscramble-read-error', 'answer': 'yes'}]),
+                         (1, 'refused: the recipe says no on occurrence 1: unscramble-read-error answered no '
+                             '(wanted yes)\n'))
+        self.assertEqual(self.conclude(recipe=[{'clue': 'not-built', 'answer': 'yes'}]),
+                         (1, 'refused: no Clue named not-built in the library\n'))
+        self.assertEqual(self.conclude(whose='nobody'),
+                         (1, 'refused: whose must be one of: KaijuFlow, AltMount, indexer, Usenet, test-only\n'))
+
+    def test_a_case_seen_only_in_checks_is_probable_and_one_repeated_at_will_is_proved(self):
+        self.hold()
+        self.assertEqual(self.conclude(), (0, f'{self.id}: concluded: probable (the recipe passed on occurrence 1; '
+                                              'not repeated at will)\n'))
+        self.assertEqual(logs(self.cases)[self.id]['status'], 'probable')
+        _, again = stored_check(self, plays=(TWO_REFUSALS,))  # the evidence folder a Drill-down of the title left
+        code, out = case_cmd(self.cases, 'repeat', self.id, os.path.join(again, 'evidence', '01-218-witcher-two-refusals'))
+        self.assertEqual((code, out.strip()), (0, f'{self.id}: occurrence 2 added (repeat); now proved'))
+        log = logs(self.cases)[self.id]
+        self.assertEqual((log['status'], log['conclusion']['passed_on']), ('proved', [1, 2]))
+        code, out = case_cmd(self.cases, 'repeat', self.id, os.path.join(self.run_dir, 'evidence', '01-218-witcher-two-refusals'))
+        self.assertEqual((code, out.strip()), (1, 'refused: that evidence folder is occurrence 1 already'))
+        code, out = case_cmd(self.cases, 'repeat', self.id, INDEXER_DOWN)
+        self.assertEqual(code, 1)
+        self.assertTrue(out.startswith("refused: no failure in that evidence folder has this Case log's fingerprint"), out)
+
+    def test_a_solved_case_written_up_as_an_entry_passes_the_casebook_format_and_index_test(self):
+        self.hold()
+        self.conclude()
+        book = casebook_copy(self)
+        code, out = case_cmd(self.cases, 'entry', self.id, 'altmount-extension-refused-file', '--casebook', book)
+        self.assertEqual((code, out.strip()), (0, f'{self.id}: Casebook entry altmount-extension-refused-file written, index '
+                                                  'written again: commit both through review'))
+
+        self.assertEqual(casebook.problems(book), [])
+        entries, _ = casebook.load(book)
+        e = entries['altmount-extension-refused-file']
+        self.assertEqual((e['kind'], e['step'], e['whose'], e['status'], e['confirm']),
+                         ('check miss', 'import_wait', 'AltMount', 'open', RECIPE))
+        self.assertEqual(e['seen'], [{'check': '2026-11-23T183239Z-baseline-218', 'title': 'The Witcher S01E01',
+                                      'play': 'evidence/01-218-witcher-two-refusals', 'date': '2026-11-23', 'rules': 1}])
+        _, sections = casebook.read_entry(os.path.join(book, 'altmount-extension-refused-file.md'))
+        self.assertIn("the Source's articles are gone", sections['Ruled out'])
+        self.assertIn('Probable, not proved', sections['How it was proved'])
+        self.assertIn(SIC_REFUSED, sections['Signs'])
+        self.assertEqual(logs(self.cases)[self.id]['entry'], 'altmount-extension-refused-file')
+
+        [_, sic] = diagnosis.diagnose(TWO_REFUSALS, entries=diagnosis.load_index(book))['failures']  # the next one
+        self.assertEqual((sic['release'], sic['verdict'], sic['cause']), (SIC, 'found', 'altmount-extension-refused-file'))
+        self.assertEqual(case_cmd(self.cases, 'entry', self.id, 'unscramble-read-error', '--casebook', book),
+                         (1, 'refused: the Casebook has an entry unscramble-read-error already\n'))
+
+    def test_an_unconcluded_case_is_not_written_up(self):
+        self.assertEqual(case_cmd(self.cases, 'entry', self.id, 'x-y', '--casebook', casebook_copy(self)),
+                         (1, f'refused: {self.id} is not concluded yet (open)\n'))
 
 
 if __name__ == '__main__':
