@@ -11,7 +11,7 @@ import tempfile
 import unittest
 import urllib.parse
 
-import pool
+import pool_draw as pool
 
 
 def entry(n, kind, lst, used_by=None):
@@ -168,7 +168,7 @@ class PoolTest(unittest.TestCase):
         self.assertEqual(self.refused([twice]), (1, 'The pool cannot be used: tt9000001 is in it twice.'))
 
 
-TMDB_SAMPLES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-15-tmdb')
+TMDB_SAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fixtures', '2026-11-15-tmdb')
 KEY = 'abc123notarealkey'
 
 

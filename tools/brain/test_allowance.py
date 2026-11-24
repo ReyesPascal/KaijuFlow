@@ -1,4 +1,4 @@
-"""Tests for the indexer allowance (spec #77, ticket #87): the usage command and the record preflight's table.
+"""Tests for the indexer allowance (spec #77, ticket #87): the usage command and what a check has left.
 
 Fixture key files with limits (#302), counter files (stats.json) and record folders in a temporary folder; no indexer, no Docker.
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
@@ -12,8 +12,7 @@ import unittest
 
 import allowance
 import brainrun
-from test_preflight import FakeWorld, make_cfg, record, run_command
-from test_settings import make_copies, put_limits, tempdir
+from test_settings import put_limits, tempdir
 
 UTC = datetime.timezone.utc
 NOW = datetime.datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
@@ -166,49 +165,6 @@ class AllowanceTest(unittest.TestCase):
             code = brainrun.main(['usage', '--test-dir', self.td, '--runs-root', self.runs])
         self.assertEqual(code, 0)
         self.assertEqual(len(out.getvalue().strip().splitlines()), 1)
-
-    # --- the record preflight
-
-    def test_last_complete_recording_of_the_same_list_only(self):
-        record_folder(self.runs, '1-record', 'l', [api('RECORD', hours_ago(9))] * 2)
-        record_folder(self.runs, '2-record', 'l', [api('RECORD', hours_ago(8))] * 5, status='null')  # stopped early
-        record_folder(self.runs, '3-record', 'other', [api('RECORD', hours_ago(7))] * 7)
-        name, counts = allowance.last_complete_recording(self.runs, 'l')
-        self.assertEqual(name, '1-record')
-        self.assertEqual(counts, {'ninjacentral': {'search': 2, 'download': 0}})
-        self.assertIsNone(allowance.last_complete_recording(self.runs, 'none'))
-
-    def test_record_preflight_shows_table_and_last_count_and_warns_when_short(self):
-        limits_file(self.limits)
-        record_folder(self.runs, '1-record', 'l', [api('RECORD', hours_ago(30))] * 2100)
-        text = '\n'.join(allowance.record_preflight_lines(self.cfg, NOW, stats_files=[]))
-        self.assertIn('searches       0    2000    2000', text)
-        self.assertIn('sent 2100 requests', text)
-        self.assertIn('Warning: ninjacentral has 2000 searches left but the last full recording needed 2100', text)
-
-    def test_record_preflight_has_no_warning_when_it_fits(self):
-        limits_file(self.limits)
-        record_folder(self.runs, '1-record', 'l', [api('RECORD', hours_ago(30))] * 10)
-        text = '\n'.join(allowance.record_preflight_lines(self.cfg, NOW, stats_files=[]))
-        self.assertIn('sent 10 requests', text)
-        self.assertNotIn('Warning', text)
-
-    def test_record_preflight_without_limits_file_or_earlier_recording_says_so(self):
-        text = '\n'.join(allowance.record_preflight_lines(self.cfg, NOW, stats_files=[]))
-        self.assertIn('no key file', text)
-        self.assertIn('no earlier complete recording', text)
-
-    def test_preflight_for_record_warns_but_does_not_block(self):
-        copies = make_copies(self)
-        cfg = make_cfg(copies, runs_root=self.runs)
-        record(cfg)
-        limits_file(os.path.join(copies, 'indexers.json'), search=1)
-        record_folder(self.runs, '1-record', 'l', [api('RECORD', hours_ago(30))] * 50)
-        code, text = run_command('record', cfg, FakeWorld(cfg))
-        self.assertEqual(code, 0, text)
-        self.assertIn('Warning: ninjacentral', text)
-        self.assertIn('sent 50 requests', text)
-        self.assertIn('Setup is right for a record', text)
 
 
 if __name__ == '__main__':

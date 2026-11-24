@@ -4,7 +4,7 @@
 
 ### Where things stand
 
-Resuming a session: `docs/agents/resume.md` (status, handoff note `~/kaijuflow-notes/NEXT_SESSION.md`, frontier). Before any timed run: runbook `tools/brain/RUNBOOK.md`.
+Resuming a session: `docs/agents/resume.md` (status, handoff note `~/kaijuflow-notes/NEXT_SESSION.md`, frontier). Before any real-use check: runbook `tools/brain/RUNBOOK.md`.
 
 ### Issue tracker
 

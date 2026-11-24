@@ -20,6 +20,7 @@ import draw
 import fixing
 import pool
 import quickcheck as qc
+import retired
 import testbed
 from test_preflight import FakeWorld, make_cfg, run_command
 from test_settings import SECRET, make_copies, put_limits, tempdir
@@ -999,8 +1000,9 @@ class RealPartsTest(unittest.TestCase):
             brainrun.main(['check', '--quick', '--test-dir', td, '--runs-root', self.root, '--tickets-dry-run'])
         self.assertTrue(seen['tickets_dry_run'])  # ... unless it is a dry run
         self.assertIsInstance(brainrun.RealIO(self.cfg).tracker(), fixing.GitHub)
-        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-            brainrun.main(['check', '--quick', '--run', self.root])
+        with contextlib.redirect_stdout(io.StringIO()) as out:  # a run folder's check is retired (ADR 0010, #273)
+            self.assertEqual(brainrun.main(['check', '--quick', '--run', self.root]), retired.EXIT_RETIRED)
+        self.assertIn('retired by ADR 0010', out.getvalue())
 
 
 # --------------------------------------------------------------------------- the preflight of a check, on fixture test copies

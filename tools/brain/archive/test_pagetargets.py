@@ -183,7 +183,7 @@ class TargetsTest(unittest.TestCase):
 
     def test_the_plays_per_round_verdict_carries_the_plays_of_every_round_together(self):
         # the real 2026-11-13 baseline: cold 10 of 10 and 9 of 10, warm 10 of 10 and 10 of 10; 10 a round are needed
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13', 'raw.json')
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fixtures', 'run-2026-11-13', 'raw.json')
         with open(path) as f:
             rows = pt.target_results(json.load(f)['visits'])
         [(_, _, verdict)] = [r for r in rows if r[0].startswith('Top pick plays on')]
