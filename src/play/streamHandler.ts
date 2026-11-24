@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { getActiveBackend, isSourceFailure, type Backend, type BackendSource } from '../backends/index.js';
 import { getOrCreateStream, isPreparing, evictReadyByVideoPath, setPrepareFn, cleanupExpiredCache, isVideoPathBroken, markVideoPathBroken, clearVideoPathBroken, type PlaySource } from './streamCache.js';
-import { recall, keyOf } from './sourceMemory.js';
+import { recall, keyOf, sourcesOf } from './sourceMemory.js';
 import { logPlayed, logPlayFailed } from '../utils/stepTiming.js';
 import { getFallbackGroup } from './fallbackManager.js';
 import { getDeliveryLog, WebDav404Error, isUltimateFallbackActive } from './utils.js';
@@ -21,13 +21,13 @@ import { episodeOf, episodeForTile, playContextOfTile, type PlayContext } from '
 import { claimSession, getSessionPromise, getSessionBackups, ultimateFallbackFromCandidates, walkFoundNothing, type UfBackupStream } from './ultimateFallback.js';
 import { requireHealthySource } from './playTimeCheck.js';
 import { WalkLimits, WALK_MAX_GRABS } from './walk.js';
-import { walkGrab } from '../backends/nzbGrab.js';
+import { grabRelease, refusedBy } from './releaseGrab.js';
 import { encodeTileEnvelope, parseTilePayload } from './redirectHelpers.js';
 import { serveVideo, type InlineProxy } from './delivery.js';
 import { keepAlive } from './keepAlive.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
 import { resolveBaseUrl } from '../utils/urlHelpers.js';
-import type { StreamData, FallbackCandidate } from './types.js';
+import type { StreamData, FallbackCandidate, ReleaseSource } from './types.js';
 
 const pipelineAsync = promisify(pipeline);
 
@@ -202,25 +202,31 @@ class WalkLimitError extends Error {
 }
 
 /**
- * The grab of a clicked list entry's walk-on (ADR 0004, "The walk's grabs", #255): Best's Walk's grab (walkGrab),
- * under the walk's limits. A Source whose indexer refused earlier in the walk, or one past its 30 grabs, is not grabbed
- * (WalkLimitError). A link the indexer says is gone or a bad NZB is a Source failure (dead for every episode); a
- * refusal skips the indexer for the rest of the walk, said once, and leaves the Source alive.
+ * The grab of a clicked list entry's walk-on (ADR 0004, "The walk's grabs", #255): Best's Walk's grab of a Release
+ * (grabRelease, #300: its fastest indexer's NZB, another's when that fetch fails), under the walk's limits. A Release
+ * every indexer of which refused earlier in the walk, or one past its 30 grabs, is not grabbed (WalkLimitError). Every
+ * Source gone or bad is a Source failure (dead for every episode); a refusal skips the indexer for the rest of the walk,
+ * said once, and leaves the Release alive. Returns the Source whose NZB was fetched.
  */
-async function grabForWalk(source: BackendSource, walk: WalkLimits | undefined, logPrefix: string): Promise<void> {
-  const indexer = source.indexerName ?? '';
-  if (walk?.skips(indexer)) throw new WalkLimitError(`${indexer} refused a grab earlier in this Walk: passed by`, false);
+async function grabForWalk(release: PlaySource, walk: WalkLimits | undefined, play: PlayContext | undefined, logPrefix: string): Promise<ReleaseSource> {
+  const indexers = sourcesOf(release).map(s => s.indexerName ?? '');
+  if (walk && indexers.every(i => walk.skips(i))) throw new WalkLimitError(`${indexers.join(', ')} refused a grab earlier in this Walk: passed by`, false);
   const turn = walk?.grab() ?? 'grab';
   if (turn !== 'grab') {
     if (turn === 'ceiling') console.log(`${logPrefix}\u{1F6D1} Walk stopped: ${walk!.grabCount} grabs, the most one Walk makes — ending as if the list had run out`);
     throw new WalkLimitError(`the Walk made its ${WALK_MAX_GRABS} grabs`, true);
   }
-  try {
-    await walkGrab(source.nzbUrl, source.title, logPrefix, source.indexerName, source.searchExitIp);
-  } catch (err) {
-    if (!isSourceFailure(err) && walk?.refused(indexer)) {
-      console.log(`${logPrefix}⏭️ ${indexer} refused a grab: skipped for the rest of the Walk, its Sources kept (ADR 0004)`);
+  const skipped = (refused: string[]) => {
+    for (const indexer of refused) {
+      if (walk?.refused(indexer)) console.log(`${logPrefix}⏭️ ${indexer} refused a grab: skipped for the rest of the Walk, its Sources kept (ADR 0004)`);
     }
+  };
+  try {
+    const { source, refused } = await grabRelease(release, { play, skips: walk ? i => walk.skips(i) : undefined, logPrefix });
+    skipped(refused);
+    return source;
+  } catch (err) {
+    skipped(refusedBy(err));
     throw err;
   }
 }
@@ -276,16 +282,18 @@ export async function prepareStream(playSource: PlaySource, play?: PlayContext, 
   // Steps 1-3: hand the Source to the Backend and wait for its video, with no time limit of KaijuFlow's
   // (AltMount's prepare timeout is the limit; keep-alive answers the player meanwhile).
   // The grab sorts the indexer's answer as Best's Walk does (ADR 0004); the check and the Backend use its NZB.
-  await grabForWalk(source, walk, logPrefix);
+  // A Release (#300): the Source whose NZB was fetched is the one checked and handed over.
+  const grabbed = await grabForWalk(playSource, walk, play, logPrefix);
+  const fetched: BackendSource = { ...source, nzbUrl: grabbed.nzbUrl, indexerName: grabbed.indexerName, searchExitIp: grabbed.searchExitIp ?? searchExitIp };
   // Play-time check (#190): a Source is checked before the Backend gets it, never handed over unchecked.
   // It is the only health check since #191, so it runs whatever the fallback setting.
-  await requireHealthySource(source, logPrefix);
+  await requireHealthySource(fetched, logPrefix);
 
-  const video = await backend.prepare(source, { logPrefix });
+  const video = await backend.prepare(fetched, { logPrefix });
 
   // Step 4: Verify the video is actually servable (first byte).
   try {
-    await backend.probe(video, { logPrefix, title, source: indexerName });
+    await backend.probe(video, { logPrefix, title, source: fetched.indexerName });
   } catch (err) {
     markVideoPathBroken(video.videoPath);
     throw err;
@@ -440,6 +448,8 @@ export async function handleStream(
   // verifyProxyCircuit has a baseline when the FBG is missing (UF disabled, no
   // `fbg` in URL, or group TTL expired).
   let tPackSearchExitIp: string | undefined;
+  // The clicked Release's Sources on every indexer (#300), from its fallback group.
+  let clickedSources: ReleaseSource[] | undefined;
   const isUfTilePath = req.params.filename === 'ultimate-fallback';
   const payload = parseTilePayload(typeof req.query.t === 'string' ? req.query.t : undefined);
   fallbackGroupId = payload.fbg;
@@ -466,6 +476,7 @@ export async function handleStream(
     play = group?.context ?? playContextOfTile(payload);
     contentType = group?.context.type ?? payload.ty;
     tPackSearchExitIp = cand?.searchExitIp ?? payload.ip;
+    clickedSources = cand?.sources;
     tPackSp = payload.seasonpack === 1 ? '1' : undefined;
     tPackUserPick = true;
   }
@@ -493,7 +504,7 @@ export async function handleStream(
   // has expired).
   const candidates: FallbackCandidate[] = [];
   if (nzbUrl && title) {
-    candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp });
+    candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp, sources: clickedSources });
   }
 
   const fallbackEnabled = isUltimateFallbackActive();
@@ -520,7 +531,7 @@ export async function handleStream(
       } else {
         // Clicked NZB not found in group — push sentinel (skip empty for UF tile
         // requests) + all group candidates so the chain still has something to walk.
-        if (nzbUrl && title) candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp });
+        if (nzbUrl && title) candidates.push({ nzbUrl, title, indexerName, isSeasonPack: isSeasonPackRequest, searchExitIp: tPackSearchExitIp, sources: clickedSources });
         candidates.push(...group.candidates);
       }
       if (verbose) console.log(`🔄 Fallback group loaded: ${candidates.length} candidates`);

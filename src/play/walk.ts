@@ -17,6 +17,9 @@
  *   that refuses a grab (429, 5xx, 401/403, an error payload not 300, a network error, a timeout) is skipped for the
  *   rest of the Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004).
  *   The grabs already under way when it refuses still reach it, so it is asked at most `inFlight` (candidateCount) times.
+ * - Each Source of the list is a Release (#300; GLOSSARY: Release): one grab, one check, one dead mark, whichever of its
+ *   indexers' NZBs the grab fetched (releaseGrab.ts). A Release is passed by for refusals only when every indexer that
+ *   has it refused; one grab counts once against the 30, however many of its indexers it asked.
  * - Dead marks follow ADR 0004: a grab the indexer says is gone (404, other 4xx, error payload 300) or bad, a check that blocks a
  *   Source, or a prepare that fails for the Source's own reason, marks it dead; a refused grab, a check that cannot
  *   answer, or a Backend failure leaves it alive.
@@ -64,9 +67,10 @@ export class WalkLimits {
 }
 
 export type WalkEvent =
-  | { type: 'grabbed'; index: number }
-  /** `badSource`: the indexer says the link is gone, or its NZB is bad (ADR 0004); otherwise the indexer refused. */
-  | { type: 'grabFailed'; index: number; badSource: boolean }
+  /** `refused`: the indexers that refused the grab before one of the Release's other Sources was fetched (#300). */
+  | { type: 'grabbed'; index: number; refused?: readonly string[] }
+  /** `badSource`: every indexer says the link is gone, or its NZB is bad (ADR 0004). `refused`: the indexers that refused. */
+  | { type: 'grabFailed'; index: number; badSource: boolean; refused: readonly string[] }
   | { type: 'checked'; index: number; verdict: 'healthy' | 'blocked' | 'error'; episodeOnly?: boolean }
   | { type: 'prepared'; index: number; videoPath: string }
   | { type: 'prepareFailed'; index: number; badSource: boolean }
@@ -101,8 +105,8 @@ export interface WalkOptions {
   inFlight: number;
   /** A Source remembered dead: the Walk passes it by. Asked when the Walk reaches it. */
   isDead: (index: number) => boolean;
-  /** The indexer a Source comes from. */
-  indexerOf: (index: number) => string;
+  /** The indexers a Release has a Source on (#300). */
+  indexersOf: (index: number) => readonly string[];
   /** Library hits: list index -> the video path the Backend holds. */
   hits: ReadonlyMap<number, string>;
 }
@@ -154,14 +158,15 @@ export class Walk {
     if (!m) return out;
     switch (event.type) {
       case 'grabbed':
+        for (const indexer of event.refused ?? []) this.skipIndexer(indexer, out);
         m.grab = 'done';
         m.check = 'checking';
         out.push({ type: 'check', index: m.index });
         break;
       case 'grabFailed':
         m.grab = 'failed';
+        for (const indexer of event.refused) this.skipIndexer(indexer, out);
         if (event.badSource) out.push({ type: 'markDead', index: m.index, cause: 'grab' });
-        else this.skipIndexer(this.opts.indexerOf(m.index), out);
         break;
       case 'checked':
         m.check = event.verdict;
@@ -193,6 +198,9 @@ export class Walk {
   snapshot(): readonly WalkMember[] { return this.members; }
 
   get grabCount(): number { return this.limits.grabCount; }
+
+  /** An indexer that refused a grab in this Walk: the Release grab passes its Sources by (#300). */
+  skips(indexer: string): boolean { return this.limits.skips(indexer); }
 
   /** Sources the Walk gave up on: no longer walked, and not because a stop cancelled their prepare (for the summary). */
   get failedCount(): number {
@@ -229,9 +237,11 @@ export class Walk {
     return i < this.opts.size;
   }
 
-  /** A Source the Walk does not reach: remembered dead, or not a library hit and from an indexer that refused. */
+  /** A Release the Walk does not reach: remembered dead, or not a library hit and every indexer that has it refused. */
   private passedBy(index: number): boolean {
-    return this.opts.isDead(index) || (!this.opts.hits.has(index) && this.limits.skips(this.opts.indexerOf(index)));
+    if (this.opts.isDead(index)) return true;
+    const indexers = this.opts.indexersOf(index);
+    return !this.opts.hits.has(index) && indexers.length > 0 && indexers.every(i => this.limits.skips(i));
   }
 
   private skipIndexer(indexer: string, out: WalkDecision[]): void {
