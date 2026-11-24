@@ -406,6 +406,63 @@ class ReportTest(unittest.TestCase):
                                                  'check stopped (the cap rule).')
 
 
+
+def table_release(release):
+    """The row of the shared release-name table for this release name."""
+    return next(r for r in shared_release_names() if r['release'] == release)
+
+
+class AllowedWordTest(unittest.TestCase):
+    """A maybe that played the right title offers its odd word as a new allowed word, with that release as proof (#286,
+    spec #279 story 72). The right title is told by the video file KaijuFlow played (its played line's `video`, dev switch
+    on) when the release name does not show it. Real release names from the shared table."""
+
+    PULP = ['movie', 'tt0110912', 'Pulp Fiction', 'popular-film', '1994-09-10']
+    PULP_CE = 'Pulp.Fiction.CE.1994.INTERNAL.DVDRip.XviD-SChiZO'  # `CE` between the name and the year: a maybe
+
+    def played(self, release, video=None, **kw):
+        line = {'step': 'played', 'title': release, 'source': 'NinjaCentral', 't': '2026-11-25T10:00:05.000Z', **kw}
+        return [{**line, 'video': video} if video else line]
+
+    def test_a_maybe_whose_video_file_fits_played_the_right_title_and_offers_its_odd_word_with_the_release(self):
+        self.assertEqual(table_release(self.PULP_CE)['right'], 'yes')
+        video = 'Pulp.Fiction.1994.INTERNAL.DVDRip.XviD-SChiZO.avi'
+        o = qc.judge(visit(title=self.PULP, steps=self.played(self.PULP_CE, video, flow='sure', proof='nzb video')), names=lambda: [])
+        self.assertEqual((o['outcome'], o['why']), ('played', ''))
+        self.assertEqual(o['allowed_word'], {'word': 'ce', 'where': 'between the name and the year', 'release': self.PULP_CE,
+                                             'video': video, 'proof': 'nzb video'})
+
+    def test_without_a_video_file_that_fits_the_maybe_is_the_wrong_title_and_offers_nothing(self):
+        o = qc.judge(visit(title=self.PULP, steps=self.played(self.PULP_CE)), names=lambda: [])
+        self.assertEqual(o['outcome'], 'fail')
+        self.assertIn('the wrong title played: Pulp.Fiction.CE.1994', o['why'])
+        self.assertIsNone(o['allowed_word'])
+        other = qc.judge(visit(title=self.PULP, steps=self.played(self.PULP_CE, 'Jackie.Brown.1997.DVDRip.avi')), names=lambda: [])
+        self.assertEqual((other['outcome'], other['allowed_word']), ('fail', None))
+
+    def test_a_right_release_with_more_than_one_odd_word_offers_none(self):
+        thief = 'Thief.Der.Einzelgaenger.1981.Directors.Cut.German.DL.1080p.BluRay.x264-CONTRiBUTiON'  # another name, not a tag
+        title = ['movie', 'tt0083190', 'Thief', 'rare-film', '1981-03-27']
+        o = qc.judge(visit(title=title, steps=self.played(thief, 'Thief.1981.German.DL.1080p.BluRay.x264-CONTRiBUTiON.mkv')),
+                     names=lambda: [])
+        self.assertEqual((o['outcome'], o['allowed_word']), ('played', None))
+
+    def test_a_release_the_strict_rule_passes_offers_nothing(self):
+        o = qc.judge(visit(steps=step_lines('kaijuflow-best-dead-first.txt')))
+        self.assertIsNone(o['allowed_word'])
+
+    def test_the_offered_word_is_in_the_checks_report_with_its_release(self):
+        offer = {'word': 'ce', 'where': 'between the name and the year', 'release': self.PULP_CE,
+                 'video': 'Pulp.Fiction.1994.INTERNAL.DVDRip.XviD-SChiZO.avi', 'proof': 'nzb video'}
+        text = qc.render_report(check_record(), [outcome('Pulp Fiction', release=self.PULP_CE, allowed_word=offer), outcome('B')])
+        self.assertIn('## Allowed words offered\n\n'
+                      '- `ce` (between the name and the year), offered by Pulp Fiction: Pulp.Fiction.CE.1994.INTERNAL.DVDRip.XviD-SChiZO '
+                      'played the right title (its video file Pulp.Fiction.1994.INTERNAL.DVDRip.XviD-SChiZO.avi fits; KaijuFlow made it '
+                      'sure by: nzb video). Added through normal review: the tag lists of both copies of the strict rule '
+                      '(tools/brain/quickcheck.py, src/parsers/searchFlow.ts) and a row in tests/fixtures/release-names/table.tsv.', text)
+        none = qc.render_report(check_record(), [outcome('A'), outcome('B')])
+        self.assertIn('## Allowed words offered\n\nNone.', none)
+
 # --------------------------------------------------------------------------- the check's run, in a fake world
 
 T0 = datetime.datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
