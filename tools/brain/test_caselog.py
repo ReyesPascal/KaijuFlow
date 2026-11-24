@@ -6,6 +6,7 @@ plays in fixtures/2026-11-24-diagnosis/ (README there).
 """
 import contextlib
 import io
+import json
 import os
 import unittest
 
@@ -67,6 +68,16 @@ class OpensACaseLogTest(unittest.TestCase):
         self.assertEqual([o['release'] for o in log['occurrences']], [SIC])
         self.assertTrue(log['id'].startswith('check-miss-import-wait-'), log['id'])
 
+    def test_what_code_observes_holds_the_same_claim_check_as_the_agent(self):
+        root, run_dir, cases, summary = after(self, (INDEXER_DOWN, TWO_REFUSALS))
+        for cid, log in logs(cases).items():
+            self.assertTrue(log['observations'][0]['quotes'])  # the path, quoting its first wrong step
+            for obs in log['observations']:
+                if not obs['quotes']:
+                    continue  # a lead with no confirming test: a fact about the Casebook, not the evidence
+                with self.subTest(case=cid, says=obs['says']):
+                    caselog.check_quotes(log, os.path.join(cases, cid), obs['quotes'], 'an observation')
+
     def test_the_same_failure_in_a_later_check_joins_its_case_log(self):
         root, run_dir, cases, _ = after(self, (INDEXER_DOWN,))
         _, later, _, summary = after(self, (INDEXER_DOWN, DEAD_PACK), cases=cases)
@@ -117,6 +128,78 @@ class NeverRepeatsAClueTest(unittest.TestCase):
     def test_a_clue_the_library_does_not_hold_is_refused(self):
         code, out = case_cmd(self.cases, 'run', self.id, 'no-such-clue')
         self.assertEqual((code, out.strip()), (1, 'refused: no Clue named no-such-clue in the library'))
+
+
+KF_LOG = 'logs/kaijuflow-test.log'
+STATUS_503 = '2026-11-24T06:00:46.966105433Z    Status: 503'
+
+
+class ClaimsCheckedTest(unittest.TestCase):
+    def setUp(self):
+        self.root, self.run_dir, self.cases, _ = after(self, (INDEXER_DOWN,))
+        [self.id] = logs(self.cases)
+
+    def add(self, write):
+        path = os.path.join(tempdir(self), 'write.json')
+        with open(path, 'w') as f:
+            json.dump(write, f)
+        return case_cmd(self.cases, 'add', self.id, path)
+
+    def test_a_claim_whose_quote_the_evidence_holds_is_written(self):
+        n = len(logs(self.cases)[self.id]['observations']) + 1
+        code, out = self.add({'write': 'observation', 'says': 'the stand-in answered the search with a 503',
+                              'quotes': [{'occurrence': 1, 'file': KF_LOG, 'text': STATUS_503},
+                                         {'occurrence': 1, 'clue': 'altmount-refused-import',
+                                          'text': 'the failure names no Source'}]})
+        self.assertEqual((code, out.strip()), (0, f'{self.id}: observation {n} written'))
+        obs = logs(self.cases)[self.id]['observations'][-1]
+        self.assertEqual((obs['by'], obs['says']), ('agent', 'the stand-in answered the search with a 503'))
+
+    def test_a_quoted_claim_the_evidence_does_not_hold_is_refused_and_nothing_is_written(self):
+        before = logs(self.cases)[self.id]
+        invented = '2026-11-24T06:00:46.966105433Z    Status: 429'
+        code, out = self.add({'write': 'observation', 'says': 'the indexer was at its limit (429)',
+                              'quotes': [{'occurrence': 1, 'file': KF_LOG, 'text': STATUS_503},
+                                         {'occurrence': 1, 'file': KF_LOG, 'text': invented}]})
+        self.assertEqual(code, 1)
+        self.assertEqual(out.strip(), f'refused: quote 2 is not in occurrence 1\'s {KF_LOG}: "{invented}"')
+        self.assertEqual(logs(self.cases)[self.id], before)
+
+    def test_every_claim_needs_a_quote_and_a_quote_is_read_only_from_the_evidence(self):
+        for write, why in [
+            ({'write': 'observation', 'says': 'the indexer is down', 'quotes': []},
+             'an observation quotes the evidence it rests on: no quote given'),
+            ({'write': 'observation', 'says': 'x', 'quotes': [{'occurrence': 1, 'file': KF_LOG, 'text': '503'}]},
+             'quote 1 is too short to check (at least 10 characters that are not spaces)'),
+            ({'write': 'observation', 'says': 'x', 'quotes': [{'occurrence': 1, 'file': '../../../meta.json',
+                                                               'text': 'quick check here'}]},
+             'quote 1 names ../../../meta.json, not a file in the evidence folder'),
+            ({'write': 'observation', 'says': 'x', 'quotes': [{'occurrence': 3, 'file': KF_LOG, 'text': STATUS_503}]},
+             'quote 1 names occurrence 3; this Case log has 1'),
+            ({'write': 'observation', 'says': 'x', 'quotes': [{'occurrence': 1, 'clue': 'unscramble-read-error',
+                                                               'text': 'read-error for HHWEB'}]},
+             'quote 1 is not in what Clue unscramble-read-error said on occurrence 1: "read-error for HHWEB"'),
+            ({'write': 'hypothesis', 'says': 'the stand-in lost its answer', 'refuted_if': '',
+              'quotes': [{'occurrence': 1, 'file': KF_LOG, 'text': STATUS_503}]},
+             'a hypothesis says what result would refute it (refuted_if)'),
+            ({'write': 'guess', 'says': 'x'}, 'no write named guess (observation, hypothesis, result)'),
+        ]:
+            with self.subTest(why=why):
+                code, out = self.add(write)
+                self.assertEqual((code, out.strip()), (1, 'refused: ' + why))
+
+    def test_a_hypothesis_is_kept_with_what_would_refute_it_and_its_result_is_checked_too(self):
+        q = [{'occurrence': 1, 'file': KF_LOG, 'text': STATUS_503}]
+        self.assertEqual(self.add({'write': 'hypothesis', 'says': 'the stand-in had no answer recorded for the search',
+                                   'refuted_if': 'the answers kept for the play hold this search', 'quotes': q})[0], 0)
+        code, out = self.add({'write': 'result', 'hypothesis': 1, 'now': 'holds', 'says': 'the store kept no answer',
+                              'quotes': [{'occurrence': 1, 'file': KF_LOG, 'text': 'Data: not recorded'}]})
+        self.assertEqual((code, out.strip()), (0, f'{self.id}: hypothesis 1 now holds'))
+        [h] = logs(self.cases)[self.id]['hypotheses']
+        self.assertEqual((h['status'], h['refuted_if'], h['result']['says']),
+                         ('holds', 'the answers kept for the play hold this search', 'the store kept no answer'))
+        self.assertEqual(self.add({'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'x', 'quotes': q}),
+                         (1, 'refused: this Case log has no hypothesis 2\n'))
 
 
 if __name__ == '__main__':

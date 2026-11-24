@@ -24,6 +24,7 @@ CASE = 'case.json'
 READABLE = 'CASE.md'
 CASES = os.path.expanduser('~/kaijuflow-notes/diagnosis/cases')  # in the notes repo, beside the evidence it quotes
 OPEN = 'open'
+MIN_QUOTE = 10  # characters that are not spaces: a shorter quote ("503", "ok") would fit almost any file
 
 
 class Refused(Exception):
@@ -255,6 +256,91 @@ def run_command(cases, cid, names, occurrence=None, library=None):
     return said
 
 
+def _fold(text):
+    return re.sub(r'\s+', ' ', text or '').strip()
+
+
+def check_quotes(log, case_dir, quotes, what):
+    """Refused unless every quote is in the evidence it names: {'occurrence', 'file' (a file in that occurrence's
+    evidence folder), 'text'}, or {'occurrence', 'clue', 'text'} (what that Clue said when it ran on it). Each text is
+    looked up whole, spaces folded; none may be shorter than MIN_QUOTE."""
+    if not quotes:
+        raise Refused(f'{what} quotes the evidence it rests on: no quote given')
+    occs = {o['n']: o for o in log['occurrences']}
+    for i, q in enumerate(quotes, 1):
+        text = q.get('text') if isinstance(q, dict) else None
+        if not isinstance(text, str) or len(re.sub(r'\s', '', text)) < MIN_QUOTE:
+            raise Refused(f'quote {i} is too short to check (at least {MIN_QUOTE} characters that are not spaces)')
+        n = q.get('occurrence')
+        if n not in occs:
+            raise Refused(f'quote {i} names occurrence {n}; this Case log has {len(occs)}')
+        if q.get('clue'):
+            facts = [f.rstrip('…') for r in log['clue_runs'] if r['clue'] == q['clue'] and r['occurrence'] == n
+                     for f in r['facts']]
+            if not any(_fold(text) in _fold(f) for f in facts):
+                raise Refused(f"quote {i} is not in what Clue {q['clue']} said on occurrence {n}: \"{text}\"")
+            continue
+        rel = q.get('file') or ''
+        folder = evidence_folder(case_dir, occs[n])
+        path = os.path.normpath(os.path.join(folder, rel))
+        if not rel or os.path.isabs(rel) or not path.startswith(folder + os.sep) or not os.path.isfile(path):
+            raise Refused(f'quote {i} names {rel or "no file"}, not a file in the evidence folder')
+        with open(path, errors='replace') as f:
+            if _fold(text) not in _fold(f.read()):
+                raise Refused(f"quote {i} is not in occurrence {n}'s {rel}: \"{text}\"")
+
+
+def _text(write, field, what):
+    v = write.get(field)
+    if not isinstance(v, str) or not v.strip():
+        raise Refused(f'{what} ({field})')
+    return v.strip()
+
+
+def _hypothesis(log, n):
+    h = next((h for h in log['hypotheses'] if h['n'] == n), None)
+    if h is None:
+        raise Refused(f'this Case log has no hypothesis {n}')
+    return h
+
+
+WRITES = ('observation', 'hypothesis', 'result')
+
+
+def add(cases, cid, write):
+    """`case add`: one write of the agent's into the Case log, refused (and nothing written) unless it holds. Returns
+    the line it says."""
+    d = case_dir_of(cases, cid)
+    log = load(d)
+    kind = write.get('write') if isinstance(write, dict) else None
+    if kind not in WRITES:
+        raise Refused(f"no write named {kind} ({', '.join(WRITES)})")
+    quotes = write.get('quotes') or []
+    if kind == 'observation':
+        says = _text(write, 'says', 'an observation says what was seen')
+        check_quotes(log, d, quotes, 'an observation')
+        item = _note(log, 'observations', {'occurrence': None, 'says': says, 'quotes': quotes}, 'agent')
+        line = f"observation {item['n']} written"
+    elif kind == 'hypothesis':
+        says = _text(write, 'says', 'a hypothesis says what the cause may be')
+        refuted_if = _text(write, 'refuted_if', 'a hypothesis says what result would refute it')
+        check_quotes(log, d, quotes, 'a hypothesis')
+        item = _note(log, 'hypotheses', {'says': says, 'refuted_if': refuted_if, 'quotes': quotes, 'status': OPEN,
+                                         'result': None}, 'agent')
+        line = f"hypothesis {item['n']} written"
+    else:
+        h = _hypothesis(log, write.get('hypothesis'))
+        now = write.get('now')
+        if now not in ('refuted', 'holds'):
+            raise Refused('a result says whether the hypothesis is now refuted or holds (now)')
+        says = _text(write, 'says', 'a result says what the test showed')
+        check_quotes(log, d, quotes, 'a result')
+        h['status'], h['result'] = now, {'says': says, 'quotes': quotes, 't': _now()}
+        line = f"hypothesis {h['n']} now {now}"
+    save(d, log)
+    return f'{cid}: {line}'
+
+
 def show(cases, cid):
     return render(load(case_dir_of(cases, cid)))
 
@@ -274,6 +360,10 @@ def main(argv):
     p.add_argument('id')
     p.add_argument('clues', nargs='+')
     p.add_argument('--occurrence', type=int)
+    p = sub.add_parser('add', parents=[common], help='one write from a JSON file (- for stdin): observation, hypothesis, '
+                       'result, research, ticket, ask, pause, conclude; every quote is checked against the evidence')
+    p.add_argument('id')
+    p.add_argument('file')
     a = ap.parse_args(argv)
     try:
         if a.cmd == 'list':
@@ -283,6 +373,13 @@ def main(argv):
             print(show(a.cases, a.id), end='')
         elif a.cmd == 'run':
             print('\n'.join(run_command(a.cases, a.id, a.clues, a.occurrence)))
+        elif a.cmd == 'add':
+            try:
+                with (sys.stdin if a.file == '-' else open(a.file)) as f:
+                    write = json.load(f)
+            except (OSError, ValueError) as e:
+                raise Refused(f'{a.file}: not a JSON write: {e}') from e
+            print(add(a.cases, a.id, write))
     except Refused as e:
         print(f'refused: {e}')
         return 1
