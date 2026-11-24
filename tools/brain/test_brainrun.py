@@ -1075,7 +1075,8 @@ class BrowsePauseRunTest(unittest.TestCase):
         self.assertEqual(meta['facts']['browse pause'], '5 s')
 
     def test_the_real_world_waits_the_browse_pause_between_the_list_and_the_play(self):
-        # RealIO.visit_http itself, with only the network (common.get, the play, the seeks) and the clock faked
+        # RealIO.visit_http itself, with only the network (common.get, the play, the seeks), the CPU readings and the
+        # clock faked. The CPU reading runs `docker inspect`, whose subprocess wait sleeps through the patched clock.
         events = []
         body = json.dumps({'streams': [{'url': 'http://x/a'}]}).encode()
 
@@ -1085,6 +1086,7 @@ class BrowsePauseRunTest(unittest.TestCase):
         with mock.patch.object(common, 'get', return_value=(200, {}, body, {'ready': 2.0, 'total': 2.0})), \
                 mock.patch.object(common, 'play_stream', side_effect=play), \
                 mock.patch.object(common, 'seek_reads', return_value={}), \
+                mock.patch.object(brainrun, 'cpu_sample', return_value={}), \
                 mock.patch.object(brainrun.time, 'sleep', side_effect=lambda s: events.append(('sleep', s))):
             out = brainrun.RealIO(make_cfg(self.tmp)).visit_http('kaijuflow', 'movie', 'tt1', 1, browse_pause_s=5)
         self.assertEqual(events, [('sleep', 5), ('play', 'http://x/a')])
