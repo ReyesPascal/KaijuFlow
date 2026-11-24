@@ -51,9 +51,7 @@ export function deduplicateByIndexerContent(allResults: any[]): any[] {
   const seen = new Map<string, string>();
   const duplicates: { title: string; indexer: string }[] = [];
   const deduped = allResults.filter(r => {
-    const pubMs = r.pubDate ? Date.parse(r.pubDate) : 0;
-    const pubKey = isNaN(pubMs) ? (r.pubDate || '') : pubMs;
-    const key = `${r.indexerName || ''}|${(r.title || '').trim()}|${r.size || 0}|${pubKey}`;
+    const key = indexerContentKey(r);
     if (seen.has(key)) {
       duplicates.push({ title: r.title, indexer: r.indexerName || 'Unknown' });
       return false;
@@ -69,6 +67,14 @@ export function deduplicateByIndexerContent(allResults: any[]): any[] {
     for (const d of duplicates) console.log(`   ✂️  "${d.title}" [${d.indexer}]`);
   }
   return deduped;
+}
+
+/** One release of one indexer, whatever link or date format it came with (deduplicateByIndexerContent's key; Kaiju
+ *  Search's merge uses it too, #285). */
+export function indexerContentKey(r: { indexerName?: string; title?: string; size?: number; pubDate?: string }): string {
+  const pubMs = r.pubDate ? Date.parse(r.pubDate) : 0;
+  const pubKey = isNaN(pubMs) ? (r.pubDate || '') : pubMs;
+  return `${r.indexerName || ''}|${(r.title || '').trim()}|${r.size || 0}|${pubKey}`;
 }
 
 /**

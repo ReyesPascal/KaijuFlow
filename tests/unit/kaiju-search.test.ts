@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { configData } from '../../src/config/index.ts';
 import { indexManagerSearch, kaijuSearch, type SearchContext } from '../../src/addon/searchOrchestrator.ts';
+import { mergeFound, type FoundBy } from '../../src/addon/kaijuSearch.ts';
 import { parseStepLine } from '../../src/utils/stepTiming.ts';
 import { captureLogs } from './capture-logs.ts';
 
@@ -167,4 +168,16 @@ test('with the dev switch on, a line whenever the strict rule alone would have l
   configData.indexers = [{ name: 'Ninja', url: url2, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q', 'imdbid'], tvSearchParams: ['q'] } }];
   const sure = searchLines(await captureLogs(() => kaijuSearch(matrix)));
   assert.deepEqual(sure.filter(l => l.strict_alone), [], 'a sure Source: strict alone leaves it');
+});
+
+// Prowlarr's per-indexer Newznab proxy (the ID search) and its aggregate search (the name search) hand out a different
+// download link for the same release, and write its date differently (RFC-822, ISO-8601): it is still one Source.
+test('one release found by ID through Prowlarr\'s Newznab proxy and by name through its aggregate search is listed once', () => {
+  const release = { title: BOTH, size: 4000000000, indexerName: 'NinjaCentral', category: 'Movies', attributes: {} };
+  const merged = mergeFound([
+    { ...release, link: 'http://prowlarr:9696/1/download?apikey=x&link=AAA&file=a', pubDate: 'Mon, 01 Jan 2024 00:00:00 +0000', foundBy: ['id'] as FoundBy[] },
+    { ...release, link: 'http://prowlarr:9696/1/download?apikey=x&link=BBB&file=a', pubDate: '2024-01-01T00:00:00Z', foundBy: ['name'] as FoundBy[] },
+    { ...release, title: NAME_ONLY, link: 'http://prowlarr:9696/1/download?apikey=x&link=CCC&file=b', pubDate: '2024-01-01T00:00:00Z', foundBy: ['name'] as FoundBy[] },
+  ]);
+  assert.deepEqual(merged.map(r => [r.title, r.foundBy]), [[BOTH, ['id', 'name']], [NAME_ONLY, ['name']]]);
 });

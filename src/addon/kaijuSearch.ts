@@ -12,6 +12,7 @@
  */
 
 import type { IndexerCaps } from '../types.js';
+import { indexerContentKey } from './dedup.js';
 
 /** A way of asking an indexer: by one of its IDs, or by name (`text`, the searchers' own word for it). */
 export type SearchWay = 'imdb' | 'tmdb' | 'tvdb' | 'tvmaze' | 'text';
@@ -41,23 +42,31 @@ export function foundBy<T extends object>(results: T[], way: FoundBy): (T & { fo
 }
 
 /**
- * Merge the answers of every way: a Source (one indexer's release, known by its NZB link) found more than once is
- * listed once, at its first place, with every way that found it (`foundBy`, `id` before `name`). A result no way
- * tagged was found by name (a pack or fallback query).
+ * Merge the answers of every way: a Source (one indexer's release) found more than once is listed once, at its first
+ * place, with every way that found it (`foundBy`, `id` before `name`). It is known by its NZB link or by its name, size
+ * and post date (`indexerContentKey`): Prowlarr's ID and name searches hand out different links for one release. A
+ * result no way tagged was found by name (a pack or fallback query).
  */
-export function mergeFound<T extends { link?: string; title?: string; size?: number; indexerName?: string; foundBy?: FoundBy[] }>(
+export function mergeFound<T extends { link?: string; title?: string; size?: number; pubDate?: string; indexerName?: string; foundBy?: FoundBy[] }>(
   results: T[],
 ): (T & { foundBy: FoundBy[] })[] {
+  const out: (T & { foundBy: FoundBy[] })[] = [];
   const byKey = new Map<string, T & { foundBy: FoundBy[] }>();
   for (const r of results) {
-    const key = `${r.indexerName ?? ''}\u0000${r.link || `${r.title}\u0000${r.size}`}`;
+    const keys = [indexerContentKey(r), ...(r.link ? [`${r.indexerName ?? ''}\u0000${r.link}`] : [])];
     const ways = r.foundBy ?? ['name'];
-    const seen = byKey.get(key);
-    if (!seen) { byKey.set(key, { ...r, foundBy: [...ways] }); continue; }
+    const seen = keys.map(k => byKey.get(k)).find(Boolean);
+    if (!seen) {
+      const entry = { ...r, foundBy: [...ways] };
+      out.push(entry);
+      for (const k of keys) byKey.set(k, entry);
+      continue;
+    }
+    for (const k of keys) if (!byKey.has(k)) byKey.set(k, seen);
     for (const w of ways) if (!seen.foundBy.includes(w)) seen.foundBy.push(w);
     seen.foundBy.sort((a, b) => (a === b ? 0 : a === 'id' ? -1 : 1));
   }
-  return [...byKey.values()];
+  return out;
 }
 
 // --------------------------------------------------------------------------- the dev switch's search lines (#285)
