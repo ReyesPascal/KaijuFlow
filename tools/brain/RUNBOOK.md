@@ -40,6 +40,15 @@ grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' check.log
 
 About 10 minutes: the preflight for a check (key file, idle, plugged in, allowance), 5 new titles drawn, one reset, then one press of Best per title on the live indexer. `EXIT 0` pass, `4` fail, `2` the cap rule stopped it (no verdict), `130` stopped, `1` a setup problem. Read the folder's `report.md`, file its ticket texts (one per fail and check miss), then back up with `tools/brain/backup.sh`. Diagnosis files the fix ticket of a proved KaijuFlow cause by itself (`fix-tickets/` in the folder; the report's Diagnosis section names it, #288); `--tickets-dry-run` writes the text only. Then `python3 -I tools/brain/diagnosis.py record <folder>` in a worktree puts the check's occurrences, comebacks and filed tickets on the Casebook, for review.
 
+## A drill-down
+
+```
+timeout 30m python3 -I tools/brain/brainrun.py drill --title tt5180504 --episode S01E01 > drill.log 2>&1; echo "EXIT $?" >> drill.log
+grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' drill.log
+```
+
+The command a fix ticket names (#272), once its fix is merged (rebuild the image with `--rebuild-image` when the fix is in it). It plays that one title as a quick check plays a title (the preflight for one title, one reset, one press of Best on the live indexer, the same verdict, report and exit codes), never draws one and never adds it to the ledger. Its play always keeps an evidence folder; Diagnosis runs on it, the suspected cause's recipe of Clues runs on its failures, and the report's Drill-down section says what each entry is marked: **proved fixed** (it played with no failure), **reopened** (a failure, the cause again or a new one), or not marked (no fix to prove, or no confirming test that runs). `--entry <id>` names an entry besides the ones proved on the title before. Then `python3 -I tools/brain/diagnosis.py record <folder>` in a worktree writes the marks on the entries (status and History), for review. `--full` (watched with a skip) comes with the full check's watch (#271).
+
 ## The recipe
 
 0. A commit that changes the code in the image since the image was built? Add `--rebuild-image` to the first preflight below. The code in the image is the build inputs, listed once, in `BUILD_INPUTS` in `tools/brain/brainrun.py` ([rules.md](docs/rules.md) says what they are). A commit that touches only docs, tools or tests needs no rebuild; the preflight says when one is needed.

@@ -151,7 +151,7 @@ A real-use check of 20 new titles (half popular, half rare or older, about half 
 _Avoid_: long run, soak test
 
 **Drill-down**:
-Playing one failed title again, live, after a fix, to prove the fix: a single title, not a new check.
+Playing one failed title again, live, after a fix, to prove the fix: a single title, not a new check. It plays the title as a Quick check plays one, keeps its evidence folder however it went, runs the suspected cause's confirming test on it, and marks the Casebook entry *proved fixed* (it played with no failure) or *reopened* (a failure appeared). The command a fix ticket names: `brainrun.py drill --title <imdb id> [--episode S01E02]`.
 _Avoid_: rerun, tuning test
 
 **Check miss**:

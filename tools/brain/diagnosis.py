@@ -685,7 +685,9 @@ def main(argv):
     folder = argv[2]
     if argv[1] == 'record':
         for i, n in record(folder).items():
-            print(f"{i}: {_plural(n['seen'], 'occurrence')} added, {_plural(n['ruled_out'], 'ruled-out line')} added")
+            print(f"{i}: {_plural(n['seen'], 'occurrence')} added, {_plural(n['ruled_out'], 'ruled-out line')} added"
+                  + ''.join(f"; {what}: {', '.join(n[k])}" for k, what in (('drill', 'Drill-down'), ('fixes', 'fixes'))
+                            if n.get(k)))
         print('Casebook index written again: commit the entries and the index.')
         return 0
     if os.path.exists(os.path.join(folder, 'evidence.json')):

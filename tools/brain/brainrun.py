@@ -10,6 +10,9 @@
     python3 -I tools/brain/brainrun.py smoke --store <EMPTY dir> --list smoke [--one-page]   (stand-in reachability check, see README)
     python3 -I tools/brain/brainrun.py check --quick [--name quick-check] [--runs-root DIR] [--ledger FILE] [--key-file PATH]
            [--cases DIR] [--rebuild-image]   (the quick check, #270: 5 new titles, live, one cold press of Best each; exit 0 pass, 4 fail)
+    python3 -I tools/brain/brainrun.py drill --title <imdb id> [--episode S01E02] [--entry ID ...] [--casebook DIR]
+           [--cases DIR] [--tickets-dry-run] [--rebuild-image]   (the Drill-down, #272: one failed title again, as a quick
+           check plays it; its suspected causes marked proved fixed or reopened, drill.py)
 
 A run starts the indexer stand-in in REPLAY mode (never record, so no real indexer is contacted; it waits the recorded
 indexer time for every answer unless --no-wait; every visit waits the fixed Browse pause between its list and

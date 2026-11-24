@@ -16,7 +16,9 @@ from unittest import mock
 import brainrun
 import casebook
 import diagnosis
+import drill
 import evidence
+import pool
 from test_diagnosis import HHWEB, READ_ERROR, casebook_copy, stored_check
 from test_evidence import WITCHER, FailedPlayWorld, run_failed_check
 from test_quickcheck import CheckWorld, check_cfg, read
@@ -262,6 +264,54 @@ class CommandTest(unittest.TestCase):
 
     def test_full_waits_for_the_full_checks_watch(self):
         self.assertIn("the full check's watch (#271)", self.bad(['--title', 'tt5180504', '--full']))
+
+
+
+def tmdb(answers):
+    """TMDB as pool.tmdb_getter gives it: get(path) -> (status, JSON), from {path without its query: (status, JSON)};
+    a path it was not given is a 404, as TMDB answers one."""
+    def get(path):
+        return answers.get(path.split('?')[0], (404, {'status_message': 'The resource you requested could not be found.'}))
+    return get
+
+
+class NoEarlierEvidenceTest(unittest.TestCase):
+    def test_a_title_no_evidence_folder_names_is_named_by_tmdb_as_the_draw_names_it(self):
+        get = tmdb({'/find/tt0133093': (200, {'movie_results': [{'id': 603, 'title': 'The Matrix', 'release_date': '1999-03-30'}],
+                                              'tv_results': []}),
+                    '/find/tt0944947': (200, {'movie_results': [], 'tv_results': [{'id': 1399, 'name': 'Game of Thrones'}]}),
+                    '/tv/1399/season/1/episode/2': (200, {'air_date': '2011-04-24', 'name': 'The Kingsroad'})})
+        self.assertEqual(drill.tmdb_title(get, 'tt0133093'), ['movie', 'tt0133093', 'The Matrix', 'drill-down', '1999-03-30'])
+        self.assertEqual(drill.tmdb_title(get, 'tt0944947', 'S01E02'),
+                         ['series', 'tt0944947:1:2', 'Game of Thrones S01E02', 'drill-down', '2011-04-24'])
+        with self.assertRaisesRegex(pool.TmdbError, 'name the episode with --episode'):
+            drill.tmdb_title(get, 'tt0944947')
+        with self.assertRaisesRegex(pool.TmdbError, 'HTTP 404'):
+            drill.tmdb_title(get, 'tt0944947', 'S09E09')
+
+    def test_a_drill_with_nothing_proved_before_plays_and_says_it_has_no_entry_to_mark(self):
+        world = CheckWorld(drawn=[['movie', 'tt0133093', 'The Matrix', 'drill-down', '1999-03-30']])
+        world.drill_title = lambda imdb, episode: ['movie', imdb, 'The Matrix', 'drill-down', '1999-03-30']
+        book = casebook_copy(self)
+        root = tempdir(self)
+        code, out = run_drill(drill_cfg(self, root, book, drill_title='tt0133093', drill_episode=None), world)
+        self.assertEqual(code, 0, out)
+        folder = os.path.join(root, '2026-11-25T100000Z-drill-down')
+        self.assertTrue(os.path.exists(os.path.join(folder, evidence.DIR, '01-the-matrix', 'evidence.json')))
+        self.assertIn('No Casebook entry to mark: no earlier evidence folder of this title has a proved cause (name one '
+                      'with --entry).', read(folder, 'report.md'))
+
+    def test_tmdb_not_knowing_the_title_fails_the_drill_in_one_sentence(self):
+        world = CheckWorld(drawn=[])
+
+        def unknown(imdb, episode):
+            raise pool.TmdbError('TMDB knows no film tt0000009')
+        world.drill_title = unknown
+        root = tempdir(self)
+        code, out = run_drill(drill_cfg(self, root, casebook_copy(self), drill_title='tt0000009', drill_episode=None), world)
+        self.assertEqual(code, 1, out)
+        self.assertIn('No verdict: the check failed: TMDB knows no film tt0000009', out)
+        self.assertNotIn('visit', [c[0] for c in world.calls])
 
 
 if __name__ == '__main__':
