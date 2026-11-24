@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import os
+import threading
 import unittest
 from unittest import mock
 
@@ -228,6 +229,26 @@ class ClaimsCheckedTest(CaseWrites):
                          ('holds', 'the answers kept for the play hold this search', 'the store kept no answer'))
         self.assertEqual(self.add({'write': 'result', 'hypothesis': 2, 'now': 'refuted', 'says': 'x', 'quotes': q}),
                          (1, 'refused: this Case log has no hypothesis 2\n'))
+
+
+class OneWriterAtATimeTest(CaseWrites):
+    def test_a_write_waits_for_another_writer_of_the_same_log_and_neither_is_lost(self):
+        d = os.path.join(self.cases, self.id)
+        said = []
+        write = {'write': 'research', 'question': 'Was the indexer down?', 'source': 'https://example.org/status',
+                 'found': 'it was down that morning'}
+        with caselog.locked(d):  # another writer (a second agent, or a check joining the log) holds it
+            log = caselog.load(d)
+            other = threading.Thread(target=lambda: said.append(self.add(write)))
+            other.start()
+            other.join(0.3)
+            self.assertTrue(other.is_alive())  # it waits
+            log['tickets'].append({'n': 1, 'ref': '#1', 'fact': 'x', 'by': 'agent', 't': 'now'})
+            caselog.save(d, log)
+        other.join(5)
+        self.assertEqual(said, [(0, f'{self.id}: research 1 written\n')])
+        log = caselog.load(d)
+        self.assertEqual((len(log['tickets']), len(log['research'])), (1, 1))
 
 
 class NeverGivesUpTest(CaseWrites):

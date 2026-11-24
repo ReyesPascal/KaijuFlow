@@ -7,7 +7,9 @@ every Clue in the library run once on the failure); then the diagnosing agent wo
 (tools/brain/docs/diagnosing-agent.md), every claim it writes checked against the evidence it quotes. A Clue already
 run on an occurrence is never run on it again. Formats: tools/brain/docs/formats.md, "Case log".
 """
+import contextlib
 import datetime
+import fcntl
 import hashlib
 import json
 import os
@@ -52,6 +54,19 @@ def load(case_dir):
     if log.get('format') != FORMAT:
         raise Refused(f"{case_dir}: Case log format {log.get('format')!r}, this reader knows {FORMAT}")
     return log
+
+
+@contextlib.contextmanager
+def locked(case_dir):
+    """One writer of a Case log at a time (two agents, or a check joining it while an agent works it): every load,
+    change and save of a log runs inside its lock, so no write is lost."""
+    os.makedirs(case_dir, exist_ok=True)
+    with open(os.path.join(case_dir, '.lock'), 'w') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def save(case_dir, log):
@@ -332,12 +347,13 @@ def open_or_join(cases, folder, ev, failure, diagnosed, library=None):
     cid = next((i for i, log in logs(cases).items() if log['fingerprint'] == failure['fingerprint']), None) \
         or case_id(failure)  # a log fingerprinted again under new rules keeps its first id
     case_dir = os.path.join(cases, cid)
-    new = not os.path.exists(os.path.join(case_dir, CASE))
-    log = _new_log(failure, cid, _now(), diagnosed.get('rules')) if new else load(case_dir)
-    if _occurrence_of(log, case_dir, folder, failure['release'], any_release=False):
-        return cid, False, False
-    _join(log, case_dir, folder, ev, failure, diagnosed.get('rules'), library, diagnosed)
-    save(case_dir, log)
+    with locked(case_dir):
+        new = not os.path.exists(os.path.join(case_dir, CASE))
+        log = _new_log(failure, cid, _now(), diagnosed.get('rules')) if new else load(case_dir)
+        if _occurrence_of(log, case_dir, folder, failure['release'], any_release=False):
+            return cid, False, False
+        _join(log, case_dir, folder, ev, failure, diagnosed.get('rules'), library, diagnosed)
+        save(case_dir, log)
     return cid, new, True
 
 
@@ -367,22 +383,24 @@ def refingerprint(cases, rules):
     it changed. A log whose evidence folder cannot be read keeps its fingerprint."""
     import diagnosis  # noqa: PLC0415
     changed = []
-    for cid, log in logs(cases).items():
-        if not log['occurrences'] or _rules_of(log) == rules['version']:
-            continue
+    for cid in logs(cases):
         d = os.path.join(cases, cid)
-        occ = log['occurrences'][0]
-        try:
-            ev = evidence.read(evidence_folder(d, occ))
-        except (OSError, ValueError):
-            continue
-        f = next((f for f in diagnosis.failures(ev) if f['release'] == occ['release']), None)
-        if f is None:
-            continue
-        log.setdefault('earlier', []).append({'rules': _rules_of(log), 'fingerprint': log['fingerprint']})
-        log['fingerprint'], log['rules'] = diagnosis.fingerprint(f, ev, rules), rules['version']
-        save(d, log)
-        changed.append(cid)
+        with locked(d):
+            log = load(d)
+            if not log['occurrences'] or _rules_of(log) == rules['version']:
+                continue
+            occ = log['occurrences'][0]
+            try:
+                ev = evidence.read(evidence_folder(d, occ))
+            except (OSError, ValueError):
+                continue
+            f = next((f for f in diagnosis.failures(ev) if f['release'] == occ['release']), None)
+            if f is None:
+                continue
+            log.setdefault('earlier', []).append({'rules': _rules_of(log), 'fingerprint': log['fingerprint']})
+            log['fingerprint'], log['rules'] = diagnosis.fingerprint(f, ev, rules), rules['version']
+            save(d, log)
+            changed.append(cid)
     return changed
 
 
@@ -402,6 +420,11 @@ def case_dir_of(cases, cid):
 def run_command(cases, cid, names, occurrence=None, library=None):
     """`case run`: the named Clues on every occurrence (or one), each only where it has not run; the lines it says."""
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _run_command(d, cid, names, occurrence, library)
+
+
+def _run_command(d, cid, names, occurrence, library):
     log = load(d)
     occs = [o for o in log['occurrences'] if occurrence is None or o['n'] == occurrence]
     if not occs:
@@ -488,6 +511,11 @@ def add(cases, cid, write):
     """`case add`: one write of the agent's into the Case log, refused (and nothing written) unless it holds. Returns
     the line it says."""
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _add(d, cid, write)
+
+
+def _add(d, cid, write):
     log = load(d)
     kind = write.get('write') if isinstance(write, dict) else None
     if kind not in WRITES:
@@ -616,8 +644,13 @@ def conclude(log, case_dir, write, library=None):
 def repeat(cases, cid, folder, library=None):
     """`case repeat`: the evidence folder of a Drill-down or a replay that repeated the failure at will, added as an
     occurrence; with a conclusion, its recipe runs on it and the status follows."""
-    import diagnosis  # noqa: PLC0415
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _repeat(d, cid, folder, library)
+
+
+def _repeat(d, cid, folder, library):
+    import diagnosis  # noqa: PLC0415
     log = load(d)
     folder = os.path.normpath(os.path.abspath(folder))
     had = _occurrence_of(log, d, folder)
@@ -703,6 +736,12 @@ def write_entry(cases, cid, entry_id, folder=None):
     import casebook  # noqa: PLC0415
     folder = casebook.FOLDER if folder is None else folder
     d = case_dir_of(cases, cid)
+    with locked(d):
+        return _write_entry(d, cid, entry_id, folder)
+
+
+def _write_entry(d, cid, entry_id, folder):
+    import casebook  # noqa: PLC0415
     log = load(d)
     if not log.get('conclusion'):
         raise Refused(f"{cid} is not concluded yet ({log['status']})")
