@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?> 
+<caps>
+	<server appversion="0.2.3p" version="0.5" title="NinjaCentral" strapline="Home of the NZB Harvester" email="admin@ninjacentral.co.za" url="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEv" image="@@STANDIN@@/nzb/aHR0cHM6Ly9uaW5qYWNlbnRyYWwuY28uemEvaW1hZ2VzL2Jhbm5lci5qcGc" />
+	<limits max="100" default="100"/>
+
+	<registration available="yes" open="no" />
+
+    <searching>
+        <search available="yes" supportedParams="q" />
+        <tv-search available="yes" supportedParams="q,rid,tvdbid,imdbid,tvmazeid,season,ep" />
+        <movie-search available="yes" supportedParams="q,imdbid,genre"/>
+    </searching>
+	
+	<categories>
+	<category id="1000" name="Console">
+		<subcat id="1010" name="NDS"/>
+		<subcat id="1080" name="PS3"/>
+		<subcat id="1100" name="PS4"/>
+		<subcat id="1020" name="PSP"/>
+		<subcat id="1035" name="Switch"/>
+		<subcat id="1030" name="Wii"/>
+		<subcat id="1060" name="WiiWare/VC"/>
+		<subcat id="1070" name="XBOX 360 DLC"/>
+		<subcat id="1040" name="Xbox"/>
+		<subcat id="1050" name="Xbox 360"/>
+		<subcat id="1090" name="Xbox One"/>
+	</category>
+	<category id="2000" name="Movies">
+		<subcat id="2060" name="3D"/>
+		<subcat id="2050" name="BluRay"/>
+		<subcat id="2010" name="Foreign"/>
+		<subcat id="2040" name="HD"/>
+		<subcat id="2020" name="Other"/>
+		<subcat id="2030" name="SD"/>
+		<subcat id="2045" name="UHD"/>
+	</category>
+	<category id="3000" name="Audio">
+		<subcat id="3030" name="Audiobook"/>
+		<subcat id="3040" name="Lossless"/>
+		<subcat id="3010" name="MP3"/>
+		<subcat id="3050" name="Podcast"/>
+		<subcat id="3020" name="Video"/>
+	</category>
+	<category id="4000" name="PC">
+		<subcat id="4010" name="0day"/>
+		<subcat id="4080" name="3dModels" description="3dprint stls"/>
+		<subcat id="4050" name="Games"/>
+		<subcat id="4020" name="ISO"/>
+		<subcat id="4030" name="Mac"/>
+		<subcat id="4070" name="Mobile-Android"/>
+		<subcat id="4040" name="Mobile-Other"/>
+		<subcat id="4060" name="Mobile-iOS"/>
+	</category>
+	<category id="5000" name="TV">
+		<subcat id="5070" name="Anime"/>
+		<subcat id="5080" name="Documentary"/>
+		<subcat id="5020" name="Foreign"/>
+		<subcat id="5040" name="HD"/>
+		<subcat id="5050" name="Other"/>
+		<subcat id="5030" name="SD"/>
+		<subcat id="5060" name="Sport"/>
+		<subcat id="5045" name="UHD"/>
+	</category>
+	<category id="6000" name="XXX">
+		<subcat id="6010" name="DVD"/>
+		<subcat id="6040" name="HD"/>
+		<subcat id="6060" name="ImgSet"/>
+		<subcat id="6070" name="Other"/>
+		<subcat id="6050" name="Pack"/>
+		<subcat id="6030" name="SD"/>
+		<subcat id="6045" name="UHD"/>
+		<subcat id="6020" name="WMV"/>
+	</category>
+	<category id="7000" name="Books">
+		<subcat id="7030" name="Comics"/>
+		<subcat id="7020" name="Ebook"/>
+		<subcat id="7010" name="Mags"/>
+	</category>
+	<category id="8000" name="Other">
+		<subcat id="8010" name="Misc"/>
+	</category>
+	</categories>
+
+	<groups>
+	</groups>
+
+	<genres>
+	</genres>	
+</caps>

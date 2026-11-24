@@ -9,8 +9,8 @@ export interface Manifest {
 }
 
 export interface IndexerCaps {
-  movieSearchParams: string[];
-  tvSearchParams: string[];
+  movieSearchParams?: string[]; // [] when not available; undefined when unknown (asked by IMDb)
+  tvSearchParams?: string[];
 }
 
 export interface ZyclopsIndexerConfig {

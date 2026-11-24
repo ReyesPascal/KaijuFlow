@@ -6,11 +6,14 @@
 import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import fs from 'node:fs';
+import express from 'express';
 import { configData } from '../../src/config/index.ts';
 import { indexManagerSearch, kaijuSearch, type SearchContext } from '../../src/addon/searchOrchestrator.ts';
 import { mergeFound, type FoundBy } from '../../src/addon/kaijuSearch.ts';
 import { parseStepLine } from '../../src/utils/stepTiming.ts';
 import { fetchIndexerCaps } from '../../src/parsers/newznabClient.ts';
+import { createIntegrationRoutes } from '../../src/routes/integrations.ts';
 import { captureLogs } from './capture-logs.ts';
 
 interface Asked { indexer: string; t: string; ids: Record<string, string>; q?: string }
@@ -114,16 +117,32 @@ test('the ID search asks with every ID the indexer supports; an indexer whose ca
   ], 'found by two IDs, listed once per indexer');
 });
 
-test('an indexer whose caps were fetched and list no ID for the kind (available="no") is asked by name only, not by IMDb', async () => {
+// Caps replies as indexers sent them (tests/fixtures/indexer-caps/README.md): DrunkenSlug's and NinjaCentral's `t=caps`,
+// and DrunkenSlug's answer to a wrong key, a Newznab <error> sent with HTTP 200 (review rule 2).
+const capsFixture = (name: string) => fs.readFileSync(new URL(`../fixtures/indexer-caps/${name}`, import.meta.url), 'utf8');
+const DS_CAPS = capsFixture('drunkenslug-caps.xml');
+const NINJA_CAPS = capsFixture('ninjacentral-caps.xml');
+const WRONG_KEY = capsFixture('drunkenslug-error-wrong-key.xml');
+const serve = (body: string) => listen(http.createServer((_req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/xml;charset=UTF-8' });
+  res.end(body);
+}));
+
+test("caps read from an indexer's reply list the IDs each kind of search takes", async () => {
+  const fromDs = await quiet(() => serve(DS_CAPS).then(url => fetchIndexerCaps(url, 'k', 'DrunkenSlug')));
+  assert.deepEqual(fromDs, { movieSearchParams: ['q', 'imdbid'],
+    tvSearchParams: ['q', 'vid', 'tvdbid', 'traktid', 'rid', 'tvmazeid', 'imdbid', 'tmdbid', 'season', 'ep'] });
+  const fromNinja = await quiet(() => serve(NINJA_CAPS).then(url => fetchIndexerCaps(url, 'k', 'NinjaCentral')));
+  assert.deepEqual(fromNinja, { movieSearchParams: ['q', 'imdbid', 'genre'],
+    tvSearchParams: ['q', 'rid', 'tvdbid', 'imdbid', 'tvmazeid', 'season', 'ep'] });
+});
+
+test('an indexer whose caps say a kind of search is not available (available="no") is asked by name only, not by IMDb', async () => {
   const asked: Asked[] = [];
   const noIds = await listen(fakeIndexer('NoIds', [], {}, [NAME_ONLY], asked)); // it refuses every ID query
-  const caps = await listen(http.createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/xml' });
-    res.end('<?xml version="1.0" encoding="UTF-8"?><caps><searching><search available="yes" supportedParams="q"/>'
-      + '<tv-search available="yes" supportedParams="q,season,ep"/><movie-search available="no" supportedParams="q,imdbid"/>'
-      + '</searching></caps>');
-  }));
-  const fetched = await quiet(() => fetchIndexerCaps(caps, 'k', 'NoIds'));
+  const reply = DS_CAPS.replace('<movie-search available="yes" supportedParams="q,imdbid"/>',
+    '<movie-search available="no" supportedParams=""/>'); // the shape of its own audio-search line
+  const fetched = await quiet(() => serve(reply).then(url => fetchIndexerCaps(url, 'k', 'NoIds')));
   assert.deepEqual(fetched.movieSearchParams, []);
   configData.indexers = [{ name: 'NoIds', url: noIds, apiKey: 'k', enabled: true, caps: fetched }];
 
@@ -131,6 +150,48 @@ test('an indexer whose caps were fetched and list no ID for the kind (available=
 
   assert.deepEqual(asked.map(a => [a.t, a.ids]), [['search', {}]]);
   assert.deepEqual(results.map(r => r.title), [NAME_ONLY]);
+});
+
+test('caps that cannot be read stay unknown, so the indexer is still asked by IMDb', async () => {
+  // a Newznab <error> sent with HTTP 200 (a wrong key, a reached limit) holds no caps: the fetch fails, nothing is kept
+  await assert.rejects(quiet(() => serve(WRONG_KEY).then(url => fetchIndexerCaps(url, 'k', 'DrunkenSlug'))),
+    /error 403: Incorrect user credentials \(wrong API key\)/);
+  // a kind whose line names no supportedParams is unknown, not "no ID"
+  const noParams = DS_CAPS.replace('<movie-search available="yes" supportedParams="q,imdbid"/>', '<movie-search available="yes"/>');
+  const fetched = await quiet(() => serve(noParams).then(url => fetchIndexerCaps(url, 'k', 'DrunkenSlug')));
+  assert.equal(fetched.movieSearchParams, undefined);
+
+  const asked: Asked[] = [];
+  const url = await listen(fakeIndexer('Unread', ['imdbid'], { imdbid: [BOTH] }, [NAME_ONLY], asked));
+  configData.indexers = [{ name: 'Unread', url, apiKey: 'k', enabled: true, caps: fetched }];
+  await quiet(() => indexManagerSearch(matrix));
+  assert.deepEqual(asked.filter(a => a.t === 'movie').map(a => a.ids), [{ imdbid: '0133093' }]);
+});
+
+test('an NZBHydra sync whose caps reply holds no <searching> block keeps its indexers\' caps unknown', async () => {
+  const noSearching = DS_CAPS.replace(/<searching>[\s\S]*<\/searching>/, '');
+  const hydra = await listen(http.createServer((req, res) => {
+    if (req.url?.startsWith('/api/stats/indexers')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify([{ indexerName: 'DrunkenSlug', state: 'ENABLED' }]));
+    }
+    res.writeHead(200, { 'Content-Type': 'text/xml;charset=UTF-8' });
+    res.end(noSearching);
+  }));
+  const saved: unknown[] = [];
+  const app = express();
+  app.use(express.json());
+  app.use(createIntegrationRoutes({ config: { ...configData, syncedIndexers: [] } as never,
+    updateSettings: s => saved.push(s), reorderSyncedIndexers: () => {}, getLatestVersions: () => ({ chrome: '1' }) }));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(r => server.once('listening', r));
+  servers.push(server);
+  const res = await quiet(() => fetch(`http://127.0.0.1:${(server.address() as { port: number }).port}/nzbhydra/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: hydra.replace(/\/api$/, ''), apiKey: 'k' }) }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(saved, [{ syncedIndexers: [{ id: 'DrunkenSlug', name: 'DrunkenSlug', enabledForSearch: true, capabilities: undefined,
+    logo: (saved[0] as { syncedIndexers: { logo: unknown }[] }).syncedIndexers[0].logo }] }]);
 });
 
 // Search Flow decides what a name search keeps (#282 decision 4, done here): the loose rule keeps, and a release the

@@ -86,6 +86,25 @@ export async function parseNewznabXml(xmlData: string): Promise<NZBSearchResult[
   return results;
 }
 
+/** One kind of search on a caps reply's <searching> line: its params; [] when it says available="no"; undefined when
+ *  it cannot be read (no such line, or no supportedParams): unknown, so Kaiju Search asks by IMDb (idWaysOf). */
+function searchParams(line: any): string[] | undefined {
+  const at = line?.$;
+  if (!at) return undefined;
+  if (at.available === 'no') return [];
+  if ((at.available !== undefined && at.available !== 'yes') || typeof at.supportedParams !== 'string') return undefined;
+  return at.supportedParams.split(',').map((p: string) => p.trim().toLowerCase()).filter(Boolean);
+}
+
+/** The caps a parsed (xml2js) Newznab caps reply holds, or undefined when it has no <searching> block: a Newznab
+ *  <error> (a wrong key, a reached limit) is sent with HTTP 200 and holds none. The Newznab fetch and NZBHydra's sync
+ *  read caps through this. */
+export function capsOfReply(parsed: any): IndexerCaps | undefined {
+  const searching = parsed?.caps?.searching?.[0];
+  if (!searching || typeof searching !== 'object') return undefined;
+  return { movieSearchParams: searchParams(searching['movie-search']?.[0]), tvSearchParams: searchParams(searching['tv-search']?.[0]) };
+}
+
 /**
  * Fetch indexer capabilities via the Newznab ?t=caps endpoint.
  * Parses the <searching> block to discover supported params for movie-search and tv-search.
@@ -120,42 +139,13 @@ export async function fetchIndexerCaps(
   });
 
   const parsed = await parseStringPromise(response.data);
-
-  const caps: IndexerCaps = {
-    movieSearchParams: [],
-    tvSearchParams: [],
-  };
-
-  const searching = parsed?.caps?.searching?.[0];
-  if (!searching) {
-    console.warn('⚠️  No <searching> block found in caps response');
-    return caps;
+  const caps = capsOfReply(parsed);
+  if (!caps) {
+    const e = parsed?.error?.$;
+    throw new Error(e ? `the indexer answered error ${e.code}: ${e.description}` : 'no <searching> block in the caps reply');
   }
 
-  // Parse <movie-search supportedParams="q,imdbid,tmdbid" />
-  const movieSearch = searching['movie-search']?.[0];
-  if (movieSearch?.$) {
-    const available = movieSearch.$.available;
-    if (available === 'yes' && movieSearch.$.supportedParams) {
-      caps.movieSearchParams = movieSearch.$.supportedParams
-        .split(',')
-        .map((p: string) => p.trim().toLowerCase())
-        .filter(Boolean);
-    }
-  }
-
-  // Parse <tv-search supportedParams="q,tvdbid,imdbid,season,ep" />
-  const tvSearch = searching['tv-search']?.[0];
-  if (tvSearch?.$) {
-    const available = tvSearch.$.available;
-    if (available === 'yes' && tvSearch.$.supportedParams) {
-      caps.tvSearchParams = tvSearch.$.supportedParams
-        .split(',')
-        .map((p: string) => p.trim().toLowerCase())
-        .filter(Boolean);
-    }
-  }
-
-  console.log(`🔍 Caps discovered: movie=[${caps.movieSearchParams.join(', ')}], tv=[${caps.tvSearchParams.join(', ')}]`);
+  const shown = (ps?: string[]) => (ps ? `[${ps.join(', ')}]` : 'unknown');
+  console.log(`🔍 Caps discovered: movie=${shown(caps.movieSearchParams)}, tv=${shown(caps.tvSearchParams)}`);
   return caps;
 }

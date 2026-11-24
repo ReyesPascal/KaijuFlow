@@ -52,8 +52,8 @@ export interface UsenetIndexer {
 
 // Discovered indexer capabilities from Newznab ?t=caps endpoint
 export interface IndexerCaps {
-  movieSearchParams: string[];   // e.g. ['q', 'imdbid', 'tmdbid']
-  tvSearchParams: string[];      // e.g. ['q', 'tvdbid', 'imdbid', 'season', 'ep']
+  movieSearchParams?: string[];  // e.g. ['q', 'imdbid', 'tmdbid']; [] when not available; undefined when unknown
+  tvSearchParams?: string[];     // e.g. ['q', 'tvdbid', 'imdbid', 'season', 'ep']; the same
 }
 
 // Zyclops health-check proxy configuration (per-indexer, Newznab mode only)
