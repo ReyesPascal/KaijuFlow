@@ -179,6 +179,43 @@ Every speed test plays titles no speed test has played before (ADR 0007). They c
 
 The field is called the list, not the kind: kind already means film or series. A draw writes the easy films, the easy episodes, the hard films, then the hard episodes.
 
+## The title draw and the ledger (`draw.py`)
+
+Every real-use check plays new titles (ADR 0010, #269). `python3 -I tools/brain/draw.py titles --check "<check>" --kinds popular-film=3,popular-episode=2 --out <titles.json>` draws them from TMDB, with the metadata key it reads from KaijuFlow's test copy (as `pool.py check-ids` does) and never prints. It prints one line per title (`popular-film: The Odyssey (tt33764258)`), then `done in N s`.
+
+**Kinds.** A title is chosen by its kind only, never by hand and never by whether it will play:
+
+| Kind | Type | Drawn from |
+|---|---|---|
+| `popular-film`, `popular-episode` | film, episode | TMDB's popular films, popular shows |
+| `rare-film`, `rare-episode` | film, episode | older titles (films before 2000, shows first aired before 2005) or little-known ones (20 to 200 votes), one of the two at random |
+| `foreign` | film | a film in another language (one of twelve, at random) whose English title is not its original one |
+| `anime` | episode | Japanese animated shows |
+| `remake` | film | well-known films that share their name with a film of another year (TMDB's search says so) |
+| `daily` | episode | English-language talk shows, an episode of their latest season |
+
+From each kind's list the draw takes a page of the first ten at random and goes through it in random order. It skips a title in the ledger, a title without an IMDb ID, a film not released yet, and a show with no aired episode; an episode is a random aired episode of a random aired season. Each title's ID is checked as `check-ids` does (`pool.check_title`); one that does not check is skipped. A kind that finds no new title in 8 pages is refused with one sentence, and nothing is drawn. `--kinds anime=1` draws one more title of a kind, a full check's replacement for a hard-case title with nothing to play.
+
+**The title list** is `[type, id, label, kind]`, in the order of `--kinds`, read like a tagged title list whose fourth field is the kind:
+
+```json
+[
+  ["movie", "tt33764258", "The Odyssey", "popular-film"],
+  ["series", "tt2359704:2:9", "JoJo's Bizarre Adventure S02E09", "anime"]
+]
+```
+
+**The ledger** is `~/kaijuflow-notes/brain-runs/titles-played.json` (`--ledger` names another), with the runs, outside the repo, backed up by `backup.sh`. It holds every title a check drew, a show once for all its episodes:
+
+```json
+{"about": "...",
+ "titles": [
+  {"id": "tt33764258", "type": "movie", "label": "The Odyssey", "kind": "popular-film", "check": "quick 2026-11-25", "when": "2026-11-25T10:00:00+00:00"}
+ ]}
+```
+
+A drawn title counts as played. The ledger is written before the title list, so a check that stops, or a list that cannot be written, leaves its titles spent (the owner: "dont redo same things") and never lets a later draw take them again. `draw.py seed` adds the titles the replayed recording's speed tests played (Test 1's ten and the pool's used titles) once; it was run when the draw was built.
+
 ## Recording state and misses
 
 **The recording's state and error answers.** At its end the record command writes `<store>/<list>/RECORDING.json`: `state` (`complete`: the proof replay had no miss; `incomplete`: it had, with each missed request and the side that asked in `misses` (a missed NZB download reads `<slug> nzb <first 12 characters of its stored key> <release title>`, the title taken from the stored search answers, so each NZB has its own name, #229); or `stopped` with `why` and `when`: an indexer limit, a failure, or the command was stopped by Ctrl-C or SIGTERM) and `errors`, the number of answers in this pass that were errors and were not stored. A finished record prints `Folder: <record folder>`, then one line of sentences, for example "12 answers were errors and were not stored: run record again to top them up." Its last sentence counts the top picks of the record pass that played on the first try, per side and round, in the words `check` uses for a run (`brainreport.top_picks_played`, shared by both): `Top picks played, KaijuFlow: cold 9 of 10, warm 10 of 10.` Every play of the record pass counts, the proof's do not; the counts are kept in the folder's `meta.json` as `plays` (`{side: {round: [played, plays]}}`). The preflight of a run passes only a `complete` recording.
