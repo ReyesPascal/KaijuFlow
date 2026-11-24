@@ -646,14 +646,22 @@ def _say(play):
             for f in play['failures']]
 
 
+def diagnose_again(run_dir, entries=None):
+    """A check diagnosed again by hand (`diagnose`, `fix`): its plays' answers new, the rest of its summary (fixes, the
+    Drill-down's marks, Case logs, scoreboard, ...) kept and written back. The summary."""
+    old = _read_json(os.path.join(run_dir, STORED)) or {}
+    summary = dict(old, **diagnose_check(run_dir, entries))
+    _write_json(os.path.join(run_dir, STORED), summary)
+    return summary
+
+
 def fix(run_dir, book=None, tracker=None):
     """`diagnosis.py fix`: the check diagnosed again against the Casebook in `book` (one that has the cause now: a Case
     log written up as an entry) and its fixes made as after the check (fixing.after_check); the rest of the check's
     summary is kept. Returns the fixes."""
     book = casebook.FOLDER if book is None else book
-    old = _read_json(os.path.join(run_dir, STORED)) or {}
-    summary = diagnose_check(run_dir, load_index(book))
-    summary = dict(old, **summary, fixes=fixing.after_check(run_dir, stored_plays(run_dir), book, tracker))
+    summary = diagnose_again(run_dir, load_index(book))
+    summary['fixes'] = fixing.after_check(run_dir, stored_plays(run_dir), book, tracker)
     _write_json(os.path.join(run_dir, STORED), summary)
     return summary['fixes']
 
@@ -694,7 +702,7 @@ def main(argv):
         for line in _say(dict(diagnose_stored(folder), path=folder)):
             print(line)
         return 0
-    summary = diagnose_check(folder)
+    summary = diagnose_again(folder)
     for p, row in zip(evidence_folders(folder), summary['plays']):
         for line in _say(dict(row, path=p)):
             print(line)

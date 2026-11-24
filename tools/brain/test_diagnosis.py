@@ -231,6 +231,21 @@ class CommandTest(unittest.TestCase):
             '3 failures: 1 new, 2 matched, 1 proved, 2 unexplained'])
         self.assertEqual(len(json.loads(read(run_dir, diagnosis.STORED))['plays']), 2)
 
+    def test_diagnosing_a_check_again_keeps_the_rest_of_its_summary(self):
+        root, run_dir = stored_check(self, plays=(INDEXER_DOWN,))
+        diagnosis.diagnose_check(run_dir)
+        path = os.path.join(run_dir, diagnosis.STORED)
+        summary = json.loads(read(run_dir, diagnosis.STORED))
+        kept = {'fixes': [{'entry': 'x', 'ticket': '#1'}], 'drill': {'entry': 'x', 'repeated': True},
+                'cases': [{'id': 'c', 'status': 'open', 'occurrences': 1, 'new': True}], 'scoreboard': {'n': 1}}
+        with open(path, 'w') as f:
+            json.dump(dict(summary, **kept), f)
+        with contextlib.redirect_stdout(io.StringIO()):
+            diagnosis.main(['diagnosis.py', 'diagnose', run_dir])
+        again = json.loads(read(run_dir, diagnosis.STORED))
+        self.assertEqual({k: again.get(k) for k in kept}, kept)
+        self.assertEqual(again['plays'], summary['plays'])
+
     def test_one_evidence_folder_can_be_diagnosed_alone(self):
         root, run_dir = stored_check(self, plays=(INDEXER_DOWN,))
         out = io.StringIO()
