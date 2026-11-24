@@ -44,7 +44,12 @@ export function deduplicateAndPreFilter(allResults: any[], hasRemake?: boolean, 
  * Deprioritized packs (yearless remake season packs) are filtered separately
  * and appended after sorting but before stream limits.
  */
-export function applyUserFilters(results: any[], type: string, now?: number, runtime?: number, deprioritizedPacks?: any[], options?: { quiet?: boolean }): any[] {
+export function applyUserFilters(results: any[], type: string, now?: number, runtime?: number, deprioritizedPacks?: any[], options?: { quiet?: boolean; timings?: { sortMs: number } }): any[] {
+  // The sort's time (#249), handed back so the list's step lines can show the filters and the sort apart.
+  const sorted = (fn: () => any[]): any[] => {
+    const t0 = performance.now();
+    try { return fn(); } finally { if (options?.timings) options.timings.sortMs += performance.now() - t0; }
+  };
   results = stripBareArchiveParts(results);
   results = deduplicateByIndexerContent(results);
   results = deduplicateByUrl(results);
@@ -60,9 +65,9 @@ export function applyUserFilters(results: any[], type: string, now?: number, run
   let filteredDeprioritized = deprioritizedPacks?.length ? applyQualityFilters(deprioritizedPacks, filterConfig) : [];
   if (filteredDeprioritized.length) {
     filteredDeprioritized = applyRankedRules(filteredDeprioritized, filterConfig, queryType, runtime);
-    filteredDeprioritized = sortResults(filteredDeprioritized, filterConfig, now, runtime);
+    filteredDeprioritized = sorted(() => sortResults(filteredDeprioritized, filterConfig, now, runtime));
   }
-  results = sortResults(results, filterConfig, now, runtime);
+  results = sorted(() => sortResults(results, filterConfig, now, runtime));
   results = [...results, ...filteredDeprioritized];
   results = applyStreamLimits(results, filterConfig);
   // Suppressed for the library-gate pre-check call so the UL short-circuit

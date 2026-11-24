@@ -7,7 +7,7 @@
 export type { FallbackCandidate } from './types.js';
 
 // Fallback management
-export { createFallbackGroup, getFallbackGroup, clearFallbackGroups } from './fallbackManager.js';
+export { createFallbackGroup, getFallbackGroup, clearFallbackGroups, fallbackGroupCount } from './fallbackManager.js';
 
 // Source memory (ready and dead Sources, #247)
 export { remember, recall } from './sourceMemory.js';

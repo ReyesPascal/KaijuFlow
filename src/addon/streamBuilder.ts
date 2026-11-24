@@ -17,7 +17,8 @@ import { parseQuality, parseCodec, parseSource, parseVisualTag, parseAudioTag, p
 import type { Stream, AutoPlayConfig } from '../types.js';
 import type { HealthCheckResult } from '../health/index.js';
 import { requestContext } from '../requestContext.js';
-import { createFallbackGroup, isUltimateFallbackActive, type FallbackCandidate } from '../play/index.js';
+import { createFallbackGroup, fallbackGroupCount, isUltimateFallbackActive, type FallbackCandidate } from '../play/index.js';
+import { timeStepSync } from '../utils/stepTiming.js';
 import { encodeTileEnvelope, toContentType } from '../play/redirectHelpers.js';
 import { episodeForTile, type PlayContext } from '../play/playContext.js';
 import { buildStreamDisplay } from './streamDisplay.js';
@@ -100,7 +101,10 @@ export function buildStreams(ctx: StreamBuildContext): StreamBuildOutput {
         return { nzbUrl, title: r.title, indexerName: r.indexerName, size: r.size, isSeasonPack: r.isSeasonPack || false, searchExitIp: r.searchExitIp };
       });
 
-    createFallbackGroup(fallbackGroupId, fallbackCandidates, play);
+    // One step line (#249): the group write saves every live group to disk, so it grows with the groups held.
+    const group = fallbackCandidates;
+    timeStepSync({ step: 'fallback_group', candidates: group.length }, () => createFallbackGroup(fallbackGroupId!, group, play),
+      () => ({ groups: fallbackGroupCount() }));
     console.log(`🔄 Created fallback group ${fallbackGroupId} with ${fallbackCandidates.length} candidates`);
   }
 

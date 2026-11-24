@@ -86,6 +86,11 @@ export function createFallbackGroup(id: string, candidates: FallbackCandidate[],
   saveFallbackGroupsToDisk();
 }
 
+/** How many fallback groups are held now (the step line of a group write, #249). */
+export function fallbackGroupCount(): number {
+  return fallbackGroups.size;
+}
+
 export function clearFallbackGroups(): void {
   fallbackGroups.clear();
   saveFallbackGroupsToDisk();
