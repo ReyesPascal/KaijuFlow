@@ -38,7 +38,7 @@ timeout 1h python3 -I tools/brain/brainrun.py check --quick --rebuild-image > ch
 grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' check.log
 ```
 
-About 10 minutes: the preflight for a check (key file, idle, plugged in, allowance), 5 new titles drawn, one reset, then one press of Best per title on the live indexer. `EXIT 0` pass, `4` fail, `2` the cap rule stopped it (no verdict), `130` stopped, `1` a setup problem. Read the folder's `report.md`, file its ticket texts (one per fail and check miss), then back up with `tools/brain/backup.sh`.
+About 10 minutes: the preflight for a check (key file, idle, plugged in, allowance), 5 new titles drawn, one reset, then one press of Best per title on the live indexer. `EXIT 0` pass, `4` fail, `2` the cap rule stopped it (no verdict), `130` stopped, `1` a setup problem. Read the folder's `report.md`, file its ticket texts (one per fail and check miss), then back up with `tools/brain/backup.sh`. Diagnosis files the fix ticket of a proved KaijuFlow cause by itself (`fix-tickets/` in the folder; the report's Diagnosis section names it, #288); `--tickets-dry-run` writes the text only. Then `python3 -I tools/brain/diagnosis.py record <folder>` in a worktree puts the check's occurrences, comebacks and filed tickets on the Casebook, for review.
 
 ## The recipe
 

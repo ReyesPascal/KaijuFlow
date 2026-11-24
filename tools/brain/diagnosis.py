@@ -3,6 +3,7 @@
     python3 -I tools/brain/diagnosis.py diagnose <check folder | evidence folder>   diagnose and write diagnosis.json
     python3 -I tools/brain/diagnosis.py record <check folder>     put its proved occurrences and ruled-out leads on the Casebook
     python3 -I tools/brain/diagnosis.py refingerprint [runs root]  fingerprint every stored failure with the current rules
+    python3 -I tools/brain/diagnosis.py fix <check folder> [--casebook DIR] [--dry-run]   its proved causes' fixes (#288)
     python3 -I tools/brain/diagnosis.py case <list|show|run|add|repeat|entry> ...   work a Case log (#287; case --help)
 
 The answers: *found: X, proved by Clues A, B* (a lead's confirming recipe passed on this failure's own evidence),
@@ -640,9 +641,33 @@ def _say(play):
             for f in play['failures']]
 
 
+def fix(run_dir, book=None, tracker=None):
+    """`diagnosis.py fix`: the check diagnosed again against the Casebook in `book` (one that has the cause now: a Case
+    log written up as an entry) and its fixes made as after the check (fixing.after_check); the rest of the check's
+    summary is kept. Returns the fixes."""
+    book = casebook.FOLDER if book is None else book
+    old = _read_json(os.path.join(run_dir, STORED)) or {}
+    summary = diagnose_check(run_dir, load_index(book))
+    summary = dict(old, **summary, fixes=fixing.after_check(run_dir, stored_plays(run_dir), book, tracker))
+    _write_json(os.path.join(run_dir, STORED), summary)
+    return summary['fixes']
+
+
 def main(argv):
     if len(argv) > 1 and argv[1] == 'case':
         return caselog.main(argv[2:])
+    if len(argv) > 1 and argv[1] == 'fix':
+        import argparse  # noqa: PLC0415
+        ap = argparse.ArgumentParser(prog='diagnosis.py fix', description='Diagnose a check again with the Casebook as it '
+                                     'is now, and make its proved causes\' fixes (a KaijuFlow cause files its ticket).')
+        ap.add_argument('folder', help='the check folder')
+        ap.add_argument('--casebook', help='the Casebook folder (default the repo\'s)')
+        ap.add_argument('--dry-run', action='store_true', help='write the fix tickets\' text, file none')
+        a = ap.parse_args(argv[2:])
+        fixes = fix(a.folder, a.casebook, None if a.dry_run else fixing.GitHub())
+        for line in fixing.report_lines(fixes) or ['No proved cause: nothing to fix.']:
+            print(line)
+        return 0
     if len(argv) < 2 or argv[1] not in ('diagnose', 'record', 'refingerprint') or \
             len(argv) > 3 or (argv[1] != 'refingerprint' and len(argv) != 3):
         print(__doc__.strip().split('\n\n')[1], file=sys.stderr)

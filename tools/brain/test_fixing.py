@@ -5,10 +5,13 @@ fixtures/2026-11-24-diagnosis/ (README there); the Casebook is a copy whose entr
 test files a real ticket: a test either runs dry or hands Diagnosis a fake tracker.
     python3 -I -m unittest discover -s tools/brain -p 'test_fixing.py'
 """
+import contextlib
+import io
 import json
 import os
 import re
 import unittest
+from unittest import mock
 
 import casebook
 import diagnosis
@@ -233,6 +236,36 @@ class RecordTicketTest(unittest.TestCase):
         run_dir, _ = after(self, (READ_ERROR,), book)
         diagnosis.record(run_dir, book)
         self.assertEqual(casebook.read_entry(os.path.join(book, 'unscramble-read-error.md'))[0]['status'], 'open')
+
+
+class FixCommandTest(unittest.TestCase):
+    """`diagnosis.py fix <check folder>`: a check diagnosed again with a Casebook that has the cause now (a Case log
+    written up as an entry), its fixes made as after the check: filed, or only written with --dry-run."""
+
+    def test_a_dry_run_writes_the_ticket_text_of_a_cause_the_casebook_has_now(self):
+        book = casebook_copy(self)
+        root, run_dir = stored_check(self, plays=(READ_ERROR,))
+        diagnosis.after_check(run_dir, root, book=book, cases=os.path.join(tempdir(self), 'cases'))
+        set_field(book, 'unscramble-read-error', 'status', 'open')  # as `case entry` writes a solved cause
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = diagnosis.main(['diagnosis.py', 'fix', run_dir, '--casebook', book, '--dry-run'])
+        self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue(), '- unscramble-read-error (KaijuFlow): fix ticket text written, not filed (a dry '
+                                         'run): `fix-tickets/unscramble-read-error.md`.\n')
+        summary = json.loads(read(run_dir, diagnosis.STORED))
+        self.assertEqual(summary['fixes'][0]['action'], 'ticket')
+        self.assertIn('scoreboard', summary)  # what the check wrote is kept
+        self.assertTrue(read(run_dir, 'fix-tickets', 'unscramble-read-error.md').startswith('# Fix: '))
+
+    def test_without_dry_run_it_files_with_the_real_tracker(self):
+        book = casebook_copy(self)
+        set_field(book, 'unscramble-read-error', 'status', 'open')
+        root, run_dir = stored_check(self, plays=(READ_ERROR,))
+        tracker = FakeTracker()
+        with mock.patch.object(fixing, 'GitHub', return_value=tracker), contextlib.redirect_stdout(io.StringIO()):
+            diagnosis.main(['diagnosis.py', 'fix', run_dir, '--casebook', book])
+        self.assertEqual([r for r, _, _ in tracker.filed], ['#301'])
 
 
 class AQuickCheckTest(unittest.TestCase):
