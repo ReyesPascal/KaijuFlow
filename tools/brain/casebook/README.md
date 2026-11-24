@@ -6,7 +6,7 @@ One file per known cause of a play going wrong (spec #279, #281): what the viewe
 - `index.json`: what programs need from every entry, **generated** from the files, never edited by hand.
 - `../casebook.py`: `python3 -I tools/brain/casebook.py index` rewrites the index; `python3 -I tools/brain/casebook.py check` lists every problem (exit 1 when there is one). `npm run check:brain` runs the check (`test_casebook.py`): it fails when an entry breaks the format, when the index and the files disagree, or when an entry claims proved without a confirming test that runs.
 
-After changing, adding or removing an entry, run the index command and commit the index with it. `python3 -I tools/brain/diagnosis.py record <check folder>` adds a diagnosed check's proved occurrences and ruled-out leads to the entries and writes the index itself.
+After changing, adding or removing an entry, run the index command and commit the index with it. `python3 -I tools/brain/diagnosis.py record <check folder>` adds a diagnosed check's proved occurrences and ruled-out leads to the entries and writes the index itself. A new entry comes from a solved Case log: `python3 -I tools/brain/diagnosis.py case entry <case> <entry id>` writes it (its match, recipe and ruled-out list) and the index ([formats, Case log](../docs/formats.md#case-log)).
 
 ## The format
 

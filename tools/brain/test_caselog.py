@@ -470,6 +470,12 @@ class LauncherTest(unittest.TestCase):
         self.assertIn('tools/brain/docs/diagnosing-agent.md', prompt[4])
         self.assertIn('--cases /n/cases', prompt[4])
 
+    def test_the_routine_the_prompt_names_is_there_and_names_every_write(self):
+        with open(os.path.join(caselog.REPO, caselog.ROUTINE)) as f:
+            routine = f.read()
+        for write in caselog.WRITES:
+            self.assertIn(f'| `{write}` |', routine)
+
     def test_with_no_agents_tab_it_makes_one(self):
         herdr = FakeHerdr(tabs=TABS.replace('"agents"', '"other"'))
         caselog.start_agent('/n/cases', ['x'], '/n/runs/check', run=herdr, env={'HERDR_ENV': '1'}, name='diag-1124')
