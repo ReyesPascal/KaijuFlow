@@ -1411,8 +1411,8 @@ export const goBackPreparingScenarios = [
     id: 'after-the-25-s-switch-a-next-source-failing-after-a-self-redirect-goes-back-to-the-first',
     async run(w) {
       const { id, sources } = offerMovie(w, [{ tag: 'backrd-a' }, { tag: 'backrd-b', kind: 'first-byte-400' }]);
-      w.backend.slowImports('backrd-a', 72000);
-      w.backend.slowImports('backrd-b', 33000);
+      w.backend.slowImports('backrd-a', 59000);
+      w.backend.slowImports('backrd-b', 30000);
       try {
         await withSettings(w, { whenToResolve: 'on-tile-selection' }, () => withPrepareTimeout(w, 90, async () => {
           const streams = await w.list('movie', id);
@@ -1425,7 +1425,7 @@ export const goBackPreparingScenarios = [
           assert.equal(w.backend.submitsFor('backrd-b'), 1, 'the next Source was tried');
           assert.equal(r.status, 200);
           assertBytes(r.body, sources[0].media, `the first Source plays once it is ready, not the failure video (answered after ${took} ms); ${lines.filter(l => /User-pick attempt|Decoded rc=|Sending Source to AltMount|Go-back state|Self-redirect|Every later Source|Stream failed|All \\d+ candidate/.test(l)).join(' | ')}`);
-          assert.ok(took >= 71000, `it played once the first Source was ready (${took} ms)`);
+          assert.ok(took >= 58000, `it played once the first Source was ready (${took} ms)`);
           assert.equal(w.backend.submitsFor('backrd-a'), 1, 'the first Source was prepared once: waited for, not handed over again');
         }));
       } finally {
