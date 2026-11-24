@@ -25,6 +25,7 @@ import caselog  # noqa: E402
 import clues  # noqa: E402
 import evidence  # noqa: E402
 import fixing  # noqa: E402
+import scoreboard  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RULES = os.path.join(HERE, 'masking-rules.json')
@@ -306,9 +307,12 @@ def counts(plays):
             'unreadable': sum(1 for p in plays if p.get('error'))}
 
 
-def summarize(run_dir, plays, rules):
+def summarize(run_dir, plays, rules, library=None, kept=None):
+    """Writes the check's summary; `kept` are the fields of its earlier summary to keep (a new masking version)."""
     keep = ('release', 'kind', 'fingerprint', 'verdict', 'cause', 'proved_by', 'says')
-    out = {'rules': rules['version'], 'counts': counts(plays), 'plays': []}
+    out = dict(kept or {}, rules=rules['version'], counts=counts(plays), plays=[])
+    if library is not None:
+        out['library'] = sorted(library)  # the Clues there were, so the next check tells reused from new (#288)
     for p in plays:
         row = {'evidence': os.path.relpath(p['path'], run_dir), 'label': p.get('label')}
         if p.get('error'):
@@ -330,7 +334,7 @@ def diagnose_check(run_dir, entries=None, library=None, rules=None):
             plays.append(dict(diagnose_stored(folder, entries, library, rules), path=folder))
         except Exception as e:  # noqa: BLE001  (one broken folder never stops the others)
             plays.append({'path': folder, 'error': br.scrub_text(f'{type(e).__name__}: {e}'), 'failures': []})
-    return summarize(run_dir, plays, rules)
+    return summarize(run_dir, plays, rules, clues.CLUES if library is None else library)
 
 
 def stored_checks(root):
@@ -366,7 +370,8 @@ def refingerprint(root, rules=None, entries=None, library=None):
                 d = _read_json(os.path.join(folder, STORED))
                 if d is not None:
                     plays.append(dict(d, path=folder))
-            summarize(run_dir, plays, rules)
+            old = _read_json(os.path.join(run_dir, STORED)) or {}
+            summarize(run_dir, plays, rules, kept={k: v for k, v in old.items() if k not in ('rules', 'counts', 'plays')})
     return changed
 
 
@@ -484,8 +489,23 @@ def after_check(run_dir, runs_root, entries=None, library=None, rules=None, usen
         summary['cases'] = open_cases(run_dir, cases, library)
         summary['open_cases'] = caselog.count_open(cases)
         _start_agent(summary, run_dir, cases, agent, alert)
+    summary['scoreboard'] = score(run_dir, runs_root, summary, library, book, cases)
     _write_json(os.path.join(run_dir, STORED), summary)
     return summary
+
+
+def score(run_dir, runs_root, summary, library, book, cases):
+    """The scoreboard's four extra numbers (story 58, scoreboard.score) for a check just diagnosed."""
+    name = os.path.basename(os.path.normpath(run_dir))
+    earlier = []
+    for d in stored_checks(runs_root):
+        other = os.path.basename(os.path.normpath(d))
+        s = _read_json(os.path.join(d, STORED)) if other < name else None
+        if s is not None:
+            earlier.append((other, s))
+    earlier.sort(key=lambda e: e[0])
+    return scoreboard.score(name, summary, stored_plays(run_dir), clues.CLUES if library is None else library, earlier,
+                            casebook.load(book)[0], None if cases is None else caselog.logs(cases))
 
 
 def _plural(n, word):
@@ -521,6 +541,8 @@ def report_section(summary, error=None):
     if a:
         lines += ['', f"The diagnosing agent started: {a['started']}." if a['error'] is None else
                   f"The diagnosing agent could not start: {a['error']}."]
+    if summary.get('scoreboard'):
+        lines += [''] + scoreboard.report_lines(summary['scoreboard'])
     return lines
 
 
