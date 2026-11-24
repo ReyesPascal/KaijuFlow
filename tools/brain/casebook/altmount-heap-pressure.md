@@ -7,7 +7,7 @@ whose: unknown
 status: open
 match:
   - rules: 1
-    sign: "slow play | import_wait ok | *"
+    sign: "slow play | first_byte ok | *"
 confirm:
   - clue: altmount-heap-warning
     answer: yes
@@ -50,3 +50,4 @@ None yet.
 ## History
 
 - 2026-11-24: converted from the casebook sweep (draft D7).
+- 2026-11-24: its slow-play sign names the last step line, `first_byte ok` (was `slow play | import_wait ok | *`, which no fingerprint gives: a slow play's video came, so its last step line is `first_byte`; where the time went is the confirming test's to tell; review of #279).

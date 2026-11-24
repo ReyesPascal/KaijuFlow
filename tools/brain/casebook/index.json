@@ -12,7 +12,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | import_wait ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -76,7 +76,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | list ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -151,7 +151,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | list ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -218,7 +218,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | play_check ok | *"
+          "sign": "slow play | first_byte ok | *"
         },
         {
           "rules": 1,
@@ -246,7 +246,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | list ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -293,7 +293,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | list ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -317,7 +317,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | import_wait ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -509,7 +509,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | import_wait ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -565,7 +565,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | unscramble ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [
@@ -697,7 +697,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | nzb_fetch not ok | *"
+          "sign": "slow play | first_byte ok | *"
         },
         {
           "rules": 1,
@@ -725,7 +725,7 @@
       "match": [
         {
           "rules": 1,
-          "sign": "slow play | list ok | *"
+          "sign": "slow play | first_byte ok | *"
         }
       ],
       "confirm": [

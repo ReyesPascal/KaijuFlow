@@ -80,6 +80,46 @@ class FingerprintTest(unittest.TestCase):
         self.assertNotIn(SIC, sic['fingerprint'])
 
 
+def variant(case, folder, outcome, keep=None):
+    """A copy of a captured play told as another outcome: evidence.json's `outcome` updated, no failed Source, and only
+    the step lines up to and with the first `keep` names (all when None)."""
+    copy = os.path.join(tempdir(case), os.path.basename(folder))
+    shutil.copytree(folder, copy)
+    with open(os.path.join(copy, 'evidence.json')) as f:
+        meta = json.load(f)
+    meta['outcome'] = dict(meta['outcome'], **outcome)
+    meta['kept_because'] = evidence.kept_because(meta['outcome'])
+    meta['failed_sources'] = []
+    with open(os.path.join(copy, 'evidence.json'), 'w') as f:
+        json.dump(meta, f)
+    if keep is not None:
+        with open(os.path.join(copy, 'steps.jsonl')) as f:
+            lines = f.readlines()
+        at = next(i for i, line in enumerate(lines) if json.loads(line)['step'] == keep)
+        with open(os.path.join(copy, 'steps.jsonl'), 'w') as f:
+            f.writelines(lines[:at + 1])
+    return copy
+
+
+def signs_of(kind):
+    return {e['id'] for e in diagnosis.load_index() for m in e['match'] if m['sign'].startswith(kind + ' | ')}
+
+
+class EverySignCanMatchTest(unittest.TestCase):
+    def test_a_slow_play_has_every_slow_play_entry_for_a_lead(self):
+        folder = variant(self, LOG_CUT, {'outcome': 'played', 'why': '', 'slow': True, 'start_s': 75.0})
+        [f] = diagnosis.diagnose(folder)['failures']
+        self.assertEqual(f['kind'], 'slow play')
+        self.assertEqual({t['id'] for t in f['leads']}, signs_of('slow play'))
+
+    def test_nothing_to_play_with_the_dev_switch_on_is_where_the_search_failed(self):
+        folder = variant(self, LOG_CUT, {'outcome': 'nothing to play', 'why': 'the list was empty', 'sources': 0},
+                         keep='list')
+        [f] = diagnosis.diagnose(folder)['failures']
+        self.assertEqual((f['kind'], f['where']), ('nothing to play', 'indexer_page ok'))  # the search lines come after
+        self.assertEqual({t['id'] for t in f['leads']}, signs_of('nothing to play'))
+
+
 class SuspectedAndNewTest(unittest.TestCase):
     def test_each_failure_of_a_play_is_answered_and_a_look_alike_without_a_confirming_test_is_suspected(self):
         first, second = answers(TWO_REFUSALS)

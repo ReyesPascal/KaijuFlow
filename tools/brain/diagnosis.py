@@ -32,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RULES = os.path.join(HERE, 'masking-rules.json')
 LIST_OWN = ('list_filter', 'list_sort', 'fallback_group', 'list_build', 'head_start', 'list')
 EVENTS = ('played', 'play_failed')
+SEARCH_LINES = ('search',)  # Kaiju Search's evidence lines (dev switch only, #285): no step, so never where it failed
 FAILED_LINE = re.compile(r'❌ (?:Failed: (?P<a>.*)|Stream failed \[\d+/\d+\] .*?: (?P<b>AltMount .*|.*))$')
 NEAR_S = 2  # a KaijuFlow failure line belongs to the failed step it is this near to (builds before play_failed)
 
@@ -105,7 +106,7 @@ def failures(ev):
                     'reason': _reason(ev, release, step)})
     if out:
         return out
-    steps = [s for s in ev.steps if s.get('step') not in LIST_OWN + EVENTS]
+    steps = [s for s in ev.steps if s.get('step') not in LIST_OWN + EVENTS + SEARCH_LINES]  # the last step line
     step = steps[-1] if steps else None
     kind = play_kind or ('slow play' if o.get('slow') else ev.meta.get('kept_because') or 'fail')
     return [{'release': None, 'kind': kind, 'step': step, 'where': _line(step) if step else 'none',
