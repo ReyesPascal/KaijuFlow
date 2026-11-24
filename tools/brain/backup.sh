@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Back up the run records and the recording store to the private repo
-# ReyesPascal/kaijuflow-notes (#114). Last step of every record or run.
+# Back up the check folders and the archived recording store to the private repo
+# ReyesPascal/kaijuflow-notes (#114). Last step of every real-use check.
 # Secrets (~/kaijuflow-test/*.json) never go in; they live in the owner's
 # password manager.
 set -euo pipefail

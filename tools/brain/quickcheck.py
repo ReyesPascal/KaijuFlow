@@ -434,6 +434,24 @@ def allowed_word_lines(outcomes):
     return out
 
 
+def fallbacks_line(outcomes):
+    """The fallbacks of a check in one line: how many, in how many titles, how many ended in video; or that none happened."""
+    fell = [o for o in outcomes if o['fallbacks']]
+    if not fell:
+        return 'Fallbacks not tested this time: no play fell back.'
+    return (f"{br.plural(sum(o['fallbacks'] for o in fell), 'fallback')} in {br.plural(len(fell), 'title')}; "
+            f"{sum(1 for o in fell if o['video'])} of them ended in video.")
+
+
+def typical_line(outcomes):
+    """The typical title to video of a check in one line: the median of the plays with the right video."""
+    times = [o['title_to_video'] for o in outcomes if o['outcome'] == PLAYED and o['title_to_video'] is not None]
+    if not times:
+        return 'None: no play gave the right video.'
+    return (f"{_s(statistics.median(times))} (median of {br.plural(len(times), 'play')} with the right video; the list plus "
+            'the start, the Browse pause left out).')
+
+
 def render_report(check, outcomes):
     """report.md of a quick check: pass or fail and the fails first, then slow plays, check misses, fallbacks, nothing to
     play, the typical title to video, the allowed words offered (#286), and a ticket text for each fail and check miss.
@@ -453,13 +471,8 @@ def render_report(check, outcomes):
     lines += ['', '## Check misses (a Source the health check passed that AltMount refused)', '']
     lines += [f"- {o['label']}: {m['release']}: {m['reason'] or 'no reason given'}." for o, m in misses] or ['None.']
     fell = [o for o in outcomes if o['fallbacks']]
-    lines += ['', '## Fallbacks', '']
-    if fell:
-        lines.append(f"{br.plural(sum(o['fallbacks'] for o in fell), 'fallback')} in {br.plural(len(fell), 'title')}; "
-                     f"{sum(1 for o in fell if o['video'])} of them ended in video.")
-        lines += [f"- {o['label']}: {br.plural(o['fallbacks'], 'fallback')}, {'ended in video' if o['video'] else 'no video'}." for o in fell]
-    else:
-        lines.append('Fallbacks not tested this time: no play fell back.')
+    lines += ['', '## Fallbacks', '', fallbacks_line(outcomes)]
+    lines += [f"- {o['label']}: {br.plural(o['fallbacks'], 'fallback')}, {'ended in video' if o['video'] else 'no video'}." for o in fell]
     nothing = [o for o in outcomes if o['outcome'] == NOTHING]
     lines += ['', '## Nothing to play', '']
     for o in nothing:
@@ -467,10 +480,7 @@ def render_report(check, outcomes):
         lines += [f"  - {c['release']}: {check_said(c)}" for c in o['checked']]
     if not nothing:
         lines.append('None.')
-    times = [o['title_to_video'] for o in outcomes if o['outcome'] == PLAYED and o['title_to_video'] is not None]
-    lines += ['', '## Typical title to video', '']
-    lines.append(f"{_s(statistics.median(times))} (median of {br.plural(len(times), 'play')} with the right video; the list plus "
-                 'the start, the Browse pause left out).' if times else 'None: no play gave the right video.')
+    lines += ['', '## Typical title to video', '', typical_line(outcomes)]
     lines += played_line(check)
     lines += ['', '## Allowed words offered', ''] + (allowed_word_lines(outcomes) or ['None.'])
     lines += [''] + diagnosis.report_section(check.get('diagnosis'), check.get('diagnosis_error'))

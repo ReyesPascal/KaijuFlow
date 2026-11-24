@@ -393,7 +393,7 @@ class PreviousRunTests(unittest.TestCase):
         self.assertEqual(judged_lines(out)[0], 'Against the previous run on the same recording (l): 2026-01-01T000000Z-before.')
 
 
-FULL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'run-2026-11-13-imports')
+FULL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fixtures', 'run-2026-11-13-imports')
 
 
 class EarlierRunTests(unittest.TestCase):

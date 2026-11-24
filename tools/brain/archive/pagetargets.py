@@ -10,7 +10,7 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves it off sys.path
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]  # python3 -I leaves them off; the archive, then the live tools
 from brainreport import (  # noqa: E402
     JUDGED, LISTS, NO_FIGURE, RUN_ORDER, SIDE_NAMES, _plays, _run_label, secs_text, _time, fail_figure, fails_words, run_lists,
     top_pick)
@@ -18,7 +18,7 @@ from brainreport import (  # noqa: E402
 # The setups as the page's verdicts name them (GLOSSARY), the other setups of the runs before #185 among them.
 SHORT_NAMES = {'kaijuflow': 'KaijuFlow', 'uu': 'Usenet Ultimate', 'altmount-addon': 'AltMount direct',
                'kaijuflow-1page': 'KaijuFlow with one page per indexer'}
-EXPECTED_SETTINGS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expected-settings.json')
+EXPECTED_SETTINGS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'expected-settings.json')  # the live one
 EPISODE = re.compile(r'\bS\d{1,3}[ ._-]?E\d{1,4}|\b\d{1,2}x\d{2}\b', re.I)  # a title that names an episode, not a whole season
 
 

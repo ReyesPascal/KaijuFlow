@@ -4,7 +4,7 @@ The test copies of the one setup and the 1338 test container. Back to the [runbo
 
 ## Test copies of the one setup (spec #58, #187)
 
-`compose.test.yaml` starts the test copies of the one setup a run plays (#185), KaijuFlow and its AltMount, in their own compose project `kaijuflow-test` (own container names, own network `kaijuflow-test-net`, own config folders), so no compose command on it can reach a live container:
+`compose.test.yaml` starts the test copies of the one setup a check plays (#185), KaijuFlow and its AltMount, in their own compose project `kaijuflow-test` (own container names, own network `kaijuflow-test-net`, own config folders), so no compose command on it can reach a live container:
 
 | Service | Container | Port | Role |
 |---|---|---|---|
@@ -19,7 +19,7 @@ Recipe (from the repo root; `testbed.py` runs every Docker command through the t
 
 1. Rebuild KaijuFlow's image from the commit under test: `docker build -t kaijuflow:test .`
 2. Start: `python3 -I tools/brain/testbed.py up` (both) or `... up kaijuflow` (named services). Wait until `status` shows them healthy.
-3. Cold reset before a cold run: `python3 -I tools/brain/testbed.py reset` (both) or `... reset altmount-kf`. It stops each copy, restores it from `templates/` (AltMount's database, metadata, `.nzbs` and segment cache, KaijuFlow's health/dead caches and stats), starts it again and runs the emptiness check. Settings, logins and users are kept. Exit code 0 and the line `EMPTY: ...` mean every checked Backend holds no imported item.
+3. Cold reset (a check does it by itself): `python3 -I tools/brain/testbed.py reset` (both) or `... reset altmount-kf`. It stops each copy, restores it from `templates/` (AltMount's database, metadata, `.nzbs` and segment cache, KaijuFlow's health/dead caches and stats), starts it again and runs the emptiness check. Settings, logins and users are kept. Exit code 0 and the line `EMPTY: ...` mean every checked Backend holds no imported item.
 4. Emptiness check alone: `python3 -I tools/brain/testbed.py check [side ...]` (database tables, the Backend's own API/WebDAV listing, leftover files, cache files). Exit 1 and `NOT EMPTY: ...` lines otherwise.
 5. Stop when done: `python3 -I tools/brain/testbed.py stop`. `status` lists the test containers.
 
