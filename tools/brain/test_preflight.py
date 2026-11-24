@@ -33,8 +33,11 @@ class FakeWorld(brainrun.RealIO):
     """
 
     def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3,
-                 machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1'), dns=('85.12.62.251', '85.12.62.214')):
+                 machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1'), dns=('85.12.62.251', '85.12.62.214'), power='ac', probe=950,
+                 policy=(('governor', 'powersave'), ('energy_preference', 'performance'))):
         super().__init__(cfg)
+        self.power_, self.probe, self.policy = power, probe, dict(policy)
+        self.asked = []  # the machine's readings in the order they were taken: 'load', 'probe'
         self.label, self.head, self.dirty, self.free, self.changed = label, head, dirty, free, dict(changed or {})
         # load: one reading, or the readings in turn (the last one stays); machine and dns: the addresses, or the
         # LookupFailed the real reader raises when it gets no answer
@@ -64,7 +67,18 @@ class FakeWorld(brainrun.RealIO):
         self.slept.append(s)
 
     def load_average(self):
+        self.asked.append('load')
         return self.loads.pop(0) if len(self.loads) > 1 else self.loads[0]
+
+    def power(self):
+        return self.power_
+
+    def cpu_policy(self):
+        return dict(self.policy)
+
+    def cpu_probe_ms(self):
+        self.asked.append('probe')
+        return self.probe
 
     def machine_addresses(self):
         return answer(self.machine)
@@ -190,11 +204,39 @@ class PreflightTest(unittest.TestCase):
         record(self.cfg)
         code, text = run_command('run', self.cfg, self.world())
         self.assertEqual(code, 0, text)
-        self.assertIn('the machine is idle (1-minute load below 1.00), HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves '
-                      'outside 10.x and the recording is complete', text)
+        self.assertIn('the machine is plugged in and idle (1-minute load below 1.00), HOST_IP and altmountUrl are its addresses, '
+                      'news.newshosting.com resolves outside 10.x and the recording is complete', text)
+        self.assertIn('CPU probe: 950 ms (governor powersave, energy preference performance).', text)
         code, text = run_command('record', self.cfg, self.world())
-        self.assertIn('HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves outside 10.x.', text)
+        self.assertIn('the machine is plugged in, HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves outside 10.x.', text)
         self.assertNotIn('idle', text)
+        self.assertNotIn('CPU probe', text)
+
+    def test_a_machine_on_battery_stops_a_run_and_a_record(self):
+        record(self.cfg)
+        for mode in ('record', 'run'):
+            self.assert_stops(mode, self.world(power='battery'), 'The machine runs on battery', 'plug it in')
+
+    def test_a_run_preflight_keeps_the_machine_it_judged_with_the_cpu_probe_taken_after_the_load_check(self):
+        record(self.cfg)
+        world, seen = self.world(probe=1234), {}
+        self.assertEqual(brainrun.preflight('run', self.cfg, world, seen), [])
+        self.assertEqual(seen, {'load': 0.3, 'machine': {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance',
+                                                         'cpu_probe_ms': 1234}})
+        self.assertEqual(world.asked, ['load', 'probe'])
+
+    def test_a_cpu_policy_that_cannot_be_read_is_left_out_of_the_machine(self):
+        record(self.cfg)
+        seen = {}
+        brainrun.preflight('run', self.cfg, self.world(policy=()), seen)
+        self.assertEqual(seen['machine'], {'power': 'ac', 'cpu_probe_ms': 950})
+        code, text = run_command('run', self.cfg, self.world(policy=()))
+        self.assertIn('CPU probe: 950 ms.', text)
+
+    def test_a_record_preflight_takes_no_cpu_probe(self):
+        world = self.world()
+        code, text = run_command('record', self.cfg, world)
+        self.assertEqual((code, world.asked), (0, []), text)
 
     def test_a_busy_machine_stops_a_run(self):
         record(self.cfg)
@@ -219,7 +261,8 @@ class PreflightTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(brainrun.preflight('run', self.cfg, world, seen), [])
         self.assertEqual((world.rebuilt, world.slept), ([COMMIT], [10, 10, 10]))
-        self.assertEqual(seen, {'load': 0.8})
+        self.assertEqual(seen['load'], 0.8)
+        self.assertEqual(world.asked[-2:], ['load', 'probe'])  # the probe runs once the build's load has settled
         self.assertIn('Waiting up to 3 minutes', out.getvalue())
 
     def test_a_load_that_does_not_settle_3_minutes_after_the_image_build_stops_a_run(self):
@@ -243,7 +286,7 @@ class PreflightTest(unittest.TestCase):
         record(self.cfg)
         seen = {}
         self.assertEqual(brainrun.preflight('run', self.cfg, self.world(load=[0.42, 1.7]), seen), [])
-        self.assertEqual(seen, {'load': 0.42})
+        self.assertEqual(seen['load'], 0.42)
         seen = {}
         brainrun.preflight('record', self.cfg, self.world(), seen)
         self.assertEqual(seen, {})
@@ -1040,6 +1083,42 @@ class PowerReadersTest(unittest.TestCase):
         self.assertEqual((probe(), probe()), (813, 1200))
         self.assertEqual(done, [brainrun.PROBE_ROUNDS] * 2)
         self.assertEqual(brainrun.probe_work(1000), brainrun.probe_work(1000))
+
+
+class PowerWiringTest(unittest.TestCase):
+    """The preflight through RealIO's own readers of the power supply, the CPU policy and the CPU probe (#262), on fake /sys
+    trees made from the files captured on Brain; the probe's work is cut short so the test takes no second."""
+
+    class World(FakeWorld):
+        power = brainrun.RealIO.power
+        cpu_policy = brainrun.RealIO.cpu_policy
+        cpu_probe_ms = brainrun.RealIO.cpu_probe_ms
+
+    def setUp(self):
+        self.td = make_copies(self)
+        self.cfg = make_cfg(self.td)
+        record(self.cfg)
+
+    def preflight(self, mode, supplies, seen=None):
+        with mock.patch.object(brainrun, 'POWER_SUPPLY_ROOT', supplies), \
+                mock.patch.object(brainrun, 'CPUFREQ_ROOT', os.path.join(POWER, 'cpufreq')), \
+                mock.patch.object(brainrun, 'PROBE_ROUNDS', 1000):
+            return brainrun.preflight(mode, self.cfg, self.World(self.cfg), seen)
+
+    def test_on_battery_a_run_and_a_record_stop(self):
+        for mode in ('record', 'run'):
+            problems = self.preflight(mode, power_tree(self, mains_online='0'))
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn('The machine runs on battery', problems[0])
+
+    def test_plugged_in_or_without_a_mains_supply_a_run_passes_and_keeps_the_machine(self):
+        for supplies in (os.path.join(POWER, 'power_supply'), power_tree(self, mains=False)):
+            seen = {}
+            self.assertEqual(self.preflight('run', supplies, seen), [])
+            machine = seen['machine']
+            self.assertEqual({k: v for k, v in machine.items() if k != 'cpu_probe_ms'},
+                             {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance'})
+            self.assertIsInstance(machine['cpu_probe_ms'], int)
 
 
 class FirstInARunTest(unittest.TestCase):

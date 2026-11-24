@@ -287,6 +287,15 @@ class RealIO:
     def load_average(self):
         return os.getloadavg()[0]
 
+    def power(self):
+        return read_power()
+
+    def cpu_policy(self):
+        return read_cpu_policy()
+
+    def cpu_probe_ms(self):
+        return cpu_probe_ms()
+
     def machine_addresses(self):
         return read_machine_addresses()
 
@@ -802,7 +811,9 @@ def preflight(mode, cfg, io, seen=None):
     """Checks the setup before a record ('record') or a run ('run'). Returns plain sentences, one per problem; [] means go.
 
     Record only: the key file. Run only: the machine is idle and the recording exists. Everything else is checked in both.
-    `seen`, when given, gets the readings the checks judged: 'load' (a run only), so the run keeps the number judged.
+    `seen`, when given, gets the readings the checks judged (a run only): 'load', and 'machine', the power state, the CPU
+    policy and the CPU probe taken after the load check ({'power', 'governor', 'energy_preference', 'cpu_probe_ms'}, #262),
+    so the run keeps what was judged.
     """
     if mode not in ('record', 'run'):
         raise ValueError("preflight mode must be 'record' or 'run'")
@@ -894,6 +905,7 @@ def preflight(mode, cfg, io, seen=None):
                 io.sleep(SETTLE_POLL_S)
                 waited += SETTLE_POLL_S
                 load = io.load_average()
+        probe = io.cpu_probe_ms()  # once the load is judged, so an image build's own load has settled first (#262)
         if seen is not None:
             seen['load'] = load
         if load >= BUSY_LOAD:
@@ -966,21 +978,32 @@ def preflight(mode, cfg, io, seen=None):
             if missed and missed[1]:
                 problems.append(f"The last run on '{cfg.get('listname')}' ({missed[0]}) missed {missed[1]} requests the recording does not hold, "
                                 f"so a run now would miss them too: top it up with the record command: {top_up}")
+
+    # 11. run and record: the machine is plugged in (#262): on battery the same code listed 20-25% slower (#249)
+    power = io.power()
+    if power == 'battery':
+        problems.append(f'The machine runs on battery (no Mains supply in {POWER_SUPPLY_ROOT} is online), which slows the CPU and a '
+                        'timed run with it: plug it in and run the preflight again.')
+    if mode == 'run' and seen is not None:
+        seen['machine'] = {'power': power, **io.cpu_policy(), 'cpu_probe_ms': probe}
     return problems
 
 
 def preflight_command(mode, cfg, io):
     """Prints the preflight result in plain sentences; exit code 0 when the setup is right, 1 otherwise."""
-    problems = preflight(mode, cfg, io)
+    seen = {}
+    problems = preflight(mode, cfg, io, seen)
     for p in problems:
         print(p)
     if mode == 'record' and cfg.get('runs_root'):  # the allowance: warns only, never blocks
         print('\n'.join(allowance.record_preflight_lines(cfg)))
     if not problems:
-        idle = f'the machine is idle (1-minute load below {BUSY_LOAD:.2f}), ' if mode == 'run' else ''
-        machine = (f'; {idle}HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
+        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if mode == 'run' else ''
+        machine = (f'; the machine is plugged in{idle}, HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
                    + (' and the recording is complete' if mode == 'run' else ''))
         print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
+        if 'machine' in seen:
+            print(f"CPU probe: {br.probe_text(seen['machine'])}.")
     return 1 if problems else 0
 
 

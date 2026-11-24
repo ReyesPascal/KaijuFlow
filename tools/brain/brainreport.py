@@ -726,6 +726,20 @@ def _stamp(d):
     return f'{d:%Y-%m-%d %H:%M} UTC'
 
 
+POWER_WORDS = {'ac': 'plugged in', 'battery': 'on battery'}
+
+
+def probe_text(machine):
+    """A run's CPU probe as the preflight and the report print it (#262): '950 ms (governor powersave, energy preference performance)'."""
+    policy = [f'{label} {machine[k]}' for k, label in (('governor', 'governor'), ('energy_preference', 'energy preference')) if machine.get(k)]
+    return f"{machine.get('cpu_probe_ms')} ms" + (f" ({', '.join(policy)})" if policy else '')
+
+
+def machine_text(machine):
+    """A run's machine (meta.json `machine`, #262) in words: 'plugged in, CPU probe 950 ms (governor powersave, ...)'."""
+    return f"{POWER_WORDS.get(machine.get('power'), machine.get('power'))}, CPU probe {probe_text(machine)}"
+
+
 def _settings_and_facts(meta):
     """(settings of the test copies, run-level facts) of a run meta. Runs recorded in the older shape kept the replay wait
     under settings['stand-in'] and the one-page side under settings['kaijuflow-1page']; they are read as facts."""
