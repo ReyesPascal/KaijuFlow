@@ -126,6 +126,18 @@ test('a name search keeps a release the strict rule passes though the loose rule
   assert.deepEqual(results.map(r => r.title), [reacher]);
 });
 
+// Extra proof (#286): a release that fits another TMDB/TVDB name of the title is kept, and sure. Real release names
+// from the shared table: Blow Out (1981) as released in Germany, under TMDB's German title.
+test('a name search keeps a release that fits another TMDB/TVDB name of the title', async () => {
+  const german = 'Blow.Out.Der.Tod.loescht.alle.Spuren.1981.German.EAC3.DL.1080p.BluRay.x265-VECTOR'; // neither rule on "Blow Out"
+  const url = await listen(fakeIndexer('Ninja', [], {}, [german], []));
+  configData.indexers = [{ name: 'Ninja', url, apiKey: 'k', enabled: true, caps: { movieSearchParams: ['q'], tvSearchParams: ['q'] } }];
+  const blowOut: SearchContext = { type: 'movie', imdbId: 'tt0082085', title: 'Blow Out', year: '1981', isAnime: false, additionalTitles: [] };
+  assert.deepEqual(await quiet(() => indexManagerSearch(blowOut)), [], 'without the other name it is dropped');
+  const results = await quiet(() => indexManagerSearch({ ...blowOut, knownNames: ['Blow Out - Der Tod löscht alle Spuren'] }));
+  assert.deepEqual(results.map(r => r.title), [german]);
+});
+
 // With the dev switch on (#280), a `search` step line per indexer and way of asking: what it was asked, how many
 // results came back, how many stayed, and each result sure / maybe / dropped with why; and a line whenever the strict
 // rule alone would have left nothing. With it off, none: a release logs what it logs today.
@@ -147,9 +159,10 @@ test('with the dev switch on, a search line per indexer and way of asking, each 
   const logs = await captureLogs(() => kaijuSearch(matrix));
   const lines = searchLines(logs).map(({ t, ms, ...rest }) => rest);
   assert.deepEqual(lines, [
-    { step: 'search', source: 'Ninja', ok: true, title: 'The Matrix', dev: true, way: 'id', asked: ['imdb'], count: 2, kept: 2, sure: 1, maybe: 1, results: [
+    { step: 'search', source: 'Ninja', ok: true, title: 'The Matrix', dev: true, way: 'id', asked: ['imdb'], count: 2, kept: 2, sure: 2, maybe: 0, results: [
       { release: BOTH, flow: 'sure', why: 'the name and year fit' },
-      { release: ID_ONLY, flow: 'maybe', why: 'the name "The Matrix" is not in it' },
+      // A maybe by its name the loose rule keeps, which the ID search returned: sure by extra proof (#286).
+      { release: ID_ONLY, flow: 'sure', proof: 'id', why: 'the ID search returned it too; by its name alone: the name "The Matrix" is not in it' },
     ] },
     { step: 'search', source: 'Ninja', ok: true, title: 'The Matrix', dev: true, way: 'name', asked: ['name'], count: 3, kept: 2, sure: 2, maybe: 0, results: [
       { release: BOTH, flow: 'sure', why: 'the name and year fit' },

@@ -220,7 +220,8 @@ export async function resolveTitleFromTmdb(
  * Requires an extra API call to /3/movie/{id} since /find doesn't include runtime.
  * The same request also pulls release_dates (append_to_response), so it records the
  * premiere year (earliest release, when earlier than the theatrical date) under
- * `premiereYear:tmdb:{imdbId}` for getCachedPremiereYear to read.
+ * `premiereYear:tmdb:{imdbId}` for getCachedPremiereYear to read, and the film's alternative titles under
+ * `altTitles:tmdb:{imdbId}` for getCachedAlternativeTitles (Search Flow's extra proof, #286): no request of their own.
  */
 export async function resolveRuntimeFromTmdb(imdbId: string): Promise<number | undefined> {
   const cacheKey = `runtime:tmdb:${imdbId}`;
@@ -238,7 +239,7 @@ export async function resolveRuntimeFromTmdb(imdbId: string): Promise<number | u
     const isReadAccessToken = apiKey.length > 40 || apiKey.startsWith('eyJ');
     const response = await axios.get(`https://api.themoviedb.org/3/movie/${tmdbResult.id}`, {
       params: {
-        append_to_response: 'release_dates',
+        append_to_response: 'release_dates,alternative_titles',
         ...(isReadAccessToken ? {} : { api_key: apiKey }),
       },
       headers: isReadAccessToken ? { Authorization: `Bearer ${apiKey}` } : {},
@@ -266,6 +267,12 @@ export async function resolveRuntimeFromTmdb(imdbId: string): Promise<number | u
       }
     }
 
+    const alternatives = response.data?.alternative_titles?.titles;
+    if (Array.isArray(alternatives)) {
+      const names = [...new Set(alternatives.map((a: { title?: unknown }) => a?.title).filter((t): t is string => typeof t === 'string' && t.trim() !== ''))];
+      idCache.set(`altTitles:tmdb:${imdbId}`, names);
+    }
+
     const runtime = response.data?.runtime;
     if (typeof runtime === 'number' && runtime > 0) {
       const seconds = runtime * 60;
@@ -277,6 +284,11 @@ export async function resolveRuntimeFromTmdb(imdbId: string): Promise<number | u
     console.warn(`⚠️  Failed to resolve TMDB runtime for ${imdbId}:`, (error as Error).message);
   }
   return undefined;
+}
+
+/** A film's alternative titles on TMDB, recorded by resolveRuntimeFromTmdb; [] when it has none or was not asked. */
+export function getCachedAlternativeTitles(imdbId: string): string[] {
+  return idCache.get<string[]>(`altTitles:tmdb:${imdbId}`) ?? [];
 }
 
 /**

@@ -176,6 +176,8 @@ async function resolveTitleAndBuildSearchCtx(args: {
     titleYear: titleInfo.titleYear,
     searchAliases: titleInfo.searchAliases,
     episodeAired: titleInfo.episodeAired,
+    knownNames: titleInfo.knownNames,
+    runtime: titleInfo.runtime,
     animeResolvedIds: animeResolved ? { tmdbId: animeResolved.tmdbId, tvdbId: animeResolved.tvdbId } : undefined,
     tvdbIdFromRequest,
   };

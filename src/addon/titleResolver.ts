@@ -8,7 +8,7 @@
 
 import axios from 'axios';
 import { config, getTvRemakeFiltering } from '../config/index.js';
-import { resolveTitleFromTmdb, resolveTitleFromTvdb, resolveEpisodeCountFromTvdb, resolveEpisodeCountFromTvdbId, resolveRuntimeFromTmdb, getCachedPremiereYear, detectRemake, fetchTvdbRecordById } from '../idResolver.js';
+import { resolveTitleFromTmdb, resolveTitleFromTvdb, resolveEpisodeCountFromTvdb, resolveEpisodeCountFromTvdbId, resolveRuntimeFromTmdb, getCachedPremiereYear, getCachedAlternativeTitles, detectRemake, fetchTvdbRecordById } from '../idResolver.js';
 import { isStylizedTitle } from '../parsers/titleMatching.js';
 import { isAnimeByImdbId, lookupByImdbId, lookupByTvdbId, getKitsuImdbEntries } from '../anime/animeDatabase.js';
 
@@ -45,6 +45,9 @@ export interface ResolvedTitleInfo {
   titleYear?: string;
   /** English aliases from TVDB whose normalized form is a strict substring of the resolved title and substantially shorter (< 70% length). Used as a zero-result UTS fallback for shows whose release groups publish under a shortened name. */
   searchAliases?: string[];
+  /** Other TMDB/TVDB names of the title the search does not ask by: TVDB's aliases and TMDB's alternative titles of a
+   *  film. A release that fits one is kept and sure (Search Flow's extra proof, #286). */
+  knownNames?: string[];
   /** Air date of the targeted episode in `YYYY-MM-DD` form, when TVDB has it. Used by the alias fallback to send date-formatted queries (e.g. `Jimmy Fallon 2024.05.21`) for shows whose releases are dated rather than season/episode-numbered. */
   episodeAired?: string;
 }
@@ -340,6 +343,11 @@ export async function resolveTitle(
     }
   }
 
+  // Search Flow's extra proof (#286): every other name TVDB and TMDB give the title, beside the names searched by.
+  const searched = new Set([title, ...(additionalTitles ?? []), ...(searchAliases ?? [])]);
+  const known = [...(tvdbAliases ?? []), ...(type === 'movie' && tvdbIdHint === undefined ? getCachedAlternativeTitles(imdbId) : [])];
+  const knownNames = [...new Set(known)].filter(n => n && !searched.has(n));
+
   return {
     title,
     cinemetaTitle,
@@ -358,5 +366,6 @@ export async function resolveTitle(
     titleYear,
     searchAliases,
     episodeAired,
+    ...(knownNames.length > 0 ? { knownNames } : {}),
   };
 }

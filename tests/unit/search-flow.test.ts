@@ -85,8 +85,9 @@ test('over the whole table no release the strict rule passes is dropped, and eve
 /** A Newznab indexer answering a name search (q) and an ID search (imdbid) with its own release names. */
 async function fakeIndexer(byName: string[], byId: string[]) {
   const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const sizeOf = (t: string) => [...t].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7); // one size per release
   const item = (t: string) => `<item><title>${xml(t)}</title><link>http://idx.invalid/nzb/${encodeURIComponent(t)}</link>` +
-    `<pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate><newznab:attr name="size" value="${4 * 1024 ** 3}"/></item>`;
+    `<pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate><newznab:attr name="size" value="${4 * 1024 ** 3 + sizeOf(t) * 10 * 1024 ** 2}"/></item>`;
   const server = http.createServer((req, res) => {
     const u = new URL(req.url ?? '', 'http://x');
     const items = u.searchParams.get('imdbid') ? byId : u.searchParams.get('q') ? byName : [];
@@ -148,4 +149,42 @@ test('a maybe the ID search returned too is sure; the same release found by name
     ['sure', 'id', 'the ID search returned it too; by its name alone: the name "Joker" is not followed by a year (2019 wanted)']);
   const [named] = markSources([source(joker, { foundBy: ['name'] })], titleOf(joker));
   assert.deepEqual([named.flow, named.proof], ['maybe', undefined]);
+});
+
+test('a maybe that fits another TMDB/TVDB name of the title is sure; without that name it stays a maybe', () => {
+  const blowOut = row('Blow.Out.Der.Tod.loescht.alle.Spuren.1981.German.EAC3.DL.1080p.BluRay.x265-VECTOR', 'Blow Out');
+  // TMDB's German title of Blow Out (1981).
+  const [named] = markSources([source(blowOut)], { ...titleOf(blowOut), knownNames: ['Blow Out - Der Tod löscht alle Spuren'] });
+  assert.deepEqual([named.flow, named.proof, named.flowWhy], ['sure', 'other name',
+    'it fits another name of the title, "Blow Out - Der Tod löscht alle Spuren"; by its name alone: the name "Blow Out" is not followed by a year (1981 wanted); the loose rule does not fit it either']);
+  const [unnamed] = markSources([source(blowOut)], titleOf(blowOut));
+  assert.deepEqual([unnamed.flow, unnamed.proof], ['maybe', undefined]);
+});
+
+test('a maybe whose own runtime fits the title\'s is sure; one whose runtime is another film\'s, or that has none, stays a maybe', () => {
+  const joker = row('Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs', 'Joker');
+  const title = { ...titleOf(joker), runtime: 122 * 60 }; // TMDB: 122 min
+  const [fits] = markSources([source(joker, { duration: 7314 })], title); // 2:01:54, as EasyNews gives a runtime
+  assert.deepEqual([fits.flow, fits.proof, fits.flowWhy], ['sure', 'runtime',
+    'its runtime fits (122 min, the title\'s 122 min); by its name alone: the name "Joker" is not followed by a year (2019 wanted)']);
+  const [other] = markSources([source(joker, { duration: 100 * 60 })], title);
+  const [none] = markSources([source(joker)], title);
+  assert.deepEqual([other.flow, none.flow], ['maybe', 'maybe']);
+});
+
+test('a maybe the size of a sure Source in the list (the same upload under another name) is sure; another size stays a maybe', () => {
+  const joker = row('Joker 1080p WEB-DL DD5.1 H264 (2019) NL Subs', 'Joker');
+  // A real release name of the store's recordings, as another indexer lists it.
+  const sure = { title: 'Joker 2019 1080p BluRay x264-GeneMige', indexerName: 'Other', size: 2_147_483_648 };
+  const [, same] = markSources([sure, source(joker, { size: 2_147_483_648 })], titleOf(joker));
+  assert.deepEqual([same.flow, same.proof, same.flowWhy], ['sure', 'size',
+    'it is the size of a sure Source, Joker 2019 1080p BluRay x264-GeneMige; by its name alone: the name "Joker" is not followed by a year (2019 wanted)']);
+  const [, other] = markSources([sure, source(joker, { size: 2_400_000_000 })], titleOf(joker));
+  assert.equal(other.flow, 'maybe');
+});
+
+test('extra proof never makes sure a release whose name says another year, season or episode', () => {
+  const ep9 = row('Pushing.Daisies.S01E09.Corpsicle.EAC3.5.1.1080p.Bluray.x265-iVy.part01.rar', 'Pushing Daisies S01E08');
+  const [m] = markSources([source(ep9, { foundBy: ['id', 'name'] })], titleOf(ep9));
+  assert.deepEqual([m.flow, m.flowWhy], ['maybe', 'it is S01E09, not S01E08']);
 });
