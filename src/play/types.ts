@@ -31,6 +31,8 @@ export interface FallbackCandidate {
    *  Best's Walk tries the sure Sources first. Absent in a group saved before Search Flow. */
   flow?: 'sure' | 'maybe';
   flowWhy?: string;
+  /** The extra proof that made a maybe sure (#286): at list time, or the Play-time check's (the NZB's video file). */
+  proof?: string;
 }
 
 export interface FallbackGroup {

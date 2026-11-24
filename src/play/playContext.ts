@@ -7,6 +7,7 @@
 
 import { config as globalConfig, getTvAllowMultiEpisode } from '../config/index.js';
 import { buildEpisodePattern, buildDateEpisodePattern } from './utils.js';
+import type { FlowTitle } from '../parsers/searchFlow.js';
 
 export interface PlayContext {
   /** Best's session for this title: one per installation (manifest key), title and episode. Empty without an id. */
@@ -17,6 +18,9 @@ export interface PlayContext {
   /** Aired date (YYYY-MM-DD), for a daily show whose files are named by date. */
   aired?: string;
   episodesInSeason?: number;
+  /** The title as Search Flow judges a release against it: the Play-time check's extra proof reads it (#286). Absent
+   *  in a group saved before it and in a tile's envelope: no extra proof then. */
+  flow?: FlowTitle;
 }
 
 /**
@@ -35,8 +39,9 @@ export function makePlayContext(title: {
   episode?: number;
   aired?: string;
   episodesInSeason?: number;
+  flow?: FlowTitle;
 }): PlayContext {
-  const { manifestKey, type, imdbId, season, episode, aired, episodesInSeason } = title;
+  const { manifestKey, type, imdbId, season, episode, aired, episodesInSeason, flow } = title;
   return {
     sessionKey: sessionKeyOf(manifestKey, type, imdbId, season, episode),
     type,
@@ -44,6 +49,7 @@ export function makePlayContext(title: {
     ...(episode !== undefined ? { episode } : {}),
     ...(aired ? { aired } : {}),
     ...(episodesInSeason !== undefined ? { episodesInSeason } : {}),
+    ...(flow ? { flow } : {}),
   };
 }
 

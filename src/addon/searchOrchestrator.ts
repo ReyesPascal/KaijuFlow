@@ -48,6 +48,12 @@ export interface SearchContext {
   searchAliases?: string[];
   /** Air date of the targeted episode in `YYYY-MM-DD` form. Triggers a date-formatted alias query (e.g. `<alias> 2024.05.21`) instead of `<alias> SxxExx` when set, for shows whose releases are date-named rather than season/episode-numbered. */
   episodeAired?: string;
+  /** Other TMDB/TVDB names of the title the search does not ask by (TVDB's aliases, TMDB's alternative titles): a
+   *  release that fits one is kept and sure (Search Flow's extra proof, #286). */
+  knownNames?: string[];
+  /** The title's runtime in seconds (TMDB for a film, TVDB for an episode): a maybe whose own runtime fits it is sure
+   *  (Search Flow's extra proof, #286). */
+  runtime?: number;
   // Pre-resolved IDs from anime database (when request came from anime ID prefix)
   animeResolvedIds?: { tmdbId?: string; tvdbId?: string };
   // Numeric TVDB id parsed from the Stremio request when it arrived via the

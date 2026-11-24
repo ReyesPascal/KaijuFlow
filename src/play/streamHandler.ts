@@ -174,12 +174,12 @@ const playedLogged = new Set<string>();
 const PLAYED_LOG_TTL_MS = 15_000;
 
 /** The press's `played` step line (#242): this Source's video is served now. */
-function logPlayedOnce(req: Request, source: { title: string; indexerName?: string }): void {
+function logPlayedOnce(req: Request, source: { title: string; indexerName?: string; flow?: string; proof?: string }, videoPath?: string): void {
   const entry = `${req.params.filename ?? '-'}::${typeof req.query.t === 'string' ? req.query.t : ''}::${source.title}`;
   if (playedLogged.has(entry)) return;
   playedLogged.add(entry);
   setTimeout(() => playedLogged.delete(entry), PLAYED_LOG_TTL_MS).unref?.();
-  logPlayed(source.title, source.indexerName);
+  logPlayed(source.title, source.indexerName, { flow: source.flow, proof: source.proof, video: videoPath?.split('/').pop() });
 }
 
 /** The lobby's line for a press of Best it serves, once per video in LOBBY_LOG_THROTTLE_MS (range probes and seeks repeat it). */
@@ -566,7 +566,7 @@ export async function handleStream(
         // no library check, no submission. If the file is gone we fall through
         // to a fresh candidate loop via the live videoPathExists gate above.
         if (verbose) console.log(`📦 Stream dedup hit (delivered ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
-        logPlayedOnce(req, cached.played);
+        logPlayedOnce(req, cached.played, cached.streamData.videoPath);
         await serveVideo(req, res, cached.streamData, proxyFn);
         return;
       }
@@ -618,7 +618,7 @@ export async function handleStream(
         logLobbyServe(sessionKey, streamData.videoPath);
         if (streamData.sourceTitle) {
           const fromGroup = fallbackGroupId ? getFallbackGroup(fallbackGroupId)?.candidates.find(c => c.title === streamData.sourceTitle) : undefined;
-          logPlayedOnce(req, { title: streamData.sourceTitle, indexerName: fromGroup?.indexerName });
+          logPlayedOnce(req, { title: streamData.sourceTitle, indexerName: fromGroup?.indexerName, flow: fromGroup?.flow, proof: fromGroup?.proof }, streamData.videoPath);
         }
         await serveVideo(req, res, streamData, proxyFn);
         return;
@@ -755,7 +755,7 @@ export async function handleStream(
     if (candidate !== dedupCandidate) {
       recentDeliveries.set(dedupKey(backend, candidate, play), { streamData, timestamp: Date.now(), played: candidate });
     }
-    logPlayedOnce(req, candidate);
+    logPlayedOnce(req, candidate, streamData.videoPath);
     await serveVideo(req, res, streamData, proxyFn);
   };
 
