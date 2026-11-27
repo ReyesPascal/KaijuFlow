@@ -140,31 +140,26 @@ class CheckPreflightSearchTest(unittest.TestCase):
 
     def test_the_wrong_key_reply_refuses_a_check(self):
         world = FakeWorld(self.cfg, pings={'drunkenslug': (200, captured(WRONG_KEY))})
-        code, text = run_command('check', self.cfg, world)
+        code, text = run_command(self.cfg, world)
         self.assertEqual(code, 1, text)
         self.assertIn('drunkenslug answered the search with an error', text)
         self.assertEqual(world.pinged, [['drunkenslug', 'ninjacentral']])
 
     def test_an_indexer_with_no_answer_refuses_a_check(self):
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg, pings={'ninjacentral': None}))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg, pings={'ninjacentral': None}))
         self.assertEqual(code, 1, text)
         self.assertIn('ninjacentral did not answer the search', text)
 
-    def test_a_record_and_a_run_send_no_search(self):
-        world = FakeWorld(self.cfg)
-        brainrun.preflight('record', self.cfg, world)
-        self.assertEqual(world.pinged, [])
-
     def test_no_search_is_sent_while_another_check_fails(self):
         world = FakeWorld(self.cfg, free=False)  # the stand-in's port is taken
-        code, text = run_command('check', self.cfg, world)
+        code, text = run_command(self.cfg, world)
         self.assertEqual(code, 1, text)
         self.assertEqual(world.pinged, [])
 
     def test_the_allowance_check_counts_the_preflight_search_as_one_more(self):
         put_limits(os.path.join(self.td, 'indexers.json'), {'ninjacentral': (2000, 450), 'drunkenslug': (60, 300)})
         world = FakeWorld(self.cfg)
-        code, text = run_command('check', self.cfg, world)
+        code, text = run_command(self.cfg, world)
         self.assertEqual(code, 1, text)
         self.assertIn('drunkenslug has 60 searches left today, and the check may need 61', text)
         self.assertEqual(world.pinged, [])

@@ -22,7 +22,7 @@ import pool
 import quickcheck as qc
 import retired
 import testbed
-from test_preflight import FakeWorld, make_cfg, run_command
+from test_preflight import PLENTY, FakeWorld, make_cfg, run_command
 from test_settings import SECRET, make_copies, put_limits, tempdir
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -699,8 +699,8 @@ class CheckWorld:
         self.calls.append(('sleep', s))
         self.takes(s)
 
-    def preflight(self, mode, seen=None):
-        self.calls.append(('preflight', mode))
+    def preflight(self, seen=None):
+        self.calls.append(('preflight',))
         if seen is not None:
             seen.update(load=0.2, machine={'power': 'ac', 'cpu_probe_ms': 900})
         return list(self.problems)
@@ -843,7 +843,7 @@ class QuickCheckRunTest(unittest.TestCase):
         code, out = run_check(cfg, world)
         self.assertEqual(code, 0, out)
         self.assertIn('Pass: 0 fails in 5 titles.', out)
-        self.assertEqual(world.calls[:5], [('preflight', 'check'), ('draw', 'quick', qc.QUICK_KINDS), ('reset', tuple(brainrun.ALL_TESTBED)),
+        self.assertEqual(world.calls[:5], [('preflight',), ('draw', 'quick', qc.QUICK_KINDS), ('reset', tuple(brainrun.ALL_TESTBED)),
                                            ('open-store',), ('standin', 'record')])
         self.assertEqual([c[1] for c in world.calls if c[0] == 'visit'], [t[1] for t in DRAWN])  # each title once
         # the Browse pause only, no pause after a title: the settle is retired (spec #298's review, P6)
@@ -973,7 +973,7 @@ class QuickCheckRunTest(unittest.TestCase):
         cfg, world = check_cfg(self), CheckWorld(problems=['The machine is busy.'])
         code, out = run_check(cfg, world)
         self.assertEqual((code, out), (1, 'The machine is busy.\n'))
-        self.assertEqual(world.calls, [('preflight', 'check')])
+        self.assertEqual(world.calls, [('preflight',)])
         self.assertFalse(os.path.exists(os.path.join(cfg['runs_root'], 'INDEX.md')))
 
     def test_a_stop_keeps_the_titles_played_and_gives_no_verdict(self):
@@ -1081,43 +1081,43 @@ class CheckPreflightTest(unittest.TestCase):
             f.write(''.join(f'RECORD ninjacentral nzb/abc{i} from=1.2.3.4 t={t}\n' for i in range(downloads)))
 
     def test_a_right_setup_passes_a_check_with_no_recording(self):
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
         self.assertIn("Setup is right for a check", text)
         self.assertIn("the indexer allowance holds the check's requests", text)
 
     def test_a_check_needs_the_key_file(self):
         os.chmod(os.path.join(self.td, 'indexers.json'), 0o644)
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('can be read by others', text)
         self.assertNotIn(SECRET, text)
 
     def test_a_quick_check_does_not_wait_for_an_idle_machine_and_keeps_the_load(self):
         seen = {}
-        self.assertEqual(brainrun.preflight('check', self.cfg, FakeWorld(self.cfg, load=2.5), seen), [])
+        self.assertEqual(brainrun.preflight(self.cfg, FakeWorld(self.cfg, load=2.5), seen), [])
         self.assertEqual(seen['load'], 2.5)  # the record keeps the load either way (#303)
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg, load=2.5))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg, load=2.5))
         self.assertEqual(code, 0, text)
         self.assertNotIn('idle', text)
 
     def test_a_full_check_needs_an_idle_machine(self):
-        code, text = run_command('check', dict(self.cfg, full_check=True), FakeWorld(self.cfg, load=2.5))
+        code, text = run_command(dict(self.cfg, full_check=True), FakeWorld(self.cfg, load=2.5))
         self.assertEqual(code, 1, text)
         self.assertIn('load average is 2.50', text)
-        code, text = run_command('check', dict(self.cfg, full_check=True), FakeWorld(self.cfg))
+        code, text = run_command(dict(self.cfg, full_check=True), FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
         self.assertIn('idle (1-minute load below 1.00)', text)
 
     def test_a_full_check_under_a_standing_go_does_not_wait_for_an_idle_machine_and_keeps_the_load(self):
         cfg, seen = dict(self.cfg, full_check=True, standing_go=True), {}
-        self.assertEqual(brainrun.preflight('check', cfg, FakeWorld(cfg, load=2.5), seen), [])
+        self.assertEqual(brainrun.preflight(cfg, FakeWorld(cfg, load=2.5), seen), [])
         self.assertEqual(seen['load'], 2.5)
 
     def test_too_little_allowance_left_refuses_a_check(self):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
         self.used(450 - 149)  # 149 downloads left between the two; 5 titles may need 150
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('The indexers have 149 downloads left today between them (drunkenslug 0, ninjacentral 149), '
                       'and the check may need 150', text)
@@ -1127,29 +1127,29 @@ class CheckPreflightTest(unittest.TestCase):
         # Source, so two indexers together must hold the check's downloads; neither needs all of them alone
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 100)})
         self.used(450 - 60)  # ninjacentral 60 left, drunkenslug 100: 160 between them, 150 needed
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
 
     def test_searches_still_count_per_indexer(self):
         # every title is searched on every indexer, so each needs the check's searches itself
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (59, 100)})
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('drunkenslug has 59 searches left today, and the check may need 61', text)  # 60 for the titles, 1 for the preflight's search (#303)
 
     def test_a_drill_down_asks_for_one_titles_allowance(self):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
         self.used(450 - 30)  # 30 downloads left: one title may need 30, five 150
-        code, text = run_command('check', dict(self.cfg, check_titles=1), FakeWorld(self.cfg))
+        code, text = run_command(dict(self.cfg, check_titles=1), FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertIn('The indexers have 30 downloads left today between them (drunkenslug 0, ninjacentral 30), '
                       'and the check may need 150', text)
 
     def test_an_indexer_without_limits_in_the_key_file_refuses_a_check_and_names_the_command(self):
         make_copies(self, base=os.path.dirname(self.td))  # a key file with no limits in it
         self.limits({'ninjacentral': (2000, 450)})
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('The key file has no daily limits for drunkenslug, so its allowance cannot be checked: add them '
                       '(python3 -I tools/brain/testbed.py indexer add drunkenslug --stash <entry> --searches <n> --downloads <n>)', text)
@@ -1159,7 +1159,7 @@ class CheckPreflightTest(unittest.TestCase):
         make_copies(self, base=os.path.dirname(self.td))
         with open(os.path.join(self.td, 'limits.json'), 'w') as f:
             json.dump({'indexers': {s: {'search_per_day': 2000, 'download_per_day': 450} for s in ('ninjacentral', 'drunkenslug')}}, f)
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('The key file', text)
 
@@ -1199,7 +1199,7 @@ class IndexerRuleTest(unittest.TestCase):
         data['expected'].append({'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}})
         with open(path, 'w') as f:
             json.dump(data, f)
-        problems = brainrun.preflight('record', cfg, FakeWorld(cfg))
+        problems = brainrun.preflight(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual([p.split(',')[0] for p in problems if '.timeout' in p], ['KaijuFlow has no indexers[NinjaCentral].timeout setting'])
 
     def test_apply_writes_the_setting_into_every_indexer(self):

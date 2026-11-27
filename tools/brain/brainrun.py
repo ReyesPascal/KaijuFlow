@@ -239,8 +239,8 @@ class RealIO:
         return True
 
 
-    def preflight(self, mode, seen=None):
-        return checked(mode, self.cfg, self, seen)
+    def preflight(self, seen=None):
+        return checked(self.cfg, self, seen)
 
     def marker(self):
         return br.read_json(os.path.join(self.cfg['store'], 'LIMIT_REACHED.json'))
@@ -897,16 +897,16 @@ def switch_problem(start, key_on, key_all, rep, sides, port, ours):
     return Problem(f"{start}: make them the same ({'; '.join(commands)}{runs}).", *fixes)
 
 
-def checked(mode, cfg, io, seen=None):
+def checked(cfg, io, seen=None):
     """The preflight, and with `fix` in cfg (--fix, #303) its safe fixes too: the image rebuilt when it is not current (as
     --rebuild-image does), then the fixes the refusals carry (the expected settings written, the key file made private, an
     indexer switched on or off to match the key file), then the preflight again, whose sentences are the answer. Power, the
     machine's addresses, DNS and the allowance are never touched: their sentences say what to do. The preflight command and
     every check use it."""
     if not cfg.get('fix'):
-        return preflight(mode, cfg, io, seen)
+        return preflight(cfg, io, seen)
     cfg, done = dict(cfg, rebuild_image=True), []
-    problems = preflight(mode, cfg, io, seen)
+    problems = preflight(cfg, io, seen)
     for _ in range(FIX_ROUNDS):  # a fix can show the next problem (an open key file hides which indexers it switches on)
         fixes = [f for f in dict.fromkeys(f for p in problems for f in getattr(p, 'fixes', ())) if f != ('rebuild',) and f not in done]
         if not fixes:
@@ -916,7 +916,7 @@ def checked(mode, cfg, io, seen=None):
             print(f'Fixing: {line}', flush=True)
         if seen is not None:
             seen.clear()
-        problems = preflight(mode, cfg, io, seen)
+        problems = preflight(cfg, io, seen)
     return problems
 
 
@@ -941,30 +941,38 @@ def run_fixes(cfg, fixes, stop_all):
     return out
 
 
-def waits_for_idle(mode, cfg):
-    """Whether the preflight asks for an idle machine: a run, and a full check (`full_check`) unless the lead passed its
-    standing go (`standing_go`); never a quick check or a drill-down, which start at once (#303)."""
-    return mode == 'run' or (mode == 'check' and bool(cfg.get('full_check')) and not cfg.get('standing_go'))
+def waits_for_idle(cfg):
+    """Whether the preflight asks for an idle machine: a full check (`full_check`) unless the lead passed its standing go
+    (`standing_go`); never a quick check or a drill-down, which start at once (#303)."""
+    return bool(cfg.get('full_check')) and not cfg.get('standing_go')
 
 
-def preflight(mode, cfg, io, seen=None):
-    """Checks the setup before a real-use check ('check', #270; a Drill-down too). Returns plain sentences, one per problem;
-    [] means go.
+def preflight(cfg, io, seen=None):
+    """Checks the setup before a real-use check (#270; a Drill-down too). Returns plain sentences, one per problem; []
+    means go. `seen`, when given, gets the readings the checks judged: 'load', and 'machine', the power state, the CPU
+    policy and the CPU probe taken after the load check ({'power', 'governor', 'energy_preference', 'cpu_probe_ms'}, #262),
+    so the check keeps what was judged. Its steps are the functions below it, which the archive's retired preflights
+    (archive/retired_run.py) put together their own way."""
+    problems, rebuilt = image_problems(cfg, io)
+    rep, readable, more = setup_problems(cfg, io)
+    problems += more + key_file_problems(cfg, io, rep, readable) + copies_problems(cfg, io, rep, readable)
+    load, probe, more = load_problems(cfg, io, rebuilt, waits_for_idle(cfg))
+    power, machine = machine_problems(cfg, io)
+    problems += more + machine
+    if seen is not None:
+        seen['load'] = load
+        seen['machine'] = {'power': power, **io.cpu_policy(), 'cpu_probe_ms': probe}
+    problems += allowance_problems(cfg, io, rep, readable)
+    # 12. (#303) every switched-on indexer answers one one-result search through the stand-in; sent last, and only when
+    # nothing else refused, so a refused check spends no request
+    if not problems:
+        problems += ping_problems(io, rep, readable)
+    return problems
 
-    The modes 'record' and 'run' are the retired commands' (ADR 0010, #273), used only by the archive with --revive
-    (archive/retired_run.py adds their recording checks): record and check check the key file (the stand-in asks the real
-    indexers); run and check that the machine is idle; check only that the indexer allowance holds what the check may ask
-    (allowance.left). Everything else is checked in all three.
-    `seen`, when given, gets the readings the checks judged: 'load', and 'machine', the power state, the CPU policy and the
-    CPU probe taken after the load check ({'power', 'governor', 'energy_preference', 'cpu_probe_ms'}, #262), so the check
-    keeps what was judged.
-    """
-    if mode not in ('record', 'run', 'check'):
-        raise ValueError("preflight mode must be 'record', 'run' or 'check'")
+
+def image_problems(cfg, io):
+    """1. The test image holds the code of the commit being tested: (problems, whether this preflight rebuilt it)."""
     problems, rebuilt = [], False
-    port = cfg.get('standin_port', 1340)
-
-    # 1. the test image holds the code of the commit being tested
     commit, dirty = io.git_info()
     label = io.image_label()
     if dirty:
@@ -987,7 +995,12 @@ def preflight(mode, cfg, io, seen=None):
             problems.append(Problem(f'The test image was built from commit {label[:7]}, which this repository does not have, so '
                                     f'nothing says whether it holds the code at {commit[:7]}: build it again with --rebuild-image{FIX}.',
                                     ('rebuild',)))
+    return problems, rebuilt
 
+
+def setup_problems(cfg, io):
+    """The test copies' setup (io.setup_report) and which of them can be read: (report, readable sides, problems)."""
+    problems = []
     rep = io.setup_report(cfg.get('limit', testbed.PROVIDER_LIMIT))
     titles = {side: v['short'] for side, v in testbed.SETTINGS.items()}
     indexer_sides = INDEXER_SIDES
@@ -996,26 +1009,34 @@ def preflight(mode, cfg, io, seen=None):
         problems.append(f"The config file of {titles[s]} cannot be read: check that it exists in the test folder ({TESTBED} settings "
                         'shows what can be read).')
     readable = [s for s in indexer_sides if s not in unreadable]
+    return rep, readable, problems
 
-    # 2. (record and check) the key file switches on exactly the indexers KaijuFlow has switched on
-    if mode in ('record', 'check'):
-        path = _key_path(cfg)
-        state, key = io.key_state(path)
-        if state == 'missing':
-            problems.append(f'The key file {path} is missing: create it with one entry per indexer ({ADD_INDEXER()}).')
-        elif state == 'open':
-            problems.append(Problem(f'The key file {path} can be read by others: make the key file readable only by you (run: '
-                                    f'chmod 600 {path}){FIX}.', ('key_mode', path)))
-        elif state == 'unreadable':
-            problems.append(f'The key file {path} has no "indexers" list of names: write it again with one entry per indexer '
-                            f'({ADD_INDEXER()}).')
-        else:
-            differ = [f'{titles[s]} switches on {_list(rep["enabled"][s])}' for s in readable if rep['enabled'][s] != key]
-            if differ:
-                problems.append(switch_problem(f'The key file switches on {_list(key)}, but ' + '; '.join(differ), key,
-                                               key_file_names(path), rep, readable, port,
-                                               path == os.path.join(cfg['test_dir'], testbed.KEY_FILE)))
 
+def key_file_problems(cfg, io, rep, readable):
+    """2. The key file switches on exactly the indexers KaijuFlow has switched on."""
+    problems, port, titles = [], cfg.get('standin_port', 1340), {side: v['short'] for side, v in testbed.SETTINGS.items()}
+    path = _key_path(cfg)
+    state, key = io.key_state(path)
+    if state == 'missing':
+        problems.append(f'The key file {path} is missing: create it with one entry per indexer ({ADD_INDEXER()}).')
+    elif state == 'open':
+        problems.append(Problem(f'The key file {path} can be read by others: make the key file readable only by you (run: '
+                                f'chmod 600 {path}){FIX}.', ('key_mode', path)))
+    elif state == 'unreadable':
+        problems.append(f'The key file {path} has no "indexers" list of names: write it again with one entry per indexer '
+                        f'({ADD_INDEXER()}).')
+    else:
+        differ = [f'{titles[s]} switches on {_list(rep["enabled"][s])}' for s in readable if rep['enabled'][s] != key]
+        if differ:
+            problems.append(switch_problem(f'The key file switches on {_list(key)}, but ' + '; '.join(differ), key,
+                                           key_file_names(path), rep, readable, port,
+                                           path == os.path.join(cfg['test_dir'], testbed.KEY_FILE)))
+    return problems
+
+
+def copies_problems(cfg, io, rep, readable):
+    """3. to 6.: the indexer addresses, the connection caps, the sort and filter settings and the stand-in's port."""
+    problems, port, titles = [], cfg.get('standin_port', 1340), {side: v['short'] for side, v in testbed.SETTINGS.items()}
     # 3. every indexer address in KaijuFlow is the indexer stand-in's (explained once, in the first sentence)
     what = ' (the local program that replays recorded indexer answers)'
     for s in readable:
@@ -1050,27 +1071,34 @@ def preflight(mode, cfg, io, seen=None):
     if not io.port_free(port):
         problems.append(f"The indexer stand-in's port {port} is already in use: stop whatever listens there (ss -ltnp 'sport = :{port}' "
                         'shows it; an earlier indexer stand-in?) and try again.')
+    return problems
 
-    # 7. (run and check) the machine is idle (#217); after an image build by this preflight, once the build's own load has settled.
-    # A check reads the load for its record, and only a full check outside a standing go waits for idle (#303).
-    if mode in ('run', 'check'):
-        load = io.load_average()
-        if rebuilt and load >= BUSY_LOAD and waits_for_idle(mode, cfg):
-            print(f"Waiting up to {SETTLE_AFTER_BUILD_S // 60} minutes for the image build's load to settle (1-minute load average "
-                  f'{load:.2f}).', flush=True)
-            waited = 0
-            while load >= BUSY_LOAD and waited < SETTLE_AFTER_BUILD_S:
-                io.sleep(SETTLE_POLL_S)
-                waited += SETTLE_POLL_S
-                load = io.load_average()
-        probe = io.cpu_probe_ms()  # once the load is judged, so an image build's own load has settled first (#262)
-        if seen is not None:
-            seen['load'] = load
-        if load >= BUSY_LOAD and waits_for_idle(mode, cfg):
-            after = f' {SETTLE_AFTER_BUILD_S // 60} minutes after the image build' if rebuilt else ''
-            problems.append(f'The machine is busy: its 1-minute load average is {load:.2f}{after}, at or above {BUSY_LOAD:.2f}, which slows '
-                            'a timed run: stop what keeps it busy (other agents, test suites, builds; uptime shows the load) and wait until it is idle.')
 
+def load_problems(cfg, io, rebuilt, wait):
+    """7. The machine's load (#217) and the CPU probe taken after it (#262): (load, probe ms, problems). Only when `wait`
+    (a full check outside a standing go, #303) is a busy machine a problem; after an image build by this preflight, the
+    load is judged once the build's own load has settled."""
+    problems = []
+    load = io.load_average()
+    if rebuilt and load >= BUSY_LOAD and wait:
+        print(f"Waiting up to {SETTLE_AFTER_BUILD_S // 60} minutes for the image build's load to settle (1-minute load average "
+              f'{load:.2f}).', flush=True)
+        waited = 0
+        while load >= BUSY_LOAD and waited < SETTLE_AFTER_BUILD_S:
+            io.sleep(SETTLE_POLL_S)
+            waited += SETTLE_POLL_S
+            load = io.load_average()
+    probe = io.cpu_probe_ms()  # once the load is judged, so an image build's own load has settled first (#262)
+    if load >= BUSY_LOAD and wait:
+        after = f' {SETTLE_AFTER_BUILD_S // 60} minutes after the image build' if rebuilt else ''
+        problems.append(f'The machine is busy: its 1-minute load average is {load:.2f}{after}, at or above {BUSY_LOAD:.2f}, which slows '
+                        'the plays: stop what keeps it busy (other agents, test suites, builds; uptime shows the load) and wait until it is idle.')
+    return load, probe, problems
+
+
+def machine_problems(cfg, io):
+    """8. to 10.: the pinned addresses, the router's answer for the news server and the power: (power, problems)."""
+    problems = []
     # 8. the pinned addresses are this machine's (#217): a stale altmountUrl made every play fail on 2026-11-20
     pinned, env = io.pinned_addresses(), os.path.join(cfg['test_dir'], '.env')
     try:
@@ -1116,63 +1144,64 @@ def preflight(mode, cfg, io, seen=None):
     # 10. the machine is plugged in (#262): on battery the same code listed 20-25% slower (#249)
     power = io.power()
     if power == 'battery':
-        problems.append(f'The machine runs on battery (no Mains supply in {POWER_SUPPLY_ROOT} is online), which slows the CPU and a '
-                        'timed run with it: plug it in and run the preflight again.')
-    if mode in ('run', 'check') and seen is not None:
-        seen['machine'] = {'power': power, **io.cpu_policy(), 'cpu_probe_ms': probe}
+        problems.append(f'The machine runs on battery (no Mains supply in {POWER_SUPPLY_ROOT} is online), which slows the CPU and the '
+                        'plays with it: plug it in and run the preflight again.')
+    return power, problems
 
-    # 11. (check only, #270) every switched-on indexer has what the check may ask of it left in its daily allowance
-    if mode == 'check':
-        left, problem = io.allowance_left()
-        want = quickcheck.need(cfg.get('check_titles') or sum(quickcheck.QUICK_KINDS.values()))
-        want['search'] += PING_SEARCHES  # check 12's search
-        if problem:
-            problems.append(problem)  # the key file's limits are missing or wrong: the sentence names the command
-        else:
-            # Every title is searched on every indexer, so each needs the check's searches; the Walk's grabs are shared
-            # (at most 30 per title in all, from whichever indexer has the Source), so the indexers together must hold the
-            # check's downloads (owner's pick on #286, 2026-11-24, when DrunkenSlug's 100 a day joined NinjaCentral).
-            downloads = {}
-            for slug in sorted({slug for s in readable for slug in rep['enabled'][s]}):
-                have = left.get(allowance.norm(slug))
-                if have is None:
-                    problems.append(f'The key file has no daily limits for {slug}, so its allowance cannot be checked: add them '
-                                    f'({allowance.add_command(slug)}).')
-                    continue
-                downloads[slug] = have['download']
-                for kind in allowance.KINDS:
-                    if kind != 'download' and have[kind] < want[kind]:
-                        problems.append(f'{slug} has {have[kind]} {allowance.KIND_NAMES[kind]} left today, and the check may need '
-                                        f'{want[kind]}: wait for its reset (brainrun.py usage shows the allowance).')
-            if downloads and sum(downloads.values()) < want['download']:
-                name, each = allowance.KIND_NAMES['download'], ', '.join(f'{s} {n}' for s, n in downloads.items())
-                if len(downloads) == 1:
-                    problems.append(f'{next(iter(downloads))} has {sum(downloads.values())} {name} left today, and the check may need '
-                                    f"{want['download']}: wait for its reset (brainrun.py usage shows the allowance).")
-                else:
-                    problems.append(f'The indexers have {sum(downloads.values())} {name} left today between them ({each}), and the '
-                                    f"check may need {want['download']}: wait for a reset (brainrun.py usage shows the allowance).")
 
-    # 12. (check only, #303) every switched-on indexer answers one one-result search through the stand-in; sent last, and only when
-    # nothing else refused, so a refused check spends no request
-    if mode == 'check' and not problems:
-        slugs = sorted({slug for s in readable for slug in rep['enabled'][s]})
-        answers = io.ping_answers(slugs)
-        problems += [p for p in (ping_problem(slug, answers.get(slug)) for slug in slugs) if p]
+def allowance_problems(cfg, io, rep, readable):
+    """11. (#270) Every switched-on indexer has what the check may ask of it left in its daily allowance."""
+    problems = []
+    left, problem = io.allowance_left()
+    want = quickcheck.need(cfg.get('check_titles') or sum(quickcheck.QUICK_KINDS.values()))
+    want['search'] += PING_SEARCHES  # check 12's search
+    if problem:
+        problems.append(problem)  # the key file's limits are missing or wrong: the sentence names the command
+    else:
+        # Every title is searched on every indexer, so each needs the check's searches; the Walk's grabs are shared
+        # (at most 30 per title in all, from whichever indexer has the Source), so the indexers together must hold the
+        # check's downloads (owner's pick on #286, 2026-11-24, when DrunkenSlug's 100 a day joined NinjaCentral).
+        downloads = {}
+        for slug in sorted({slug for s in readable for slug in rep['enabled'][s]}):
+            have = left.get(allowance.norm(slug))
+            if have is None:
+                problems.append(f'The key file has no daily limits for {slug}, so its allowance cannot be checked: add them '
+                                f'({allowance.add_command(slug)}).')
+                continue
+            downloads[slug] = have['download']
+            for kind in allowance.KINDS:
+                if kind != 'download' and have[kind] < want[kind]:
+                    problems.append(f'{slug} has {have[kind]} {allowance.KIND_NAMES[kind]} left today, and the check may need '
+                                    f'{want[kind]}: wait for its reset (brainrun.py usage shows the allowance).')
+        if downloads and sum(downloads.values()) < want['download']:
+            name, each = allowance.KIND_NAMES['download'], ', '.join(f'{s} {n}' for s, n in downloads.items())
+            if len(downloads) == 1:
+                problems.append(f'{next(iter(downloads))} has {sum(downloads.values())} {name} left today, and the check may need '
+                                f"{want['download']}: wait for its reset (brainrun.py usage shows the allowance).")
+            else:
+                problems.append(f'The indexers have {sum(downloads.values())} {name} left today between them ({each}), and the '
+                                f"check may need {want['download']}: wait for a reset (brainrun.py usage shows the allowance).")
     return problems
 
 
-def preflight_command(mode, cfg, io):
+def ping_problems(io, rep, readable):
+    """12. The sentences of the preflight's search (ping_search) of every switched-on indexer."""
+    slugs = sorted({slug for s in readable for slug in rep['enabled'][s]})
+    answers = io.ping_answers(slugs)
+    return [p for p in (ping_problem(slug, answers.get(slug)) for slug in slugs) if p]
+
+
+def preflight_command(cfg, io):
     """Prints the preflight result in plain sentences; exit code 0 when the setup is right, 1 otherwise."""
     seen = {}
-    problems = checked(mode, cfg, io, seen)
+    problems = checked(cfg, io, seen)
     for p in problems:
         print(p)
     if not problems:
-        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if waits_for_idle(mode, cfg) else ''
+        idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if waits_for_idle(cfg) else ''
         machine = (f'; the machine is plugged in{idle}, HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
-                   + {'check': " and the indexer allowance holds the check's requests, and every indexer answered its search"}.get(mode, ''))
-        print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
+                   " and the indexer allowance holds the check's requests, and every indexer answered its search")
+        print(f'Setup is right for a check: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
         if 'machine' in seen:
             print(f"CPU probe: {br.probe_text(seen['machine'])}.")
     return 1 if problems else 0
@@ -1294,7 +1323,7 @@ def play_check(cfg, io, kind, titles):
     The first "limit reached" stops the check with no verdict. Ctrl-C or SIGTERM stops it as it stops a run. The ending is
     written however it ends (write_check_ending)."""
     seen = {}
-    problems = io.preflight('check', seen)
+    problems = io.preflight(seen)
     if problems:
         raise PreflightFailed(problems)
     started = io.now()
@@ -1552,7 +1581,7 @@ def main(argv):
         return 0
     cfg['indexers'] = read_key_file(_key_path(cfg))[1]
     if a.cmd == 'preflight':
-        return preflight_command('check', cfg, RealIO(cfg))
+        return preflight_command(cfg, RealIO(cfg))
     if a.cmd == 'drill':  # one title, not drawn: the preflight's allowance is one title's (#272)
         cfg.update(name=a.name or 'drill-down', drill_title=a.drill_title, drill_episode=a.episode, drill_entries=a.entry,
                    check_titles=1)

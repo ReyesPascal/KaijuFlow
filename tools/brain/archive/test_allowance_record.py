@@ -23,7 +23,7 @@ class AllowanceTest(test_allowance.AllowanceTest):
     def test_record_preflight_shows_table_and_last_count_and_warns_when_short(self):
         limits_file(self.limits)
         record_folder(self.runs, '1-record', 'l', [api('RECORD', hours_ago(30))] * 2100)
-        text = '\n'.join(retired_run.record_preflight_lines(self.cfg, NOW, stats_files=[]))
+        text = '\n'.join(retired_run.record_preflight_lines(self.cfg, NOW))
         self.assertIn('searches       0    2000    2000', text)
         self.assertIn('sent 2100 requests', text)
         self.assertIn('Warning: ninjacentral has 2000 searches left but the last full recording needed 2100', text)
@@ -31,12 +31,12 @@ class AllowanceTest(test_allowance.AllowanceTest):
     def test_record_preflight_has_no_warning_when_it_fits(self):
         limits_file(self.limits)
         record_folder(self.runs, '1-record', 'l', [api('RECORD', hours_ago(30))] * 10)
-        text = '\n'.join(retired_run.record_preflight_lines(self.cfg, NOW, stats_files=[]))
+        text = '\n'.join(retired_run.record_preflight_lines(self.cfg, NOW))
         self.assertIn('sent 10 requests', text)
         self.assertNotIn('Warning', text)
 
     def test_record_preflight_without_limits_file_or_earlier_recording_says_so(self):
-        text = '\n'.join(retired_run.record_preflight_lines(self.cfg, NOW, stats_files=[]))
+        text = '\n'.join(retired_run.record_preflight_lines(self.cfg, NOW))
         self.assertIn('no key file', text)
         self.assertIn('no earlier complete recording', text)
 

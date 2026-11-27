@@ -341,7 +341,7 @@ def do_round(cfg, io, run, logbuf, sides, phase, rnd, round_row):
 
 def run_all(cfg, io):
     seen = {}
-    problems = io.preflight('run', seen)
+    problems = io.retired_preflight('run', seen)
     if problems:
         raise PreflightFailed(problems)
     started = io.now()
@@ -461,7 +461,7 @@ def record_all(cfg, io):
     with the stand-in's log and a meta.json, and an INDEX.md row only when it is NULL, stopped or failed. Ctrl-C in the pass
     or in the proof ends it the normal way with status `stopped` (#110).
     """
-    problems = io.preflight('record') + io.setting_conflicts()
+    problems = io.retired_preflight('record') + io.setting_conflicts()
     if problems:
         raise PreflightFailed(problems)
     if io.marker():  # left by an earlier command: kept under another name; if the limit still holds, the first answer writes a new one
@@ -872,6 +872,8 @@ def main(argv):
         print('\n'.join(allowance.usage_lines(cfg)))
         return 0
     if a.cmd == 'preflight':
+        if a.mode == 'check':
+            return brainrun.preflight_command(cfg, RetiredIO(cfg))
         return preflight_command(a.mode, cfg, RetiredIO(cfg))
     if a.cmd == 'smoke':
         smoke(cfg)
@@ -947,9 +949,26 @@ def recording_problems(cfg, io):
 
 
 def preflight(mode, cfg, io, seen=None):
-    """The retired run and record preflights: brainrun's preflight, then (a run) the recording checks."""
-    problems = brainrun.preflight(mode, cfg, io, seen)
+    """The retired run and record preflights (ADR 0010, #273), put together from the live preflight's steps (brainrun):
+    both check the image, the test copies, the stand-in's port, the machine's addresses, DNS and power; a record checks the
+    key file too (the stand-in asks the real indexers); a run waits for an idle machine, keeps the machine's readings in
+    `seen` and adds the recording checks. Neither checks the allowance or sends the check's search."""
+    if mode not in ('record', 'run'):
+        raise ValueError("the retired preflight's mode must be 'record' or 'run'")
+    problems, rebuilt = brainrun.image_problems(cfg, io)
+    rep, readable, more = brainrun.setup_problems(cfg, io)
+    problems += more
+    if mode == 'record':
+        problems += brainrun.key_file_problems(cfg, io, rep, readable)
+    problems += brainrun.copies_problems(cfg, io, rep, readable)
     if mode == 'run':
+        load, probe, more = brainrun.load_problems(cfg, io, rebuilt, True)
+        problems += more
+    power, more = brainrun.machine_problems(cfg, io)
+    problems += more
+    if mode == 'run':
+        if seen is not None:
+            seen.update(load=load, machine={'power': power, **io.cpu_policy(), 'cpu_probe_ms': probe})
         problems += recording_problems(cfg, io)
     return problems
 
@@ -1000,11 +1019,11 @@ def last_complete_recording(runs_root, listname):
     return None
 
 
-def record_preflight_lines(cfg, now=None, stats_files=None):
+def record_preflight_lines(cfg, now=None):
     """What `preflight --for record` adds: the allowance allowance.table, the last complete recording's request count, and a warning
     when that many requests may not fit in what is left. Warns only; never blocks."""
     now = now or datetime.datetime.now(datetime.timezone.utc)
-    limits, used, problem = allowance._compute(cfg, now, stats_files)
+    limits, used, problem = allowance._compute(cfg, now)
     lines = [problem] if problem else allowance.table(limits, used) + [allowance.COLUMNS, allowance.CAVEAT]
     last = last_complete_recording(cfg['runs_root'], cfg.get('listname')) if cfg.get('runs_root') else None
     if last is None:
@@ -1020,7 +1039,7 @@ def record_preflight_lines(cfg, now=None, stats_files=None):
         if not lim:
             continue
         for kind in allowance.KINDS:
-            left = lim[kind] - used[slug]['standin'][kind] - used[slug]['copies'][kind]
+            left = lim[kind] - used[slug]['standin'][kind]
             if c[kind] > left:
                 lines.append(f'Warning: {lim["name"]} has {left} {allowance.KIND_NAMES[kind]} left but the last full recording needed {c[kind]}. '
                              'The recording may stop at the limit; it can be topped up after the reset.')
@@ -1036,7 +1055,7 @@ class RetiredIO(RealIO):
         super().__init__(cfg)
         self.backup = os.path.join(cfg['test_dir'], 'config', 'config.json.pre-brainrun')
 
-    def preflight(self, mode, seen=None):
+    def retired_preflight(self, mode, seen=None):
         return preflight(mode, self.cfg, self, seen)
 
     def addresses(self):

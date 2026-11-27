@@ -40,8 +40,8 @@ def switched_on(td):
 
 
 class EveryRefusalNamesItsFixTest(unittest.TestCase):
-    def stops(self, mode, cfg, world, *fix):
-        code, text = run_command(mode, cfg, world)
+    def stops(self, cfg, world, *fix):
+        code, text = run_command(cfg, world)
         self.assertEqual(code, 1, text)
         for f in fix:
             self.assertIn(f, text)
@@ -53,44 +53,44 @@ class EveryRefusalNamesItsFixTest(unittest.TestCase):
         self.cfg = make_cfg(self.td, runs_root=tempdir(self))
 
     def test_the_machine_and_the_repository(self):
-        self.stops('check', self.cfg, Fixing(self.cfg, dirty=True), 'git commit')
-        self.stops('check', self.cfg, Fixing(self.cfg, label=OLDER, changed={OLDER: True}), '--rebuild-image', '--fix')
-        self.stops('check', self.cfg, Fixing(self.cfg, free=False), "ss -ltnp 'sport = :1340'")
-        self.stops('check', dict(self.cfg, full_check=True), Fixing(self.cfg, load=2.5), 'uptime')
-        self.stops('check', self.cfg, Fixing(self.cfg, machine=('127.0.0.1', '192.0.2.99')), 'testbed.py up')
-        self.stops('check', self.cfg, Fixing(self.cfg, dns=('10.0.0.1',)), 'dig +short news.newshosting.com @192.168.4.1')
-        self.stops('check', self.cfg, Fixing(self.cfg, power='battery'), 'plug it in')
+        self.stops(self.cfg, Fixing(self.cfg, dirty=True), 'git commit')
+        self.stops(self.cfg, Fixing(self.cfg, label=OLDER, changed={OLDER: True}), '--rebuild-image', '--fix')
+        self.stops(self.cfg, Fixing(self.cfg, free=False), "ss -ltnp 'sport = :1340'")
+        self.stops(dict(self.cfg, full_check=True), Fixing(self.cfg, load=2.5), 'uptime')
+        self.stops(self.cfg, Fixing(self.cfg, machine=('127.0.0.1', '192.0.2.99')), 'testbed.py up')
+        self.stops(self.cfg, Fixing(self.cfg, dns=('10.0.0.1',)), 'dig +short news.newshosting.com @192.168.4.1')
+        self.stops(self.cfg, Fixing(self.cfg, power='battery'), 'plug it in')
 
     def test_the_key_file(self):
         path = os.path.join(self.td, 'indexers.json')
         os.chmod(path, 0o644)
-        self.stops('check', self.cfg, Fixing(self.cfg), f'chmod 600 {path}', '--fix')
+        self.stops(self.cfg, Fixing(self.cfg), f'chmod 600 {path}', '--fix')
         os.remove(path)
-        self.stops('check', self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
+        self.stops(self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
         with open(path, 'w') as f:
             f.write('{}')
         os.chmod(path, 0o600)
-        self.stops('check', self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
+        self.stops(self.cfg, Fixing(self.cfg), f'{ADD} <slug> --stash <entry>')
 
     def test_the_indexers_switched_on(self):
         cfg = make_cfg(make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'),
                                    key_slugs=('ninjacentral', 'drunkenslug')))
-        self.stops('check', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py indexer on drunkenslug', '--fix')
+        self.stops(cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py indexer on drunkenslug', '--fix')
         cfg = make_cfg(make_copies(self, enabled=('ninjacentral', 'althub'), disabled=('drunkenslug',),
                                    key_slugs=('ninjacentral',)))
-        self.stops('check', cfg, Fixing(cfg), f'{ADD} althub --stash <entry>')
+        self.stops(cfg, Fixing(cfg), f'{ADD} althub --stash <entry>')
 
     def test_the_settings_of_the_test_copies(self):
         cfg = make_cfg(make_copies(self, kf_rules=rules(films=4000)))
-        self.stops('check', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py apply kaijuflow', '--fix')
+        self.stops(cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py apply kaijuflow', '--fix')
         cfg = make_cfg(make_copies(self, caps=(12, 100)))
-        self.stops('check', cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py settings')
+        self.stops(cfg, Fixing(cfg), 'python3 -I tools/brain/testbed.py settings')
         cfg = make_cfg(make_copies(self, url=lambda s: 'https://real.example/api'))
-        self.stops('check', cfg, Fixing(cfg), "KaijuFlow's indexer settings")
+        self.stops(cfg, Fixing(cfg), "KaijuFlow's indexer settings")
 
     def test_the_allowance(self):
         put_limits(os.path.join(self.td, 'indexers.json'), {'ninjacentral': (2000, 450), 'drunkenslug': (10, 100)})
-        self.stops('check', self.cfg, Fixing(self.cfg), 'brainrun.py usage')
+        self.stops(self.cfg, Fixing(self.cfg), 'brainrun.py usage')
 
 
 class FixTest(unittest.TestCase):
@@ -109,7 +109,7 @@ class FixTest(unittest.TestCase):
 
     def test_fix_runs_the_safe_fixes_then_passes(self):
         td, cfg, world = self.broken()
-        code, text = run_command('check', cfg, world)
+        code, text = run_command(cfg, world)
         self.assertEqual(code, 0, text)
         self.assertIn('Setup is right for a check', text)
         self.assertEqual(stat.S_IMODE(os.stat(os.path.join(td, 'indexers.json')).st_mode), 0o600)
@@ -123,7 +123,7 @@ class FixTest(unittest.TestCase):
 
     def test_fix_leaves_power_addresses_dns_and_the_port_alone_and_names_them(self):
         td, cfg, world = self.broken(power='battery', machine=('127.0.0.1', '192.0.2.99'), dns=('10.0.0.1',), free=False)
-        code, text = run_command('check', cfg, world)
+        code, text = run_command(cfg, world)
         self.assertEqual(code, 1, text)
         self.assertEqual(switched_on(td), ['DrunkenSlug', 'NinjaCentral'])  # the safe ones were still fixed
         for left in ('runs on battery', 'HOST_IP', 'sinkhole', 'port 1340'):
@@ -138,7 +138,7 @@ class FixTest(unittest.TestCase):
         put_limits(os.path.join(td, 'indexers.json'), {'ninjacentral': (2000, 450), 'drunkenslug': (10, 100)})
         with open(os.path.join(td, 'indexers.json')) as f:
             before = json.load(f)['indexers']['drunkenslug']['search_per_day']
-        code, text = run_command('check', cfg, world)
+        code, text = run_command(cfg, world)
         self.assertEqual(code, 1, text)
         self.assertIn('drunkenslug has 10 searches left today', text)
         with open(os.path.join(td, 'indexers.json')) as f:
@@ -147,7 +147,7 @@ class FixTest(unittest.TestCase):
     def test_without_fix_nothing_is_written(self):
         td, cfg, world = self.broken()
         cfg['fix'] = False
-        code, text = run_command('check', cfg, world)
+        code, text = run_command(cfg, world)
         self.assertEqual(code, 1, text)
         self.assertEqual(switched_on(td), ['NinjaCentral'])
         self.assertEqual((world.rebuilt, world.stopped), ([], 0))
@@ -162,7 +162,7 @@ class FixTest(unittest.TestCase):
         with open(path, 'w') as f:
             json.dump(data, f)
         cfg = make_cfg(td, fix=True)
-        code, text = run_command('check', cfg, Fixing(cfg, allowance=PLENTY))  # its key file holds no limits; the allowance is not the point
+        code, text = run_command(cfg, Fixing(cfg, allowance=PLENTY))  # its key file holds no limits; the allowance is not the point
         self.assertEqual(code, 0, text)
         self.assertEqual(switched_on(td), ['NinjaCentral'])
 
@@ -171,7 +171,7 @@ class FixTest(unittest.TestCase):
         td, cfg, world = self.broken()
         seen = {}
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(world.preflight('check', seen), [])
+            self.assertEqual(world.preflight(seen), [])
         self.assertIn('load', seen)
         self.assertEqual(switched_on(td), ['DrunkenSlug', 'NinjaCentral'])
 
@@ -179,7 +179,7 @@ class FixTest(unittest.TestCase):
         for argv, want in ((['preflight', '--for', 'check', '--fix'], {'fix': True, 'standing_go': False, 'full_check': False}),
                            (['preflight', '--for', 'check', '--full', '--standing-go'], {'fix': False, 'standing_go': True, 'full_check': True})):
             got = []
-            with mock.patch.object(brainrun, 'preflight_command', side_effect=lambda m, c, i: got.append(c) or 0), \
+            with mock.patch.object(brainrun, 'preflight_command', side_effect=lambda c, i: got.append(c) or 0), \
                     contextlib.redirect_stdout(io.StringIO()):
                 brainrun.main(argv + ['--test-dir', make_copies(self), '--runs-root', self.root])
             self.assertEqual({k: got[0].get(k) for k in want}, want)

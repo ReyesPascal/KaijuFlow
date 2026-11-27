@@ -18,7 +18,7 @@ import allowance
 import brainrun
 import brainreport as br
 import testbed
-from test_preflight import FakeWorld, make_cfg
+from test_preflight import PLENTY, FakeWorld, make_cfg
 from test_settings import SECRET, make_copies, tempdir
 
 # The owner's two stash entries as they are written (2026-11-24), values replaced: a key line and an address line in
@@ -122,7 +122,7 @@ class IndexerCommandTest(unittest.TestCase):
         self.run_cmd('add', 'ninjacentral', '--stash', 'ninja', '--searches', '2000', '--downloads', '450')
         self.run_cmd('add', 'drunkenslug', '--stash', 'drunkenslug', '--searches', '1000', '--downloads', '100', '--drop', 'o')
         cfg = make_cfg(self.td, runs_root=tempdir(self))
-        self.assertEqual(brainrun.preflight('check', cfg, FakeWorld(cfg)), [])
+        self.assertEqual(brainrun.preflight(cfg, FakeWorld(cfg)), [])
         limits, problem = allowance.load_limits(allowance.limits_path(cfg))
         self.assertIsNone(problem)
         self.assertEqual({s: (v['search'], v['download']) for s, v in limits.items()},
@@ -162,7 +162,7 @@ class IndexerCommandTest(unittest.TestCase):
         self.assertIn('drunkenslug: switched off, off; 1000 searches and 100 downloads a day (reset rolling-24h).', text)
         self.assertEqual(len(self.backups()), saved + 2)  # the key file and KaijuFlow's config
         cfg = make_cfg(self.td)
-        self.assertEqual(brainrun.preflight('record', cfg, FakeWorld(cfg)), [])  # the two agree: drunkenslug is off in both
+        self.assertEqual(brainrun.preflight(cfg, FakeWorld(cfg, allowance=PLENTY)), [])  # the two agree: drunkenslug is off in both
 
         code, text = self.run_cmd('on', 'drunkenslug')
         self.assertEqual(code, 0, text)
@@ -187,7 +187,7 @@ class IndexerCommandTest(unittest.TestCase):
         self.assertEqual(self.kf()['NinjaCentral'], {i['name']: i for i in json.loads(before[self.kf_path])['indexers']}['NinjaCentral'])
         self.assertIn('drunkenslug: removed.', text)
         cfg = make_cfg(self.td)
-        self.assertEqual(brainrun.preflight('record', cfg, FakeWorld(cfg)), [])
+        self.assertEqual(brainrun.preflight(cfg, FakeWorld(cfg, allowance=PLENTY)), [])
 
     def test_remove_of_an_indexer_only_kaijuflow_has(self):
         code, text = self.run_cmd('remove', 'althub')  # in KaijuFlow's config (off), not in the key file

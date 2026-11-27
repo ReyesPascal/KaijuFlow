@@ -105,7 +105,7 @@ class FakeIO(Copies):
     def image_label(self):
         return self.commit
 
-    def preflight(self, mode, seen=None):
+    def retired_preflight(self, mode, seen=None):
         """As the real preflight: a run's preflight hands back the load and the machine it judged (`load`, `machine`)."""
         self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
         if mode == 'run' and seen is not None:
@@ -1235,7 +1235,7 @@ class RecordIO(FakeIO):
         self.up = set()
         self.seen = set()  # (side, title) already visited: the next visit is a warm one
 
-    def preflight(self, mode, seen=None):
+    def retired_preflight(self, mode, seen=None):
         self.calls.append(('preflight', mode))
         return list(getattr(self, 'problems', []))
 

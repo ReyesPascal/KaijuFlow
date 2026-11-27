@@ -172,10 +172,10 @@ def make_cfg(td, **kw):
     return cfg
 
 
-def run_command(mode, cfg, world):
+def run_command(cfg, world):
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        code = brainrun.preflight_command(mode, cfg, world)
+        code = brainrun.preflight_command(cfg, world)
     return code, out.getvalue()
 
 
@@ -187,8 +187,8 @@ class PreflightTest(unittest.TestCase):
     def world(self, **kw):
         return FakeWorld(self.cfg, **{'allowance': PLENTY, **kw})
 
-    def assert_stops(self, mode, world, *fragments):
-        code, text = run_command(mode, self.cfg, world)
+    def assert_stops(self, world, *fragments):
+        code, text = run_command(self.cfg, world)
         self.assertEqual(code, 1, text)
         for f in fragments:
             self.assertIn(f, text)
@@ -196,53 +196,51 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(len([line for line in text.splitlines() if line.strip()]), 1, text)  # one sentence per failure here
 
     def test_a_correct_setup_passes(self):
-        for mode in ('check',):
-            code, text = run_command(mode, self.cfg, self.world())
-            self.assertEqual(code, 0, text)
-            self.assertIn('Setup is right', text)
-            self.assertIn('connection caps, sort and filter settings', text)
+        code, text = run_command(self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+        self.assertIn('Setup is right', text)
+        self.assertIn('connection caps, sort and filter settings', text)
 
     def test_a_check_that_passes_names_the_machine_checks_too(self):
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 0, text)
         self.assertIn('the machine is plugged in, HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves outside '
                       "10.x and the indexer allowance holds the check's requests, and every indexer answered its search", text)
         self.assertIn('CPU probe: 950 ms (governor powersave, energy preference performance).', text)
 
     def test_a_machine_on_battery_stops_a_check(self):
-        for mode in ('check',):
-            self.assert_stops(mode, self.world(power='battery'), 'The machine runs on battery', 'plug it in')
+        self.assert_stops(self.world(power='battery'), 'The machine runs on battery', 'plug it in')
 
     def test_a_check_preflight_keeps_the_machine_it_judged_with_the_cpu_probe_taken_after_the_load_check(self):
         world, seen = self.world(probe=1234), {}
-        self.assertEqual(brainrun.preflight('check', self.cfg, world, seen), [])
+        self.assertEqual(brainrun.preflight(self.cfg, world, seen), [])
         self.assertEqual(seen, {'load': 0.3, 'machine': {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance',
                                                          'cpu_probe_ms': 1234}})
         self.assertEqual(world.asked, ['load', 'probe'])
 
     def test_a_cpu_policy_that_cannot_be_read_is_left_out_of_the_machine(self):
         seen = {}
-        brainrun.preflight('check', self.cfg, self.world(policy=()), seen)
+        brainrun.preflight(self.cfg, self.world(policy=()), seen)
         self.assertEqual(seen['machine'], {'power': 'ac', 'cpu_probe_ms': 950})
-        code, text = run_command('check', self.cfg, self.world(policy=()))
+        code, text = run_command(self.cfg, self.world(policy=()))
         self.assertIn('CPU probe: 950 ms.', text)
 
     def test_a_busy_machine_stops_a_full_check(self):
         self.cfg['full_check'] = True  # only the full check waits for an idle machine (#303)
         for load in (1.0, 2.37):
             world = self.world(load=load)
-            self.assert_stops('check', world, f'load average is {load:.2f}, at or above 1.00', 'idle')
+            self.assert_stops(world, f'load average is {load:.2f}, at or above 1.00', 'idle')
             self.assertEqual(world.slept, [])  # no image build: judged at once
 
     def test_a_machine_just_under_the_load_limit_passes_a_check(self):
-        code, text = run_command('check', self.cfg, self.world(load=0.99))
+        code, text = run_command(self.cfg, self.world(load=0.99))
         self.assertEqual(code, 0, text)
 
     def test_after_its_image_build_a_full_check_preflight_waits_for_the_load_to_settle(self):
         self.cfg.update(rebuild_image=True, full_check=True)
         world, seen = self.world(label=OLDER, load=[6.2, 3.1, 1.4, 0.8, 0.5]), {}
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            self.assertEqual(brainrun.preflight('check', self.cfg, world, seen), [])
+            self.assertEqual(brainrun.preflight(self.cfg, world, seen), [])
         self.assertEqual((world.rebuilt, world.slept), ([COMMIT], [10, 10, 10]))
         self.assertEqual(seen['load'], 0.8)
         self.assertEqual(world.asked[-2:], ['load', 'probe'])  # the probe runs once the build's load has settled
@@ -251,7 +249,7 @@ class PreflightTest(unittest.TestCase):
     def test_a_load_that_does_not_settle_3_minutes_after_the_image_build_stops_a_full_check(self):
         self.cfg.update(rebuild_image=True, full_check=True)
         world = self.world(label=OLDER, load=2.5)
-        code, text = run_command('check', self.cfg, world)
+        code, text = run_command(self.cfg, world)
         self.assertEqual(code, 1, text)
         self.assertIn('load average is 2.50 3 minutes after the image build, at or above 1.00', text)
         self.assertEqual(sum(world.slept), 180)
@@ -259,13 +257,13 @@ class PreflightTest(unittest.TestCase):
     def test_a_build_that_leaves_the_machine_idle_takes_no_wait(self):
         self.cfg['rebuild_image'] = True
         world = self.world(label=OLDER, load=0.6)
-        code, text = run_command('check', self.cfg, world)
+        code, text = run_command(self.cfg, world)
         self.assertEqual((code, world.rebuilt, world.slept), (0, [COMMIT], []), text)
         self.assertNotIn('Waiting', text)
 
     def test_a_check_preflight_hands_back_the_load_it_judged(self):
         seen = {}
-        self.assertEqual(brainrun.preflight('check', self.cfg, self.world(load=[0.42, 1.7]), seen), [])
+        self.assertEqual(brainrun.preflight(self.cfg, self.world(load=[0.42, 1.7]), seen), [])
         self.assertEqual(seen['load'], 0.42)
 
     def copies(self, **kw):
@@ -275,144 +273,139 @@ class PreflightTest(unittest.TestCase):
 
     def test_a_host_ip_the_machine_does_not_have_stops_a_check(self):
         self.copies(host_ip='192.0.2.99')
-        for mode in ('check',):
-            self.assert_stops(mode, self.world(), 'HOST_IP', '192.0.2.99', os.path.join(self.td, '.env'),
-                              'not an address this machine has', HOST_IP)
+        self.assert_stops(self.world(), 'HOST_IP', '192.0.2.99', os.path.join(self.td, '.env'),
+                          'not an address this machine has', HOST_IP)
 
     def test_an_altmount_url_on_an_address_the_machine_does_not_have_stops_a_check(self):
         self.copies(altmount_url='http://192.0.2.99:8087')
-        for mode in ('check',):
-            self.assert_stops(mode, self.world(), 'altmountUrl', '192.0.2.99', 'not an address this machine has', HOST_IP)
+        self.assert_stops(self.world(), 'altmountUrl', '192.0.2.99', 'not an address this machine has', HOST_IP)
 
     def test_a_login_in_the_altmount_url_is_never_printed(self):
         self.copies(altmount_url=f'http://kf:{SECRET}@192.0.2.99:8087')
-        self.assert_stops('check', self.world(), 'altmountUrl', '192.0.2.99')
+        self.assert_stops(self.world(), 'altmountUrl', '192.0.2.99')
 
     def test_a_missing_host_ip_or_altmount_url_stops_a_check(self):
         self.copies(host_ip=None)
-        self.assert_stops('check', self.world(), 'no HOST_IP', os.path.join(self.td, '.env'))
+        self.assert_stops(self.world(), 'no HOST_IP', os.path.join(self.td, '.env'))
         self.copies(altmount_url=None)
-        self.assert_stops('check', self.world(), 'no altmountUrl')
+        self.assert_stops(self.world(), 'no altmountUrl')
 
     def test_an_altmount_url_without_a_scheme_is_named_for_what_it_is(self):
         self.copies(altmount_url=f'kf:{SECRET}@{HOST_IP}:8087')
-        self.assert_stops('check', self.world(), 'altmountUrl names no host', 'http://<address>:<port>')
+        self.assert_stops(self.world(), 'altmountUrl names no host', 'http://<address>:<port>')
 
     def test_an_altmount_url_on_a_host_name_is_left_to_docker(self):
         self.copies(altmount_url='http://altmount-kf-test:8080')
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
     def test_addresses_are_compared_as_addresses_not_as_text(self):
         self.copies(host_ip='2001:DB8:0::10', altmount_url='http://[2001:db8:0:0::10]:8087')
-        code, text = run_command('check', self.cfg, self.world(machine=('127.0.0.1', '2001:db8::10')))
+        code, text = run_command(self.cfg, self.world(machine=('127.0.0.1', '2001:db8::10')))
         self.assertEqual(code, 0, text)
 
     def test_a_machine_whose_addresses_cannot_be_read_stops_with_one_sentence(self):
-        self.assert_stops('check', self.world(machine=brainrun.LookupFailed('ip is not installed')),
+        self.assert_stops(self.world(machine=brainrun.LookupFailed('ip is not installed')),
                           "This machine's addresses cannot be read (ip is not installed)", 'HOST_IP', 'altmountUrl')
 
     def test_a_machine_with_only_loopback_addresses_says_so(self):
         self.copies(altmount_url='http://altmount-kf-test:8080')
-        self.assert_stops('check', self.world(machine=('127.0.0.1', '::1')), 'not an address this machine has now (only loopback')
+        self.assert_stops(self.world(machine=('127.0.0.1', '::1')), 'not an address this machine has now (only loopback')
 
     def test_a_sinkholed_newshosting_dns_stops_a_check(self):
-        for mode in ('check',):
-            world = self.world(dns=('10.10.10.1',))
-            self.assert_stops(mode, world, 'news.newshosting.com', '192.168.4.1', '10.10.10.1', 'sinkhole')
-            self.assertEqual(world.asked_dns, [('news.newshosting.com', '192.168.4.1')])
+        world = self.world(dns=('10.10.10.1',))
+        self.assert_stops(world, 'news.newshosting.com', '192.168.4.1', '10.10.10.1', 'sinkhole')
+        self.assertEqual(world.asked_dns, [('news.newshosting.com', '192.168.4.1')])
 
     def test_one_10_x_address_among_good_ones_stops_a_check(self):
-        self.assert_stops('check', self.world(dns=('85.12.62.251', '10.0.0.7')), '10.0.0.7')
+        self.assert_stops(self.world(dns=('85.12.62.251', '10.0.0.7')), '10.0.0.7')
 
     def test_no_dns_answer_stops_a_check(self):
-        self.assert_stops('check', self.world(dns=()), 'The router (192.168.4.1) gives no address for news.newshosting.com')
+        self.assert_stops(self.world(dns=()), 'The router (192.168.4.1) gives no address for news.newshosting.com')
 
     def test_a_failed_dns_lookup_says_how_it_failed_not_that_the_router_has_no_address(self):
-        for mode in ('check',):
-            world = self.world(dns=brainrun.LookupFailed('dig is not installed'))
-            self.assert_stops(mode, world, 'The lookup of news.newshosting.com at the router (192.168.4.1) failed (dig is not installed)')
-            self.assertNotIn('gives no address', run_command(mode, self.cfg, world)[1])
+        world = self.world(dns=brainrun.LookupFailed('dig is not installed'))
+        self.assert_stops(world, 'The lookup of news.newshosting.com at the router (192.168.4.1) failed (dig is not installed)')
+        self.assertNotIn('gives no address', run_command(self.cfg, world)[1])
 
     def test_image_from_an_earlier_commit_stops_when_a_build_input_changed_since(self):
-        self.assert_stops('check', self.world(label=OLDER, changed={OLDER: True}),
+        self.assert_stops(self.world(label=OLDER, changed={OLDER: True}),
                           'built from commit bbbbbbb', 'has changed since then', 'aaaaaaa', '--rebuild-image')
 
     def test_image_from_a_commit_the_repository_does_not_have_stops(self):
-        self.assert_stops('check', self.world(label=OLDER), 'built from commit bbbbbbb, which this repository does not have',
+        self.assert_stops(self.world(label=OLDER), 'built from commit bbbbbbb, which this repository does not have',
                           'aaaaaaa', '--rebuild-image')
 
     def test_image_without_label_stops(self):
-        self.assert_stops('check', self.world(label=None), 'does not say which commit', '--rebuild-image')
+        self.assert_stops(self.world(label=None), 'does not say which commit', '--rebuild-image')
 
     def test_dirty_tree_stops(self):
-        self.assert_stops('check', self.world(dirty=True), 'uncommitted changes')
+        self.assert_stops(self.world(dirty=True), 'uncommitted changes')
 
     def test_rebuild_option_builds_with_the_commit_then_passes(self):
         self.cfg['rebuild_image'] = True
         w = self.world(label='b' * 40)
-        code, text = run_command('check', self.cfg, w)
+        code, text = run_command(self.cfg, w)
         self.assertEqual((code, w.rebuilt), (0, [COMMIT]), text)
 
     def test_rebuild_option_does_not_build_for_a_dirty_tree(self):
         self.cfg['rebuild_image'] = True
         w = self.world(label='b' * 40, dirty=True)
-        self.assert_stops('check', w, 'uncommitted changes')
+        self.assert_stops(w, 'uncommitted changes')
         self.assertEqual(w.rebuilt, [])
 
     def test_key_file_missing_stops_a_check(self):
         os.remove(os.path.join(self.td, 'indexers.json'))
-        self.assert_stops('check', self.world(), 'key file', 'missing')
+        self.assert_stops(self.world(), 'key file', 'missing')
 
     def test_key_file_sentence_says_how_to_fix_it_in_plain_words(self):
         os.chmod(os.path.join(self.td, 'indexers.json'), 0o644)
-        _code, text = run_command('check', self.cfg, self.world())
+        _code, text = run_command(self.cfg, self.world())
         path = os.path.join(self.td, 'indexers.json')
         self.assertIn(f'make the key file readable only by you (run: chmod 600 {path})', text)
 
     def test_the_indexer_stand_in_is_explained_once_by_that_name(self):
         td = make_copies(self, url=lambda s: 'https://real.example/api?x=1')
         self.cfg = make_cfg(td)
-        _code, text = run_command('check', self.cfg, self.world())
+        _code, text = run_command(self.cfg, self.world())
         self.assertIn('indexer stand-in (the local program that replays recorded indexer answers', text)
         self.assertEqual(text.count('local program that replays'), 1)
         self.assertNotIn('the stand-in', text.replace('the indexer stand-in', ''))
 
     def test_key_file_readable_by_others_stops_a_check(self):
         os.chmod(os.path.join(self.td, 'indexers.json'), 0o644)
-        self.assert_stops('check', self.world(), 'key file', 'only by you', 'chmod 600')
+        self.assert_stops(self.world(), 'key file', 'only by you', 'chmod 600')
 
     def test_key_file_with_other_indexers_stops_a_check(self):
         td = make_copies(self, key_slugs=('ninjacentral', 'althub'))
         self.cfg = make_cfg(td)
-        self.assert_stops('check', self.world(), 'althub', 'drunkenslug')
+        self.assert_stops(self.world(), 'althub', 'drunkenslug')
 
     def test_key_file_extra_per_indexer_setting_is_tolerated(self):
         with open(os.path.join(self.td, 'indexers.json'), 'w') as f:
             json.dump({'indexers': {'ninjacentral': {'url': 'u', 'apikey': SECRET},
                                     'drunkenslug': {'url': 'u', 'apikey': SECRET, 'drop_params': ['o']}}}, f)
         os.chmod(os.path.join(self.td, 'indexers.json'), 0o600)
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
     def test_altmounts_indexers_are_ignored_switched_off(self):
         # #302: KaijuFlow searches and AltMount only streams, so its test copy has every indexer off, pointing anywhere
         self.cfg = make_cfg(make_copies(self, altkf_off=('ninjacentral', 'drunkenslug'),
                                         altkf_url=lambda s: 'https://api.real-indexer.example/api?apikey=' + SECRET))
-        for mode in ('check',):
-            code, text = run_command(mode, self.cfg, self.world())
-            self.assertEqual(code, 0, text)
-            self.assertNotIn(SECRET, text)
+        code, text = run_command(self.cfg, self.world())
+        self.assertEqual(code, 0, text)
+        self.assertNotIn(SECRET, text)
 
     def test_altmounts_indexers_are_ignored_switched_on_too(self):
         self.cfg = make_cfg(make_copies(self, altkf_off=('drunkenslug',), altkf_url=lambda s: 'https://elsewhere.example/api'))
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
     def test_the_key_file_and_kaijuflow_must_agree_on_the_switched_on_indexers(self):
         self.cfg = make_cfg(make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'),
                                         key_slugs=('ninjacentral', 'drunkenslug')))
-        self.assert_stops('check', self.world(), 'KaijuFlow', 'switches on ninjacentral', 'drunkenslug')
+        self.assert_stops(self.world(), 'KaijuFlow', 'switches on ninjacentral', 'drunkenslug')
 
     def test_an_indexer_switched_off_in_both_the_key_file_and_kaijuflow_passes(self):
         td = make_copies(self, enabled=('ninjacentral',), disabled=('drunkenslug', 'althub'))
@@ -422,14 +415,14 @@ class PreflightTest(unittest.TestCase):
                                     'drunkenslug': {'url': 'u', 'apikey': SECRET, 'enabled': False}}}, f)
         os.chmod(path, 0o600)
         self.cfg = make_cfg(td)
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
     def test_indexer_address_must_be_the_standins(self):
         td = make_copies(self, url=lambda s: 'https://api.real-indexer.example/api' if s == 'ninjacentral' else
                          'http://host.docker.internal:1340/%s/api' % s)
         self.cfg = make_cfg(td)
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 1)
         self.assertIn('NinjaCentral', text)
         self.assertIn('not the indexer stand-in', text)
@@ -439,48 +432,43 @@ class PreflightTest(unittest.TestCase):
     def test_an_address_with_a_key_in_it_is_never_printed(self):
         td = make_copies(self, url=lambda s: 'https://real.example/api?apikey=' + SECRET)
         self.cfg = make_cfg(td)
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 1)
         self.assertNotIn(SECRET, text)
 
     def test_caps_over_the_provider_limit_stop(self):
         td = make_copies(self, caps=(12, 100))
         self.cfg = make_cfg(td)
-        self.assert_stops('check', self.world(), '112', 'limit of 100')
+        self.assert_stops(self.world(), '112', 'limit of 100')
 
     def test_caps_exactly_at_the_limit_pass(self):
         td = make_copies(self, caps=(12, 88))
         self.cfg = make_cfg(td)
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 0, text)
 
     def test_limit_is_settable(self):
         self.cfg['limit'] = 30
-        self.assert_stops('check', self.world(), '37', 'limit of 30')
+        self.assert_stops(self.world(), '37', 'limit of 30')
 
     def test_port_in_use_stops(self):
-        self.assert_stops('check', self.world(free=False), 'port 1340', 'in use')
+        self.assert_stops(self.world(free=False), 'port 1340', 'in use')
 
     def test_problems_come_back_as_a_list(self):
-        self.assertEqual(brainrun.preflight('check', self.cfg, self.world()), [])
-        self.assertEqual(len(brainrun.preflight('check', self.cfg, self.world(free=False))), 1)
-
-    def test_mode_must_be_one_the_preflight_knows(self):
-        with self.assertRaises(ValueError):
-            brainrun.preflight('smoke', self.cfg, self.world())
+        self.assertEqual(brainrun.preflight(self.cfg, self.world()), [])
+        self.assertEqual(len(brainrun.preflight(self.cfg, self.world(free=False))), 1)
 
     # ---- the sort and filter settings of each copy against the expected settings file (ticket #109)
     def test_a_copy_whose_size_cap_differs_from_the_expected_file_stops(self):
         self.cfg = make_cfg(make_copies(self, kf_rules=rules(films=9000)))
-        for mode in ('check',):
-            self.assert_stops(mode, self.world(), 'KaijuFlow has movieFilters.maxFileSize set to 9000',
-                              'the expected settings file', 'says 3000')
+        self.assert_stops(self.world(), 'KaijuFlow has movieFilters.maxFileSize set to 9000',
+                          'the expected settings file', 'says 3000')
 
     def test_every_differing_setting_gets_its_own_sentence_and_the_fix_is_explained_once(self):
         theirs = rules(films=9000, episodes=50)
         theirs['tvFilters']['rules']['rankedRegexPatterns'][0]['mode'] = 'rank'
         self.cfg = make_cfg(make_copies(self, kf_rules=theirs))
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 1, text)
         self.assertEqual(text.splitlines(), [
             'KaijuFlow has movieFilters.maxFileSize set to 9000, but the expected settings file '
@@ -493,7 +481,7 @@ class PreflightTest(unittest.TestCase):
     def test_a_copy_without_any_sort_and_filter_rules_stops_with_one_sentence_per_missing_section(self):
         # the state found in the retro of the 2026-11-13 baseline: the copies had no filters, movieFilters or tvFilters
         self.cfg = make_cfg(make_copies(self, kf_rules={}))
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 1, text)
         self.assertEqual([line.split(', but')[0] for line in text.splitlines()],
                          ['KaijuFlow has no movieFilters setting', 'KaijuFlow has no tvFilters setting'])
@@ -505,7 +493,7 @@ class PreflightTest(unittest.TestCase):
         theirs['tvFilters']['minFileSize'] = 5
         del theirs['tvFilters']['enabledSorts']['language']
         self.cfg = make_cfg(make_copies(self, kf_rules=theirs))
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 1, text)
         self.assertEqual([line.split(': change')[0].replace(f" ({self.cfg['expected_settings']})", '').rstrip('.') for line in text.splitlines()], [
             'KaijuFlow has no movieFilters.rules.rankedRegexPatterns[No disc images] setting, but the expected settings file has one',
@@ -515,10 +503,10 @@ class PreflightTest(unittest.TestCase):
 
     def test_an_expected_settings_file_that_cannot_be_used_stops_with_one_sentence(self):
         write_expected(self.td, entries=[{'copies': ['kaijuflow', 'live'], 'settings': rules()}])
-        self.assert_stops('check', self.world(), 'The expected settings file cannot be used (expected-settings.json, entry 1: '
+        self.assert_stops(self.world(), 'The expected settings file cannot be used (expected-settings.json, entry 1: '
                           '"live" is not a test copy (kaijuflow, altmount-kf)): fix the file.')
         os.remove(self.cfg['expected_settings'])
-        self.assert_stops('check', self.world(), 'The expected settings file cannot be used (expected-settings.json cannot be read: '
+        self.assert_stops(self.world(), 'The expected settings file cannot be used (expected-settings.json cannot be read: '
                           'FileNotFoundError): fix the file.')
 
     def test_an_order_that_differs_is_one_setting_and_one_sentence(self):
@@ -526,7 +514,7 @@ class PreflightTest(unittest.TestCase):
         theirs['movieFilters']['sortOrder'] = ['quality', 'language', 'size']  # two entries swapped
         theirs['tvFilters']['sortOrder'] = ['quality', 'size']  # one entry short
         self.cfg = make_cfg(make_copies(self, kf_rules=theirs))
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 1, text)
         self.assertEqual([line.split(': change')[0].replace(f" ({self.cfg['expected_settings']})", '').rstrip('.') for line in text.splitlines()], [
             'KaijuFlow has movieFilters.sortOrder entry 2 set to "language", but the expected settings file says "size" '
@@ -648,7 +636,7 @@ class ExpectedSettingsFileTest(unittest.TestCase):
             json.dump(config, f)
         cfg = make_cfg(td)
         write_expected(td, [{'copies': ['kaijuflow'], 'settings': {'devDiagnostics': True}}])
-        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
+        code, text = run_command(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 1, text)
         self.assertIn('KaijuFlow has no devDiagnostics setting, but the expected settings file', text)
 
@@ -657,12 +645,12 @@ class ExpectedSettingsFileTest(unittest.TestCase):
         cfg = make_cfg(td)  # then the file of the fixture folder gets the fallback entry too
         write_expected(td, [{'copies': ['kaijuflow'], 'settings': rules()},
                             {'copies': ['kaijuflow'], 'settings': {'ultimateFallback.enabled': True}}])
-        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
+        code, text = run_command(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 1, text)
         self.assertEqual([x.split(': change')[0] for x in text.splitlines() if x.strip()], [
             f"KaijuFlow has ultimateFallback.enabled set to false, but the expected settings file ({cfg['expected_settings']}) says true"])
         cfg = make_cfg(make_copies(self), expected_settings=cfg['expected_settings'])  # the fixture copy as expected: on
-        self.assertEqual(run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))[0], 0)
+        self.assertEqual(run_command(cfg, FakeWorld(cfg, allowance=PLENTY))[0], 0)
 
     def test_the_committed_file_holds_the_standard_rules_for_kaijuflow(self):
         rules_ = self.committed()
@@ -684,10 +672,10 @@ class ExpectedSettingsFileTest(unittest.TestCase):
 
     def test_the_committed_file_is_the_one_the_preflight_uses_unless_another_is_named(self):
         cfg = make_cfg(make_copies(self, kf_rules=self.committed()), expected_settings=None)
-        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
+        code, text = run_command(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 0, text)
         cfg = make_cfg(make_copies(self, kf_rules={}), expected_settings=None)
-        code, text = run_command('check', cfg, FakeWorld(cfg, allowance=PLENTY))
+        code, text = run_command(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 1, text)
         self.assertIn('KaijuFlow has no movieFilters setting, but the expected settings file (tools/brain/expected-settings.json) has one', text)
 
@@ -704,14 +692,14 @@ class DocsOnlyCommitTest(unittest.TestCase):
     def test_a_commit_that_touches_only_docs_or_a_markdown_file_needs_no_rebuild(self):
         commit(self.repo, {'docs/note.md': 'two', 'README.md': 'two'})
         w = self.world()
-        code, text = run_command('check', self.cfg, w)
+        code, text = run_command(self.cfg, w)
         self.assertEqual(code, 0, text)
         self.assertIn('Setup is right', text)
         self.assertEqual(w.rebuilt, [])
 
     def test_a_commit_that_touches_src_stops_and_asks_for_a_rebuild(self):
         head = commit(self.repo, {'src/server.ts': 'two'})
-        code, text = run_command('check', self.cfg, self.world())
+        code, text = run_command(self.cfg, self.world())
         self.assertEqual(code, 1, text)
         self.assertIn(f'built from commit {self.built_from[:7]}', text)
         self.assertIn(f'the code that goes into the image has changed since then (the repository is at {head[:7]})', text)
@@ -722,18 +710,18 @@ class DocsOnlyCommitTest(unittest.TestCase):
         commit(self.repo, {'docs/note.md': 'two'})
         self.cfg['rebuild_image'] = True
         w = self.world()
-        code, text = run_command('check', self.cfg, w)
+        code, text = run_command(self.cfg, w)
         self.assertEqual((code, w.rebuilt, w.label), (0, [], self.built_from), text)
 
     def test_the_rebuild_option_builds_from_the_new_commit_after_a_change_to_src(self):
         head = commit(self.repo, {'src/server.ts': 'two'})
         self.cfg['rebuild_image'] = True
         w = self.world()
-        code, text = run_command('check', self.cfg, w)
+        code, text = run_command(self.cfg, w)
         self.assertEqual((code, w.rebuilt, w.label), (0, [head], head), text)
 
     def test_an_image_from_a_commit_the_repository_does_not_have_stops(self):
-        code, text = run_command('check', self.cfg, RepoWorld(self.cfg, self.repo, label=OLDER))
+        code, text = run_command(self.cfg, RepoWorld(self.cfg, self.repo, label=OLDER))
         self.assertEqual(code, 1, text)
         self.assertIn('built from commit bbbbbbb, which this repository does not have', text)
 
@@ -920,16 +908,16 @@ class MachineWiringTest(unittest.TestCase):
         self.asked.append(argv[0])
         return {'ip': R(sample('ip-addr.json')), 'dig': R(sample('dig-newshosting.txt'))}[argv[0]]
 
-    def preflight(self, mode, load):
+    def preflight(self, load):
         with mock.patch.object(subprocess, 'run', self.run_), mock.patch.object(os, 'getloadavg', lambda: (load, 0.2, 0.1)):
-            return run_command(mode, self.cfg, self.World(self.cfg, allowance=PLENTY))
+            return run_command(self.cfg, self.World(self.cfg, allowance=PLENTY))
 
     def test_a_full_check_reads_the_load_the_addresses_and_the_dns_from_the_machine(self):
         self.cfg['full_check'] = True
-        code, text = self.preflight('check', 0.31)
+        code, text = self.preflight(0.31)
         self.assertEqual(code, 0, text)
         self.assertEqual(self.asked, ['ip', 'dig'])
-        code, text = self.preflight('check', 1.52)
+        code, text = self.preflight(1.52)
         self.assertEqual(code, 1, text)
         self.assertIn('load average is 1.52', text)
 
@@ -1003,22 +991,21 @@ class PowerWiringTest(unittest.TestCase):
         self.td = make_copies(self)
         self.cfg = make_cfg(self.td)
 
-    def preflight(self, mode, supplies, seen=None):
+    def preflight(self, supplies, seen=None):
         with mock.patch.object(brainrun, 'POWER_SUPPLY_ROOT', supplies), \
                 mock.patch.object(brainrun, 'CPUFREQ_ROOT', os.path.join(POWER, 'cpufreq')), \
                 mock.patch.object(brainrun, 'PROBE_ROUNDS', 1000):
-            return brainrun.preflight(mode, self.cfg, self.World(self.cfg, allowance=PLENTY), seen)
+            return brainrun.preflight(self.cfg, self.World(self.cfg, allowance=PLENTY), seen)
 
     def test_on_battery_a_check_stops(self):
-        for mode in ('check',):
-            problems = self.preflight(mode, power_tree(self, mains_online='0'))
-            self.assertEqual(len(problems), 1, problems)
-            self.assertIn('The machine runs on battery', problems[0])
+        problems = self.preflight(power_tree(self, mains_online='0'))
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn('The machine runs on battery', problems[0])
 
     def test_plugged_in_or_without_a_mains_supply_a_check_passes_and_keeps_the_machine(self):
         for supplies in (os.path.join(POWER, 'power_supply'), power_tree(self, mains=False)):
             seen = {}
-            self.assertEqual(self.preflight('check', supplies, seen), [])
+            self.assertEqual(self.preflight(supplies, seen), [])
             machine = seen['machine']
             self.assertEqual({k: v for k, v in machine.items() if k != 'cpu_probe_ms'},
                              {'power': 'ac', 'governor': 'powersave', 'energy_preference': 'performance'})

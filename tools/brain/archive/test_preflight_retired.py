@@ -296,6 +296,17 @@ class PreflightTest(test_preflight.PreflightTest):
 
 
 class MachineWiringTest(test_preflight.MachineWiringTest):
+    class World(test_preflight.MachineWiringTest.World, retired_run.RetiredIO):
+        pass
+
+    def setUp(self):
+        super().setUp()
+        record(self.cfg)
+
+    def preflight(self, mode, load):  # the retired preflights, by mode
+        with mock.patch.object(subprocess, 'run', self.run_), mock.patch.object(os, 'getloadavg', lambda: (load, 0.2, 0.1)):
+            return run_command(mode, self.cfg, self.World(self.cfg, allowance=PLENTY))
+
     def test_a_run_reads_the_load_the_addresses_and_the_dns_from_the_machine(self):
         code, text = self.preflight('run', 0.31)
         self.assertEqual(code, 0, text)
@@ -311,6 +322,19 @@ class MachineWiringTest(test_preflight.MachineWiringTest):
 
 
 class PowerWiringTest(test_preflight.PowerWiringTest):
+    class World(test_preflight.PowerWiringTest.World, retired_run.RetiredIO):
+        pass
+
+    def setUp(self):
+        super().setUp()
+        record(self.cfg)
+
+    def preflight(self, mode, supplies, seen=None):  # the retired preflights, by mode
+        with mock.patch.object(brainrun, 'POWER_SUPPLY_ROOT', supplies), \
+                mock.patch.object(brainrun, 'CPUFREQ_ROOT', os.path.join(POWER, 'cpufreq')), \
+                mock.patch.object(brainrun, 'PROBE_ROUNDS', 1000):
+            return retired_run.preflight(mode, self.cfg, self.World(self.cfg, allowance=PLENTY), seen)
+
     def test_on_battery_a_run_and_a_record_stop(self):
         for mode in ('record', 'run'):
             problems = self.preflight(mode, power_tree(self, mains_online='0'))

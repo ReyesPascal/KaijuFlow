@@ -68,7 +68,7 @@ class ProvedFixedTest(unittest.TestCase):
     def test_it_plays_the_one_title_cold_and_live_with_the_quick_checks_verdict_and_draws_nothing(self):
         self.assertEqual(self.code, 0, self.out)
         self.assertIn('Pass: 0 fails in 1 title.', self.out)
-        self.assertEqual(self.world.calls[:4], [('preflight', 'check'), ('reset', tuple(brainrun.ALL_TESTBED)),
+        self.assertEqual(self.world.calls[:4], [('preflight',), ('reset', tuple(brainrun.ALL_TESTBED)),
                                                 ('open-store',), ('standin', 'record')])
         self.assertNotIn('draw', [c[0] for c in self.world.calls])
         self.assertEqual([c[1] for c in self.world.calls if c[0] == 'visit'], [WITCHER[1]])
