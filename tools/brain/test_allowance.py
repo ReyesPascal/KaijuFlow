@@ -1,6 +1,6 @@
 """Tests for the indexer allowance (spec #77, ticket #87): the usage command and what a check has left.
 
-Fixture key files with limits (#302), counter files (stats.json) and record folders in a temporary folder; no indexer, no Docker.
+Fixture key files with limits (#302) and record folders in a temporary folder; no indexer, no Docker.
     python3 -I -m unittest discover -s tools/brain -p 'test_*.py'
 """
 import contextlib
@@ -37,13 +37,6 @@ def limits_file(path, reset='rolling-24h', search=2000):
     put_limits(path, {'ninjacentral': (search, 450)}, reset=reset)
 
 
-def stats_file(path, searches=(), grabs=(), name='NinjaCentral'):
-    stamp = '%Y-%m-%dT%H:%M:%S.000Z'
-    write(path, json.dumps({'indexers': {name: {
-        'queryHistory': [{'timestamp': t.strftime(stamp), 'success': True} for t in searches],
-        'grabHistory': [{'timestamp': t.strftime(stamp), 'title': 'x'} for t in grabs]}}}))
-
-
 def api(kind, when, slug='ninjacentral'):
     return f'{kind} {slug} api q=x&t=search -> 200 10 bytes from=1.2.3.4 t={ms(when)}'
 
@@ -68,13 +61,12 @@ class AllowanceTest(unittest.TestCase):
         os.makedirs(self.runs)
         self.cfg = dict(test_dir=self.td, runs_root=self.runs, listname='l', store=os.path.join(base, 'store'))
         self.limits = os.path.join(self.td, 'indexers.json')
-        self.stats = os.path.join(base, 'stats.json')
 
     def lines(self, **kw):
         return allowance.usage_lines(self.cfg, NOW, **kw)
 
     def test_missing_key_file_is_one_plain_sentence_naming_the_command(self):
-        out = self.lines(stats_files=[])
+        out = self.lines()
         self.assertEqual(len(out), 1)
         self.assertIn('no key file', out[0])
         self.assertIn(self.limits, out[0])
@@ -82,7 +74,7 @@ class AllowanceTest(unittest.TestCase):
 
     def test_a_key_file_without_limits_says_so_and_names_the_command(self):
         write(self.limits, json.dumps({'indexers': {'ninjacentral': {'url': 'https://real.example', 'apikey': 'K-123'}}}))
-        out = self.lines(stats_files=[])
+        out = self.lines()
         self.assertEqual(len(out), 1)
         self.assertIn('no daily limits', out[0])
         self.assertIn('testbed.py indexer add', out[0])
@@ -92,16 +84,16 @@ class AllowanceTest(unittest.TestCase):
         self.cfg['key_file'] = os.path.join(self.base, 'elsewhere', 'keys.json')
         limits_file(self.cfg['key_file'], search=77)
         limits_file(self.limits, search=2000)  # the test folder's key file is not the one named
-        self.assertIn('searches       0      77      77', '\n'.join(self.lines(stats_files=[])))
+        self.assertIn('searches       0      77      77', '\n'.join(self.lines()))
 
     def test_a_limits_file_beside_the_key_file_is_not_read(self):
         write(os.path.join(self.td, 'limits.json'), json.dumps({'indexers': {'ninjacentral': {
             'search_per_day': 2000, 'download_per_day': 450, 'reset': 'rolling-24h'}}}))
-        self.assertIn('no key file', self.lines(stats_files=[])[0])
+        self.assertIn('no key file', self.lines()[0])
 
     def test_broken_limits_say_what_to_fix_and_show_no_key(self):
         write(self.limits, json.dumps({'indexers': {'ninjacentral': {'apikey': 'K-123', 'search_per_day': 'many'}}}))
-        out = self.lines(stats_files=[])
+        out = self.lines()
         self.assertEqual(len(out), 1)
         self.assertIn('wrong limits for ninjacentral', out[0])
         self.assertNotIn('K-123', out[0])
@@ -113,7 +105,7 @@ class AllowanceTest(unittest.TestCase):
         self.assertEqual((limits['ninjacentral']['search'], limits['ninjacentral']['download']), (2000, 450))
         self.assertEqual((limits['drunkenslug']['search'], limits['drunkenslug']['download']), (1000, 100))
 
-    def test_adds_standin_requests_and_copy_counts_since_the_reset(self):
+    def test_adds_the_standin_requests_since_the_reset(self):
         limits_file(self.limits)
         record_folder(self.runs, 'a-record', 'l', [
             api('RECORD', hours_ago(1)), api('RECORD', hours_ago(2)), api('ERROR', hours_ago(3)),
@@ -121,34 +113,32 @@ class AllowanceTest(unittest.TestCase):
             api('HIT', hours_ago(1)),  # a replay costs the indexer nothing
             api('RECORD', hours_ago(1), slug='drunkenslug'),  # no limits in the key file
             nzb('RECORD', hours_ago(1))])
-        stats_file(self.stats, searches=[hours_ago(5), hours_ago(40)], grabs=[hours_ago(4), hours_ago(6)])
-        text = '\n'.join(self.lines(stats_files=[self.stats]))
-        # searches: 3 from the stand-in (2 RECORD + 1 ERROR) + 1 from the copy; downloads: 1 + 2
-        self.assertIn('searches       4    2000    1996', text)
-        self.assertIn('downloads      3     450     447', text)
+        text = '\n'.join(self.lines())
+        # searches: 2 RECORD + 1 ERROR; downloads: 1
+        self.assertIn('searches       3    2000    1997', text)
+        self.assertIn('downloads      1     450     449', text)
         self.assertIn('this machine only', text)
-        self.assertIn('latest hundred', text)
 
-    def test_default_counter_files_are_the_live_copy_only(self):
-        self.assertEqual(allowance.default_stats_files(self.cfg), [allowance.DEFAULT_LIVE_STATS])
+    def test_only_the_standin_is_counted(self):
+        # spec #298's review (P8): no live Usenet Ultimate copy's counters, which this machine does not have
+        limits_file(self.limits)
+        record_folder(self.runs, 'a-record', 'l', [api('RECORD', hours_ago(1))])
+        text = '\n'.join(self.lines())
+        self.assertIn("since 2026-11-09 12:00 UTC; the stand-in's 1 searches, 0 downloads.", text)
+        self.assertNotIn('Usenet Ultimate', text)
+        self.assertNotIn('copies', text)
 
     def test_clock_time_reset_counts_from_the_latest_reset(self):
         limits_file(self.limits, reset='10:00')
-        stats_file(self.stats, searches=[hours_ago(1), hours_ago(3)])
-        text = '\n'.join(self.lines(stats_files=[self.stats]))
-        self.assertIn('searches       1    2000    1999', text)  # since 10:00 today: only the 11:00 entry counts
+        record_folder(self.runs, 'a-record', 'l', [api('RECORD', hours_ago(1)), api('RECORD', hours_ago(3))])
+        text = '\n'.join(self.lines())
+        self.assertIn('searches       1    2000    1999', text)  # since 10:00 today: only the 11:00 one counts
         self.assertEqual(allowance.last_reset({'reset': '15:00', 'timezone': 'UTC'}, NOW), NOW.replace(hour=15) - datetime.timedelta(days=1))
 
-    def test_missing_or_unreadable_counter_files_count_as_nothing(self):
-        limits_file(self.limits)
-        write(self.stats, 'not json')
-        text = '\n'.join(self.lines(stats_files=[self.stats, os.path.join(self.td, 'none.json')]))
-        self.assertIn('searches       0    2000    2000', text)
-
     def test_indexer_names_match_however_they_are_written(self):
-        limits_file(self.limits)
-        stats_file(self.stats, searches=[hours_ago(1)], name='Ninja Central')
-        self.assertIn('searches       1', '\n'.join(self.lines(stats_files=[self.stats])))
+        put_limits(self.limits, {'Ninja Central': (2000, 450)})
+        record_folder(self.runs, 'a-record', 'l', [api('RECORD', hours_ago(1), slug='ninjacentral')])
+        self.assertIn('searches       1', '\n'.join(self.lines()))
 
     def test_usage_command_prints_the_table_and_needs_no_store(self):
         limits_file(self.limits)

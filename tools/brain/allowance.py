@@ -5,8 +5,7 @@ written by `testbed.py indexer add`). Only the limit fields are read here, never
 Counted per indexer, since its last reset:
   - the stand-in's recorded requests: RECORD and ERROR lines of every record folder's logs/standin.log ("t=" is the epoch ms);
     an "api" request is a search, an "nzb" request is a download. HIT lines are replays and cost the indexer nothing.
-  - the counts the live copy keeps: queryHistory (searches) and grabHistory (downloads) in its config/stats.json.
-    The test copies are not counted: they only talk to the stand-in. A copy keeps only its latest 100 entries of each, so a busy day can be undercounted.
+    The test copies are not counted: they only talk to the stand-in.
 This counts this machine only. Nothing here talks to an indexer.
 """
 import datetime
@@ -19,11 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I lea
 import brainreport as br  # noqa: E402
 
 ROLLING = 'rolling-24h'
-DEFAULT_LIVE_STATS = os.path.expanduser('~/usenet-stack/usenet-ultimate_config/stats.json')
 KINDS = ('search', 'download')
 KIND_NAMES = {'search': 'searches', 'download': 'downloads'}
-CAVEAT = ('This counts this machine only, and each copy of Usenet Ultimate keeps only its latest hundred searches '
-          'and its latest hundred downloads, so on a busy day the real use can be higher.')
+CAVEAT = "This counts this machine only: the stand-in's requests to the indexers."
 COLUMNS = ('Columns: Used = requests counted since the indexer last reset; Limit = the daily limit from the key file; '
            'Left = Limit minus Used.')
 ADD_COMMAND = 'python3 -I tools/brain/testbed.py indexer add {slug} --stash <entry> --searches <n> --downloads <n>'
@@ -97,14 +94,6 @@ def last_reset(limit, now):
     return at
 
 
-def _parse_iso(s):
-    try:
-        when = datetime.datetime.fromisoformat(str(s).replace('Z', '+00:00'))
-    except ValueError:
-        return None
-    return when if when.tzinfo else when.replace(tzinfo=datetime.timezone.utc)
-
-
 def requests_in(log):
     """[(slug, kind, when)] for the RECORD and ERROR lines of one stand-in log."""
     out = []
@@ -129,40 +118,15 @@ def standin_requests(runs_root):
     return out
 
 
-def copy_requests(stats_files):
-    """[(slug, kind, when)] from the counter files (config/stats.json) the copies keep."""
-    out = []
-    for path in stats_files:
-        data = br.read_json(path)
-        indexers = data.get('indexers') if isinstance(data, dict) else None
-        if not isinstance(indexers, dict):
-            continue
-        for name, v in indexers.items():
-            if not isinstance(v, dict):
-                continue
-            for field, kind in (('queryHistory', 'search'), ('grabHistory', 'download')):
-                for e in v.get(field) or []:
-                    when = _parse_iso(e.get('timestamp')) if isinstance(e, dict) else None
-                    if when is not None:
-                        out.append((norm(name), kind, when))
-    return out
-
-
-def default_stats_files(cfg):
-    """Only the live copy: the test copies talk to the stand-in, so their counters never measure real indexer hits."""
-    return [DEFAULT_LIVE_STATS]
-
-
-def usage(limits, standin, copies, now):
-    """{normalized name: {'since', 'standin': {kind: n}, 'copies': {kind: n}}} for every indexer in the limits file."""
+def usage(limits, standin, now):
+    """{normalized name: {'since', 'standin': {kind: n}}} for every indexer in the limits file."""
     out = {}
     for slug, lim in limits.items():
         since = last_reset(lim, now)
-        row = {'since': since, 'standin': dict.fromkeys(KINDS, 0), 'copies': dict.fromkeys(KINDS, 0)}
-        for src, key in ((standin, 'standin'), (copies, 'copies')):
-            for s, kind, when in src:
-                if s == slug and since <= when <= now:
-                    row[key][kind] += 1
+        row = {'since': since, 'standin': dict.fromkeys(KINDS, 0)}
+        for s, kind, when in standin:
+            if s == slug and since <= when <= now:
+                row['standin'][kind] += 1
         out[slug] = row
     return out
 
@@ -172,37 +136,35 @@ def table(limits, used):
     for slug, lim in limits.items():
         row = used[slug]
         for kind in KINDS:
-            n = row['standin'][kind] + row['copies'][kind]
+            n = row['standin'][kind]
             lines.append(f'{lim["name"]:<12} {KIND_NAMES[kind]:<10} {n:>5}  {lim[kind]:>6}  {lim[kind] - n:>6}')
-        lines.append(f'  since {row["since"].strftime("%Y-%m-%d %H:%M %Z")}; stand-in recordings '
-                     f'{row["standin"]["search"]} searches, {row["standin"]["download"]} downloads; copies '
-                     f'{row["copies"]["search"]} searches, {row["copies"]["download"]} downloads.')
+        lines.append(f'  since {row["since"].strftime("%Y-%m-%d %H:%M %Z")}; the stand-in\'s '
+                     f'{row["standin"]["search"]} searches, {row["standin"]["download"]} downloads.')
     return lines
 
 
-def _compute(cfg, now, stats_files):
+def _compute(cfg, now):
     """(limits, used, problem): the key file's limits read and the counts added up."""
     limits, problem = load_limits(limits_path(cfg))
     if problem:
         return None, None, problem
     standin = standin_requests(cfg['runs_root']) if cfg.get('runs_root') else []
-    copies = copy_requests(stats_files if stats_files is not None else default_stats_files(cfg))
-    return limits, usage(limits, standin, copies, now), None
+    return limits, usage(limits, standin, now), None
 
 
-def usage_lines(cfg, now=None, stats_files=None):
+def usage_lines(cfg, now=None):
     """The `usage` command's text, one string per line. Limits that cannot be read give the one sentence."""
-    limits, used, problem = _compute(cfg, now or datetime.datetime.now(datetime.timezone.utc), stats_files)
+    limits, used, problem = _compute(cfg, now or datetime.datetime.now(datetime.timezone.utc))
     if problem:
         return [problem]
     return table(limits, used) + [COLUMNS, CAVEAT]
 
 
-def left(cfg, now=None, stats_files=None):
+def left(cfg, now=None):
     """({normalized name: {'search': n, 'download': n}} left since each indexer's last reset, None) or (None, the problem
     sentence when the key file's limits cannot be used). What a real-use check's preflight holds against what it may ask (#270)."""
-    limits, used, problem = _compute(cfg, now or datetime.datetime.now(datetime.timezone.utc), stats_files)
+    limits, used, problem = _compute(cfg, now or datetime.datetime.now(datetime.timezone.utc))
     if problem:
         return None, problem
-    return {slug: {kind: lim[kind] - used[slug]['standin'][kind] - used[slug]['copies'][kind] for kind in KINDS}
+    return {slug: {kind: lim[kind] - used[slug]['standin'][kind] for kind in KINDS}
             for slug, lim in limits.items()}, None

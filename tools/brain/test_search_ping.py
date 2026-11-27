@@ -85,8 +85,7 @@ class PingSearchTest(unittest.TestCase):
     def test_the_search_counts_as_one_search_of_each_indexer(self):
         put_limits(self.key_file, {'ninjacentral': (2000, 450), 'drunkenslug': (1000, 100)})
         self.ping(['ninjacentral', 'drunkenslug'])
-        left, problem = allowance.left({'key_file': self.key_file, 'runs_root': self.runs_root, 'test_dir': self.root,
-                                        'live_stats': os.path.join(self.root, 'none.json')})
+        left, problem = allowance.left({'key_file': self.key_file, 'runs_root': self.runs_root, 'test_dir': self.root})
         self.assertIsNone(problem)
         self.assertEqual((left['ninjacentral']['search'], left['ninjacentral']['download']), (1999, 450))
         self.assertEqual(left['drunkenslug']['search'], 999)  # an error answer is a search the indexer counted too
