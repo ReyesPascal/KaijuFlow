@@ -103,7 +103,9 @@ class FailedPlayWorld(CheckWorld):
                                        *({'name': 'KaijuFlow', 'title': t} for t in (HHWEB, PLAYWEB, CRYBABIES, SONARR))]}).encode()
 
         def press(stream):
-            self.clock = datetime.datetime(2026, 11, 23, 19, 12, 31, 500000, tzinfo=UTC)
+            # the press ends after the stand-in's last line of the play (19:12:31.993): with no pause after a title
+            # (spec #298's review, P6), a line after the press's end falls in the next title's window
+            self.clock = datetime.datetime(2026, 11, 23, 19, 12, 32, 0, tzinfo=UTC)
             return {'plays': True, 'first_byte_s': 14.0, 'note': None}
         self.takes(1.0)
         return brainrun.check_visit_answer((200, {}, body, {'ready': 1.0, 'total': 1.0}), press, pause_s, self.sleep)

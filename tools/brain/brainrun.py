@@ -1240,22 +1240,28 @@ def check_visit_answer(got, play, pause_s=0, sleep=time.sleep):
     return out
 
 
-def collect_check_visit(cfg, io, title, logbuf, plays=None, secrets=()):
+def collect_check_visit(cfg, io, title, logbuf, plays=None, secrets=(), after=None):
     """One title of a check: its list, the Browse pause, one press of Best; then KaijuFlow's play step lines for it
     (quickcheck.visit_steps) and the Releases each indexer's search found (quickcheck.found_by_indexer), its AltMount imports and any "limit reached" line in either log. Both containers' lines go
     to `logbuf` scrubbed (evidence.scrub, with the test copies' `secrets`) and, unscrubbed, to `plays` for the evidence
-    folder of a play that fails (write_check_ending)."""
+    folder of a play that fails (write_check_ending).
+
+    Its lines are read from 1 s before it started, but never from before `after` (the previous title's end, an ISO time):
+    a `played` line names no title, and the next title starts as soon as one ends, with no pause between them."""
     kind, vid, label = title[:3]
     t0 = io.now()
     http = io.check_visit(kind, vid, cfg['browse_pause'])
     t1 = io.now()
-    since = br.iso(t0 - datetime.timedelta(seconds=1))
+    lo = t0 - datetime.timedelta(seconds=1)
+    if after:
+        lo = max(lo, br.parse_ts(after) + datetime.timedelta(milliseconds=1))
+    since = br.iso(lo)
     kf_text, be_text = io.logs(KF_CONTAINER, since), io.logs(ALTMOUNT_CONTAINER, since)
     for c, text in ((KF_CONTAINER, kf_text), (ALTMOUNT_CONTAINER, be_text)):
         logbuf.setdefault(c, []).append(f'--- {label} {br.iso(t0)}\n{evidence.scrub(text, secrets)}')
     if plays is not None:
         plays.append({'kf_text': kf_text, 'be_text': be_text})
-    lo, hi = t0 - datetime.timedelta(seconds=1), t1 + datetime.timedelta(seconds=GRACE_S)
+    hi = t1 + datetime.timedelta(seconds=GRACE_S)
     steps = br.parse_step_lines(kf_text)
     return {'title': list(title), 'label': label, 'id': vid, 't_start': br.iso(t0), 't_end': br.iso(t1), **http,
             'steps': quickcheck.visit_steps(steps, vid, since), 'found': quickcheck.found_by_indexer(steps, vid, since),
@@ -1319,14 +1325,14 @@ def play_check(cfg, io, kind, titles):
             check['stage'] = 'the plays'
             for title in check['titles']:
                 check['playing'] = {'side': 'kaijuflow', 'phase': 'cold', 'round': None, 'title': title[2]}  # stop_note's shape
-                v = collect_check_visit(cfg, io, title, logbuf, check['plays'], secrets)
+                v = collect_check_visit(cfg, io, title, logbuf, check['plays'], secrets,
+                                        after=check['visits'][-1]['t_end'] if check['visits'] else None)
                 check['visits'].append(v)
                 check['playing'] = None
                 play = v['play'] or {}
                 print(f"{line_prefix(io, len(check['visits']), planned)} {title[2]}: "
                       f"{'video' if play.get('plays') else 'no video'} list {v['list_s']} s start {play.get('first_byte_s')} s", flush=True)
                 _check_cap(io, {'limit': v['limit'], 'side': 'KaijuFlow', 'title': title[2], 't_end': v['t_end']}, since=started)
-                io.sleep(cfg['settle'])
         except CapReached as e:
             check['status'], check['null'] = 'null', {'indexer': e.indexer, 'time': e.time, 'where': e.where}
             if check['visits']:  # the play the limit cut says nothing of KaijuFlow: kept in raw.json, not judged
@@ -1490,7 +1496,6 @@ def build_parser():
     ap.add_argument('--tickets-dry-run', action='store_true',
                     help='check --quick and drill: write the fix tickets of proved KaijuFlow causes into the check folder, file none (#288)')
     ap.add_argument('--ledger', help='check --quick only: the titles already played (default <runs root>/titles-played.json)')
-    ap.add_argument('--settle', type=float, default=3, help='seconds to pause after every play (default 3)')
     return ap
 
 
@@ -1538,7 +1543,7 @@ def main(argv):
     users = (br.read_json(os.path.join(td, 'config/users.json')) or {}).get('users') or [{}]
     cfg = dict(name=a.name or 'quick-check', runs_root=a.runs_root, store=None, listname=None, test_dir=td,
                user_id=a.user_id or ((users[0].get('manifests') or [{}])[0].get('id') or users[0].get('id', '')),
-               settle=a.settle, browse_pause=BROWSE_PAUSE_S, rebuild_image=a.rebuild_image, limit=a.provider_limit,
+               browse_pause=BROWSE_PAUSE_S, rebuild_image=a.rebuild_image, limit=a.provider_limit,
                key_file=a.key_file, standin_port=testbed.STANDIN_PORT, cases=a.cases, tickets_dry_run=a.tickets_dry_run,
                casebook=a.casebook, ledger=a.ledger or os.path.join(a.runs_root, 'titles-played.json'), fix=a.fix,
                standing_go=a.standing_go, full_check=a.cmd == 'preflight' and a.full)

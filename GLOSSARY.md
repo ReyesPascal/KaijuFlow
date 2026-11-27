@@ -120,7 +120,7 @@ _Avoid_: batch, phase (cold or warm is the phase)
 
 **Browse pause**:
 The fixed wait in a check between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("How a title is played").
-_Avoid_: think time, settle (the settle is the pause after a play)
+_Avoid_: think time, settle (the settle was the pause after a play, retired with `--settle`)
 
 **CPU probe**:
 A short fixed piece of single-thread work (about 1 s on Brain plugged in) that a check's preflight times before the check starts, the same work every check, so a check whose CPU was slower says so. It judges nothing; the check keeps it in `meta.json` (`machine`), and no check is held against an earlier one's (ADR 0010). Format in `tools/brain/docs/formats.md`.

@@ -761,6 +761,7 @@ class CheckWorld:
 
     def check_visit(self, kind, vid, pause_s):
         self.calls.append(('visit', vid))
+        self.takes(0.01)  # the list request reaches KaijuFlow a moment after the check sends it
         t_list = br.iso(self.clock)
         if not self.up:
             return brainrun.check_visit_answer((None, {'error': 'connection refused'}, b'', {'ready': 0.0}), None)
@@ -826,7 +827,7 @@ class CheckWorld:
 def check_cfg(case):
     root = tempdir(case)
     return dict(name='quick-check', runs_root=root, test_dir=os.path.join(root, 'td'), indexers=['ninjacentral'], browse_pause=5,
-                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u', cases=os.path.join(tempdir(case), 'cases'))
+                ledger=os.path.join(root, 'titles-played.json'), user_id='u', cases=os.path.join(tempdir(case), 'cases'))
 
 
 def run_check(cfg, world):
@@ -845,6 +846,8 @@ class QuickCheckRunTest(unittest.TestCase):
         self.assertEqual(world.calls[:5], [('preflight', 'check'), ('draw', 'quick', qc.QUICK_KINDS), ('reset', tuple(brainrun.ALL_TESTBED)),
                                            ('open-store',), ('standin', 'record')])
         self.assertEqual([c[1] for c in world.calls if c[0] == 'visit'], [t[1] for t in DRAWN])  # each title once
+        # the Browse pause only, no pause after a title: the settle is retired (spec #298's review, P6)
+        self.assertEqual([c for c in world.calls if c[0] == 'sleep'], [('sleep', 5)] * 5)
         self.assertEqual(world.calls[-3:], [('standin-stop',), ('stop-all',), ('close-store',)])
         self.assertEqual(sum(qc.QUICK_KINDS.values()), 5)
         folder = os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check')
