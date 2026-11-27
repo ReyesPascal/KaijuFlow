@@ -13,11 +13,23 @@ import { trackGrab } from '../statsTracker.js';
 import { sourceFailure, isSourceFailure } from './types.js';
 
 /**
+ * The indexer took the link down: a 404 or other 4xx, or an error payload with code 300 (no such item). A Source
+ * failure (isSourceFailure) of that indexer's Source alone: the same upload may still be on another indexer (#300;
+ * spec #298's review, P5). A bad NZB body is not this: it is the upload's own (sourceFailure).
+ */
+export class LinkGoneError extends Error {
+  readonly isBadSource = true;
+  readonly isTimeout = false;
+  readonly isEpisodeSpecific = false;
+  constructor(message: string) { super(message); this.name = 'LinkGoneError'; }
+}
+
+/**
  * NZB grab shared by every Backend: cached copy or indexer download through
  * the proxy (exit-IP check), content validation and grab tracking. Returns the
- * NZB text. Throws a Source failure (sourceFailure) only for bad content (an
- * invalid NZB body) or a link the indexer says is gone (404 and other 4xx, an
- * error payload with code 300). An indexer that is unavailable or refuses us
+ * NZB text. Throws a Source failure only for bad content (an invalid NZB body,
+ * sourceFailure) or a link the indexer says is gone (404 and other 4xx, an
+ * error payload with code 300: LinkGoneError). An indexer that is unavailable or refuses us
  * (429, 5xx, 401/403, an error payload with any other code, network error,
  * download timeout) throws a plain error, so the player gets
  * the failure video and the Source stays alive (ADR 0004, #51).
@@ -88,7 +100,7 @@ export async function grabNzb(
         // the Source is not bad (ADR 0004, #51). Any other 4xx (404, 410) means the link is gone.
         if (nzbResponse.status === 429 || nzbResponse.status >= 500) throw new Error(`${message} (indexer unavailable, Source kept)`);
         if (nzbResponse.status === 401 || nzbResponse.status === 403) throw new Error(`${message} (indexer refused us, check its API key; Source kept)`);
-        throw sourceFailure(message);
+        throw new LinkGoneError(message);
       }
       nzbContent = await nzbResponse.text();
     } catch (err) {
@@ -110,7 +122,7 @@ export async function grabNzb(
     if (nzbContent.includes('<error')) {
       const errorMsg = nzbContent.match(/description="([^"]+)"/)?.[1] ?? 'Unknown indexer error';
       const code = nzbContent.match(/<error[^>]*\bcode="(\d+)"/)?.[1];
-      if (code === '300') throw sourceFailure(`Indexer says the NZB is gone (code 300): ${errorMsg}`);
+      if (code === '300') throw new LinkGoneError(`Indexer says the NZB is gone (code 300): ${errorMsg}`);
       throw new Error(`Indexer ${indexerForLog} refused the grab: ${errorMsg} (code ${code ?? 'none'}; indexer unavailable, Source kept)`);
     }
     throw sourceFailure(`Invalid NZB content received (${nzbContent.length} bytes)`);

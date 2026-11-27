@@ -151,7 +151,7 @@ export async function getOrCreateStream(
     remember({ source, play, ready: data });
   }).catch((error) => {
     pendingCache.delete(cacheKey);
-    // A link the indexer says is gone, or a bad NZB, is the Source's for every episode (GLOSSARY: Source memory).
+    // A link the indexer says is gone, or a bad NZB, is the Source's (a bad Release's) for every episode (GLOSSARY: Source memory).
     if (isSourceFailure(error)) remember({ source, play, dead: error, everyEpisode: isBadGrab(error) });
   });
 

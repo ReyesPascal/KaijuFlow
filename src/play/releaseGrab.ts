@@ -6,12 +6,14 @@
  *   the indexer listed first (`nzbOrder`).
  * - When that fetch fails, the Release's Source on the next indexer is fetched. An indexer that refuses (ADR 0004: a
  *   limit, an outage, refused credentials) is named in the answer, so the Walk skips it for the rest of the walk; a link
- *   the indexer says is gone, or its bad NZB, is that Source's alone (a `linkOnly` dead mark, sourceMemory.ts).
+ *   the indexer took down (a 404 or code 300, LinkGoneError) is that Source's alone (a `linkOnly` dead mark,
+ *   sourceMemory.ts). A bad NZB is the upload's: the Release is bad, and no other indexer is asked for it (spec #298's
+ *   review, P5; owner, 2026-11-27).
  * - The grab counts once against the Walk's 30, however many indexers it asks: the caller counts it.
  */
 
 import { config as globalConfig } from '../config/index.js';
-import { walkGrab } from '../backends/nzbGrab.js';
+import { walkGrab, LinkGoneError } from '../backends/nzbGrab.js';
 import { isSourceFailure } from '../backends/types.js';
 import { recentNzbDownloadMs } from '../statsTracker.js';
 import { ProxyCircuitAbortError } from '../proxy.js';
@@ -53,14 +55,30 @@ export interface ReleaseGrabbed {
   refused: string[];
 }
 
+/**
+ * A grab of a Release that fetched no NZB (grabRelease). `refused`: the indexers that refused on the way (ADR 0004),
+ * for the Walk to skip. A bad Release (every Source tried gone and none passed by, or a bad NZB) is a Source failure
+ * (`isBadSource`, from the Walk's grab: `badGrab`), its message the last failure's; otherwise a plain error.
+ */
+export class ReleaseGrabError extends Error {
+  readonly isBadSource: boolean;
+  readonly badGrab: boolean;
+  readonly isTimeout = false;
+  readonly isEpisodeSpecific = false;
+  constructor(message: string, readonly refused: string[], badRelease: boolean) {
+    super(message);
+    this.name = 'ReleaseGrabError';
+    this.isBadSource = this.badGrab = badRelease;
+  }
+}
+
 /** The Release a grab takes: a Walk's candidate, or the Source a clicked list entry plays. */
 export type GrabbedRelease = RememberedSource & { indexerName?: string; searchExitIp?: string };
 
 /**
  * The Walk's grab of a Release: its Sources' NZBs in `nzbOrder`, until one is fetched (kept for the check and the
- * prepare, walkGrab). Passes by a Source remembered dead and one whose indexer the Walk `skips`. Throws when none was
- * fetched: a Source failure (isSourceFailure, a bad Release) only when every Source tried was gone or bad and none was
- * passed by; otherwise a plain error. Either way the error's `refused` names the indexers that refused.
+ * prepare, walkGrab). Passes by a Source remembered dead and one whose indexer the Walk `skips`. Throws a
+ * ReleaseGrabError when none was fetched; a stop, or the proxy's exit IP changed, is thrown as it came.
  */
 export async function grabRelease(
   release: GrabbedRelease,
@@ -71,7 +89,8 @@ export async function grabRelease(
   const order = nzbOrder(all, kaijuflowOrder());
   const refused: string[] = [];
   let passedBy = false;
-  let last: unknown;
+  let badNzb = false;
+  let last: Error | undefined;
   for (const [n, s] of order.entries()) {
     if (all.length > 1 && recall(s, play).dead) { passedBy = true; continue; }
     if (skips?.(s.indexerName)) { passedBy = true; continue; }
@@ -80,23 +99,21 @@ export async function grabRelease(
       return { source: s, refused };
     } catch (err) {
       // A stop, or the proxy's exit IP changed (every other Source would fail alike): no other Source is tried.
-      if (stop?.aborted || err instanceof ProxyCircuitAbortError) throw Object.assign(err as Error, { refused });
-      last = err;
+      if (stop?.aborted || err instanceof ProxyCircuitAbortError) throw err;
+      last = err as Error;
       if (!isSourceFailure(err)) refused.push(s.indexerName);
-      // Gone on this indexer, or its NZB bad: that Source's own mark, so the next play starts at another indexer.
-      else if (all.length > 1) remember({ source: s, play, dead: err as Error, everyEpisode: true, linkOnly: true });
+      else if (!(err instanceof LinkGoneError)) { badNzb = true; break; } // the upload's own fault: no other indexer has a good copy
+      // Gone on this indexer: that Source's own mark, so the next play starts at another indexer.
+      else if (all.length > 1) remember({ source: s, play, dead: err, everyEpisode: true, linkOnly: true });
       if (n < order.length - 1) console.log(`${logPrefix}↪️ ${s.indexerName}'s NZB not fetched (${(err as Error).message}): trying the Release's other Sources`);
     }
   }
-  const bad = last !== undefined && refused.length === 0 && !passedBy;
-  // A gone Source beside a refusal is no bad Release: a plain error. A refusal is thrown as it came.
-  const error = bad || (last !== undefined && !isSourceFailure(last)) ? last as Error
-    : last ? new Error((last as Error).message)
-    : new Error('every Source of the Release was passed by: its indexers refused earlier in this Walk');
-  throw Object.assign(error, { refused });
+  // A gone Source beside a refusal, or beside one passed by, is no bad Release.
+  const bad = badNzb || (last !== undefined && refused.length === 0 && !passedBy);
+  throw new ReleaseGrabError(last?.message ?? 'every Source of the Release was passed by: its indexers refused earlier in this Walk', refused, bad);
 }
 
-/** The indexers a grab's error says refused (grabRelease). */
+/** The indexers a grab's error says refused (grabRelease); none for any other error. */
 export function refusedBy(err: unknown): string[] {
-  return (err as { refused?: string[] } | null)?.refused ?? [];
+  return err instanceof ReleaseGrabError ? err.refused : [];
 }

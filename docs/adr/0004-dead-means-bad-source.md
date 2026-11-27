@@ -40,6 +40,7 @@ The Walk's grab (`walkGrab`, then named `prefetchNzb`) used to treat every faile
 The same upload found on several indexers is one Release (GLOSSARY: Release). This ADR reads at the Release level:
 
 - A bad Release (the check blocked it, its prepare failed for its own reason, the Backend never readied it) is marked dead on every indexer's Source of it, and a Release is dead when any of its Sources carries such a mark, a mark written before the upload was found on the other indexer included. A bad upload is not tried again from another indexer.
-- A link one indexer says is gone, or a bad NZB from it, is that indexer's: only that Source is marked (`linkOnly`), the Walk fetches the Release's Source on another indexer, and the Release is dead by such marks only once every Source's link is.
+- A link one indexer took down (a 404 or code 300) is that indexer's: only that Source is marked (`linkOnly`), the Walk fetches the Release's Source on another indexer, and the Release is dead by such marks only once every Source's link is.
+- A bad NZB is the upload's own: the Release is bad, marked dead on every indexer's Source, and no other indexer is asked for it (owner, 2026-11-27, the review of spec #298).
 - A refusal says nothing about the Release: the Walk skips that indexer and fetches the Release's Source on another one. A Release is passed by for refusals only when every indexer that has it refused.
 - The Release's NZB is fetched first from the indexer whose recent NZB downloads (the last 10 timed grabs in KaijuFlow's stats) were fastest; an indexer with none comes after the measured ones; a tie goes to the indexer listed first. One Release is one grab of the Walk's 30, however many indexers that grab asked.
