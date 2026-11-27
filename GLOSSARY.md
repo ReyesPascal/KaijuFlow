@@ -253,7 +253,7 @@ The record of a failure with no proved cause yet: every observation, hypothesis 
 _Avoid_: ticket (a ticket is for a fix), notes, incident
 
 **Kaiju Search**:
-KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer's capabilities list: IMDb, TMDB, TVDB, TVmaze; IMDb when they are unknown, none when they list no ID) and by name (the title's other names too) at once, the answers merged and each Source listed once with the ways that found it, then sorted by Search Flow. The list goes out as soon as one indexer's answer holds a sure Source, without waiting for slower indexers; their Sources join their Releases, the running walk and the title's next list (#301). With no sure Source yet it waits for every indexer, each bounded by its own timeout. There is nothing to set: no search method. It ships in the release; it learns in dev.
+KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer's capabilities list: IMDb, TMDB, TVDB, TVmaze; IMDb when they are unknown, none when they list no ID) and by name (the title's other names too) at once, the answers merged and each Source listed once with the ways that found it, then sorted by Search Flow. The list goes out as soon as one indexer's answer holds a sure Source the list keeps (after its dedup and the user's filters), without waiting for slower indexers; their Sources join their Releases, the running walk and the title's next list (#301). With no sure Source yet it waits for every indexer, each bounded by its own timeout. There is nothing to set: no search method. It ships in the release; it learns in dev.
 _Avoid_: Ultimate text search, search method, text search (one way of asking only)
 
 **Search Flow**:
