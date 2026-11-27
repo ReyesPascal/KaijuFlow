@@ -23,6 +23,7 @@ retired by ADR 0010 and archived (retired.py, archive/README.md): they stop unle
 """
 import argparse
 import contextlib
+import dataclasses
 import datetime
 import html
 import ipaddress
@@ -573,13 +574,64 @@ NEWS_HOST, ROUTER, SINKHOLE = 'news.newshosting.com', '192.168.4.1', ipaddress.i
 
 
 class Problem(str):
-    """A preflight sentence (it is the text), with the safe fixes `--fix` may run for it (#303): ('rebuild',), ('apply',
-    side), ('key_mode', path) or ('indexer', 'on'|'off', slug). A sentence with none names a fix the owner or the lead makes."""
+    """A preflight sentence (it is the text), with the safe fixes `--fix` may run for it (#303): Rebuild, ApplySettings,
+    PrivateKeyFile or SwitchIndexer. A sentence with none names a fix the owner or the lead makes."""
 
     def __new__(cls, text, *fixes):
         out = super().__new__(cls, text)
         out.fixes = fixes
         return out
+
+
+@dataclasses.dataclass(frozen=True)
+class Rebuild:
+    """The test image built again: --fix does it by turning on --rebuild-image, so run_fixes has nothing to do."""
+    stops_copies = False
+    name = 'rebuild'
+
+    def run(self, cfg):
+        return []
+
+
+@dataclasses.dataclass(frozen=True)
+class ApplySettings:
+    """The expected settings written into one test copy (`testbed.py apply <side>`)."""
+    side: str
+    stops_copies = True
+
+    @property
+    def name(self):
+        return f'apply {self.side}'
+
+    def run(self, cfg):
+        return testbed.apply_expected(cfg['test_dir'], self.side, cfg.get('expected_settings'))
+
+
+@dataclasses.dataclass(frozen=True)
+class PrivateKeyFile:
+    """The key file made readable only by its owner (chmod 600)."""
+    path: str
+    stops_copies = False
+    name = 'key_mode'
+
+    def run(self, cfg):
+        os.chmod(self.path, 0o600)
+        return [f'the key file {self.path} made readable only by you (chmod 600).']
+
+
+@dataclasses.dataclass(frozen=True)
+class SwitchIndexer:
+    """An indexer switched on or off in both the key file and KaijuFlow (`testbed.py indexer on|off <slug>`)."""
+    verb: str  # 'on' or 'off'
+    slug: str
+    stops_copies = True
+
+    @property
+    def name(self):
+        return f'indexer {self.verb}'
+
+    def run(self, cfg):
+        return testbed.indexer_command(cfg['test_dir'], [self.verb, self.slug])
 
 
 FIX = ' (--fix runs it)'  # said in a sentence whose fix --fix runs
@@ -890,7 +942,7 @@ def switch_problem(start, key_on, key_all, rep, sides, port, ours):
                 verb = 'on' if slug in key_on else 'off'
                 commands.append(f'{TESTBED} indexer {verb} {slug}')
                 if ours:
-                    fixes.append(('indexer', verb, slug))
+                    fixes.append(SwitchIndexer(verb, slug))
             else:
                 commands.append(ADD_INDEXER(slug))
     runs = '; --fix runs ' + ('it' if len(commands) == 1 else 'the indexer on and off ones') if fixes else ''
@@ -908,7 +960,7 @@ def checked(cfg, io, seen=None):
     cfg, done = dict(cfg, rebuild_image=True), []
     problems = preflight(cfg, io, seen)
     for _ in range(FIX_ROUNDS):  # a fix can show the next problem (an open key file hides which indexers it switches on)
-        fixes = [f for f in dict.fromkeys(f for p in problems for f in getattr(p, 'fixes', ())) if f != ('rebuild',) and f not in done]
+        fixes = [f for f in dict.fromkeys(f for p in problems for f in getattr(p, 'fixes', ())) if not isinstance(f, Rebuild) and f not in done]
         if not fixes:
             break
         done += fixes
@@ -923,21 +975,15 @@ def checked(cfg, io, seen=None):
 def run_fixes(cfg, fixes, stop_all):
     """Runs the safe fixes (Problem.fixes) on the test folder; returns the lines to print, none with a secret in it. The test
     copies are stopped first when a fix writes a config, as `testbed.py apply` and `indexer` want them."""
-    out, td = [], cfg['test_dir']
-    if any(f[0] in ('apply', 'indexer') for f in fixes):
+    out = []
+    if any(f.stops_copies for f in fixes):
         stop_all()
         out.append('the test copies stopped, so none writes its config over the fixes.')
     for f in fixes:
         try:
-            if f[0] == 'key_mode':
-                os.chmod(f[1], 0o600)
-                out.append(f'the key file {f[1]} made readable only by you (chmod 600).')
-            elif f[0] == 'apply':
-                out += testbed.apply_expected(td, f[1], cfg.get('expected_settings'))
-            elif f[0] == 'indexer':
-                out += testbed.indexer_command(td, [f[1], f[2]])
+            out += f.run(cfg)
         except (OSError, ValueError) as e:  # its sentence comes back in the preflight that follows
-            out.append(f'{" ".join(f[:2])} could not be done ({type(e).__name__}: {e}).')
+            out.append(f'{f.name} could not be done ({type(e).__name__}: {e}).')
     return out
 
 
@@ -986,15 +1032,15 @@ def image_problems(cfg, io):
             state = image_state(label, commit, io.build_inputs_changed)
         if state == 'missing':
             problems.append(Problem(f'The test image {IMAGE} is missing or does not say which commit it was built from: build it '
-                                    f'again with --rebuild-image{FIX}.', ('rebuild',)))
+                                    f'again with --rebuild-image{FIX}.', Rebuild()))
         elif state == 'stale':
             problems.append(Problem(f'The test image was built from commit {label[:7]}, and the code that goes into the image has '
                                     f'changed since then (the repository is at {commit[:7]}): build it again with --rebuild-image{FIX}.',
-                                    ('rebuild',)))
+                                    Rebuild()))
         elif state == 'unknown':
             problems.append(Problem(f'The test image was built from commit {label[:7]}, which this repository does not have, so '
                                     f'nothing says whether it holds the code at {commit[:7]}: build it again with --rebuild-image{FIX}.',
-                                    ('rebuild',)))
+                                    Rebuild()))
     return problems, rebuilt
 
 
@@ -1021,7 +1067,7 @@ def key_file_problems(cfg, io, rep, readable):
         problems.append(f'The key file {path} is missing: create it with one entry per indexer ({ADD_INDEXER()}).')
     elif state == 'open':
         problems.append(Problem(f'The key file {path} can be read by others: make the key file readable only by you (run: '
-                                f'chmod 600 {path}){FIX}.', ('key_mode', path)))
+                                f'chmod 600 {path}){FIX}.', PrivateKeyFile(path)))
     elif state == 'unreadable':
         problems.append(f'The key file {path} has no "indexers" list of names: write it again with one entry per indexer '
                         f'({ADD_INDEXER()}).')
@@ -1063,7 +1109,7 @@ def copies_problems(cfg, io, rep, readable):
         expected = load_expected_settings(path)
         for side in testbed.SETTINGS_SIDES:  # per copy, so each sentence carries the apply command of its copy
             mine = [dict(e, copies=[side]) for e in expected if side in e['copies']]
-            problems += [Problem(t, ('apply', side)) for t in setting_differences(mine, rep['settings'], shown, apply=side)]
+            problems += [Problem(t, ApplySettings(side)) for t in setting_differences(mine, rep['settings'], shown, apply=side)]
     except ValueError as e:
         problems.append(f'The expected settings file cannot be used ({e}): fix the file.')
 
