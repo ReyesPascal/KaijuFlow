@@ -481,6 +481,26 @@ class RealCheckTest(unittest.TestCase):
         self.assertIn('| NinjaCentral | 20 | 7 | none answered, 20 not answered | 0 of 5 | 0 |', text)
         self.assertIn('| DrunkenSlug | 21 | 9 | 0.49 s typical, 2.14 s slowest | 1 of 5 | 4 |', text)
 
+    def test_lists_sent_without_an_indexer_are_read_from_the_list_lines_not_waited_for(self):
+        # a check after #301: Mad Men's list says it went out without DrunkenSlug, and a late NinjaCentral page (its own
+        # name search, after the list) does not count NinjaCentral as left out
+        def lines(steps):
+            out = []
+            for s in steps:
+                if s.get('ref') == 'tt0804503:4:5' and s['step'] == 'list':
+                    out.append(dict(s, not_waited_for=['DrunkenSlug']))
+                elif (s.get('ref') == 'tt0804503:4:5' and s['step'] == 'indexer_page' and s['source'] == 'NinjaCentral'
+                      and s['t'] == max(x['t'] for x in steps if x.get('ref') == s['ref'] and x['step'] == 'indexer_page'
+                                        and x['source'] == 'NinjaCentral')):
+                    out.append(dict(s, t='2026-11-24T12:23:39.000Z'))
+                else:
+                    out.append(s)
+            return out
+        check = real_check(lines)
+        check['started'] = '2026-11-25T10:00:00.000Z'
+        rows = {r['indexer']: r for r in qc.indexer_rows(check, self.outcomes(check))}
+        self.assertEqual((rows['DrunkenSlug']['without'], rows['NinjaCentral']['without']), (1, 0))
+
     def test_without_search_lines_the_plays_column_is_not_known(self):
         check = real_check(lambda steps: [s for s in steps if s['step'] != 'search'])
         rows = qc.indexer_rows(check, self.outcomes(check))

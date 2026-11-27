@@ -253,14 +253,18 @@ def _indexer_names(steps):
     return {allowance.norm(s['source']): s['source'] for s in steps if s.get('step') == 'indexer_page' and s.get('source')}
 
 
+def pages_of(steps, slug):
+    """An indexer's `indexer_page` lines among `steps` (its slug, allowance.norm)."""
+    return [s for s in steps if s.get('step') == 'indexer_page' and allowance.norm(s.get('source')) == slug]
+
+
 def down_indexers(steps, indexers=()):
     """(asked, down): the switched-on indexers (`indexers`, slugs; else the ones the page lines name) and those of them no
     page of which answered, by the name KaijuFlow's lines give them. One that has no page line at all was not heard from
     either, so it is down too."""
     names = _indexer_names(steps)
     asked = [allowance.norm(i) for i in indexers] or list(names)
-    answered = {allowance.norm(s.get('source')) for s in steps if s.get('step') == 'indexer_page' and s.get('ok')}
-    return asked, [names.get(i, i) for i in asked if i not in answered]
+    return asked, [names.get(i, i) for i in asked if not any(s.get('ok') for s in pages_of(steps, i))]
 
 
 def _empty_list(steps, indexers=()):
@@ -390,6 +394,10 @@ def requests_by_indexer(requests):
     return out
 
 
+# #301 (the list deadline) merged: from then on a list line names the indexers it went out without (`not_waited_for`)
+LIST_DEADLINE_FROM = '2026-11-24T14:48:25.000Z'
+
+
 def _list_line(steps):
     return next((s for s in steps if s.get('step') == 'list'), None)
 
@@ -397,8 +405,9 @@ def _list_line(steps):
 def indexer_rows(check, outcomes):
     """One row per switched-on indexer (#304, spec #298 story 25), what it is worth: `searches` and `downloads` the
     stand-in sent it (check['requests']), its pages' answer time (`typical_s` the median, `slowest_s`, None when none
-    answered; `not_answered`), `lists` (the lists KaijuFlow searched for, a cached one left out) and `without` (those it
-    sent before this indexer's last page came, or with no page of it at all), and `only_it`: the plays from a Release
+    answered; `not_answered`), `lists` (the lists KaijuFlow searched for, a cached one left out) and `without` (those whose
+    `list` line names it in `not_waited_for`; for a check from before #301, those sent before this indexer's last page
+    came, or with no page of it at all), and `only_it`: the plays from a Release
     only this indexer's search found, by the Release merge's name match (sizes are not in the lines), None when the
     check has no search lines. `outcomes` are judge's, in judged(check)'s order."""
     visits = judged(check)
@@ -415,9 +424,10 @@ def indexer_rows(check, outcomes):
         if len(had) == 1:
             slug = had.pop()
             only[slug] = only.get(slug, 0) + 1
+    timed = br.parse_ts(check.get('started') or LIST_DEADLINE_FROM) < br.parse_ts(LIST_DEADLINE_FROM)
     rows = []
     for slug in slugs:
-        pages = [s for s in steps if s.get('step') == 'indexer_page' and allowance.norm(s.get('source')) == slug]
+        pages = pages_of(steps, slug)
         ms = [s.get('ms') or 0 for s in pages if s.get('ok')]
         lists = without = 0
         for v in visits:
@@ -425,10 +435,11 @@ def indexer_rows(check, outcomes):
             if not line or line.get('cache') == 'hit':
                 continue
             lists += 1
-            at = br.parse_ts(line['t'])
-            mine = [s for s in v['steps'] if s.get('step') == 'indexer_page' and allowance.norm(s.get('source')) == slug]
-            if not mine or max(br.parse_ts(s['t']) for s in mine) > at:
-                without += 1
+            if timed:  # before #301 the list line does not say whom it went without: guessed from the page times
+                mine = pages_of(v['steps'], slug)
+                without += not mine or max(br.parse_ts(s['t']) for s in mine) > br.parse_ts(line['t'])
+            else:
+                without += slug in {allowance.norm(n) for n in line.get('not_waited_for') or []}
         rows.append({'indexer': names.get(slug, slug), 'searches': (requests.get(slug) or {}).get('search', 0),
                      'downloads': (requests.get(slug) or {}).get('download', 0),
                      'typical_s': round(statistics.median(ms) / 1000, 2) if ms else None,
