@@ -547,6 +547,35 @@ export const playTimeScenarios = [
     },
   },
   {
+    // The list deadline (#301) with the list cache on (spec #298's review, Codex 2): a second list request while the
+    // slow indexer is still out is served from the cache, which holds the fast indexer's answer alone. Its fallback
+    // group takes the late Sources too: its entry (On Click) is dead, and the walk-on plays the slow indexer's Source.
+    id: 'a-list-served-from-the-cache-while-a-slow-indexer-is-out-takes-its-late-sources',
+    run: w => withSettings(w, { whenToResolve: 'on-tile-selection' }, async () => {
+      const { id, fast: [dead], slow: [late] } = offerFastAndSlow(w, 'latecache', [{ tag: 'latecache-fast', kind: 'dead' }], [{ tag: 'latecache-slow' }]);
+      const saved = { cacheEnabled: w.configData.cacheEnabled, cacheTTL: w.configData.cacheTTL };
+      Object.assign(w.configData, { cacheEnabled: true, cacheTTL: 600 });
+      try {
+        await withIndexer(w, w.second.entry, async () => {
+          const t0 = Date.now();
+          await w.list('movie', id);
+          const { result: streams, lines } = await withLogs(() => w.list('movie', id));
+          assert.ok(Date.now() - t0 < SLOW_INDEXER_MS - 300, 'both lists went out before the slow indexer answered');
+          assert.ok(lines.some(l => l.includes('Cache hit')), 'the second list came from the cache');
+          const entry = streams.find(s => !isBest(s) && entryTitle(s) === dead.title);
+          assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle), [dead.title], 'the fast indexer\'s Source alone');
+          await new Promise(r => setTimeout(r, SLOW_INDEXER_MS + 500)); // the slow indexer has answered
+          const r = await play(entry.url);
+          assert.equal(r.status, 200, 'the list entry plays');
+          assertBytes(r.body, late.media, 'the cached list\'s entry walks on to the slow indexer\'s Source');
+        });
+      } finally {
+        Object.assign(w.configData, saved);
+        w.second.slow(0);
+      }
+    }),
+  },
+  {
     // The list deadline (#301): the fast indexer's answer holds only a maybe, so the list waits for the slow one and
     // holds both indexers' Sources; Best plays the slow indexer's sure Source, not the fast one's healthy maybe.
     id: 'the-list-waits-for-the-slow-indexer-when-the-fast-one-has-nothing-sure',

@@ -47,8 +47,17 @@ import { getSelfUrl } from '../utils/selfUrl.js';
 // Use stdTTL: 0 (no expiry) and manage TTL per-entry via cache.set() so runtime changes take effect
 const cache = new NodeCache({ stdTTL: 0 });
 
+/**
+ * A slower indexer's answer still out (#301), by search cache key: the list cache holds the fast answer alone until
+ * it comes, so a list served from the cache meanwhile takes the late Sources from here (spec #298's review, Codex 2).
+ * Resolves to the whole answer's raw results (undefined when it failed); gone once it is cached.
+ */
+type LateRaw = { rawResults: any[]; deprioritizedPacks: any[] };
+const pendingLate = new Map<string, Promise<LateRaw | undefined>>();
+
 export function clearSearchCache(): void {
   cache.flushAll();
+  pendingLate.clear();
   clearFallbackGroups();
   clearTimeoutEntries();
   clearResolvedSessions();
@@ -352,6 +361,16 @@ async function streamList(type: string, id: string, listLine: ListLine): Promise
     // The Walk's candidates of a list's raw results, with no fallback group made (#301: the late Sources).
     const candidatesFromRaw = (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta, play: PlayContext): FallbackCandidate[] =>
       candidatesOf(keptOf(rawResults, deprioritizedPacks, titleMeta, play));
+    // A list's late Sources (#301): the whole answer's candidates, given to the list's fallback group (its entries keep
+    // their places) and returned for the running Walk. The list's own candidates when the answer failed.
+    const lateCandidates = (late: Promise<LateRaw | undefined>, titleMeta: (now: number) => TitleMeta, play: PlayContext,
+      fallbackGroupId: string | undefined, fallbackCandidates: FallbackCandidate[] | undefined): Promise<FallbackCandidate[]> =>
+      late.then(raw => {
+        if (!raw) return fallbackCandidates ?? [];
+        const candidates = candidatesFromRaw(raw.rawResults, raw.deprioritizedPacks, titleMeta(Date.now()), play);
+        if (fallbackGroupId) addToFallbackGroup(fallbackGroupId, candidates);
+        return candidates;
+      });
 
     const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta) => {
       const play = playOf(titleMeta);
@@ -396,12 +415,13 @@ async function streamList(type: string, id: string, listLine: ListLine): Promise
         const now = Date.now();
 
         // Re-apply filters and sort, and build streams with current settings
-        const { streams, fallbackCandidates, play } = await processFromRaw(
-          cached.rawResults, cached.deprioritizedPacks || [],
-          { episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime, flow: cached._meta.flow }
-        );
+        const cachedMeta = (at: number): TitleMeta => ({ episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now: at, runtime: cached._meta.runtime, flow: cached._meta.flow });
+        const { streams, fallbackCandidates, fallbackGroupId, play } = await processFromRaw(cached.rawResults, cached.deprioritizedPacks || [], cachedMeta(now));
 
-        startHeadStart(fallbackCandidates, play);
+        // The cache holds only the fast indexer's answer while a slower one is still out (#301): its Sources join this
+        // list's fallback group and its Walk when they come.
+        const late = pendingLate.get(cacheKey);
+        startHeadStart(fallbackCandidates, play, late && lateCandidates(late, cachedMeta, play, fallbackGroupId, fallbackCandidates));
         Object.assign(listLine, { cache: 'hit', streams: streams.length });
         return { streams };
       }
@@ -476,20 +496,20 @@ async function streamList(type: string, id: string, listLine: ListLine): Promise
     cacheList(rawResults, deprioritizedPacks);
 
     if (answer.late) {
-      // Late Sources (#301): every indexer's answer, kept for the next list request of this title, given to the
-      // running Walk and to the list's fallback group (the list's entries keep their places).
-      const whole = answer.late.then(late => {
+      // Late Sources (#301): every indexer's answer, kept for the next list request of this title (cached; until then
+      // pendingLate, for a list served from the cache meanwhile), given to the running Walk and to the list's fallback
+      // group (the list's entries keep their places).
+      const pending: Promise<LateRaw | undefined> = answer.late.then(late => {
         const raw = rawOf(late, false);
         cacheList(raw.rawResults, raw.deprioritizedPacks);
-        const candidates = candidatesFromRaw(raw.rawResults, raw.deprioritizedPacks, titleMeta(Date.now()), play);
-        if (fallbackGroupId) addToFallbackGroup(fallbackGroupId, candidates);
         console.log(`⏩ Late answer for ${type} ${imdbId}: ${late.indexer.length} indexer Release(s), the list had ${answer.indexer.length}`);
-        return candidates;
+        return raw;
       }).catch(err => {
         console.error('❌ Late indexer answer failed:', err);
-        return fallbackCandidates ?? [];
-      });
-      startHeadStart(fallbackCandidates, play, whole);
+        return undefined;
+      }).finally(() => { if (pendingLate.get(cacheKey) === pending) pendingLate.delete(cacheKey); });
+      pendingLate.set(cacheKey, pending);
+      startHeadStart(fallbackCandidates, play, lateCandidates(pending, titleMeta, play, fallbackGroupId, fallbackCandidates));
     } else {
       startHeadStart(fallbackCandidates, play);
     }
