@@ -231,7 +231,8 @@ test('a name search keeps a release that fits another TMDB/TVDB name of the titl
 });
 
 // With the dev switch on (#280), a `search` step line per indexer and way of asking: what it was asked, how many
-// results came back, how many stayed, and each result sure / maybe / dropped with why; and a line whenever the strict
+// results came back, how many stayed, and each result sure / maybe / dropped with why (a kept one with its size, for
+// the indexer table's Release rule, tools/brain/quickcheck.py); and a line whenever the strict
 // rule alone would have left nothing. With it off, none: a release logs what it logs today.
 const searchLines = (logs: string) => logs.split('\n').map(l => parseStepLine(l)).filter((r): r is NonNullable<typeof r> => r?.step === 'search');
 const WRONG = 'The.Matrix.Resurrections.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-FLUX';
@@ -252,13 +253,13 @@ test('with the dev switch on, a search line per indexer and way of asking, each 
   const lines = searchLines(logs).map(({ t, ms, ...rest }) => rest);
   assert.deepEqual(lines, [
     { step: 'search', source: 'Ninja', ok: true, title: 'The Matrix', dev: true, way: 'id', asked: ['imdb'], count: 2, kept: 2, sure: 2, maybe: 0, results: [
-      { release: BOTH, flow: 'sure', why: 'the name and year fit' },
+      { release: BOTH, size: 4000000000, flow: 'sure', why: 'the name and year fit' },
       // A maybe by its name the loose rule keeps, which the ID search returned: sure by extra proof (#286).
-      { release: ID_ONLY, flow: 'sure', proof: 'id', why: 'the ID search returned it too; by its name alone: the name "The Matrix" is not in it' },
+      { release: ID_ONLY, size: 4000000000, flow: 'sure', proof: 'id', why: 'the ID search returned it too; by its name alone: the name "The Matrix" is not in it' },
     ] },
     { step: 'search', source: 'Ninja', ok: true, title: 'The Matrix', dev: true, way: 'name', asked: ['name'], count: 3, kept: 2, sure: 2, maybe: 0, results: [
-      { release: BOTH, flow: 'sure', why: 'the name and year fit' },
-      { release: NAME_ONLY, flow: 'sure', why: 'the name and year fit' },
+      { release: BOTH, size: 4000000000, flow: 'sure', why: 'the name and year fit' },
+      { release: NAME_ONLY, size: 4000000000, flow: 'sure', why: 'the name and year fit' },
       { release: WRONG, flow: 'dropped', why: 'the name "The Matrix" is not followed by a year (1999 wanted)' },
     ] },
   ]);

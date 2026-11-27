@@ -425,6 +425,20 @@ def ninjacentral_down(steps):
     return out
 
 
+class ReleaseRuleTest(unittest.TestCase):
+    """The Release rule on its shared table (tests/fixtures/release-rule/table.tsv), the one Kaiju Search's copy
+    (mergeReleases, tests/unit/release-rule.test.ts) is tested against."""
+
+    def test_each_row_of_the_shared_table(self):
+        head, *lines = read(HERE, '..', '..', 'tests', 'fixtures', 'release-rule', 'table.tsv').rstrip('\n').split('\n')
+        for row in [dict(zip(head.split('\t'), line.split('\t'))) for line in lines]:
+            size = (lambda v: int(v) if v else None)
+            with self.subTest(a=row['a'], b=row['b']):
+                self.assertEqual(qc.release_key(row['a']), row['key_a'])
+                self.assertEqual(qc.same_release(row['a'], size(row['size_a']), row['b'], size(row['size_b'])),
+                                 row['same'] == 'yes')
+
+
 class RealCheckTest(unittest.TestCase):
     """The judge and the indexer table on the real 2026-11-24 quick check, as it was and with one indexer made down."""
 
@@ -500,6 +514,24 @@ class RealCheckTest(unittest.TestCase):
         check['started'] = '2026-11-25T10:00:00.000Z'
         rows = {r['indexer']: r for r in qc.indexer_rows(check, self.outcomes(check))}
         self.assertEqual((rows['DrunkenSlug']['without'], rows['NinjaCentral']['without']), (1, 0))
+
+    def test_a_release_only_one_indexer_had_is_matched_by_name_and_a_size_within_one_percent(self):
+        # the search lines with sizes (as KaijuFlow writes them since spec #298's review): NinjaCentral's copy of the
+        # name DrunkenSlug played Forgotten Island from is 5 % bigger, another upload, so that play is DrunkenSlug's alone
+        def sized(far):
+            def edit(steps):
+                out = []
+                for s in steps:
+                    if s['step'] == 'search' and s.get('results'):
+                        big = far and s['source'] == 'NinjaCentral' and s.get('ref') == 'tt36583977'
+                        s = dict(s, results=[dict(r, size=1_050_000_000 if big else 1_000_000_000) for r in s['results']])
+                    out.append(s)
+                return out
+            return edit
+        for far, drunkenslug in ((False, 3), (True, 4)):
+            check = real_check(sized(far))
+            rows = {r['indexer']: r for r in qc.indexer_rows(check, self.outcomes(check))}
+            self.assertEqual((rows['DrunkenSlug']['only_it'], rows['NinjaCentral']['only_it']), (drunkenslug, 0), far)
 
     def test_without_search_lines_the_plays_column_is_not_known(self):
         check = real_check(lambda steps: [s for s in steps if s['step'] != 'search'])

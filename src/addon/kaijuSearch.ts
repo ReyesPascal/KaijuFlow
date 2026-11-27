@@ -119,16 +119,17 @@ export function mergeReleases<T extends { title?: string; size?: number; indexer
 /** One indexer as a search asked it: its name, and the IDs it was asked by (none when it was asked by name only). */
 export interface AskedIndexer { source: string; ids: SearchWay[] }
 
-type Marked = { title: string; flow: 'sure' | 'maybe'; flowWhy: string; proof?: string; indexerName?: string; foundBy?: FoundBy[] };
+type Marked = { title: string; size?: number; flow: 'sure' | 'maybe'; flowWhy: string; proof?: string; indexerName?: string; foundBy?: FoundBy[] };
 
-/** A result as its search line names it: a sure one extra proof made sure says which proof (#286). */
-const entry = (r: Marked) => ({ release: r.title, flow: r.flow, ...(r.proof ? { proof: r.proof } : {}), why: r.flowWhy });
+/** A result as its search line names it, with its size when known (the quick check's indexer table matches Releases by
+ *  name and size, tools/brain/quickcheck.py); a sure one extra proof made sure says which proof (#286). */
+const entry = (r: Marked) => ({ release: r.title, ...(r.size ? { size: r.size } : {}), flow: r.flow, ...(r.proof ? { proof: r.proof } : {}), why: r.flowWhy });
 
 /**
  * Write a `search` step line per indexer and way of asking (dev switch only; the caller checks it): the way (`id`,
  * `name`), what it was asked (`asked`: the IDs, or `name`), how many results came back that way (`count`, the kept
  * ones and those Search Flow dropped), how many stayed (`kept`, `sure`, `maybe`) and each result with its Search Flow
- * mark and why (`results`, the dropped ones last). `marked` is the search's merged results marked by Search Flow;
+ * mark and why (`results`, the dropped ones last; a kept one with its `size`). `marked` is the search's merged results marked by Search Flow;
  * `dropped` what each indexer's name filter dropped (`droppedBy`; key '' is a query to several indexers at once, put
  * on a name line of `several`, the index manager). Names and numbers only: no URL or key.
  */

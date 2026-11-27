@@ -364,14 +364,22 @@ def judge(visit, names=lambda: (), indexers=()):
 
 def release_key(name):
     """A release name as KaijuFlow's Release merge matches it (`releaseNameKey`, src/addon/kaijuSearch.ts, #299): lower
-    case, spaces, `.`, `-` and `_` gone."""
+    case, spaces, `.`, `-` and `_` gone. Both copies are tested on tests/fixtures/release-rule/table.tsv."""
     return re.sub(r'[\s._-]+', '', str(name or '').lower())
 
 
+def same_release(a, size_a, b, size_b):
+    """Whether two Sources are one Release, as KaijuFlow's Release merge decides (`mergeReleases`): the same
+    release_key, and both sizes known and at most 1 % apart (of the larger). Tested on the same table as Kaiju Search."""
+    return (release_key(a) == release_key(b) and bool(size_a) and bool(size_b) and size_a > 0 and size_b > 0
+            and abs(size_a - size_b) <= 0.01 * max(size_a, size_b))
+
+
 def found_by_indexer(steps, vid, since):
-    """{indexer: [release names]} that each indexer's search found for one visit, from KaijuFlow's `search` lines (the
-    dev switch's, one per indexer and way, each Source with its name), from `since` (an ISO time) on. {} when there are
-    none (the dev switch off)."""
+    """{indexer: [[release name, size]]} that each indexer's search found for one visit, from KaijuFlow's `search` lines
+    (the dev switch's, one per indexer and way, each Source with its name and size; size None when the line has none,
+    a dropped Source or a line from before spec #298's review), from `since` (an ISO time) on. {} when there are none
+    (the dev switch off)."""
     lo, out = br.parse_ts(since), {}
     for s in steps:
         if s.get('step') != 'search' or s.get('ref') != vid or not s.get('source'):
@@ -381,9 +389,25 @@ def found_by_indexer(steps, vid, since):
                 continue
         except (KeyError, TypeError, ValueError):
             continue
-        names = out.setdefault(s['source'], [])
-        names += [r['release'] for r in s.get('results') or [] if r.get('release') and r['release'] not in names]
+        found = out.setdefault(s['source'], [])
+        found += [pair for pair in ([r['release'], r.get('size')] for r in s.get('results') or [] if r.get('release'))
+                  if pair not in found]
     return out
+
+
+def indexers_with(visit, release):
+    """The indexers (slugs) whose search found the Release played from `release` in this visit (its `found`), by the
+    Release rule (same_release: the name and a size within 1 %), the played Source's size taken from the indexer it
+    played from (its `played` line's `source`). A visit whose `found` has no sizes (a check from before spec #298's
+    review; a `found` of names only, from before that) is matched by the name alone."""
+    found = {i: [r if isinstance(r, list) else [r, None] for r in rels] for i, rels in (visit.get('found') or {}).items()}
+    if not any(size for rels in found.values() for _, size in rels):
+        return {allowance.norm(i) for i, rels in found.items() if any(release_key(n) == release_key(release) for n, _ in rels)}
+    by = next((s.get('source') for s in visit.get('steps') or [] if s.get('step') == 'played'), None)
+    sizes = [size for i, rels in found.items() if by is None or i == by for n, size in rels
+             if size and release_key(n) == release_key(release)]
+    return {allowance.norm(i) for i, rels in found.items()
+            if any(same_release(release, mine, n, size) for mine in sizes for n, size in rels)}
 
 
 def requests_by_indexer(requests):
@@ -408,8 +432,8 @@ def indexer_rows(check, outcomes):
     answered; `not_answered`), `lists` (the lists KaijuFlow searched for, a cached one left out) and `without` (those whose
     `list` line names it in `not_waited_for`; for a check from before #301, those sent before this indexer's last page
     came, or with no page of it at all), and `only_it`: the plays from a Release
-    only this indexer's search found, by the Release merge's name match (sizes are not in the lines), None when the
-    check has no search lines. `outcomes` are judge's, in judged(check)'s order."""
+    only this indexer's search found (indexers_with: the Release rule, name and size), None when the check has no
+    search lines. `outcomes` are judge's, in judged(check)'s order."""
     visits = judged(check)
     steps = [s for v in visits for s in v.get('steps') or []]
     names = _indexer_names(steps)
@@ -420,7 +444,7 @@ def indexer_rows(check, outcomes):
     for v, o in zip(visits, outcomes):
         if o['outcome'] != PLAYED or not o.get('release'):
             continue
-        had = {allowance.norm(i) for i, rels in (v.get('found') or {}).items() if release_key(o['release']) in map(release_key, rels)}
+        had = indexers_with(v, o['release'])
         if len(had) == 1:
             slug = had.pop()
             only[slug] = only.get(slug, 0) + 1
