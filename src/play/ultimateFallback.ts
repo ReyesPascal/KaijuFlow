@@ -403,7 +403,8 @@ export async function ultimateFallbackFromCandidates(
           if (checking.get(index) !== mine) return;
           runOf(index).containerType = result.containerType;
           // Search Flow's extra proof (#286): a maybe whose NZB's video file fits the title is sure from now on. Its
-          // list's Source is marked (a later Walk of the list, the played line); this Walk keeps its order (#190).
+          // list's Source is marked (a later Walk of the list, the played line), and this Walk hands it over as sure, in
+          // its list place (#190).
           const proved = play.flow ? videoProof(list[index], result.videoName, play.flow) : undefined;
           if (proved) {
             Object.assign(list[index], { flow: proved.flow, flowWhy: proved.flowWhy, proof: proved.proof });
@@ -411,7 +412,7 @@ export async function ultimateFallbackFromCandidates(
           }
           // A check whose pool was stopped (its Walk ended, #244) was not answered: no verdict to log.
           if (!isHealthy(result) && !used?.stopped) console.log(`${tag} ❌ #${index + 1} not healthy (${result.message}) — ${list[index].title}`);
-          verdict({ type: 'checked', index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true });
+          verdict({ type: 'checked', index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true, ...(proved ? { sure: true } : {}) });
         }, () => verdict({ type: 'checked', index, verdict: 'error' }));
     };
     // Stop the Walk's other checks for an Unscramble retry: their connections close at once (a fresh pool for later).

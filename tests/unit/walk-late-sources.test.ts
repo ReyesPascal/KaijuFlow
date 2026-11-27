@@ -73,3 +73,14 @@ test('a held maybe leaves its place in the Walk to a late sure Source, not to an
   walk.on({ type: 'grabFailed', index: 1, badSource: true, refused: [] });
   assert.deepEqual(kinds(walk.on({ type: 'closed' })), ['prepare 0'], 'the list whole: the held maybe plays');
 });
+
+test('a maybe the check proves sure is handed over at once, before a late sure Source, in its place', () => {
+  const { walk, insert } = walkOver(['maybe'], 2);
+  walk.start();
+  walk.on({ type: 'grabbed', index: 0 });
+  assert.deepEqual(kinds(walk.on({ type: 'checked', index: 0, verdict: 'healthy', sure: true })), ['prepare 0'], 'sure now: no wait for the list to be whole');
+  assert.deepEqual(kinds(insert(1, ['sure'])), ['grab 1'], 'a late sure Source is walked beside it');
+  walk.on({ type: 'grabbed', index: 1 });
+  assert.deepEqual(kinds(walk.on({ type: 'checked', index: 1, verdict: 'healthy' })), [], 'the proven Source is being prepared');
+  assert.deepEqual(kinds(walk.on({ type: 'prepared', index: 0, videoPath: '/v/a.mkv' })), ['settle 0']);
+});

@@ -77,7 +77,8 @@ export type WalkEvent =
   | { type: 'grabbed'; index: number; refused?: readonly string[] }
   /** `badSource`: every indexer says the link is gone, or its NZB is bad (ADR 0004). `refused`: the indexers that refused. */
   | { type: 'grabFailed'; index: number; badSource: boolean; refused: readonly string[] }
-  | { type: 'checked'; index: number; verdict: 'healthy' | 'blocked' | 'error'; episodeOnly?: boolean }
+  /** `sure`: Search Flow's extra proof made a maybe sure (#286): it is handed over as a sure Source, in its list place. */
+  | { type: 'checked'; index: number; verdict: 'healthy' | 'blocked' | 'error'; episodeOnly?: boolean; sure?: boolean }
   | { type: 'prepared'; index: number; videoPath: string }
   | { type: 'prepareFailed'; index: number; badSource: boolean }
   /** Late Sources (#301): `count` of them were put in the list at `at`, at or after the first Source not reached. */
@@ -133,7 +134,7 @@ export interface WalkMember {
   prepare: 'idle' | 'preparing' | 'done' | 'failed' | 'cancelled';
   /** A library hit: waiting (parked), played, kept as a backup, or passed by (same video, other container). */
   library?: 'parked' | 'played' | 'backup' | 'duplicate' | 'mismatch';
-  /** A maybe when the Walk reached it (a later extra proof does not move it, #190). */
+  /** A maybe: read when the Walk reached it, dropped when the check proves it sure (it keeps its list place, #190). */
   maybe?: boolean;
 }
 
@@ -202,6 +203,7 @@ export class Walk {
         break;
       case 'checked':
         m.check = event.verdict;
+        if (event.sure) delete m.maybe;
         if (event.verdict === 'blocked') out.push({ type: 'markDead', index: m.index, cause: event.episodeOnly ? 'check-episode' : 'check' });
         break;
       case 'prepared':

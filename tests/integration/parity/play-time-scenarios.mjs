@@ -248,7 +248,8 @@ const SLOW_INDEXER_MS = 1500;
 
 /**
  * Offer movie Sources for a new title named `KaijuFlow PlayTime <name>` (2026) on the suite's indexer (fast) and on the
- * second one, which answers SLOW_INDEXER_MS late (#301). Each spec: { tag, kind?: 'healthy' | 'dead' }. A tag that
+ * second one, which answers SLOW_INDEXER_MS late (#301). Each spec: { tag, kind?: 'healthy' | 'dead', file? (the NZB's
+ * video file name) }. A tag that
  * ends in `-CE` makes a maybe (`CE` between the name and the year), any other a sure Source. Sizes go down in the
  * order given, fast ones first. Returns { id, fast: [...], slow: [...] }, each { tag, title, media, link, size }.
  */
@@ -260,7 +261,7 @@ function offerFastAndSlow(w, name, fastSpecs, slowSpecs) {
     const group = spec.tag.endsWith('-CE') ? `${name}-CE` : name;
     const title = `KaijuFlow.PlayTime.${group}.2026.2160p.WEB-DL.H265-${spec.tag.replace(/-/g, '')}`;
     const media = mediaFor(spec.tag);
-    const link = w.backend.addMovie(spec.tag, title, media, spec.kind === 'dead' ? { dead: true } : {});
+    const link = w.backend.addMovie(spec.tag, title, media, spec.kind === 'dead' ? { dead: true } : spec.file ? { file: spec.file } : {});
     return { tag: spec.tag, title, media, link, size: (20 - i++) * GB };
   };
   const fast = fastSpecs.map(make), slow = slowSpecs.map(make);
@@ -599,6 +600,28 @@ export const playTimeScenarios = [
         w.second.slow(0);
       }
     },
+  },
+  {
+    // Search Flow's extra proof (#286) while the list is still growing (#301; spec #298's review, Codex 3): the fast
+    // indexer's sure Source is dead and its maybe's NZB video file fits the title, so the check makes the maybe sure.
+    // The Walk hands it over at once, in its place: Best plays it, not the slow indexer's sure Source that comes later.
+    id: 'a-maybe-proven-sure-while-the-list-grows-plays-before-a-late-sure-source',
+    run: w => withSettings(w, { candidateCount: 2 }, async () => {
+      const file = 'KaijuFlow.PlayTime.growproof.2026.2160p.WEB-DL.H265-GRP.mkv';
+      const { id, fast: [, maybe], slow: [late] } = offerFastAndSlow(w, 'growproof',
+        [{ tag: 'growproof-dead', kind: 'dead' }, { tag: 'growproof-CE', file }], [{ tag: 'growproof-late' }]);
+      try {
+        await withIndexer(w, w.second.entry, async () => {
+          const streams = await w.list('movie', id);
+          assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle).length, 2, 'the list went out with the fast indexer\'s two Sources');
+          const r = await play(streams[0].url);
+          assert.equal(r.status, 200, 'Best plays');
+          assertBytes(r.body, maybe.media, `Best plays the maybe proven sure, not ${late.tag}`);
+        });
+      } finally {
+        w.second.slow(0);
+      }
+    }),
   },
   {
     // #301 with #300: a late copy of a Release joins its Sources. The fast indexer (here the second one) lists the
