@@ -2,7 +2,7 @@
 
 Commands are the `package.json` scripts. The things they don't tell you:
 
-- **Every check but integration in one command:** `npm run check` (build, unit tests, `typecheck:tests`, `check:brain`), the same command CI runs. Put it in agent briefs and merge checks, then `npm run test:integration`; plain `tsc` skips the test files.
+- **Every check but integration in one command:** `npm run check` (build, unit tests, `typecheck:tests`, `check:brain`), the same command CI runs; plain `tsc` skips the test files. Which to run when: rules.md, "The test commands".
 - **Integration and A4 runners test committed code.** Commit, then run `npm run test:integration` / `npm run test:a4`: they rebuild `dist/` first. Calling a `run-ci.sh` directly stops with STALE-DIST when `dist/` is older than `src/`. Leave `src/` alone while a run goes: an edit ends it with SOURCE HASHES CHANGED, and the run counts for nothing.
 - **One suite, or a few:** `npm run test:integration -- parity-play-time-check discovery-stream` runs only those (`tests/integration/<name>.mjs`; a wrong name lists the suites). Use it while working on a change and the full run before DONE. Two such runs can go side by side, each in its own 6G scope (below).
 - **Fresh worktree:** run `npm ci` at the root *and* in `ui/`.
@@ -15,4 +15,4 @@ Commands are the `package.json` scripts. The things they don't tell you:
 - **Brain tools** (`tools/brain/*.py`): `npm run check:brain` runs CI's compile, lint (ruff 0.6.9) and tests in one go; use it in agent briefs instead of spelling out the commands.
 - **One brain test:** `python3 -I -m unittest discover -s tools/brain -p 'test_frontier.py' -k test_leaves_out_spec_issues` (the file in `-p`, optionally one test or class name in `-k`; run from the repo root).
 - **Guard hook:** `.claude/settings.json` runs `tools/brain/guard.py` on Bash, Read and Grep. It refuses reading the test folder's key files or a test copy's config (use `python3 -I tools/brain/testbed.py read-settings [side]`, secrets as `***`), with one narrow exception: AltMount's failed NZBs (`altmount-kf/config/.nzbs/failed/**/*.nzb`, #280) and the `gh` calls that fail here; it allows the brain tools and everything unrelated. Details in the runbook.
-- **Live checks on Brain** (timed runs, article checks): `tools/brain/README.md`; the rules (the owner's go first) are in `tools/brain/RUNBOOK.md`.
+- **Live checks on Brain** (real-use checks, article checks): `tools/brain/README.md`; the steps are in `tools/brain/RUNBOOK.md`, and every rule (the owner's go first) in `tools/brain/docs/rules.md`.

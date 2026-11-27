@@ -1,7 +1,7 @@
 // Search Flow's extra proof (#286): a film's other names come from TMDB's alternative titles, read from the reply to
 // the request KaijuFlow makes (`/movie/{id}?append_to_response=release_dates,alternative_titles`), and reach the
 // search as `knownNames` through resolveTitle. The replies are real ones, captured on 2026-11-24
-// (tests/fixtures/tmdb/README.md, tests/fixtures/cinemeta/README.md); any other request is refused (review rule 1).
+// (tests/fixtures/tmdb/README.md, tests/fixtures/cinemeta/README.md); any other request is refused.
 // Run: npm run test:unit
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';

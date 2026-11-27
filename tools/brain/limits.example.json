@@ -1,9 +1,0 @@
-{
-  "indexers": {
-    "ninjacentral": {
-      "search_per_day": 2000,
-      "download_per_day": 450,
-      "reset": "rolling-24h"
-    }
-  }
-}

@@ -14,7 +14,7 @@ import { ProwlarrSearcher } from '../searchers/prowlarrSearcher.js';
 import { NzbhydraSearcher } from '../searchers/nzbhydraSearcher.js';
 import { EasynewsSearcher } from '../searchers/easynewsSearcher.js';
 import { UsenetIndexer, type IndexerCaps } from '../types.js';
-import { waysOf, idWaysOf, foundBy, mergeFound, logSearchLines, logStrictAlone, type AskedIndexer, type SearchWay } from './kaijuSearch.js';
+import { waysOf, idWaysOf, foundBy, mergeFound, mergeReleases, logSearchLines, logStrictAlone, type AskedIndexer, type SearchWay } from './kaijuSearch.js';
 import { withFlowTitle, withSearchIndexer, droppedBy, flowTitleOf, markSources } from '../parsers/searchFlow.js';
 import { logStep, devSwitchOn } from '../utils/stepTiming.js';
 
@@ -65,25 +65,69 @@ export interface SearchContext {
 /**
  * Search via the configured index manager (Prowlarr, NZBHydra, or Newznab).
  */
-export function indexManagerSearch(ctx: SearchContext): Promise<any[]> {
+export function indexManagerSearch(ctx: SearchContext, onAnswer?: OnAnswer): Promise<any[]> {
   const title = flowTitleOf(ctx);
   const dev = devSwitchOn();
   return withFlowTitle(title, async () => {
     const asked: AskedIndexer[] = [];
-    const results = await askIndexManager(ctx, asked);
+    const results = await askIndexManager(ctx, asked, onAnswer);
     if (dev) logSearchLines(searchLog(ctx), asked, markSources(results, title), droppedBy(), managerName());
     return results;
   }, dev);
 }
 
 /**
- * Kaiju Search (#285): the indexers' and EasyNews's search at once, both inside the title's Search Flow. With the dev
- * switch on, a `search` line when the strict rule alone would have left nothing of what both found.
+ * An indexer answered (Newznab mode, one call per indexer): every Source the indexers that have answered so far sent,
+ * in the order they answered, and the indexers still to answer. True when the caller sends the list out with these:
+ * the Sources still to come are then put after them, in the indexers' order.
  */
-export async function kaijuSearch(ctx: SearchContext): Promise<{ indexer: any[]; easynews: any[] }> {
-  const [indexer, easynews] = await Promise.all([indexManagerSearch(ctx), easynewsSearch(ctx)]);
-  if (devSwitchOn()) logStrictAlone(searchLog(ctx), markSources([...indexer, ...easynews], flowTitleOf(ctx)));
-  return { indexer, easynews };
+export type OnAnswer = (sources: any[], waitingFor: string[]) => boolean;
+
+/** What Kaiju Search found: the indexers' Releases and EasyNews's results. */
+export interface KaijuAnswer { indexer: any[]; easynews: any[] }
+
+/** Kaiju Search's answer for the list. `late`: every indexer's answer, when the list goes out before the slower ones
+ *  (`notWaitedFor`, by name) have answered (#301); the Releases already listed come first in it, in their order. */
+export interface KaijuListAnswer extends KaijuAnswer { late?: Promise<KaijuAnswer>; notWaitedFor?: string[] }
+
+/**
+ * Kaiju Search (#285): the indexers' and EasyNews's search at once, both inside the title's Search Flow. The indexers'
+ * Sources come back as Releases (#299, `mergeReleases`): an upload several indexers have is listed once, with its
+ * Source on each. With the dev switch on, a `search` line when the strict rule alone would have left nothing of what
+ * both found.
+ *
+ * The list deadline (#301): the search answers as soon as an indexer's answer holds a sure Source (Search Flow's sure)
+ * while others are still to answer; their Sources come in `late`, merged into the Releases. Otherwise it waits for
+ * every indexer, each bounded by its own timeout. EasyNews is always waited for. Prowlarr and NZBHydra ask every indexer in one call: they answer once.
+ * `listed`: what the list would hold of the Releases so far, marked by Search Flow (the list's dedup and the user's
+ * filters applied, spec #298's review P7), so a sure Source the list drops does not send it out early; without it,
+ * every Release counts.
+ */
+export async function kaijuSearch(ctx: SearchContext, opts: { listed?: (releases: any[]) => { flow?: string }[] } = {}): Promise<KaijuListAnswer> {
+  const title = flowTitleOf(ctx);
+  const easy = easynewsSearch(ctx);
+  let goOut!: (out: { soFar: any[]; notWaitedFor: string[] }) => void;
+  const early = new Promise<{ soFar: any[]; notWaitedFor: string[] }>(resolve => { goOut = resolve; });
+  let gone = false;
+  const sources = indexManagerSearch(ctx, (soFar, waitingFor) => {
+    if (waitingFor.length === 0 || gone) return false;
+    const held = opts.listed ? opts.listed(mergeReleases(mergeFound(soFar))) : markSources(soFar, title);
+    if (held.some(s => s.flow === 'sure')) {
+      gone = true;
+      goOut({ soFar, notWaitedFor: waitingFor });
+      return true;
+    }
+    return false;
+  });
+  const all: Promise<KaijuAnswer> = Promise.all([sources, easy]).then(([found, easynews]) => {
+    const indexer = mergeReleases(found);
+    if (devSwitchOn()) logStrictAlone(searchLog(ctx), markSources([...indexer, ...easynews], title));
+    return { indexer, easynews };
+  });
+  all.catch(() => {});
+  const first = await Promise.race([early.then(out => ({ out })), all.then(answer => ({ answer }))]);
+  if ('answer' in first) return first.answer;
+  return { indexer: mergeReleases(mergeFound(first.out.soFar)), easynews: await easy, late: all, notWaitedFor: first.out.notWaitedFor };
 }
 
 /** A dev `search` step line for this title (names and numbers only). */
@@ -99,7 +143,7 @@ function idsAsked(kind: 'movie' | 'tv', caps: IndexerCaps | undefined, imdbId: s
 
 /** Kaiju Search over the configured index manager, inside the title's Search Flow (`withFlowTitle`). `asked` gets
  *  every indexer asked and the IDs it was asked by. */
-async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promise<any[]> {
+async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[], onAnswer?: OnAnswer): Promise<any[]> {
   const kind = ctx.type === 'movie' ? 'movie' as const : 'tv' as const;
   const { type, imdbId, title, year, country, season, episode, episodesInSeason, priorSeasonsEpisodeCount, absoluteEpisodeNumber, tvdbPriorSeasonsCount, additionalTitles, isAnime, titleYear, searchAliases, episodeAired, animeResolvedIds, tvdbIdFromRequest } = ctx;
 
@@ -374,8 +418,8 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
         ? `🔀 Newznab parallel alt-title movie search: querying primary + ${additionalTitles!.length} alt(s) concurrently`
         : `🔀 Newznab parallel alt-title search: querying primary + ${additionalTitles!.length} alt(s) concurrently`);
     }
-    const altSearchPromises = parallelAltEnabled
-      ? enabledIndexers.flatMap(indexer => additionalTitles!.map(async (altTitle) => {
+    const altSearchesOf = (indexer: typeof enabledIndexers[number]) => parallelAltEnabled
+      ? additionalTitles!.map(async (altTitle) => {
           const startTime = Date.now();
           const searcher = new UsenetSearcher(applySearchTimeoutOverride(indexer));
           const { result, lines } = await withBuffer(async (): Promise<any[]> => {
@@ -399,15 +443,26 @@ async function askIndexManager(ctx: SearchContext, asked: AskedIndexer[]): Promi
             }
           });
           return { result, lines, indexerName: indexer.name };
-        }))
+        })
       : [];
 
-    const mainResults = await Promise.all(searchPromises);
-    for (const r of mainResults) accumulate(r.indexerName, r.lines);
-    const altResults = await Promise.all(altSearchPromises);
-    for (const r of altResults) accumulate(r.indexerName, r.lines);
-
-    let results = [...mainResults.flatMap(r => r.result), ...altResults.flatMap(r => r.result)];
+    // The list deadline (#301): each indexer's answer (its main pass and its parallel alt-title searches) is told to
+    // `onAnswer` as it comes. When the list goes out with the answers so far, they stay first, in the order they came.
+    const answered: { name: string; result: any[] }[] = [];
+    let wentOutWith: string[] | null = null;
+    const answers = await Promise.all(enabledIndexers.map((indexer, i) =>
+      Promise.all([searchPromises[i], ...altSearchesOf(indexer)]).then(parts => {
+        answered.push({ name: indexer.name, result: parts.flatMap(p => p.result) });
+        const waitingFor = enabledIndexers.map(x => x.name).filter(n => !answered.some(a => a.name === n));
+        if (onAnswer && !wentOutWith && onAnswer(answered.flatMap(a => a.result), waitingFor)) {
+          wentOutWith = answered.map(a => a.name);
+        }
+        return parts;
+      })));
+    for (const parts of answers) for (const r of parts) accumulate(r.indexerName, r.lines);
+    const first: string[] = wentOutWith ?? [];
+    const order = [...first, ...enabledIndexers.map(i => i.name).filter(n => !first.includes(n))];
+    let results = order.flatMap(name => answered.find(a => a.name === name)!.result);
 
     // Alias title fallback: when the primary pass
     // returned zero, retry once per substring-shortcut English alias from

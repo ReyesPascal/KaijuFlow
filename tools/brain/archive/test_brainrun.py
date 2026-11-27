@@ -17,12 +17,14 @@ from unittest import mock
 
 import brainreport as br
 import brainrun
+import retired_run
 import common
 import indexer_standin
 import runcheck
 import runs
 import test_indexer_standin as fakes
 import test_preflight
+import test_preflight_retired
 from test_settings import tempdir
 
 SECRET = 'TOPSECRET-123'
@@ -58,7 +60,7 @@ class Copies:
         return 'kaijuflow' in self.up  # every side is KaijuFlow's test copy
 
     def down_answer(self, tries):
-        return brainrun.visit_answer(refused_get(), tries)
+        return retired_run.visit_answer(refused_get(), tries)
 
 
 class FakeIO(Copies):
@@ -103,7 +105,7 @@ class FakeIO(Copies):
     def image_label(self):
         return self.commit
 
-    def preflight(self, mode, seen=None):
+    def retired_preflight(self, mode, seen=None):
         """As the real preflight: a run's preflight hands back the load and the machine it judged (`load`, `machine`)."""
         self.calls_preflight = getattr(self, 'calls_preflight', []) + [mode]
         if mode == 'run' and seen is not None:
@@ -175,7 +177,7 @@ class FakeIO(Copies):
         return dict(self.ADDRESSES)
 
     def visit_http(self, side, kind, vid, tries, browse_pause_s=0):
-        """A visit built the way the real one is (brainrun.visit_answer): the list of five Sources, the Browse pause, the play."""
+        """A visit built the way the real one is (retired_run.visit_answer): the list of five Sources, the Browse pause, the play."""
         self.visits += 1
         self.calls.append(('visit', side, vid))
         if not self.is_up(side):
@@ -193,7 +195,7 @@ class FakeIO(Copies):
         def seek(url, size):
             self.takes(self.SEEKS_S)
             return {'50': 0.2, '90': 0.3}
-        return brainrun.visit_answer((200, {}, body, {'ready': self.LIST_S, 'total': self.LIST_S}), tries, play, seek, browse_pause_s, self.sleep)
+        return retired_run.visit_answer((200, {}, body, {'ready': self.LIST_S, 'total': self.LIST_S}), tries, play, seek, browse_pause_s, self.sleep)
 
     def logs(self, container, since):
         t = self.clock.strftime('%Y-%m-%dT%H:%M:%S.000000000Z')
@@ -223,7 +225,7 @@ class RunTest(unittest.TestCase):
 
     def test_full_run_layout_and_phases(self):
         io = FakeIO()
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual(run['status'], 'ok')
         root = os.path.join(self.tmp, 'runs')
         folders = [d for d in os.listdir(root) if d != 'INDEX.md']
@@ -252,44 +254,44 @@ class RunTest(unittest.TestCase):
 
     def test_run_record_commit_comes_from_the_image_label_after_a_preflight(self):
         io = FakeIO(commit='c-from-label')
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual(run['commit'], 'c-from-label')
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['commit'], 'c-from-label')
         self.assertEqual(io.calls_preflight, ['run'])
 
     def test_run_record_also_keeps_the_repository_commit_as_head(self):
-        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(commit='c-from-label'))
+        run = retired_run.run_all(make_cfg(self.tmp), FakeIO(commit='c-from-label'))
         meta = json.loads(read(os.path.join(run['dir'], 'meta.json')))
         self.assertEqual((meta['commit'], meta['head']), ('c-from-label', 'repo-head'))
 
     def test_run_record_keeps_the_load_the_preflight_judged(self):
         io = FakeIO(load=0.4271)
         io.load_average = lambda: 1.7  # a later reading, busy: the run must not take it
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['start_load'], 0.43)
 
     def test_run_record_keeps_the_machine_the_preflight_judged(self):
         machine = {'power': 'ac', 'governor': 'performance', 'cpu_probe_ms': 1012}
-        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(machine=machine))
+        run = retired_run.run_all(make_cfg(self.tmp), FakeIO(machine=machine))
         self.assertEqual(json.loads(read(os.path.join(run['dir'], 'meta.json')))['machine'], machine)
 
     def test_sides_exactly_the_named_ones(self):
-        run = brainrun.run_all(make_cfg(self.tmp), FakeIO())
+        run = retired_run.run_all(make_cfg(self.tmp), FakeIO())
         self.assertEqual({v['side'] for v in run['visits']}, {'kaijuflow'})
 
     def test_secrets_not_in_run_folder(self):
-        brainrun.run_all(make_cfg(self.tmp), FakeIO())
+        retired_run.run_all(make_cfg(self.tmp), FakeIO())
         for dirpath, _, files in os.walk(os.path.join(self.tmp, 'runs')):
             for f in files:
                 self.assertNotIn(SECRET, read(os.path.join(dirpath, f)), f)
 
     def test_second_run_new_folder_diff_and_nothing_overwritten(self):
-        brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
+        retired_run.run_all(make_cfg(self.tmp, name='one'), FakeIO())
         root = os.path.join(self.tmp, 'runs')
         first_idx = read(os.path.join(root, 'INDEX.md'))
         io2 = FakeIO(commit='c2', settings={'kaijuflow': {'healthChecks.sampleCount': 5, 'altmountApiKey': '***'}})
         io2.clock += datetime.timedelta(minutes=5)
-        run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
+        run2 = retired_run.run_all(make_cfg(self.tmp, name='two'), io2)
         idx = read(os.path.join(root, 'INDEX.md'))
         self.assertTrue(idx.startswith(first_idx))
         self.assertEqual(len([d for d in os.listdir(root) if d != 'INDEX.md']), 2)
@@ -300,10 +302,10 @@ class RunTest(unittest.TestCase):
         self.assertIn('healthChecks.sampleCount: 3 -> 5', rep.split('Steps every side shares')[0])
 
     def test_the_report_opens_with_the_machine_and_holds_it_against_the_previous_runs(self):
-        run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
+        run1 = retired_run.run_all(make_cfg(self.tmp, name='one'), FakeIO())
         io2 = FakeIO(machine={'power': 'battery', 'governor': 'powersave', 'cpu_probe_ms': 1140})
         io2.clock += datetime.timedelta(minutes=5)
-        run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
+        run2 = retired_run.run_all(make_cfg(self.tmp, name='two'), io2)
         head = read(os.path.join(run2['dir'], 'report.md')).split('Steps every side shares')[0]
         self.assertIn('Machine: on battery, CPU probe 1140 ms (governor powersave).', head)
         self.assertIn('- Machine: previous run plugged in, CPU probe 950 ms (governor powersave, energy preference performance); '
@@ -311,10 +313,10 @@ class RunTest(unittest.TestCase):
         self.assertNotIn('Machine:', ' '.join(run1['changes']))  # the first run has nothing to hold it against
 
     def test_a_run_is_judged_against_the_previous_run_on_its_recording(self):
-        run1 = brainrun.run_all(make_cfg(self.tmp, name='one'), FakeIO())
+        run1 = retired_run.run_all(make_cfg(self.tmp, name='one'), FakeIO())
         io2 = FakeIO()
         io2.clock += datetime.timedelta(minutes=5)
-        run2 = brainrun.run_all(make_cfg(self.tmp, name='two'), io2)
+        run2 = retired_run.run_all(make_cfg(self.tmp, name='two'), io2)
         self.assertEqual(json.loads(read(os.path.join(run2['dir'], 'meta.json')))['recording'], 'l')
         lines = runcheck.check_run(run2['dir'])[1]
         self.assertIn(f"Against the previous run on the same recording (l): {os.path.basename(run1['dir'])}.", lines)
@@ -322,7 +324,7 @@ class RunTest(unittest.TestCase):
 
     def test_cap_rule_aborts_and_records_null(self):
         io = FakeIO(limit_at_visit=3)
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual(run['status'], 'null')
         self.assertEqual(run['null']['indexer'], 'drunkenslug')
         self.assertEqual(io.visits, 3)  # stopped at once
@@ -337,15 +339,15 @@ class RunTest(unittest.TestCase):
         self.assertEqual(json.load(open(os.path.join(d, 'meta.json')))['status'], 'null')
 
     def test_null_run_is_not_the_previous_run(self):
-        brainrun.run_all(make_cfg(self.tmp, name='ok1'), FakeIO())
-        brainrun.run_all(make_cfg(self.tmp, name='bad'), FakeIO(limit_at_visit=1))
+        retired_run.run_all(make_cfg(self.tmp, name='ok1'), FakeIO())
+        retired_run.run_all(make_cfg(self.tmp, name='bad'), FakeIO(limit_at_visit=1))
         prev = previous_in(os.path.join(self.tmp, 'runs'))
         self.assertEqual(prev['status'], 'ok')
 
     def test_standin_marker_aborts_run(self):
         marker = {'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}  # newer than the run's start (18:00): written during it
         io = FakeIO(marker=marker)
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual(run['status'], 'null')
         self.assertEqual(run['null']['indexer'], 'altHUB')
         self.assertEqual(io.visits, 0)
@@ -353,13 +355,13 @@ class RunTest(unittest.TestCase):
 
     def test_a_marker_older_than_the_run_does_not_block_it(self):
         io = FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T09:00:00Z'})  # left by an earlier command; replay never asks an indexer
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual(run['status'], 'ok')
         self.assertEqual(io.visits, 4 * 2)
 
     def test_addresses_are_read_after_each_reset_and_kept_in_the_meta(self):
         io = FakeIO()
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         kinds = [c[0] for c in io.calls]
         for i, k in enumerate(kinds):
             if k == 'reset':
@@ -369,7 +371,7 @@ class RunTest(unittest.TestCase):
 
     def test_one_page_side_runs_after_main_pass_and_config_restored(self):
         io = FakeIO()
-        run = brainrun.run_all(make_cfg(self.tmp, one_page=True), io)
+        run = retired_run.run_all(make_cfg(self.tmp, one_page=True), io)
         sides = {v['side'] for v in run['visits']}
         self.assertEqual(sides, {'kaijuflow', 'kaijuflow-1page'})
         self.assertFalse(io.patched)
@@ -380,7 +382,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual(run['facts']['one-page side'], 'yes')
 
     def test_failure_is_split_in_report(self):
-        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(fail_http_for='kaijuflow'))
+        run = retired_run.run_all(make_cfg(self.tmp), FakeIO(fail_http_for='kaijuflow'))
         self.assertEqual([v['ok'] for v in run['visits']], [False] * 8)
         self.assertTrue(all(br.classify_failure(v) == 'failure_video' for v in run['visits']))
 
@@ -388,7 +390,7 @@ class RunTest(unittest.TestCase):
         io = FakeIO()
         io.visit_http = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError('boom'))
         with self.assertRaises(RuntimeError):
-            brainrun.run_all(make_cfg(self.tmp), io)
+            retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual([c[0] for c in io.calls][-2:], ['standin-stop', 'stop-all'])
         self.assertIn('failed', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
         self.assertIsNone(previous_in(os.path.join(self.tmp, 'runs')))
@@ -416,7 +418,7 @@ class WallClockTest(unittest.TestCase):
         self.tmp = tempdir(self)
 
     def test_every_play_line_starts_with_the_utc_time_and_how_many_plays_are_done(self):
-        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, settle=3), FakeIO())
+        run, lines = printed(retired_run.run_all, make_cfg(self.tmp, settle=3), FakeIO())
         plays = play_lines(lines)
         # started 18:00:00, stand-in up at :02, reset done at :22, the first visit ends at :26
         self.assertEqual(plays[0], '18:00:26 [1/8] kaijuflow cold 1 Matrix: plays list 2.0 s start 1.5 s')
@@ -426,14 +428,14 @@ class WallClockTest(unittest.TestCase):
         self.assertEqual(len(plays), 8)
 
     def test_the_count_runs_on_into_the_one_page_side(self):
-        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True), FakeIO())
+        run, lines = printed(retired_run.run_all, make_cfg(self.tmp, one_page=True), FakeIO())
         plays = play_lines(lines)
         self.assertEqual(plays[7].split()[1], '[8/16]')
         self.assertEqual(' '.join(plays[8].split()[1:6]), '[9/16] kaijuflow-1page cold 1 Matrix:')
         self.assertEqual(plays[-1].split()[1], '[16/16]')
 
     def test_the_lines_of_a_reset_start_the_same_way_so_the_last_line_of_the_log_always_says_how_far_the_run_is(self):
-        run, lines = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=3), FakeIO())
+        run, lines = printed(retired_run.run_all, make_cfg(self.tmp, one_page=True, settle=3), FakeIO())
         # the first reset: the setup's two test copies, 10 s each, from 18:00:02
         self.assertEqual(lines[:4], ['18:00:02 [0/16] reset altmount-kf: restored from template', '18:00:12 [0/16] reset altmount-kf: up',
                                      '18:00:12 [0/16] reset kaijuflow: restored from template', '18:00:22 [0/16] reset kaijuflow: up'])
@@ -453,7 +455,7 @@ class WallClockTest(unittest.TestCase):
             self.assertLessEqual(int(count[1:-4]), 16)
 
     def run_with_one_page(self, io=None, settle=3, **kw):
-        run, _ = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True, settle=settle, **kw), io or FakeIO())
+        run, _ = printed(retired_run.run_all, make_cfg(self.tmp, one_page=True, settle=settle, **kw), io or FakeIO())
         return run, json.loads(read(os.path.join(run['dir'], 'meta.json')))
 
     def time_section(self, run):
@@ -521,7 +523,7 @@ class WallClockTest(unittest.TestCase):
                 self.assertGreaterEqual(parts['other_s'], 0)
 
     def test_every_visit_keeps_its_wall_clock_time_and_a_failed_plays_time_is_in_the_per_title_table(self):
-        run, _ = printed(brainrun.run_all, make_cfg(self.tmp, one_page=True), FakeIO(fail_http_for='kaijuflow-1page'))
+        run, _ = printed(retired_run.run_all, make_cfg(self.tmp, one_page=True), FakeIO(fail_http_for='kaijuflow-1page'))
         raw = json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits']
         took = {(br.parse_ts(v['t_end']) - br.parse_ts(v['t_start'])).total_seconds() for v in raw if v['side'] == 'kaijuflow-1page'}
         self.assertEqual(took, {12.0})
@@ -593,10 +595,10 @@ class TopPickRunTest(unittest.TestCase):
 
     def test_the_report_names_the_top_picks_and_lists_the_ones_that_changed_since_the_last_run(self):
         tmp = tempdir(self)
-        brainrun.run_all(make_cfg(tmp, name='one'), PickIO('4K REMUX Matrix 💾 95.01 GB FGT', 85436578297))
+        retired_run.run_all(make_cfg(tmp, name='one'), PickIO('4K REMUX Matrix 💾 95.01 GB FGT', 85436578297))
         io2 = PickIO('4K WEB-DL Matrix 💾 21.9 GB NEW', 22300000000)
         io2.clock += datetime.timedelta(minutes=5)
-        run2 = brainrun.run_all(make_cfg(tmp, name='two'), io2)
+        run2 = retired_run.run_all(make_cfg(tmp, name='two'), io2)
         rep = read(os.path.join(run2['dir'], 'report.md'))
         changed = rep.split('## What changed since the last run')[1].split('##')[0]
         self.assertIn('- Top pick changed: KaijuFlow, Matrix (Cold 1, Warm 1, Cold 2, Warm 2): 4K REMUX Matrix 💾 95.01 GB FGT, 85.4 GB '
@@ -607,7 +609,7 @@ class TopPickRunTest(unittest.TestCase):
         # the same top picks again: nothing to list
         io3 = PickIO('4K WEB-DL Matrix 💾 21.9 GB NEW', 22300000000)
         io3.clock += datetime.timedelta(minutes=10)
-        run3 = brainrun.run_all(make_cfg(tmp, name='three'), io3)
+        run3 = retired_run.run_all(make_cfg(tmp, name='three'), io3)
         self.assertNotIn('Top pick changed', read(os.path.join(run3['dir'], 'report.md')))
 
 
@@ -675,15 +677,15 @@ class SignalGuard(unittest.TestCase):
         self.addCleanup(signal.signal, signal.SIGINT, signal.default_int_handler)
 
     def command(self, argv, io_for, titles=None):
-        """brainrun.main with the world of `io_for(cfg)`, on the test's titles or the `titles` given: (exit code, printed
+        """retired_run.main with the world of `io_for(cfg)`, on the test's titles or the `titles` given: (exit code, printed
         lines, the run folder or record folder)."""
         cfg = make_cfg(self.tmp)
         titles_file = os.path.join(self.tmp, 'titles.json')
         with open(titles_file, 'w') as f:
             json.dump(titles or cfg['titles'], f)
         out = io_module.StringIO()
-        with mock.patch.object(brainrun, 'RealIO', io_for), contextlib.redirect_stdout(out):
-            code = brainrun.main(argv + ['--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root',
+        with mock.patch.object(retired_run, 'RetiredIO', io_for), contextlib.redirect_stdout(out):
+            code = retired_run.main(argv + ['--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root',
                                          cfg['runs_root'], '--test-dir', cfg['test_dir'], '--titles-file', titles_file])
         folder = os.path.join(cfg['runs_root'], [d for d in os.listdir(cfg['runs_root']) if d != 'INDEX.md'][0])
         return code, out.getvalue().splitlines(), folder
@@ -705,7 +707,7 @@ class BrowsePauseCommandTest(SignalGuard):
 
     def test_no_flag_sets_another_browse_pause(self):
         with contextlib.redirect_stderr(io_module.StringIO()), self.assertRaises(SystemExit):
-            brainrun.build_parser().parse_args(['run', '--browse-pause', '0'])
+            retired_run.build_parser().parse_args(['run', '--browse-pause', '0'])
 
 
 class TaggedListTest(SignalGuard):
@@ -772,7 +774,7 @@ class SecondStopTest(SignalGuard):
     def test_a_second_ctrl_c_while_the_run_finishes_its_record_is_ignored(self):
         io, pressed = ctrl_c_again_in_the_ending(interrupt_at(FakeIO(), 5))
         try:
-            run, lines = printed(brainrun.run_all, make_cfg(self.tmp), io)
+            run, lines = printed(retired_run.run_all, make_cfg(self.tmp), io)
         except KeyboardInterrupt:
             self.fail('the second Ctrl-C escaped run_all')
         self.assertEqual(len(pressed), 2)
@@ -794,7 +796,7 @@ class SecondStopTest(SignalGuard):
         os.makedirs(cfg['store'])
         io, pressed = ctrl_c_again_in_the_ending(interrupt_at(RecordIO(cfg, f'http://127.0.0.1:{fake.server_port}'), 3))
         try:
-            rec, lines = printed(brainrun.record_all, cfg, io)
+            rec, lines = printed(retired_run.record_all, cfg, io)
         except KeyboardInterrupt:
             self.fail('the second Ctrl-C escaped record_all')
         self.assertEqual(len(pressed), 2)
@@ -814,7 +816,7 @@ class InterruptedRunTest(unittest.TestCase):
     def stopped_run(self, n=5, **kw):
         io = interrupt_at(FakeIO(), n)
         try:
-            return io, brainrun.run_all(make_cfg(self.tmp, **kw), io)
+            return io, retired_run.run_all(make_cfg(self.tmp, **kw), io)
         except KeyboardInterrupt:
             self.fail('the interrupt escaped run_all')
 
@@ -889,7 +891,7 @@ class InterruptedRunTest(unittest.TestCase):
                 raise KeyboardInterrupt
             reset(sides, log)
         io.reset = hanging_second_reset
-        run = brainrun.run_all(make_cfg(self.tmp), io)  # no pauses: 2 s stand-in, 20 s reset, two rounds of 2 plays of 4 s
+        run = retired_run.run_all(make_cfg(self.tmp), io)  # no pauses: 2 s stand-in, 20 s reset, two rounds of 2 plays of 4 s
         self.assertEqual((run['status'], run['stopped']['time'], run['stopped']['during']), ('stopped', '2026-11-10T18:00:45.000Z', None))
         timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
         self.assertEqual([(r['phase'], r['round'], r['seconds']) for r in timing['resets']], [('cold', 1, 20.0), ('cold', 2, 7.0)])
@@ -911,7 +913,7 @@ class InterruptedRunTest(unittest.TestCase):
                 raise KeyboardInterrupt
             sleep(s)
         io.sleep = second_pause_cut_short
-        run = brainrun.run_all(make_cfg(self.tmp, settle=3), io)
+        run = retired_run.run_all(make_cfg(self.tmp, settle=3), io)
         timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
         self.assertEqual((run['status'], timing['rounds'][0]['plays'], timing['rounds'][0]['pause_s']), ('stopped', 2, 4.0))
         # 2 s stand-in, 20 s reset, two plays of 4 s, pauses of 3 s and 1 s, 5 s to stop the copies
@@ -919,7 +921,7 @@ class InterruptedRunTest(unittest.TestCase):
             'measured_s': 7.0, 'pauses_s': 4.0, 'browse_s': 0.0, 'failed_s': 0.0, 'resets_s': 20.0, 'other_s': 8.0}))
 
     def test_a_null_run_that_made_no_play_still_has_its_time_in_the_meta(self):
-        run = brainrun.run_all(make_cfg(self.tmp), FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}))
+        run = retired_run.run_all(make_cfg(self.tmp), FakeIO(marker={'indexer': 'altHUB', 'time': '2026-11-10T18:30:00Z'}))
         timing = json.loads(read(os.path.join(run['dir'], 'meta.json')))['timing']
         self.assertEqual(run['status'], 'null')
         self.assertEqual((timing['seconds'], timing['passes'], timing['rounds'], timing['resets']), (5.0, [], [], []))  # 5 s to stop the copies
@@ -934,7 +936,7 @@ class InterruptedRunTest(unittest.TestCase):
             if len(sleeps) == 2:
                 raise KeyboardInterrupt
         io.sleep = sleep
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertEqual((run['status'], len(run['visits'])), ('stopped', 2))
         self.assertIsNone(run['stopped']['during'])
         self.assertIn('2 of 8 plays had finished, and it stopped between two plays.',
@@ -963,8 +965,8 @@ class InterruptedRunTest(unittest.TestCase):
         with open(titles, 'w') as f:
             json.dump(cfg['titles'], f)
         out = io_module.StringIO()
-        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(FakeIO(), 2)), contextlib.redirect_stdout(out):
-            code = brainrun.main(['run', '--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root', cfg['runs_root'],
+        with mock.patch.object(retired_run, 'RetiredIO', lambda cfg: interrupt_at(FakeIO(), 2)), contextlib.redirect_stdout(out):
+            code = retired_run.main(['run', '--name', 'trial', '--store', cfg['store'], '--list', 'l', '--runs-root', cfg['runs_root'],
                                   '--test-dir', cfg['test_dir'], '--titles-file', titles])
         self.assertEqual(code, 130)
         lines = out.getvalue().splitlines()
@@ -985,7 +987,7 @@ class WaitSwitchTest(unittest.TestCase):
 
     def test_wait_is_on_by_default_and_the_record_says_so(self):
         io = FakeIO()
-        run = brainrun.run_all(make_cfg(self.tmp), io)
+        run = retired_run.run_all(make_cfg(self.tmp), io)
         self.assertIn(('standin-start', 'replay', True), io.calls)
         facts = {'stand-in replay wait': 'on', 'browse pause': '0 s', 'one-page side': 'no'}
         self.assertEqual(run['facts'], facts)
@@ -995,21 +997,21 @@ class WaitSwitchTest(unittest.TestCase):
         self.assertNotIn('stand-in', json.loads(read(os.path.join(run['dir'], 'settings.json'))))
 
     def test_the_one_page_side_is_a_fact_not_a_setting(self):
-        run = brainrun.run_all(make_cfg(self.tmp, one_page=True), FakeIO())
+        run = retired_run.run_all(make_cfg(self.tmp, one_page=True), FakeIO())
         self.assertEqual(run['facts']['one-page side'], 'yes')
         self.assertNotIn('kaijuflow-1page', run['settings'])
 
     def test_no_wait_switch_reaches_the_stand_in_and_shows_in_what_changed(self):
-        brainrun.run_all(make_cfg(self.tmp, name='with'), FakeIO())
+        retired_run.run_all(make_cfg(self.tmp, name='with'), FakeIO())
         io = FakeIO()
         io.clock += datetime.timedelta(minutes=5)
-        run = brainrun.run_all(make_cfg(self.tmp, name='without', wait=False), io)
+        run = retired_run.run_all(make_cfg(self.tmp, name='without', wait=False), io)
         self.assertIn(('standin-start', 'replay', False), io.calls)
         self.assertIn('stand-in replay wait: on -> off', ' '.join(run['changes']))
 
     def test_cli_switch(self):
-        self.assertTrue(brainrun.build_parser().parse_args(['run', '--no-wait']).no_wait)
-        self.assertFalse(brainrun.build_parser().parse_args(['run']).no_wait)
+        self.assertTrue(retired_run.build_parser().parse_args(['run', '--no-wait']).no_wait)
+        self.assertFalse(retired_run.build_parser().parse_args(['run']).no_wait)
 
 
 class BrowsePauseVisitTest(unittest.TestCase):
@@ -1022,7 +1024,7 @@ class BrowsePauseVisitTest(unittest.TestCase):
             events.append(('play', stream['url']))
             return {'plays': True, 'first_byte_s': 1.5, 'size': 1000, 'note': None}
         got = (status, {}, json.dumps(body).encode(), {'ready': 2.0, 'total': 2.0})
-        out = brainrun.visit_answer(got, 1, play=play, seek=lambda url, size: {'50': 0.2, '90': 0.3},
+        out = retired_run.visit_answer(got, 1, play=play, seek=lambda url, size: {'50': 0.2, '90': 0.3},
                                     pause_s=pause_s, sleep=lambda s: events.append(('sleep', s)))
         return out, events
 
@@ -1061,7 +1063,7 @@ class BrowsePauseRunTest(unittest.TestCase):
 
     def test_every_visit_of_a_run_waits_the_browse_pause_and_title_to_video_leaves_it_out(self):
         io = FakeIO()
-        run = brainrun.run_all(make_cfg(self.tmp, browse_pause=5, settle=3), io)
+        run = retired_run.run_all(make_cfg(self.tmp, browse_pause=5, settle=3), io)
         calls = [c for c in io.calls if c[0] in ('visit', 'sleep')]
         # each visit: the Browse pause inside it (between list and play), then the settle after it
         self.assertEqual(calls[:6], [('visit', 'kaijuflow', 'tt1'), ('sleep', 5), ('sleep', 3),
@@ -1086,9 +1088,9 @@ class BrowsePauseRunTest(unittest.TestCase):
         with mock.patch.object(common, 'get', return_value=(200, {}, body, {'ready': 2.0, 'total': 2.0})), \
                 mock.patch.object(common, 'play_stream', side_effect=play), \
                 mock.patch.object(common, 'seek_reads', return_value={}), \
-                mock.patch.object(brainrun, 'cpu_sample', return_value={}), \
-                mock.patch.object(brainrun.time, 'sleep', side_effect=lambda s: events.append(('sleep', s))):
-            out = brainrun.RealIO(make_cfg(self.tmp)).visit_http('kaijuflow', 'movie', 'tt1', 1, browse_pause_s=5)
+                mock.patch.object(retired_run, 'cpu_sample', return_value={}), \
+                mock.patch.object(retired_run.time, 'sleep', side_effect=lambda s: events.append(('sleep', s))):
+            out = retired_run.RetiredIO(make_cfg(self.tmp)).visit_http('kaijuflow', 'movie', 'tt1', 1, browse_pause_s=5)
         self.assertEqual(events, [('sleep', 5), ('play', 'http://x/a')])
         self.assertEqual((out['list_s'], out['start_s'], out['browse_pause_s']), (2.0, 1.5, 5))
 
@@ -1101,7 +1103,7 @@ class MissMatchingTest(unittest.TestCase):
         io = FakeIO()
         io.lines_per_visit = {2: ['HIT ninjacentral api t=search wait_ms=200', 'MISS drunkenslug api t=search&offset=100'],
                               5: ['HIT drunkenslug api t=search wait_ms=250']}
-        run = brainrun.run_all(make_cfg(tmp, topup_command='python3 -I tools/brain/brainrun.py record --name t --store S --list l'), io)
+        run = retired_run.run_all(make_cfg(tmp, topup_command='python3 -I tools/brain/brainrun.py record --name t --store S --list l'), io)
         by_n = run['visits']
         self.assertEqual(by_n[1]['misses'], ['drunkenslug api t=search&offset=100'])  # the 2nd visit
         self.assertEqual(by_n[1]['indexer_s'], 0.2)
@@ -1120,7 +1122,7 @@ class MissMatchingTest(unittest.TestCase):
         io = FakeIO()
         io.ADDRESSES = {}  # docker inspect gave nothing
         io.lines_per_visit = {2: ['MISS drunkenslug api t=search&offset=100'], 3: ['MISS drunkenslug api t=search&offset=200']}
-        run = brainrun.run_all(make_cfg(tmp), io)
+        run = retired_run.run_all(make_cfg(tmp), io)
         self.assertEqual(run['standin_unmatched'], 2)
         self.assertEqual(run['visits'][1]['misses'], ['drunkenslug api t=search&offset=100'])
         self.assertIn('matched by time', read(os.path.join(run['dir'], 'report.md')))
@@ -1130,7 +1132,7 @@ class MissMatchingTest(unittest.TestCase):
         tmp = tempdir(self)
         io = FakeIO(fail_http_for='kaijuflow')
         io.lines_per_visit = {2: ['MISS drunkenslug api t=search&offset=100']}  # the list was not empty (5 Sources)
-        run = brainrun.run_all(make_cfg(tmp), io)
+        run = retired_run.run_all(make_cfg(tmp), io)
         self.assertEqual(br.classify_failure(run['visits'][1]), 'failure_video')
         self.assertEqual(run['visits'][1]['misses'], ['drunkenslug api t=search&offset=100'])
 
@@ -1141,7 +1143,7 @@ class PlayStepLinesTest(unittest.TestCase):
               'reason': 'First byte failed (status 400); the Source is kept'}
 
     def raw_visit(self, io):
-        run = brainrun.run_all(make_cfg(tempdir(self)), io)
+        run = retired_run.run_all(make_cfg(tempdir(self)), io)
         return json.loads(read(os.path.join(run['dir'], 'raw.json')))['visits'][0]
 
     def test_a_failed_play_names_its_top_pick_and_why(self):
@@ -1165,18 +1167,18 @@ class PlayStepLinesTest(unittest.TestCase):
 class SmokeTest(unittest.TestCase):
     def test_each_side_reports_which_address_it_came_from_and_whether_inspect_agrees(self):
         lines = ['MISS ninja api q=x&t=search from=172.20.0.5 t=1', 'MISS ninja api q=y&t=search from=172.20.0.5 t=2']
-        r = brainrun.smoke_side_result(lines, '172.20.0.5')
+        r = retired_run.smoke_side_result(lines, '172.20.0.5')
         self.assertEqual((r['standin_requests'], r['came_from'], r['matched']), (2, ['172.20.0.5'], True))
-        self.assertFalse(brainrun.smoke_side_result(lines, '172.20.0.9')['matched'])
-        self.assertFalse(brainrun.smoke_side_result(lines, None)['matched'])
-        self.assertFalse(brainrun.smoke_side_result([], '172.20.0.5')['matched'])
+        self.assertFalse(retired_run.smoke_side_result(lines, '172.20.0.9')['matched'])
+        self.assertFalse(retired_run.smoke_side_result(lines, None)['matched'])
+        self.assertFalse(retired_run.smoke_side_result([], '172.20.0.5')['matched'])
 
     def test_verdict_in_one_plain_sentence(self):
         def res(*ips):
-            return {f's{i}': brainrun.smoke_side_result([f'MISS n api t=search from={ip} t=1'], ip) for i, ip in enumerate(ips)}
-        self.assertIn('own address', brainrun.smoke_verdict(res('1.1.1.1', '1.1.1.2', '1.1.1.3')))
-        self.assertIn('do not all arrive', brainrun.smoke_verdict(res('1.1.1.1', '1.1.1.1')))  # same address twice
-        self.assertIn('No side reached', brainrun.smoke_verdict({'a': brainrun.smoke_side_result([], 'x')}))
+            return {f's{i}': retired_run.smoke_side_result([f'MISS n api t=search from={ip} t=1'], ip) for i, ip in enumerate(ips)}
+        self.assertIn('own address', retired_run.smoke_verdict(res('1.1.1.1', '1.1.1.2', '1.1.1.3')))
+        self.assertIn('do not all arrive', retired_run.smoke_verdict(res('1.1.1.1', '1.1.1.1')))  # same address twice
+        self.assertIn('No side reached', retired_run.smoke_verdict({'a': retired_run.smoke_side_result([], 'x')}))
 
 
 class SmokeWorldTest(unittest.TestCase):
@@ -1186,14 +1188,14 @@ class SmokeWorldTest(unittest.TestCase):
     def smoke(self, one_page):
         io = FakeIO(up=brainrun.ALL_TESTBED)  # the owner started the test copies
         io.lines_per_visit = {n: ['MISS ninjacentral api t=search'] for n in range(1, 5)}
-        res = brainrun.smoke(make_cfg(self.tmp, one_page=one_page, store=os.path.join(self.tmp, 'empty')), io)
+        res = retired_run.smoke(make_cfg(self.tmp, one_page=one_page, store=os.path.join(self.tmp, 'empty')), io)
         return io, res
 
     def test_the_smoke_check_visits_every_planned_side_the_one_page_side_included(self):
         io, res = self.smoke(one_page=True)
         self.assertEqual(list(res), ['kaijuflow', 'kaijuflow-1page'])
         self.assertTrue(all(r['http'] == 200 and r['standin_requests'] == 1 for r in res.values()), res)
-        self.assertIn('own address', brainrun.smoke_verdict(res))  # the one-page side may share KaijuFlow's address
+        self.assertIn('own address', retired_run.smoke_verdict(res))  # the one-page side may share KaijuFlow's address
         self.assertFalse(io.patched)
         kinds = [c[0] for c in io.calls]
         self.assertEqual(kinds[-2:], ['restore-config', 'standin-stop'])
@@ -1206,7 +1208,7 @@ class SmokeWorldTest(unittest.TestCase):
     def test_a_visit_to_a_stopped_test_copy_fails_as_the_real_one_does(self):
         io = FakeIO(up=['altmount-kf'])
         down = io.visit_http('kaijuflow', 'movie', 'tt1', 1)
-        self.assertEqual(down, brainrun.visit_answer(refused_get(), 1) | {'list_s': down['list_s']})
+        self.assertEqual(down, retired_run.visit_answer(refused_get(), 1) | {'list_s': down['list_s']})
         self.assertEqual((down['list_status'], down['sources'], down['first_try_plays']), (None, 0, False))
         self.assertIn('refused', down['note'])
         io.up.add('kaijuflow')
@@ -1214,7 +1216,7 @@ class SmokeWorldTest(unittest.TestCase):
 
     def test_the_one_page_switch_brings_kaijuflow_up_again(self):
         io = FakeIO(up=brainrun.ALL_TESTBED)
-        brainrun.switch_to_one_page(io)
+        retired_run.switch_to_one_page(io)
         self.assertTrue(io.patched)
         self.assertTrue(io.is_up('kaijuflow-1page'))
         self.assertEqual(io.visit_http('kaijuflow-1page', 'movie', 'tt1', 1)['list_status'], 200)
@@ -1233,7 +1235,7 @@ class RecordIO(FakeIO):
         self.up = set()
         self.seen = set()  # (side, title) already visited: the next visit is a warm one
 
-    def preflight(self, mode, seen=None):
+    def retired_preflight(self, mode, seen=None):
         self.calls.append(('preflight', mode))
         return list(getattr(self, 'problems', []))
 
@@ -1246,7 +1248,7 @@ class RecordIO(FakeIO):
 
     def shelve_marker(self):
         self.calls.append(('shelve-marker',))
-        return brainrun.shelve_marker(self.cfg['store'])
+        return retired_run.shelve_marker(self.cfg['store'])
 
     def conf(self):
         return {'indexers': {'fake': {'url': self.fake_url, 'apikey': fakes.REAL_KEY, 'drop_params': self.drop}}}
@@ -1324,7 +1326,7 @@ class RecordTest(unittest.TestCase):
 
     def record(self, **kw):
         io = RecordIO(self.cfg, self.url, **kw)
-        return io, brainrun.record_all(self.cfg, io)
+        return io, retired_run.record_all(self.cfg, io)
 
     def test_every_request_a_later_page_too_is_stored_and_a_second_record_asks_the_indexer_for_nothing(self):
         io, rec = self.record()
@@ -1349,7 +1351,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(rec['status'], 'recorded')
         self.assertEqual(rec['listed'], {'kaijuflow': 2, 'kaijuflow-1page': 2})
         self.assertEqual(len(self.stored()), 10)  # KaijuFlow's 8 + one page per title from the one-page side
-        self.assertNotIn('listed no Sources', brainrun.record_summary(rec))
+        self.assertNotIn('listed no Sources', retired_run.record_summary(rec))
         self.assertFalse(os.path.exists(os.path.join(self.cfg['test_dir'], 'config', 'config.json.pre-brainrun')))
         kinds = [c[0] for c in io.calls]
         self.assertLess(kinds.index('patch-one-page'), kinds.index('restore-config'))
@@ -1357,12 +1359,12 @@ class RecordTest(unittest.TestCase):
     def test_the_record_summary_names_a_side_that_listed_nothing(self):
         rec = {'new_answers': 4, 'stored_answers': 0, 'errors': 0, 'titles': ['A', 'B'],
                'listed': {'kaijuflow': 2, 'kaijuflow-1page': 0}}
-        self.assertIn('KaijuFlow, one page per indexer listed no Sources for 2 of 2 titles.', brainrun.record_summary(rec))
+        self.assertIn('KaijuFlow, one page per indexer listed no Sources for 2 of 2 titles.', retired_run.record_summary(rec))
 
     def test_every_play_line_of_a_record_starts_with_the_utc_time_and_a_count_and_the_proof_says_it_is_the_proof(self):
         self.cfg['one_page'] = True
         io = RecordIO(self.cfg, self.url)
-        rec, lines = printed(brainrun.record_all, self.cfg, io)
+        rec, lines = printed(retired_run.record_all, self.cfg, io)
         plays = play_lines(lines)
         self.assertEqual(len(plays), 16)  # 2 sides x 2 titles x 2 rounds, in the record pass and again in the proof
         # started 18:00:00, reset done at :20, stand-in up at :22, a visit takes 4 s
@@ -1481,7 +1483,7 @@ class RecordTest(unittest.TestCase):
     def stopped_record(self, n):
         io = interrupt_at(RecordIO(self.cfg, self.url), n)
         try:
-            return io, brainrun.record_all(self.cfg, io)
+            return io, retired_run.record_all(self.cfg, io)
         except KeyboardInterrupt:
             self.fail('the interrupt escaped record_all')
 
@@ -1522,7 +1524,7 @@ class RecordTest(unittest.TestCase):
                     raise KeyboardInterrupt
                 setattr(io, step, cut_short)
                 try:
-                    rec = brainrun.record_all(self.cfg, io)
+                    rec = retired_run.record_all(self.cfg, io)
                 except KeyboardInterrupt:
                     self.fail('the interrupt escaped record_all')
                 self.assertEqual((rec['status'], rec['stopped']['plays_done'], rec['stopped']['during']), ('stopped', 0, None))
@@ -1546,7 +1548,7 @@ class RecordTest(unittest.TestCase):
 
     def test_a_stopped_record_and_a_stopped_run_say_how_they_stopped_in_one_shape(self):
         io, rec = self.stopped_record(3)
-        run = brainrun.run_all(make_cfg(self.tmp), interrupt_at(FakeIO(), 2))
+        run = retired_run.run_all(make_cfg(self.tmp), interrupt_at(FakeIO(), 2))
         self.assertEqual(rec['stopped'], {'time': '2026-11-10T18:00:30.000Z', 'signal': 'SIGINT', 'stage': 'the record pass',
                                           'plays_done': 2, 'plays_planned': 4,
                                           'during': {'side': 'kaijuflow', 'phase': 'warm', 'round': None, 'title': 'Matrix'}})
@@ -1557,9 +1559,9 @@ class RecordTest(unittest.TestCase):
         with open(titles, 'w') as f:
             json.dump(self.cfg['titles'], f)
         out = io_module.StringIO()
-        with mock.patch.object(brainrun, 'RealIO', lambda cfg: interrupt_at(RecordIO(cfg, self.url), 3)), \
+        with mock.patch.object(retired_run, 'RetiredIO', lambda cfg: interrupt_at(RecordIO(cfg, self.url), 3)), \
                 contextlib.redirect_stdout(out):
-            code = brainrun.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
+            code = retired_run.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
                                   self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles])
         self.assertEqual(code, 130)
         last = out.getvalue().splitlines()[-1]
@@ -1574,8 +1576,8 @@ class RecordTest(unittest.TestCase):
         with open(titles, 'w') as f:
             json.dump(self.cfg['titles'], f)
         out = io_module.StringIO()
-        with mock.patch.object(brainrun, 'RealIO', lambda cfg: RecordIO(cfg, self.url, **kw)), contextlib.redirect_stdout(out):
-            code = brainrun.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
+        with mock.patch.object(retired_run, 'RetiredIO', lambda cfg: RecordIO(cfg, self.url, **kw)), contextlib.redirect_stdout(out):
+            code = retired_run.main(['record', '--name', 'trial', '--store', self.cfg['store'], '--list', 'l', '--runs-root',
                                   self.cfg['runs_root'], '--test-dir', self.cfg['test_dir'], '--titles-file', titles, '--settle', '0'])
         lines = out.getvalue().splitlines()
         self.assertTrue(lines[-1].startswith('done in '), lines[-1])  # every brain tool ends so (README)
@@ -1661,14 +1663,14 @@ class RecordTest(unittest.TestCase):
         self.assertGreater(rec['errors'], 0)
         self.assertEqual(self.state()['errors'], rec['errors'])
         self.assertEqual(self.stored(), [])
-        sentence = brainrun.record_summary(rec)
+        sentence = retired_run.record_summary(rec)
         self.assertIn(f"{rec['errors']} answers were errors", sentence)
         self.assertIn('run record again', sentence)
         fakes.FakeIndexer.force_status = None
         io2, rec2 = self.record()
         self.assertEqual((rec2['errors'], len(self.stored())), (0, 8))
         self.assertEqual(self.state()['errors'], 0)
-        self.assertNotIn('were errors', brainrun.record_summary(rec2))
+        self.assertNotIn('were errors', retired_run.record_summary(rec2))
 
     # ---- the proof (#80)
     def test_the_proof_marks_a_recording_complete_when_every_answer_is_there(self):
@@ -1676,7 +1678,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(rec['misses'], [])
         self.assertEqual(self.state()['state'], 'complete')
         self.assertEqual(self.state()['misses'], [])
-        self.assertNotIn('INCOMPLETE', brainrun.record_summary(rec))
+        self.assertNotIn('INCOMPLETE', retired_run.record_summary(rec))
         proof = read(os.path.join(rec['dir'], 'logs', 'standin-proof.log'))
         self.assertIn('HIT fake', proof)
         self.assertNotIn('MISS', proof)
@@ -1691,7 +1693,7 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(st['state'], 'incomplete')
         self.assertEqual(st['misses'], rec['misses'])
         self.assertIn('missed 2 requests', st['why'])
-        self.assertIn('INCOMPLETE', brainrun.record_summary(rec))
+        self.assertIn('INCOMPLETE', retired_run.record_summary(rec))
         self.assertIn('MISS fake', read(os.path.join(rec['dir'], 'logs', 'standin-proof.log')))
 
     def test_the_proof_contacts_no_indexer_and_resets_the_copies_first(self):
@@ -1729,7 +1731,7 @@ class RecordTest(unittest.TestCase):
         io = RecordIO(self.cfg, self.url)
         io.problems = ['The test image is old: build it again with --rebuild-image.']
         with self.assertRaises(brainrun.PreflightFailed) as cm:
-            brainrun.record_all(self.cfg, io)
+            retired_run.record_all(self.cfg, io)
         self.assertEqual(cm.exception.problems, io.problems)
         self.assertEqual([c[0] for c in io.calls], ['preflight'])
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'runs')))
@@ -1738,16 +1740,16 @@ class RecordTest(unittest.TestCase):
         td = test_preflight.make_copies(self)
         cfg = test_preflight.make_cfg(td, runs_root=os.path.join(self.tmp, 'runs2'), titles=[], name='x', tries=1, settle=0,
                                       indexers=[], one_page=False, user_id='U')
-        world = test_preflight.FakeWorld(cfg)
+        world = test_preflight_retired.FakeWorld(cfg)
         with self.assertRaises(brainrun.PreflightFailed) as cm:
-            brainrun.run_all(cfg, world)
+            retired_run.run_all(cfg, world)
         self.assertIn('no recording', ' '.join(cm.exception.problems))
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'runs2')))
 
     def test_record_command_line(self):
-        a = brainrun.build_parser().parse_args(['record', '--name', 'n', '--store', 'S', '--list', 'L', '--key-file', 'K'])
+        a = retired_run.build_parser().parse_args(['record', '--name', 'n', '--store', 'S', '--list', 'L', '--key-file', 'K'])
         self.assertEqual(a.cmd, 'record')
-        self.assertEqual(brainrun.topup_command(a), 'python3 -I tools/brain/brainrun.py record --name n --store S --list L --key-file K')
+        self.assertEqual(retired_run.topup_command(a), 'python3 -I tools/brain/brainrun.py record --name n --store S --list L --key-file K')
 
 
 class FinalStepsTest(unittest.TestCase):
@@ -1765,19 +1767,19 @@ class FinalStepsTest(unittest.TestCase):
     def test_late_health_batch_lands_on_its_own_visit(self):
         visits = [dict(side='kaijuflow', id='tt1', t_start='2026-11-10T18:00:01.000Z', steps=[], tries=[]),
                   dict(side='kaijuflow', id='tt2', t_start='2026-11-10T18:01:05.000Z', steps=[], tries=[])]
-        brainrun.finalize_steps(self.LateIO(), visits)
+        retired_run.finalize_steps(self.LateIO(), visits)
         self.assertEqual([s['step'] for s in visits[0]['steps']], ['indexer_page', 'health_batch'])  # 44 s after it began
         self.assertEqual([(s['step'], s['ref']) for s in visits[1]['steps']], [('health_batch', 'tt2')])
 
     def test_diff_in_a_run_names_null_runs_between(self):
         tmp = tempdir(self)
-        brainrun.run_all(make_cfg(tmp, name='ok1'), FakeIO())
+        retired_run.run_all(make_cfg(tmp, name='ok1'), FakeIO())
         bad = FakeIO(limit_at_visit=1)
         bad.clock += datetime.timedelta(hours=1)
-        brainrun.run_all(make_cfg(tmp, name='bad'), bad)
+        retired_run.run_all(make_cfg(tmp, name='bad'), bad)
         io = FakeIO()
         io.clock += datetime.timedelta(hours=3)
-        run = brainrun.run_all(make_cfg(tmp, name='ok2'), io)
+        run = retired_run.run_all(make_cfg(tmp, name='ok2'), io)
         self.assertIn('1 null run ', ' '.join(run['changes']))
         self.assertIn('Time of day', ' '.join(run['changes']))
 
@@ -1802,7 +1804,7 @@ class SettingsTest(unittest.TestCase):
     def test_one_page_patch_is_config_only(self):
         cfg = {'indexers': [{'name': 'A', 'pagination': True, 'maxPages': 3}, {'name': 'B', 'pagination': True}],
                'searchConfig': {'seasonPackPagination': True, 'seriesPackPagination': True, 'junkFilter': True}}
-        out = brainrun.one_page_config(cfg)
+        out = retired_run.one_page_config(cfg)
         self.assertTrue(all(i['pagination'] is False for i in out['indexers']))
         self.assertFalse(out['searchConfig']['seasonPackPagination'])
         self.assertFalse(out['searchConfig']['seriesPackPagination'])
@@ -1832,7 +1834,7 @@ class ShortRunTest(SignalGuard):
 
     def test_sides_and_rounds_play_only_what_they_name(self):
         io = CleanIO()
-        run = brainrun.run_all(make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), io)
+        run = retired_run.run_all(make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), io)
         self.assertEqual(self.played(run), [('kaijuflow', 'cold', 1), ('kaijuflow', 'warm', 1)])
         self.assertEqual(len(run['visits']), 4)  # two titles, cold and warm
         self.assertEqual([c for c in io.calls if c[0] == 'reset'], [('reset', tuple(brainrun.ALL_TESTBED))])
@@ -1856,7 +1858,7 @@ class ShortRunTest(SignalGuard):
 
     def test_the_one_page_side_can_be_played_alone(self):
         io = CleanIO()
-        run = brainrun.run_all(make_cfg(self.tmp, sides=['kaijuflow-1page']), io)
+        run = retired_run.run_all(make_cfg(self.tmp, sides=['kaijuflow-1page']), io)
         self.assertEqual({v['side'] for v in run['visits']}, {'kaijuflow-1page'})
         self.assertEqual(len(run['visits']), 8)  # two titles, four rounds
         self.assertEqual(self.meta(run)['sides'], ['kaijuflow-1page'])
@@ -1865,7 +1867,7 @@ class ShortRunTest(SignalGuard):
         self.assertLess(kinds.index('patch-one-page'), kinds.index('reset'))  # no pass of the main sides before the switch
 
     def test_no_selectors_play_the_full_plan_as_before(self):
-        run = brainrun.run_all(make_cfg(self.tmp), CleanIO())
+        run = retired_run.run_all(make_cfg(self.tmp), CleanIO())
         self.assertEqual(len(run['visits']), 8)
         meta = self.meta(run)
         self.assertEqual((meta['sides'], meta['rounds'], meta['short']), (list(brainrun.MAIN_SIDES), 2, None))
@@ -1874,16 +1876,16 @@ class ShortRunTest(SignalGuard):
         self.assertTrue(runcheck.check_run(run['dir'])[0])
 
     def test_both_sides_named_are_the_one_page_run(self):
-        run = brainrun.run_all(make_cfg(self.tmp, sides=['kaijuflow-1page', 'kaijuflow']), CleanIO())
+        run = retired_run.run_all(make_cfg(self.tmp, sides=['kaijuflow-1page', 'kaijuflow']), CleanIO())
         self.assertEqual(self.meta(run)['sides'], ['kaijuflow', 'kaijuflow-1page'])
         self.assertIsNone(self.meta(run)['short'])
 
     def test_the_progress_count_is_the_short_runs_own(self):
-        _, lines = printed(brainrun.run_all, make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), CleanIO())
+        _, lines = printed(retired_run.run_all, make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), CleanIO())
         self.assertTrue(all('/4]' in x for x in lines), lines)
 
     def test_a_short_run_says_so_in_its_report_its_index_row_and_check(self):
-        run = brainrun.run_all(make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), CleanIO())
+        run = retired_run.run_all(make_cfg(self.tmp, sides=['kaijuflow'], rounds=1), CleanIO())
         text = 'KaijuFlow, 1 round, 2 titles'
         self.assertEqual(read(os.path.join(run['dir'], 'report.md')).splitlines()[0], f'Short run, not a baseline: {text}.')
         self.assertIn(f'| trial | short: {text} |', read(os.path.join(self.tmp, 'runs', 'INDEX.md')))
@@ -1893,30 +1895,30 @@ class ShortRunTest(SignalGuard):
         self.assertTrue(any(x.startswith('Top picks played, KaijuFlow') for x in lines))  # the other lines are still there
 
     def test_a_titles_subset_is_a_short_run(self):
-        run = brainrun.run_all(make_cfg(self.tmp, partial_titles=True), CleanIO())
+        run = retired_run.run_all(make_cfg(self.tmp, partial_titles=True), CleanIO())
         self.assertEqual(self.meta(run)['short'], 'KaijuFlow, 2 rounds, 2 titles')
         self.assertFalse(runcheck.check_run(run['dir'])[0])
 
     def test_a_short_run_is_compared_with_its_previous_run_limited_to_what_it_played(self):
-        brainrun.run_all(make_cfg(self.tmp, name='base'), CleanIO(commit='c1'))
+        retired_run.run_all(make_cfg(self.tmp, name='base'), CleanIO(commit='c1'))
         base = sorted(d for d in os.listdir(os.path.join(self.tmp, 'runs')) if d != 'INDEX.md')[0]
-        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO(commit='c2'))
+        short = retired_run.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO(commit='c2'))
         changes = short['changes']
         self.assertEqual(changes[0], f'Short run: compared with the previous run, {base}, limited to KaijuFlow, 1 round, 2 titles.')
         self.assertIn('KaijuFlow code: c1 -> c2', changes)
         self.assertFalse([c for c in changes if 'removed' in c], changes)  # the sides it did not play are not "removed"
         # a short run is never the baseline of the next one, nor the previous run of a full one
-        short2 = brainrun.run_all(make_cfg(self.tmp, name='quick2', sides=['kaijuflow'], rounds=1), CleanIO(commit='c3'))
+        short2 = retired_run.run_all(make_cfg(self.tmp, name='quick2', sides=['kaijuflow'], rounds=1), CleanIO(commit='c3'))
         self.assertIn(f'compared with the previous run, {base},', short2['changes'][0])
         self.assertIn('KaijuFlow code: c1 -> c3', short2['changes'])
-        full = brainrun.run_all(make_cfg(self.tmp, name='full'), CleanIO(commit='c4'))
+        full = retired_run.run_all(make_cfg(self.tmp, name='full'), CleanIO(commit='c4'))
         self.assertIn('KaijuFlow code: c1 -> c4', full['changes'])
 
     def test_a_short_run_is_compared_with_the_previous_run_check_names_even_one_that_missed_requests(self):
         """#241: one Previous run. A short run's "What changed" is against the run its CHECK.txt names, so a finished run
         that missed requests (not usable as a baseline) is still the one it is compared with."""
-        missed = brainrun.run_all(make_cfg(self.tmp, name='missed'), FakeIO(commit='c1'))  # its stand-in logged a miss
-        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO(commit='c2'))
+        missed = retired_run.run_all(make_cfg(self.tmp, name='missed'), FakeIO(commit='c1'))  # its stand-in logged a miss
+        short = retired_run.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO(commit='c2'))
         folder = os.path.basename(missed['dir'])
         self.assertTrue(short['changes'][0].startswith(f'Short run: compared with the previous run, {folder},'), short['changes'])
         self.assertIn('KaijuFlow code: c1 -> c2', short['changes'])
@@ -1924,9 +1926,9 @@ class ShortRunTest(SignalGuard):
 
     def bad(self, argv):
         err = io_module.StringIO()
-        with mock.patch.object(brainrun, 'RealIO', side_effect=AssertionError('nothing may start')), \
+        with mock.patch.object(retired_run, 'RetiredIO', side_effect=AssertionError('nothing may start')), \
                 contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as stop:
-            brainrun.main(argv + ['--name', 't', '--store', self.tmp, '--list', 'l', '--runs-root', os.path.join(self.tmp, 'runs')])
+            retired_run.main(argv + ['--name', 't', '--store', self.tmp, '--list', 'l', '--runs-root', os.path.join(self.tmp, 'runs')])
         self.assertEqual(stop.exception.code, 2)
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'runs')))
         message = err.getvalue().strip().splitlines()[-1]
@@ -1959,26 +1961,26 @@ class ArchiveTest(unittest.TestCase):
                 os.rename(os.path.join(self.root, d), os.path.join(self.root, br.ARCHIVE, d))
 
     def test_a_run_next_to_an_archive_folder_is_the_first_one(self):
-        brainrun.run_all(make_cfg(self.tmp, name='old'), CleanIO(commit='c1'))
-        brainrun.run_all(make_cfg(self.tmp, name='old-null'), FakeIO(limit_at_visit=1))
+        retired_run.run_all(make_cfg(self.tmp, name='old'), CleanIO(commit='c1'))
+        retired_run.run_all(make_cfg(self.tmp, name='old-null'), FakeIO(limit_at_visit=1))
         self.archive_all()
-        run = brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO(commit='c2'))
+        run = retired_run.run_all(make_cfg(self.tmp, name='baseline'), CleanIO(commit='c2'))
         self.assertEqual(run['changes'], ['No earlier run to compare with: this is the first one.'])
         self.assertIn('No earlier run to compare with: this is the first one.', read(os.path.join(run['dir'], 'report.md')))
         self.assertIsNone(runs.previous(run))
         # the next run is compared with that first one, not with anything archived
-        nxt = brainrun.run_all(make_cfg(self.tmp, name='tuning'), CleanIO(commit='c3'))
+        nxt = retired_run.run_all(make_cfg(self.tmp, name='tuning'), CleanIO(commit='c3'))
         self.assertIn('KaijuFlow code: c2 -> c3', nxt['changes'])
         self.assertFalse([c for c in nxt['changes'] if 'null run' in c], nxt['changes'])
 
     def test_a_short_run_is_never_compared_with_an_archived_baseline(self):
-        brainrun.run_all(make_cfg(self.tmp, name='old'), CleanIO())
+        retired_run.run_all(make_cfg(self.tmp, name='old'), CleanIO())
         self.archive_all()
-        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
+        short = retired_run.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
         self.assertEqual(short['changes'], ['No earlier run to compare with: this is the first one.'])
 
     def test_the_check_says_an_archived_run_is_not_usable_as_a_baseline(self):
-        run = brainrun.run_all(make_cfg(self.tmp, name='old'), CleanIO())
+        run = retired_run.run_all(make_cfg(self.tmp, name='old'), CleanIO())
         self.assertTrue(runcheck.check_run(run['dir'])[0])
         self.archive_all()
         usable, lines = runcheck.check_run(os.path.join(self.root, br.ARCHIVE, os.path.basename(run['dir'])))
@@ -2001,18 +2003,18 @@ class NeverComparedTest(unittest.TestCase):
             json.dump(meta, f)
 
     def test_a_run_after_a_marked_run_is_the_first_one(self):
-        self.mark(brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO(commit='c1'))['dir'])
-        run = brainrun.run_all(make_cfg(self.tmp, name='tuning'), CleanIO(commit='c2'))
+        self.mark(retired_run.run_all(make_cfg(self.tmp, name='baseline'), CleanIO(commit='c1'))['dir'])
+        run = retired_run.run_all(make_cfg(self.tmp, name='tuning'), CleanIO(commit='c2'))
         self.assertEqual(run['changes'], ['No earlier run to compare with: this is the first one.'])
         self.assertIn('No earlier run to compare with: this is the first one.', read(os.path.join(run['dir'], 'report.md')))
 
     def test_a_short_run_is_never_compared_with_a_marked_run(self):
-        self.mark(brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO())['dir'])
-        short = brainrun.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
+        self.mark(retired_run.run_all(make_cfg(self.tmp, name='baseline'), CleanIO())['dir'])
+        short = retired_run.run_all(make_cfg(self.tmp, name='quick', sides=['kaijuflow'], rounds=1), CleanIO())
         self.assertEqual(short['changes'], ['No earlier run to compare with: this is the first one.'])
 
     def test_the_check_says_a_marked_run_is_not_usable_as_a_baseline(self):
-        run = brainrun.run_all(make_cfg(self.tmp, name='baseline'), CleanIO())
+        run = retired_run.run_all(make_cfg(self.tmp, name='baseline'), CleanIO())
         self.mark(run['dir'])
         usable, lines = runcheck.check_run(run['dir'])
         self.assertFalse(usable)
@@ -2029,9 +2031,9 @@ class ListCpuTest(unittest.TestCase):
     def test_cpu_used_between_two_readings_in_ms(self):
         before = {'kaijuflow_ms': 1_000_000, 'altmount_ms': 5_000_000, 'machine_ms': 70_000}
         after = {'kaijuflow_ms': 1_250_400, 'altmount_ms': 4_000_000, 'machine_ms': 71_230}
-        self.assertEqual(brainrun.cpu_used(before, after), {'kaijuflow_ms': 250, 'altmount_ms': None, 'machine_ms': 1230},
+        self.assertEqual(retired_run.cpu_used(before, after), {'kaijuflow_ms': 250, 'altmount_ms': None, 'machine_ms': 1230},
                          'a reading that went back (a restart) says nothing')
-        self.assertEqual(brainrun.cpu_used({}, after), {'kaijuflow_ms': None, 'altmount_ms': None, 'machine_ms': None})
+        self.assertEqual(retired_run.cpu_used({}, after), {'kaijuflow_ms': None, 'altmount_ms': None, 'machine_ms': None})
 
     def test_container_cpu_is_read_from_its_cgroup_and_looked_up_again_after_a_reset(self):
         if True:
@@ -2045,14 +2047,14 @@ class ListCpuTest(unittest.TestCase):
             os.makedirs(os.path.join(root, 'docker-bbb.scope'))
             with open(os.path.join(root, 'docker-bbb.scope', 'cpu.stat'), 'w') as f:
                 f.write('usage_usec 43176\nuser_usec 29486\n')
-            brainrun._container_ids.pop('kaijuflow-test', None)
-            self.assertEqual(brainrun._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
+            retired_run._container_ids.pop('kaijuflow-test', None)
+            self.assertEqual(retired_run._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
             self.assertEqual(len(calls), 2, 'the first id had no cgroup: looked up again')
-            self.assertEqual(brainrun._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
+            self.assertEqual(retired_run._container_cpu_us('kaijuflow-test', run=run, root=root), 43176)
             self.assertEqual(len(calls), 2, 'the id is kept')
-            brainrun._container_ids.pop('kaijuflow-test', None)
+            retired_run._container_ids.pop('kaijuflow-test', None)
         with self.assertRaises(ValueError):
-            brainrun._container_cpu_us('some-other-container')
+            retired_run._container_cpu_us('some-other-container')
 
     def test_machine_busy_leaves_out_idle_and_iowait(self):
         if True:
@@ -2060,16 +2062,16 @@ class ListCpuTest(unittest.TestCase):
             p = os.path.join(d, 'stat')
             with open(p, 'w') as f:
                 f.write('cpu  100 5 50 1000 40 3 2 0 0 0\ncpu0 1 2 3 4\n')
-            self.assertEqual(brainrun._machine_busy_ms(p), (100 + 5 + 50 + 3 + 2) * 10)
-            self.assertIsNone(brainrun._machine_busy_ms(os.path.join(d, 'none')))
+            self.assertEqual(retired_run._machine_busy_ms(p), (100 + 5 + 50 + 3 + 2) * 10)
+            self.assertIsNone(retired_run._machine_busy_ms(os.path.join(d, 'none')))
 
     def test_a_visit_keeps_the_list_cpu_its_http_gave(self):
         sample = iter([{'kaijuflow_ms': 0, 'altmount_ms': 0, 'machine_ms': 0},
                        {'kaijuflow_ms': 90_000, 'altmount_ms': 10_000, 'machine_ms': 400}])
-        with mock.patch.object(brainrun, 'cpu_sample', lambda: next(sample)), \
+        with mock.patch.object(retired_run, 'cpu_sample', lambda: next(sample)), \
                 mock.patch.object(common, 'get', return_value=(200, {}, b'{"streams": []}', {'ready': 0.2, 'total': 0.3})):
-            io = brainrun.RealIO({'test_dir': '/nonexistent'})
-            with mock.patch.object(brainrun, 'list_base', return_value='http://x'):
+            io = retired_run.RetiredIO({'test_dir': '/nonexistent'})
+            with mock.patch.object(retired_run, 'list_base', return_value='http://x'):
                 out = io.visit_http('kaijuflow', 'movie', 'tt1', 1)
         self.assertEqual(out['list_cpu'], {'kaijuflow_ms': 90, 'altmount_ms': 10, 'machine_ms': 400})
         self.assertEqual(out['list_s'], 0.3)

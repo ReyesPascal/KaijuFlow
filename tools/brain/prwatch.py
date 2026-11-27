@@ -3,10 +3,11 @@
     python3 -I tools/brain/prwatch.py <pr> [--interval S] [--timeout S]
 
 Run it with the shell's background mode: it prints one line at once (how many checks, how many still running, the head
-commit), then exits on the first final state with one line:
+commit), then polls every --interval seconds (default 5) and exits on the first final state with one line:
 
     PR #230 GREEN at b025f27              exit 0: every check passed (a draft says "(draft)": not mergeable yet)
-    PR #230 RED at b025f27: a4-isolated   exit 1: the checks that failed
+    PR #230 RED at b025f27: a4-isolated   exit 1: the checks that failed, said as soon as one fails (with
+                                          "(n checks still running)" when the others have not finished)
     PR #230 TIMEOUT at b025f27: ...       exit 3: still running after --timeout seconds (default 1800)
 
 A new push while it waits starts the count again (one line says so). A gh failure is printed and exits 2, so a broken
@@ -52,21 +53,22 @@ def name(check):
 
 
 def verdict(answer):
-    """('running', n running, n checks) while any check runs or none has started; ('green',) or ('red', [failed names])."""
+    """('red', [failed names], n still running) as soon as any check failed, even while others run; else ('running',
+    n running, n checks) while any check runs or none has started; else ('green',)."""
     checks = answer.get('statusCheckRollup') or []
     if not checks:
         return 'running', 0, 0
     got = [(name(c), outcome(c)) for c in checks]
     running = sum(1 for _, o in got if o == 'running')
-    if running:
-        return 'running', running, len(got)
     failed = [n for n, o in got if o == 'failed']
-    return ('red', failed) if failed else ('green',)
+    if failed:
+        return 'red', failed, running
+    return ('running', running, len(got)) if running else ('green',)
 
 
 def main(argv, run_gh=gh, sleep=time.sleep, clock=time.monotonic):
     args = list(argv)
-    opts = {'--interval': 20.0, '--timeout': 1800.0}
+    opts = {'--interval': 5.0, '--timeout': 1800.0}
     try:
         for flag in opts:
             if flag in args:
@@ -97,7 +99,8 @@ def main(argv, run_gh=gh, sleep=time.sleep, clock=time.monotonic):
             print(f'PR #{pr} GREEN at {sha}{draft}', flush=True)
             return 0
         if v[0] == 'red':
-            print(f"PR #{pr} RED at {sha}{draft}: {', '.join(v[1])}", flush=True)
+            still = f" ({v[2]} check{'s' if v[2] != 1 else ''} still running)" if v[2] else ''
+            print(f"PR #{pr} RED at {sha}{draft}: {', '.join(v[1])}{still}", flush=True)
             return 1
         if first:
             print(f'PR #{pr}: watching {v[2]} checks at {sha}{draft}, {v[1]} still running' if v[2]

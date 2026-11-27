@@ -1,0 +1,1092 @@
+{
+ "status": "ok",
+ "visits": [
+  {
+   "title": [
+    "movie",
+    "tt32537226",
+    "Hunting Season",
+    "popular-film",
+    "2025-12-05"
+   ],
+   "label": "Hunting Season",
+   "id": "tt32537226",
+   "t_start": "2026-11-24T12:23:03.482Z",
+   "t_end": "2026-11-24T12:23:09.736Z",
+   "list_status": 200,
+   "list_s": 1.24,
+   "note": null,
+   "sources": 102,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 11794931457,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "18bb0859b4a6b196",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   },
+   "browse_pause_s": 5,
+   "best": true,
+   "steps": [
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 377,
+     "ok": true,
+     "t": "2026-11-24T12:23:04.250Z",
+     "ref": "tt32537226",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 433,
+     "ok": true,
+     "t": "2026-11-24T12:23:04.306Z",
+     "ref": "tt32537226",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 522,
+     "ok": true,
+     "t": "2026-11-24T12:23:04.396Z",
+     "ref": "tt32537226",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 549,
+     "ok": true,
+     "t": "2026-11-24T12:23:04.419Z",
+     "ref": "tt32537226",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "list_filter",
+     "ms": 27,
+     "ok": true,
+     "t": "2026-11-24T12:23:04.625Z",
+     "ref": "tt32537226",
+     "results": 103,
+     "kept": 102,
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 535,
+     "ok": true,
+     "t": "2026-11-24T12:23:05.792Z",
+     "ref": "tt32537226",
+     "title": "Hunting Season 2025 2160p WEB-DL H.265 DTS-HD MA 5.1",
+     "status": "verified",
+     "video": "Hunting Season 2025 2160p WEB-DL H.265 DTS-HD MA 5.1.mkv",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 437,
+     "ok": true,
+     "t": "2026-11-24T12:23:05.984Z",
+     "ref": "tt32537226",
+     "title": "Hunting.Season.2025.NORDiC.2160p.WEB-DL.H.265.DD5.1-ADDICTION",
+     "status": "verified",
+     "video": "Hunting.Season.2025.NORDiC.2160p.WEB-DL.H.265.DD5.1-ADDICTION.mkv",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "NinjaCentral",
+     "ms": 775,
+     "ok": true,
+     "t": "2026-11-24T12:23:06.450Z",
+     "ref": "tt32537226",
+     "title": "Hunting.Season.2025.2160p.iT.WEB-DL.DD+5.1.H.265-playWEB",
+     "status": "verified_stored",
+     "dev": true
+    },
+    {
+     "step": "played",
+     "source": "DrunkenSlug",
+     "ms": 0,
+     "ok": true,
+     "t": "2026-11-24T12:23:09.730Z",
+     "title": "Hunting Season 2025 2160p WEB-DL H.265 DTS-HD MA 5.1",
+     "flow": "sure",
+     "video": "Hunting Season 2025 2160p WEB-DL H.265 DTS-HD MA 5.1.mkv",
+     "dev": true
+    }
+   ],
+   "imports": [
+    {
+     "name": "Hunting Season 2025 2160p WEB-DL H.265 DTS-HD MA 5.1",
+     "queue_id": "1",
+     "start": "2026-11-24T12:23:05.812Z",
+     "end": "2026-11-24T12:23:07.414Z",
+     "seconds": 1.602,
+     "ok": true
+    }
+   ],
+   "limit": null
+  },
+  {
+   "title": [
+    "movie",
+    "tt36583977",
+    "Forgotten Island",
+    "popular-film",
+    "2026-09-10"
+   ],
+   "label": "Forgotten Island",
+   "id": "tt36583977",
+   "t_start": "2026-11-24T12:23:13.009Z",
+   "t_end": "2026-11-24T12:23:19.187Z",
+   "list_status": 200,
+   "list_s": 1.17,
+   "note": null,
+   "sources": 86,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 20906967544,
+    "ctype": "video/mp4",
+    "note": null,
+    "sha": "15e0f7fdf45ffbfa",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   },
+   "browse_pause_s": 5,
+   "best": true,
+   "steps": [
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 304,
+     "ok": true,
+     "t": "2026-11-24T12:23:13.560Z",
+     "ref": "tt36583977",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 391,
+     "ok": true,
+     "t": "2026-11-24T12:23:13.647Z",
+     "ref": "tt36583977",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 682,
+     "ok": true,
+     "t": "2026-11-24T12:23:13.939Z",
+     "ref": "tt36583977",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 693,
+     "ok": true,
+     "t": "2026-11-24T12:23:13.949Z",
+     "ref": "tt36583977",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "list_filter",
+     "ms": 18,
+     "ok": true,
+     "t": "2026-11-24T12:23:14.096Z",
+     "ref": "tt36583977",
+     "results": 90,
+     "kept": 86,
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 295,
+     "ok": true,
+     "t": "2026-11-24T12:23:15.203Z",
+     "ref": "tt36583977",
+     "title": "Forgotten.Island.2026.NORDiC.ENG.2160p.SDR.WEB-DL.DDP5.1.Atmos.H.265-NorTekst",
+     "status": "verified",
+     "video": "Forgotten.Island.2026.NORDiC.ENG.2160p.SDR.WEB-DL.DDP5.1.Atmos.H.265-NorTekst.mkv",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 481,
+     "ok": true,
+     "t": "2026-11-24T12:23:16.627Z",
+     "ref": "tt36583977",
+     "title": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10_-Ben.The.Men",
+     "status": "verified",
+     "video": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10+-Ben.The.Men.mp4",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "NinjaCentral",
+     "ms": 2723,
+     "ok": true,
+     "t": "2026-11-24T12:23:17.943Z",
+     "ref": "tt36583977",
+     "title": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10.Ben.The.Men",
+     "status": "verified_stored",
+     "dev": true
+    },
+    {
+     "step": "played",
+     "source": "DrunkenSlug",
+     "ms": 0,
+     "ok": true,
+     "t": "2026-11-24T12:23:19.182Z",
+     "title": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10_-Ben.The.Men",
+     "flow": "sure",
+     "video": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10+-Ben.The.Men.mp4",
+     "dev": true
+    }
+   ],
+   "imports": [
+    {
+     "name": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10_-Ben.The.Men",
+     "queue_id": "2",
+     "start": "2026-11-24T12:23:16.746Z",
+     "end": "2026-11-24T12:23:17.935Z",
+     "seconds": 1.189,
+     "ok": true
+    }
+   ],
+   "limit": null
+  },
+  {
+   "title": [
+    "movie",
+    "tt13701240",
+    "Miraculous World: Tokyo, Stellar Force",
+    "rare-film",
+    "2025-12-07"
+   ],
+   "label": "Miraculous World: Tokyo, Stellar Force",
+   "id": "tt13701240",
+   "t_start": "2026-11-24T12:23:22.451Z",
+   "t_end": "2026-11-24T12:23:28.964Z",
+   "list_status": 200,
+   "list_s": 1.28,
+   "note": null,
+   "sources": 28,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.23,
+    "first_byte_s": 0.23,
+    "total_s": 0.23,
+    "size": 2418015947,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "afb6558406f5f945",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   },
+   "browse_pause_s": 5,
+   "best": true,
+   "steps": [
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 231,
+     "ok": true,
+     "t": "2026-11-24T12:23:23.400Z",
+     "ref": "tt13701240",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 273,
+     "ok": true,
+     "t": "2026-11-24T12:23:23.444Z",
+     "ref": "tt13701240",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 359,
+     "ok": true,
+     "t": "2026-11-24T12:23:23.530Z",
+     "ref": "tt13701240",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 445,
+     "ok": true,
+     "t": "2026-11-24T12:23:23.615Z",
+     "ref": "tt13701240",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "list_filter",
+     "ms": 10,
+     "ok": true,
+     "t": "2026-11-24T12:23:23.687Z",
+     "ref": "tt13701240",
+     "results": 28,
+     "kept": 28,
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 365,
+     "ok": true,
+     "t": "2026-11-24T12:23:24.664Z",
+     "ref": "tt13701240",
+     "title": "Miraculous.World.Tokyo.Stellar.Force.2025.NORDiC.ENG.1080p.DSNP.WEB-DL.H.264-NORViNE",
+     "status": "verified",
+     "video": "Miraculous.World.Tokyo.Stellar.Force.2025.NORDiC.ENG.1080p.DSNP.WEB-DL.H.264-NORViNE.mkv",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "NinjaCentral",
+     "ms": 3216,
+     "ok": false,
+     "t": "2026-11-24T12:23:27.711Z",
+     "ref": "tt13701240",
+     "title": "Miraculous.World.TOKYO.STELLAR.FORCE.2025.1080p.DSNP.WEB-DL.MULTI.DDP.5.1.H.264-OldT",
+     "status": "blocked",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "NinjaCentral",
+     "ms": 3475,
+     "ok": true,
+     "t": "2026-11-24T12:23:28.122Z",
+     "ref": "tt13701240",
+     "title": "Miraculous World TOKYO STELLAR FORCE 2025 1080p DSNP WEB-DL DUAL DDP5 1 H 264-Kitsune",
+     "status": "verified_stored",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 44,
+     "ok": true,
+     "t": "2026-11-24T12:23:28.249Z",
+     "ref": "tt13701240",
+     "title": "Miraculous World TOKYO STELLAR FORCE 2025 1080p DSNP WEB-DL DUAL DDP5 1 H 264-Kitsune",
+     "status": "verified",
+     "video": "Miraculous World TOKYO STELLAR FORCE 2025 1080p DSNP WEB-DL DUAL DDP5 1 H 264-Kitsune.mkv",
+     "dev": true
+    },
+    {
+     "step": "played",
+     "source": "DrunkenSlug",
+     "ms": 0,
+     "ok": true,
+     "t": "2026-11-24T12:23:28.959Z",
+     "title": "Miraculous.World.Tokyo.Stellar.Force.2025.NORDiC.ENG.1080p.DSNP.WEB-DL.H.264-NORViNE",
+     "flow": "sure",
+     "video": "Miraculous.World.Tokyo.Stellar.Force.2025.NORDiC.ENG.1080p.DSNP.WEB-DL.H.264-NORViNE.mkv",
+     "dev": true
+    }
+   ],
+   "imports": [
+    {
+     "name": "Miraculous.World.Tokyo.Stellar.Force.2025.NORDiC.ENG.1080p.DSNP.WEB-DL.H.264-NORViNE",
+     "queue_id": "3",
+     "start": "2026-11-24T12:23:27.753Z",
+     "end": "2026-11-24T12:23:28.952Z",
+     "seconds": 1.198,
+     "ok": true
+    }
+   ],
+   "limit": null
+  },
+  {
+   "title": [
+    "series",
+    "tt0804503:4:5",
+    "Mad Men S04E05",
+    "popular-episode",
+    "2010-08-22"
+   ],
+   "label": "Mad Men S04E05",
+   "id": "tt0804503:4:5",
+   "t_start": "2026-11-24T12:23:32.221Z",
+   "t_end": "2026-11-24T12:23:42.356Z",
+   "list_status": 200,
+   "list_s": 5.13,
+   "note": null,
+   "sources": 95,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 6824359970,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "386642a6de2bac27",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   },
+   "browse_pause_s": 5,
+   "best": true,
+   "steps": [
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 309,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.109Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 321,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.122Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 397,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.199Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 413,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.215Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 434,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.235Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 488,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.290Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 588,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.390Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 397,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.648Z",
+     "ref": "tt0804503:4:5",
+     "page": 2,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 436,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.663Z",
+     "ref": "tt0804503:4:5",
+     "page": 2,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 486,
+     "ok": true,
+     "t": "2026-11-24T12:23:34.699Z",
+     "ref": "tt0804503:4:5",
+     "page": 2,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 385,
+     "ok": true,
+     "t": "2026-11-24T12:23:35.061Z",
+     "ref": "tt0804503:4:5",
+     "page": 3,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 445,
+     "ok": true,
+     "t": "2026-11-24T12:23:35.106Z",
+     "ref": "tt0804503:4:5",
+     "page": 3,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 475,
+     "ok": true,
+     "t": "2026-11-24T12:23:35.187Z",
+     "ref": "tt0804503:4:5",
+     "page": 3,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 1871,
+     "ok": true,
+     "t": "2026-11-24T12:23:35.673Z",
+     "ref": "tt0804503:4:5",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 695,
+     "ok": true,
+     "t": "2026-11-24T12:23:36.384Z",
+     "ref": "tt0804503:4:5",
+     "page": 2,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 689,
+     "ok": true,
+     "t": "2026-11-24T12:23:37.091Z",
+     "ref": "tt0804503:4:5",
+     "page": 3,
+     "dev": true
+    },
+    {
+     "step": "list_filter",
+     "ms": 20,
+     "ok": true,
+     "t": "2026-11-24T12:23:37.281Z",
+     "ref": "tt0804503:4:5",
+     "results": 95,
+     "kept": 95,
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 1891,
+     "ok": true,
+     "t": "2026-11-24T12:23:40.245Z",
+     "ref": "tt0804503:4:5",
+     "title": "Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER",
+     "status": "verified",
+     "video": "Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER.mkv",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "NinjaCentral",
+     "ms": 966,
+     "ok": true,
+     "t": "2026-11-24T12:23:40.350Z",
+     "ref": "tt0804503:4:5",
+     "title": "Mad.Men.S04.REPACK.2160p.HMAX.WEB-DL.DDP5.1.DV.HDR.H.265-WADU",
+     "status": "verified",
+     "video": "Mad.Men.S04E05.The.Chrysanthemum.and.the.Sword.REPACK.2160p.HMAX.WEB-DL.DDP5.1.DV.HDR.H.265-WADU.mkv",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 1665,
+     "ok": true,
+     "t": "2026-11-24T12:23:40.360Z",
+     "ref": "tt0804503:4:5",
+     "title": "Mad.Men.S04.2160p.HMAX.WEB-DL.DDP5.1.DV.HDR.H.265-WADU",
+     "status": "verified",
+     "video": "Mad.Men.S04E05.The.Chrysanthemum.and.the.Sword.2160p.HMAX.WEB-DL.DDP5.1.DV.HDR.H.265-WADU.mkv",
+     "dev": true
+    },
+    {
+     "step": "played",
+     "source": "DrunkenSlug",
+     "ms": 0,
+     "ok": true,
+     "t": "2026-11-24T12:23:42.353Z",
+     "title": "Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER",
+     "flow": "sure",
+     "video": "Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER.mkv",
+     "dev": true
+    }
+   ],
+   "imports": [
+    {
+     "name": "Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER",
+     "queue_id": "4",
+     "start": "2026-11-24T12:23:40.284Z",
+     "end": "2026-11-24T12:23:40.820Z",
+     "seconds": 0.536,
+     "ok": true
+    }
+   ],
+   "limit": null
+  },
+  {
+   "title": [
+    "series",
+    "tt0247102:4:4",
+    "Girlfriends S04E04",
+    "rare-episode",
+    "2003-10-06"
+   ],
+   "label": "Girlfriends S04E04",
+   "id": "tt0247102:4:4",
+   "t_start": "2026-11-24T12:23:45.634Z",
+   "t_end": "2026-11-24T12:23:55.731Z",
+   "list_status": 200,
+   "list_s": 5.09,
+   "note": null,
+   "sources": 3,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 169645867,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "482f121487b3ef75",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   },
+   "browse_pause_s": 5,
+   "best": true,
+   "steps": [
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 203,
+     "ok": true,
+     "t": "2026-11-24T12:23:46.995Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 223,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.015Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 384,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.176Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 452,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.245Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 464,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.257Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 493,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.286Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 506,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.299Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 332,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.629Z",
+     "ref": "tt0247102:4:4",
+     "page": 2,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 445,
+     "ok": true,
+     "t": "2026-11-24T12:23:47.701Z",
+     "ref": "tt0247102:4:4",
+     "page": 2,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "NinjaCentral",
+     "ms": 563,
+     "ok": true,
+     "t": "2026-11-24T12:23:48.276Z",
+     "ref": "tt0247102:4:4",
+     "page": 3,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 2141,
+     "ok": true,
+     "t": "2026-11-24T12:23:48.934Z",
+     "ref": "tt0247102:4:4",
+     "page": 1,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 1068,
+     "ok": true,
+     "t": "2026-11-24T12:23:50.011Z",
+     "ref": "tt0247102:4:4",
+     "page": 2,
+     "dev": true
+    },
+    {
+     "step": "indexer_page",
+     "source": "DrunkenSlug",
+     "ms": 630,
+     "ok": true,
+     "t": "2026-11-24T12:23:50.652Z",
+     "ref": "tt0247102:4:4",
+     "page": 3,
+     "dev": true
+    },
+    {
+     "step": "list_filter",
+     "ms": 1,
+     "ok": true,
+     "t": "2026-11-24T12:23:50.719Z",
+     "ref": "tt0247102:4:4",
+     "results": 3,
+     "kept": 3,
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "DrunkenSlug",
+     "ms": 728,
+     "ok": true,
+     "t": "2026-11-24T12:23:51.987Z",
+     "ref": "tt0247102:4:4",
+     "title": "Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor",
+     "status": "verified_stored",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "NinjaCentral",
+     "ms": 1108,
+     "ok": false,
+     "t": "2026-11-24T12:23:52.862Z",
+     "ref": "tt0247102:4:4",
+     "title": "Girlfriends.2000.S04.NTSC.3xDVD9.DD.5.1-RAiNY",
+     "status": "blocked",
+     "dev": true
+    },
+    {
+     "step": "play_check",
+     "source": "NinjaCentral",
+     "ms": 1789,
+     "ok": true,
+     "t": "2026-11-24T12:23:52.864Z",
+     "ref": "tt0247102:4:4",
+     "title": "Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor",
+     "status": "verified_stored",
+     "dev": true
+    }
+   ],
+   "imports": [
+    {
+     "name": "Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor",
+     "queue_id": "5",
+     "start": "2026-11-24T12:23:52.872Z",
+     "end": "2026-11-24T12:23:53.686Z",
+     "seconds": 0.814,
+     "ok": true
+    }
+   ],
+   "limit": null
+  }
+ ],
+ "outcomes": [
+  {
+   "label": "Hunting Season",
+   "id": "tt32537226",
+   "kind": "popular-film",
+   "sources": 102,
+   "release": "Hunting Season 2025 2160p WEB-DL H.265 DTS-HD MA 5.1",
+   "video": true,
+   "checked": [
+    {
+     "release": "Hunting Season 2025 2160p WEB-DL H.265 DTS-HD MA 5.1",
+     "ok": true,
+     "status": "verified"
+    },
+    {
+     "release": "Hunting.Season.2025.NORDiC.2160p.WEB-DL.H.265.DD5.1-ADDICTION",
+     "ok": true,
+     "status": "verified"
+    },
+    {
+     "release": "Hunting.Season.2025.2160p.iT.WEB-DL.DD+5.1.H.265-playWEB",
+     "ok": true,
+     "status": "verified_stored"
+    }
+   ],
+   "fallbacks": 0,
+   "check_misses": [],
+   "start_s": 0.01,
+   "title_to_video": 1.25,
+   "slow": false,
+   "allowed_word": null,
+   "outcome": "played",
+   "why": ""
+  },
+  {
+   "label": "Forgotten Island",
+   "id": "tt36583977",
+   "kind": "popular-film",
+   "sources": 86,
+   "release": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10_-Ben.The.Men",
+   "video": true,
+   "checked": [
+    {
+     "release": "Forgotten.Island.2026.NORDiC.ENG.2160p.SDR.WEB-DL.DDP5.1.Atmos.H.265-NorTekst",
+     "ok": true,
+     "status": "verified"
+    },
+    {
+     "release": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10_-Ben.The.Men",
+     "ok": true,
+     "status": "verified"
+    },
+    {
+     "release": "Forgotten.Island.2026.2160p.iT.WEB-DL.DV.HDR10.Ben.The.Men",
+     "ok": true,
+     "status": "verified_stored"
+    }
+   ],
+   "fallbacks": 0,
+   "check_misses": [],
+   "start_s": 0.01,
+   "title_to_video": 1.18,
+   "slow": false,
+   "allowed_word": null,
+   "outcome": "played",
+   "why": ""
+  },
+  {
+   "label": "Miraculous World: Tokyo, Stellar Force",
+   "id": "tt13701240",
+   "kind": "rare-film",
+   "sources": 28,
+   "release": "Miraculous.World.Tokyo.Stellar.Force.2025.NORDiC.ENG.1080p.DSNP.WEB-DL.H.264-NORViNE",
+   "video": true,
+   "checked": [
+    {
+     "release": "Miraculous.World.Tokyo.Stellar.Force.2025.NORDiC.ENG.1080p.DSNP.WEB-DL.H.264-NORViNE",
+     "ok": true,
+     "status": "verified"
+    },
+    {
+     "release": "Miraculous.World.TOKYO.STELLAR.FORCE.2025.1080p.DSNP.WEB-DL.MULTI.DDP.5.1.H.264-OldT",
+     "ok": false,
+     "status": "blocked"
+    },
+    {
+     "release": "Miraculous World TOKYO STELLAR FORCE 2025 1080p DSNP WEB-DL DUAL DDP5 1 H 264-Kitsune",
+     "ok": true,
+     "status": "verified_stored"
+    },
+    {
+     "release": "Miraculous World TOKYO STELLAR FORCE 2025 1080p DSNP WEB-DL DUAL DDP5 1 H 264-Kitsune",
+     "ok": true,
+     "status": "verified"
+    }
+   ],
+   "fallbacks": 0,
+   "check_misses": [],
+   "start_s": 0.23,
+   "title_to_video": 1.51,
+   "slow": false,
+   "allowed_word": null,
+   "outcome": "played",
+   "why": ""
+  },
+  {
+   "label": "Mad Men S04E05",
+   "id": "tt0804503:4:5",
+   "kind": "popular-episode",
+   "sources": 95,
+   "release": "Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER",
+   "video": true,
+   "checked": [
+    {
+     "release": "Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER",
+     "ok": true,
+     "status": "verified"
+    },
+    {
+     "release": "Mad.Men.S04.REPACK.2160p.HMAX.WEB-DL.DDP5.1.DV.HDR.H.265-WADU",
+     "ok": true,
+     "status": "verified"
+    },
+    {
+     "release": "Mad.Men.S04.2160p.HMAX.WEB-DL.DDP5.1.DV.HDR.H.265-WADU",
+     "ok": true,
+     "status": "verified"
+    }
+   ],
+   "fallbacks": 0,
+   "check_misses": [],
+   "start_s": 0.01,
+   "title_to_video": 5.14,
+   "slow": false,
+   "allowed_word": null,
+   "outcome": "played",
+   "why": ""
+  },
+  {
+   "label": "Girlfriends S04E04",
+   "id": "tt0247102:4:4",
+   "kind": "rare-episode",
+   "sources": 3,
+   "release": null,
+   "video": true,
+   "checked": [
+    {
+     "release": "Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor",
+     "ok": true,
+     "status": "verified_stored"
+    },
+    {
+     "release": "Girlfriends.2000.S04.NTSC.3xDVD9.DD.5.1-RAiNY",
+     "ok": false,
+     "status": "blocked"
+    },
+    {
+     "release": "Girlfriends.S04E04.You.Aint.Gotta.Go.Home.But.You.Know.the.Rest.WEB-DL.DDP2.0.H.264-squalor",
+     "ok": true,
+     "status": "verified_stored"
+    }
+   ],
+   "fallbacks": 0,
+   "check_misses": [],
+   "start_s": 0.01,
+   "title_to_video": 5.1,
+   "slow": false,
+   "allowed_word": null,
+   "outcome": "fail",
+   "why": "video came, but KaijuFlow's log names no release played, so the right title cannot be told",
+   "evidence": "evidence/05-girlfriends-s04e04"
+  }
+ ]
+}

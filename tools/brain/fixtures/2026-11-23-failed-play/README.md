@@ -1,4 +1,4 @@
-Captured for the evidence folder (#280, spec #279: `test_evidence.py`): one real play with a failed Source, so the evidence step is tested on what KaijuFlow, AltMount and the stand-in really write (review rule 2), not on invented lines.
+Captured for the evidence folder (#280, spec #279: `test_evidence.py`): one real play with a failed Source, so the evidence step is tested on what KaijuFlow, AltMount and the stand-in really write, not on invented lines.
 
 From: the run folder `2026-11-23T190950Z-grouped-219` (in the notes repo), visit "kaijuflow cold 1 The Witcher S01E01" (`tt5180504:1:1`), the casebook's chain A. Best checked Sources; HHWEB passed its check, Unscramble gave `read-error`, AltMount refused the import (`Skipping RAR archive group with missing volume(s)`, `Processing failed`, `Moved failed NZB to failed directory`), and the play fell back to playWEB, which played. The build predates the `played` and `play_failed` lines (#242).
 

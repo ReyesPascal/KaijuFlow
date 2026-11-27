@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import type { FallbackCandidate, FallbackGroup } from './types.js';
 import type { PlayContext } from './playContext.js';
 import { config as globalConfig } from '../config/index.js';
+import { mergeLate } from './lateSources.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,6 +84,18 @@ export function createFallbackGroup(id: string, candidates: FallbackCandidate[],
   }
 
   fallbackGroups.set(id, { candidates, context, createdAt: now });
+  saveFallbackGroupsToDisk();
+}
+
+/**
+ * Late candidates (#301): the ones a list's group does not hold yet (same NZB link and release name) are put at its
+ * end, so the list's entries keep their places; one it holds takes the late one's fields but its Search Flow mark,
+ * so a late copy of a Release joins its Sources (`sources`, #300). One disk write. Nothing when the group is gone.
+ */
+export function addToFallbackGroup(id: string, candidates: FallbackCandidate[]): void {
+  const group = getFallbackGroup(id);
+  if (!group) return;
+  group.candidates.push(...mergeLate(group.candidates, candidates));
   saveFallbackGroupsToDisk();
 }
 

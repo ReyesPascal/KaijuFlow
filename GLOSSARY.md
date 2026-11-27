@@ -15,8 +15,12 @@ _Avoid_: Usenet Ultimate (when you mean KaijuFlow), original
 ### Finding and playing
 
 **Source**:
-One NZB that search found for a title, whether or not it is complete. A Source might be streamed; it is not yet a Stream.
-_Avoid_: result, release, NZB (when you mean the search result), "source" for code
+One NZB that search found for a title on one indexer, whether or not it is complete. A Source might be streamed; it is not yet a Stream.
+_Avoid_: result, release (when you mean one indexer's copy), NZB (when you mean the search result), "source" for code
+
+**Release**:
+One upload of a title, found as one Source on each indexer that has it. The list shows a Release once, and the Play-time check checks it once; when one indexer's NZB cannot be fetched, the Release's Source on another indexer is used.
+_Avoid_: duplicate, copy
 
 **Healthy Source**:
 A Source that passed a health check, so its articles are believed to be available.
@@ -73,7 +77,7 @@ The entry on top of KaijuFlow's stream list ("KaijuFlow ▶ Best") that plays th
 _Avoid_: auto entry, smart pick, top pick (the top pick is the first Source of a list)
 
 **Walk**:
-One play's progress down a list: grabbing and checking Sources a few at a time from the top until one is healthy, the list runs out, or the walk stops. A failed grab is replaced once. Why it failed decides what follows (ADR 0004): an indexer that refuses a grab (a limit, an outage, refused credentials) is skipped for the rest of the walk, while a Source the indexer says is gone is a bad Source and the walk moves on. A walk stops after 30 grabs and ends as if the list had run out, so a list of gone Sources can't be walked to its end. A walk ends when any player asks for another title's list: its unfinished grabs and checks stop, unless a press is still waiting on it for its video, and a video already playing goes on. A Head start begins a walk; a press of Best joins it, and walks on its own only when there is none (On Click, or the Head start was stopped), so the 30 grabs are one walk's whether it began before or at the press. A clicked list entry that fails walks on down the list as a walk too (#255): one Source at a time from the entry, with the same grabs, the same skip of a refusing indexer and its own 30 grabs, kept across the self-redirects of its play. A player is always waiting on it for its video, so another title's list does not stop it. A Source that needs no grab (one the Backend already holds, or remembered ready) is never held back by a walk's limits.
+One play's progress down a list: grabbing and checking Sources a few at a time from the top until one is healthy, the list runs out, or the walk stops. A failed grab is replaced once. Why it failed decides what follows (ADR 0004): an indexer that refuses a grab (a limit, an outage, refused credentials) is skipped for the rest of the walk, while a Source the indexer says is gone is a bad Source and the walk moves on. A walk stops after 30 grabs and ends as if the list had run out, so a list of gone Sources can't be walked to its end. A walk ends when any player asks for another title's list: its unfinished grabs and checks stop, unless a press is still waiting on it for its video, and a video already playing goes on. While a slower indexer is still to answer after the list went out (#301), the walk takes its Sources as they come: it does not run out before they do, and it plays no maybe while a sure Source may still come. A Head start begins a walk; a press of Best joins it, and walks on its own only when there is none (On Click, or the Head start was stopped), so the 30 grabs are one walk's whether it began before or at the press. A clicked list entry that fails walks on down the list as a walk too (#255): one Source at a time from the entry, with the same grabs, the same skip of a refusing indexer and its own 30 grabs, kept across the self-redirects of its play. A player is always waiting on it for its video, so another title's list does not stop it. A Source that needs no grab (one the Backend already holds, or remembered ready) is never held back by a walk's limits.
 _Avoid_: pool loop, fallback walk, search (search finds the list; the walk checks it)
 
 **Play context**:
@@ -81,7 +85,7 @@ What a play of a list is for: the title's type, season, episode, aired date and 
 _Avoid_: play params, episode info, session data
 
 **Source memory**:
-What KaijuFlow remembers of Sources across plays and restarts: the ready ones (the Backend made their video, so a later play reuses it) and the dead ones (bad Sources, ADR 0004, kept out of lists and walks). A play remembers what it learned and recalls a Source as its play context asks for it; the memory alone decides how a Source is keyed, so a Source remembered by one play is found by another for the same episode, a dated one included (#247). A dead mark is the Source's for every episode when its link is gone or the check blocked it, otherwise its episode's, unless a season pack fails whole before any episode of it played.
+What KaijuFlow remembers of Sources across plays and restarts: the ready ones (the Backend made their video, so a later play reuses it) and the dead ones (bad Sources, ADR 0004, kept out of lists and walks). A play remembers what it learned and recalls a Source as its play context asks for it; the memory alone decides how a Source is keyed, so a Source remembered by one play is found by another for the same episode, a dated one included (#247). A dead mark is the Source's for every episode when its link is gone or the check blocked it, otherwise its episode's, unless a season pack fails whole before any episode of it played. A dead mark on a Release covers its Source on every indexer, except a link one indexer says is gone, which is that Source's alone (#300).
 _Avoid_: NZB database, healthy cache, stream cache (the prepares under way)
 
 **Disc image**:
@@ -106,23 +110,23 @@ _Avoid_: variant, candidate, contestant
 The setup where the player gets its Streams from AltMount itself, with no KaijuFlow or Usenet Ultimate in front of it. A side of earlier runs only; KaijuFlow's runs no longer play it.
 _Avoid_: AltMount's own addon, addon, AltMount alone
 
-**Short run**:
+**Short run** (retired by ADR 0010):
 A timed run that is not the full plan: without KaijuFlow's own pass, one round instead of two, or fewer titles than the list, for a quick check while tuning. It says what it played, and it is never a baseline or a previous run.
 _Avoid_: partial run, quick run
 
-**Pass**:
+**Pass** (retired by ADR 0010):
 The sides that are played together, title by title in turn, through every round, with a reset of their test copies before each cold round. A timed run has a pass of KaijuFlow and, with the one-page side, a pass of that side after it. A record command's pass is one cold and one warm round, followed by its proof replay.
 _Avoid_: batch, phase (cold or warm is the phase)
 
 **Browse pause**:
-The fixed wait in a run between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("Browse pause").
-_Avoid_: think time, settle (the settle is the pause after a play)
+The fixed wait in a check between a title's list arriving and its play, standing for a viewer reading the page before pressing play, so work begun when the list is asked for shows in the start. Not part of title to video. The rule is in `tools/brain/docs/rules.md` ("How a title is played").
+_Avoid_: think time, settle (the settle was the pause after a play, retired with `--settle`)
 
 **CPU probe**:
-A short fixed piece of single-thread work (about 1 s on Brain plugged in) that a run's preflight times before the run starts, the same work every run, so a run whose CPU was slower says so. It judges nothing; the run keeps it in `meta.json` and the report holds it against the previous run's. Format in `tools/brain/docs/formats.md`.
+A short fixed piece of single-thread work (about 1 s on Brain plugged in) that a check's preflight times before the check starts, the same work every check, so a check whose CPU was slower says so. It judges nothing; the check keeps it in `meta.json` (`machine`), and no check is held against an earlier one's (ADR 0010). Format in `tools/brain/docs/formats.md`.
 _Avoid_: benchmark (it measures the machine, not KaijuFlow)
 
-**Round**:
+**Round** (retired by ADR 0010):
 Every title played once, cold or warm, on every side of a pass. A timed run plays four rounds: cold, warm, cold, warm. A side's figures for a round are made of its own plays in it; the time a round takes covers every side of the pass.
 _Avoid_: iteration, lap
 
@@ -131,11 +135,11 @@ The first Source in a side's list for a title. Two top picks are the same Source
 _Avoid_: first result, winner
 
 **Fail**:
-A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md` ("Real-use checks" for a check: it passes on zero fails).
-_Avoid_: miss (a miss is a request the Recording cannot answer), error
+A play that gives no video: the viewer presses Best and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md` ("What is a fail"; a check passes on zero fails, "The verdict and the report").
+_Avoid_: miss (a check miss is a Source the health check passed that the Backend then refused, counted apart), error
 
 **Nothing to play**:
-A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
+A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail. The rule is in `tools/brain/docs/rules.md` ("What is reported but is not a fail").
 _Avoid_: no results (search may have found Sources that are all dead), fail (when nothing could play)
 
 **Real-use check**:
@@ -143,7 +147,7 @@ A check that plays the way a viewer watches: new titles each time, the live inde
 _Avoid_: speed test, tuning test (both replay a Recording), soak test
 
 **Quick check**:
-A real-use check of 5 new titles, cold, ended as soon as each video starts: a fast look at how a change does. Run with `brainrun.py check --quick`; its rules are in `tools/brain/docs/rules.md` ("Real-use checks").
+A real-use check of 5 new titles, cold, ended as soon as each video starts: a fast look at how a change does. Run with `brainrun.py check --quick`; its rules are in `tools/brain/docs/rules.md` ("Checks and verdicts").
 _Avoid_: smoke test, short run (a short run replays a Recording)
 
 **Full check**:
@@ -155,19 +159,19 @@ Playing one failed title again, live, after a fix, to prove the fix: a single ti
 _Avoid_: rerun, tuning test
 
 **Check miss**:
-A Source the health check passed that the Backend then refused, or whose video froze: the check was wrong even when a fallback saved the play. It is counted apart, and each one becomes a ticket. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
+A Source the health check passed that the Backend then refused, or whose video froze: the check was wrong even when a fallback saved the play. It is counted apart, and each one becomes a ticket. The rule is in `tools/brain/docs/rules.md` ("What is reported but is not a fail").
 _Avoid_: fail (when a fallback played), false positive
 
 **Slow play**:
-A play whose video arrives, but more than 60 s after the press, when a viewer would have given up. It is not a fail; it is counted and named apart, as the plays to speed up. The rule is in `tools/brain/docs/rules.md` ("Real-use checks").
+A play whose video arrives, but more than 60 s after the press, when a viewer would have given up. It is not a fail; it is counted and named apart, as the plays to speed up. The rule is in `tools/brain/docs/rules.md` ("What is reported but is not a fail").
 _Avoid_: fail (video arrived), timeout
 
 **Next-episode play**:
 A play of a TV episode whose Source KaijuFlow already prepared for an earlier episode, as a viewer watching on gets. It is reported apart from fresh plays, since it starts partly warm.
 _Avoid_: warm start (a warm start is the same Source and episode again), binge play
 
-**Previous run**:
-The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its warm title to video, its fallbacks and their extra seconds against the previous run's, which never change the verdict. A run that was stopped or is short is not judged. The rule is in `tools/brain/docs/rules.md` ("Judged against the previous run").
+**Previous run** (retired by ADR 0010):
+The run a run of KaijuFlow is judged against: the newest earlier finished run on the same Recording, not archived, not short and not marked never compared with. Per list, fails first, then the cold title to video, each better, same or worse; the change is **kept** when the fails are not higher and the cold title to video is not slower, otherwise **not kept**. Each list also shows its warm title to video, its fallbacks and their extra seconds against the previous run's, which never change the verdict. A run that was stopped or is short is not judged. The rule is archived in `tools/brain/archive/rules-retired.md` ("Judged against the previous run").
 _Avoid_: baseline (the baseline is one run; the previous run moves on with every run), last run (it may be on another recording)
 
 **Title to video**:
@@ -182,15 +186,15 @@ _Avoid_: baseline list, normal titles
 A title list of the kinds where dead Sources are common (older releases, titles prone to takedowns, less popular titles), chosen by kind only and played as each app plays it, with no check beforehand; never chosen by which side failed. It shows what checking saves.
 _Avoid_: stress list, fail list
 
-**Speed test**:
+**Speed test** (retired by ADR 0010):
 A timed run on an easy list and a hard list drawn from the pool, titles KaijuFlow has not played before. The first speed test that works is the baseline.
 _Avoid_: baseline, benchmark
 
-**Tuning test**:
+**Tuning test** (retired by ADR 0010):
 A timed run that plays a title list again, so a change to KaijuFlow or its AltMount can be judged against the run before it on the same titles.
 _Avoid_: speed test (when the titles are reused), rerun
 
-**Grouped run**:
+**Grouped run** (retired by ADR 0010):
 A tuning test that carries several changes at once and is judged as one against the previous run. When it is not kept, its changes are split in halves, each half run on its own, until the change that made it not kept shows.
 _Avoid_: batch run, combined test
 
@@ -210,16 +214,16 @@ _Avoid_: baseline settings, golden config
 One rule set for every side of a comparison of setups (the same list of Sources, 4K first, one try per play), and KaijuFlow's top pick compared per title with each other setup's. KaijuFlow's runs alone need neither.
 _Avoid_: fair run, same settings
 
-**Recording**:
-The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing.
+**Recording** (retired by ADR 0010):
+The indexer answers stored once so that every run can replay them and no run asks the real indexer. It counts only after its proof replay missed nothing. The recordings themselves were deleted on 2026-11-24 (#312); the kaijuflow-notes history keeps them.
 _Avoid_: cache, snapshot
 
 **Stand-in**:
-The small stand-in indexer on port 1340 that every test copy talks to. It records real answers once and replays them afterwards.
+The small stand-in indexer on port 1340 that every test copy talks to. In a real-use check it passes every request to the live indexer and keeps the answers in the check's own store, so the cap rule and the allowance count the check (its replay of a Recording is retired by ADR 0010).
 _Avoid_: mock, proxy
 
 **Cap rule**:
-The first "limit reached" from any indexer stops the pass at once, and its result is null: no numbers are reported. The work waits for the indexer's reset.
+The first "limit reached" from any indexer stops the check at once with no verdict. The work waits for the indexer's reset.
 _Avoid_: rate-limit handling
 
 **Stopped run**:
@@ -249,7 +253,7 @@ The record of a failure with no proved cause yet: every observation, hypothesis 
 _Avoid_: ticket (a ticket is for a fix), notes, incident
 
 **Kaiju Search**:
-KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer's capabilities list: IMDb, TMDB, TVDB, TVmaze; IMDb when they are unknown, none when they list no ID) and by name (the title's other names too) at once, the answers merged and each Source listed once with the ways that found it, then sorted by Search Flow. There is nothing to set: no search method. It ships in the release; it learns in dev.
+KaijuFlow's whole search: every indexer asked by ID (the IDs each indexer's capabilities list: IMDb, TMDB, TVDB, TVmaze; IMDb when they are unknown, none when they list no ID) and by name (the title's other names too) at once, the answers merged and each Source listed once with the ways that found it, then sorted by Search Flow. The list goes out as soon as one indexer's answer holds a sure Source the list keeps (after its dedup and the user's filters), without waiting for slower indexers; their Sources join their Releases, the running walk and the title's next list (#301). With no sure Source yet it waits for every indexer, each bounded by its own timeout. There is nothing to set: no search method. It ships in the release; it learns in dev.
 _Avoid_: Ultimate text search, search method, text search (one way of asking only)
 
 **Search Flow**:

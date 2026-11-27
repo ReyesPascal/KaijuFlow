@@ -1,0 +1,201 @@
+{
+ "indexers": [
+  "drunkenslug",
+  "ninjacentral"
+ ],
+ "titles": [
+  [
+   "movie",
+   "tt32537226",
+   "Hunting Season",
+   "popular-film",
+   "2025-12-05"
+  ],
+  [
+   "movie",
+   "tt36583977",
+   "Forgotten Island",
+   "popular-film",
+   "2026-09-10"
+  ],
+  [
+   "movie",
+   "tt13701240",
+   "Miraculous World: Tokyo, Stellar Force",
+   "rare-film",
+   "2025-12-07"
+  ],
+  [
+   "series",
+   "tt0804503:4:5",
+   "Mad Men S04E05",
+   "popular-episode",
+   "2010-08-22"
+  ],
+  [
+   "series",
+   "tt0247102:4:4",
+   "Girlfriends S04E04",
+   "rare-episode",
+   "2003-10-06"
+  ]
+ ],
+ "started": "2026-11-24T12:22:53.742Z",
+ "visits": [
+  {
+   "title": [
+    "movie",
+    "tt32537226",
+    "Hunting Season",
+    "popular-film",
+    "2025-12-05"
+   ],
+   "label": "Hunting Season",
+   "id": "tt32537226",
+   "t_start": "2026-11-24T12:23:03.482Z",
+   "t_end": "2026-11-24T12:23:09.736Z",
+   "list_status": 200,
+   "list_s": 1.24,
+   "note": null,
+   "sources": 102,
+   "best": true,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 11794931457,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "18bb0859b4a6b196",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   }
+  },
+  {
+   "title": [
+    "movie",
+    "tt36583977",
+    "Forgotten Island",
+    "popular-film",
+    "2026-09-10"
+   ],
+   "label": "Forgotten Island",
+   "id": "tt36583977",
+   "t_start": "2026-11-24T12:23:13.009Z",
+   "t_end": "2026-11-24T12:23:19.187Z",
+   "list_status": 200,
+   "list_s": 1.17,
+   "note": null,
+   "sources": 86,
+   "best": true,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 20906967544,
+    "ctype": "video/mp4",
+    "note": null,
+    "sha": "15e0f7fdf45ffbfa",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   }
+  },
+  {
+   "title": [
+    "movie",
+    "tt13701240",
+    "Miraculous World: Tokyo, Stellar Force",
+    "rare-film",
+    "2025-12-07"
+   ],
+   "label": "Miraculous World: Tokyo, Stellar Force",
+   "id": "tt13701240",
+   "t_start": "2026-11-24T12:23:22.451Z",
+   "t_end": "2026-11-24T12:23:28.964Z",
+   "list_status": 200,
+   "list_s": 1.28,
+   "note": null,
+   "sources": 28,
+   "best": true,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.23,
+    "first_byte_s": 0.23,
+    "total_s": 0.23,
+    "size": 2418015947,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "afb6558406f5f945",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   }
+  },
+  {
+   "title": [
+    "series",
+    "tt0804503:4:5",
+    "Mad Men S04E05",
+    "popular-episode",
+    "2010-08-22"
+   ],
+   "label": "Mad Men S04E05",
+   "id": "tt0804503:4:5",
+   "t_start": "2026-11-24T12:23:32.221Z",
+   "t_end": "2026-11-24T12:23:42.356Z",
+   "list_status": 200,
+   "list_s": 5.13,
+   "note": null,
+   "sources": 95,
+   "best": true,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 6824359970,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "386642a6de2bac27",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   }
+  },
+  {
+   "title": [
+    "series",
+    "tt0247102:4:4",
+    "Girlfriends S04E04",
+    "rare-episode",
+    "2003-10-06"
+   ],
+   "label": "Girlfriends S04E04",
+   "id": "tt0247102:4:4",
+   "t_start": "2026-11-24T12:23:45.634Z",
+   "t_end": "2026-11-24T12:23:55.731Z",
+   "list_status": 200,
+   "list_s": 5.09,
+   "note": null,
+   "sources": 3,
+   "best": true,
+   "play": {
+    "plays": true,
+    "status": 206,
+    "ready_s": 0.01,
+    "first_byte_s": 0.01,
+    "total_s": 0.01,
+    "size": 169645867,
+    "ctype": "video/x-matroska",
+    "note": null,
+    "sha": "482f121487b3ef75",
+    "title": "KaijuFlow \u25b6 Best \u26ac Plays the first healthy Source of the list \u26ac Checked when you press play",
+    "listed_size": null
+   }
+  }
+ ]
+}

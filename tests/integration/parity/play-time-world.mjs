@@ -17,24 +17,40 @@ export const PLAY_TIME_BOUNDARIES = ['Fake indexer answers every search with the
  * With `refuseGrabs` it also hands out its own NZB links (`nzbLink`) and refuses every grab of them, as an indexer at
  * its download limit does: `{ status: 429 }`, or `{ status: 200, body }` with a Newznab error payload as the body;
  * `grabbedTags` lists the tags of the grabs asked for (the fake AltMount's `grabs` holds each grab's times).
+ * Without `refuseGrabs` it serves the copies it was given (`copy`, a Release's Source on this indexer, #300): the same
+ * NZB as the upload's link on the suite's indexer; a copy set to refuse (`refuse`) answers as `refuseGrabs` does, and a
+ * link it does not know answers 404, as an indexer does for a removed NZB.
+ * `slow(ms)` makes it answer every search that long after it was asked (0: at once), as a slower indexer does (#301).
  */
 async function createFakeIndexer(listen, { refuseGrabs } = {}) {
   const offers = new Map(); // imdb id without "tt" -> [{ title, link, size }]
   const requests = [];
   const searches = []; // { imdbid, at }
   const grabbedTags = [];
+  let delayMs = 0;
+  const copies = new Map(); // tag -> { from: the upload's NZB link, refuse?: { status, body? } }
   const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  const url = await listen((req, res) => {
+  const refuse = (res, how) => {
+    if (how.body) {
+      res.writeHead(how.status, { 'Content-Type': 'application/xml' });
+      res.end(how.body);
+    } else {
+      res.writeHead(how.status, { 'Retry-After': '3600' });
+      res.end('download limit reached');
+    }
+  };
+  const url = await listen(async (req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
-    if (refuseGrabs && u.pathname.endsWith('.nzb')) {
-      grabbedTags.push(u.pathname.slice(1, -4));
-      if (refuseGrabs.body) {
-        res.writeHead(refuseGrabs.status, { 'Content-Type': 'application/xml' });
-        res.end(refuseGrabs.body);
-      } else {
-        res.writeHead(refuseGrabs.status, { 'Retry-After': '3600' });
-        res.end('download limit reached');
-      }
+    if (u.pathname.endsWith('.nzb')) {
+      const tag = u.pathname.slice(1, -4);
+      grabbedTags.push(tag);
+      if (refuseGrabs) { refuse(res, refuseGrabs); return; }
+      const copy = copies.get(tag);
+      if (!copy) { res.writeHead(404); res.end(); return; }
+      if (copy.refuse) { refuse(res, copy.refuse); return; }
+      const nzb = await fetch(copy.from, { headers: { 'x-fake-copy': '1' } }).then(r => r.text());
+      res.writeHead(200, { 'Content-Type': 'application/x-nzb' });
+      res.end(nzb);
       return;
     }
     requests.push(u.searchParams.get('t'));
@@ -42,16 +58,25 @@ async function createFakeIndexer(listen, { refuseGrabs } = {}) {
     const items = offers.get(u.searchParams.get('imdbid')) ?? [];
     const cat = u.searchParams.get('t') === 'tvsearch' ? 5040 : 2040;
     res.setHeader('Content-Type', 'application/xml');
-    res.end(`<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response total="${items.length}" offset="0"/>` +
+    const answer = `<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel><newznab:response total="${items.length}" offset="0"/>` +
       items.map(i => `<item><title>${xml(i.title)}</title><link>${xml(i.link)}</link><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate>` +
-        `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>');
+        `<newznab:attr name="size" value="${i.size}"/><newznab:attr name="category" value="${cat}"/></item>`).join('') + '</channel></rss>';
+    if (delayMs > 0) setTimeout(() => res.end(answer), delayMs); else res.end(answer);
   });
-  return { url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`, offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); } };
+  return {
+    url, requests, searches, grabbedTags, nzbLink: tag => `${url}/${tag}.nzb`,
+    offer(imdbId, items) { offers.set(imdbId.replace(/^tt/, ''), items); },
+    slow(ms) { delayMs = ms; },
+    /** This indexer's copy of an upload whose NZB is at `from`: its own link. `refuse`: answer every grab of it so. */
+    copy(tag, from, { refuse } = {}) { copies.set(tag, { from, refuse }); return `${url}/${tag}.nzb`; },
+    /** Grabs of this copy answer so from now on (`{ status: 429 }`), or serve again (undefined). */
+    refuseCopy(tag, how) { copies.get(tag).refuse = how; },
+  };
 }
 
 /**
  * Start KaijuFlow's real modules (from `root`/dist) with the fakes around them. Returns the world the scenarios take:
- * { kaijuflow, backend, news, indexer, refusing, limited, tvdb, cinemeta, list, configData }.
+ * { kaijuflow, backend, news, indexer, second, refusing, limited, tvdb, cinemeta, list, config, configData, stats }.
  */
 export async function createPlayTimeWorld({ root, listen }) {
   const load = p => import(root + '/dist/' + p + '.js');
@@ -71,6 +96,9 @@ export async function createPlayTimeWorld({ root, listen }) {
   const limited = await createFakeIndexer(listen, { refuseGrabs: { status: 200, body: '<?xml version="1.0" encoding="UTF-8"?>\n<error code="500" description="Request limit reached"/>' } });
   // Caps unknown: Kaiju Search asks each by IMDb and by name (#285); the fake answers a name query with nothing.
   const indexerEntry = (name, url) => ({ name, url, apiKey: 'synthetic-indexer-key', enabled: true });
+  // A second indexer that serves its own links as the suite's does (Releases, #299: the same upload on two indexers).
+  const second = await createFakeIndexer(listen);
+  second.entry = indexerEntry('Second', second.url);
   refusing.entry = indexerEntry('Refusing', refusing.url);
   limited.entry = indexerEntry('Limited', limited.url);
   Object.assign(configData, {
@@ -102,5 +130,7 @@ export async function createPlayTimeWorld({ root, listen }) {
     const out = await requestContext.run({ baseUrl: kaijuflow, pathPrefix: '/stremio', manifestKey: 'synthetic-manifest' }, () => addon.get('stream', type, id));
     return out.streams;
   };
-  return { kaijuflow, backend, news, indexer, refusing, limited, tvdb, cinemeta, list, configData };
+  // KaijuFlow's stats (config/stats.json): a scenario that sets which indexer's NZB downloads were fastest starts them fresh.
+  const stats = await load('statsTracker');
+  return { kaijuflow, backend, news, indexer, second, refusing, limited, tvdb, cinemeta, list, config, configData, stats };
 }

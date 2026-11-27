@@ -1,7 +1,7 @@
 // #203: for an episode, the Play-time check samples the file AltMount will be
 // asked to play, chosen with the same episode selector KaijuFlow sends AltMount,
 // not the first video file of the NZB. Goes through the Play-time check's call
-// (checkSource) on NZBs captured on Brain (tests/fixtures/nzbs, review rule 2)
+// (checkSource) on NZBs captured on Brain (tests/fixtures/nzbs)
 // and the fake news server.
 // Run: npm run test:unit
 import { test, after } from 'node:test';

@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# Back up the run records and the recording store to the private repo
-# ReyesPascal/kaijuflow-notes (#114). Last step of every record or run.
+# Back up the check folders (and the ledger) of ~/kaijuflow-notes to the private repo
+# ReyesPascal/kaijuflow-notes (#114). Last step of every real-use check. It needs no
+# recording store and touches no recording (#312: the old recordings were deleted).
 # Secrets (~/kaijuflow-test/*.json) never go in; they live in the owner's
 # password manager.
 set -euo pipefail
 
 notes="${KF_NOTES:-$HOME/kaijuflow-notes}"
-store="${KF_STORE:-$HOME/kaijuflow-test/store}"
 
 [ -d "$notes/.git" ] || { echo "No git repo at $notes: clone ReyesPascal/kaijuflow-notes there first." >&2; exit 1; }
-[ -d "$store" ] || { echo "No recording store at $store." >&2; exit 1; }
 
 # The stand-in stores no keys; refuse anyway if a key file's value shows up.
 for f in "$HOME"/kaijuflow-test/*.json; do
   [ -f "$f" ] || continue
-  python3 -I - "$f" "$store" "$notes/brain-runs" <<'PY'
+  python3 -I - "$f" "$notes/brain-runs" <<'PY'
 import json, os, sys
 src, *dirs = sys.argv[1:]
-skip = {"name", "host", "port", "ssl", "url", "connections", "slug"}
+skip = {"name", "host", "port", "ssl", "url", "connections", "slug", "reset", "timezone", "drop_params"}
 def walk(o, k=""):
     if isinstance(o, dict):
         for kk, v in o.items(): yield from walk(v, kk)
@@ -36,7 +35,6 @@ for d in dirs:
 PY
 done
 
-rsync -a --delete "$store/" "$notes/recordings/"
 cd "$notes"
 git add -A
 if git diff --cached --quiet; then

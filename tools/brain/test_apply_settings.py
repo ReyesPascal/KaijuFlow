@@ -12,7 +12,7 @@ import unittest
 import brainreport as br
 import brainrun
 import testbed
-from test_preflight import FakeWorld, make_cfg, run_command
+from test_preflight import PLENTY, FakeWorld, make_cfg, run_command
 from test_settings import SECRET, make_copies, rules, tempdir
 
 STAMP = '20261115T120000Z'
@@ -156,13 +156,13 @@ class ApplyCommittedFileTest(unittest.TestCase):
 
     def test_after_applying_to_every_copy_the_preflight_finds_no_difference(self):
         cfg = make_cfg(self.td, expected_settings=None)
-        code, text = run_command('record', cfg, FakeWorld(cfg))
+        code, text = run_command(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 1, text)
         self.assertIn('the expected settings file', text)
         code, out = apply(self.td, 'kaijuflow')
         self.assertEqual(code, 0, out)
         self.assertNotIn(SECRET, out)
-        code, text = run_command('record', cfg, FakeWorld(cfg))
+        code, text = run_command(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual(code, 0, text)
         self.assertEqual(testbed.settings_report(self.td)['caps']['kaijuflow'], 12)  # the rest of the copy still reads
 

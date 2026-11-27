@@ -1,0 +1,69 @@
+{
+ "altmount": {
+  "id": "sha256:2cf1660dcd19a453608a5111edb9dcbe3f7071c4f2d8b018bc3c685f9e89bcf3",
+  "image": "ghcr.io/kipsilabs/altmount:v0.4.0"
+ },
+ "browse_pause_s": 5,
+ "commit": "198e843599a3c69a8639f87ecbac5f1fa82903e7",
+ "dirty": false,
+ "error": null,
+ "finished": "2026-11-24T12:24:02.490Z",
+ "head": "00f46f34cee6b312d1fd663cf3cd489fb74fee52",
+ "headline": "Fail: 1 of 5 titles failed (Girlfriends S04E04).",
+ "indexers": [
+  "drunkenslug",
+  "ninjacentral"
+ ],
+ "kind": "quick check",
+ "machine": {
+  "cpu_probe_ms": 1011,
+  "energy_preference": "performance",
+  "governor": "powersave",
+  "power": "ac"
+ },
+ "name": "quick-check",
+ "null": null,
+ "seconds": 68.748,
+ "start_load": 0.69,
+ "started": "2026-11-24T12:22:53.742Z",
+ "status": "ok",
+ "stopped": null,
+ "titles": [
+  [
+   "movie",
+   "tt32537226",
+   "Hunting Season",
+   "popular-film",
+   "2025-12-05"
+  ],
+  [
+   "movie",
+   "tt36583977",
+   "Forgotten Island",
+   "popular-film",
+   "2026-09-10"
+  ],
+  [
+   "movie",
+   "tt13701240",
+   "Miraculous World: Tokyo, Stellar Force",
+   "rare-film",
+   "2025-12-07"
+  ],
+  [
+   "series",
+   "tt0804503:4:5",
+   "Mad Men S04E05",
+   "popular-episode",
+   "2010-08-22"
+  ],
+  [
+   "series",
+   "tt0247102:4:4",
+   "Girlfriends S04E04",
+   "rare-episode",
+   "2003-10-06"
+  ]
+ ],
+ "verdict": "fail"
+}

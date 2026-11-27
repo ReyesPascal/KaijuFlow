@@ -15,13 +15,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { NntpConnectionPool } from '../health/nntpConnection.js';
 import { logPrepareStart } from './streamCache.js';
-import { remember, recall } from './sourceMemory.js';
+import { remember, recall, sourcesOf } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
-import { walkGrab } from '../backends/nzbGrab.js';
+import { grabRelease, refusedBy, linkGone } from './releaseGrab.js';
+import { mergeLate, shiftPlaces } from './lateSources.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { sourceFailure, isSourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
-import type { FallbackCandidate, StreamData } from './types.js';
+import type { FallbackCandidate, ReleaseSource, StreamData } from './types.js';
 import type { UltimateFallbackConfig } from '../types.js';
 import { formatBytes } from '../parsers/metadataParsers.js';
 import { checkSource, isHealthy, enabledHealthCheckProviders } from './playTimeCheck.js';
@@ -226,12 +227,13 @@ export function listAsked(sessionKey: string): void {
 /**
  * Head start (GLOSSARY): a title's stream list was asked for, so Best's check and prepare begin now in the
  * background (listAsked has stopped the one before). A title whose Best already runs or is done keeps that
- * session (a press joins it).
+ * session (a press joins it). `more`: the whole list's candidates, when a slower indexer is still to answer (#301);
+ * its new ones join the Walk when they come.
  */
-export function headStart(play: PlayContext, candidates: FallbackCandidate[], settings: UltimateFallbackConfig): void {
-  if (candidates.length === 0 || sessionPromises.has(play.sessionKey)) return;
-  console.log(`👑 Ultimate-Fallback [${play.sessionKey}] Head start: checking Best's Sources before a press`);
-  ultimateFallbackFromCandidates(play, candidates, settings)
+export function headStart(play: PlayContext, candidates: FallbackCandidate[], settings: UltimateFallbackConfig, more?: Promise<FallbackCandidate[]>): void {
+  if ((candidates.length === 0 && !more) || sessionPromises.has(play.sessionKey)) return;
+  console.log(`👑 Ultimate-Fallback [${play.sessionKey}] Head start: checking Best's Sources before a press${more ? ' (more to come from a slower indexer)' : ''}`);
+  ultimateFallbackFromCandidates(play, candidates, settings, more)
     .catch(err => console.error('❌ Ultimate-Fallback error (Head start):', err));
 }
 
@@ -270,19 +272,31 @@ const nothingToPlay = (message: string) => Object.assign(new Error(message), { w
 
 /** What the adapter holds for one Source of the Walk: the Backend's job, what the check and the prepare found. */
 interface SourceRun {
+  /** The Release's Source whose NZB the grab fetched (#300): the one checked and handed to the Backend. */
+  source?: ReleaseSource;
   nzoId?: string;
   cancelled?: boolean;
   containerType?: string;
   grabError?: Error;
+  /** How many Sources the Release had when last grabbed: a late copy that joins it after makes more (#301). */
+  grabbedOf?: number;
   video?: StreamData;
   prepareError?: Error;
 }
 
-/** Best's Walk for a play (its play context, #246): the Head start's, or a press's that walks on its own. */
+
+/**
+ * Best's Walk for a play (its play context, #246): the Head start's, or a press's that walks on its own. `more`: the
+ * whole list's candidates, when the list went out before a slower indexer answered (#301). Until it comes the Walk is
+ * open; then the candidates it does not hold join it, the sure ones after what it reached and before the maybes it
+ * has not, the maybes last; a candidate it holds takes the late one's fields but its mark (a Release with its late
+ * Sources). The late ones get no library pre-check.
+ */
 export async function ultimateFallbackFromCandidates(
   play: PlayContext,
   candidates: FallbackCandidate[],
   settings: UltimateFallbackConfig,
+  more?: Promise<FallbackCandidate[]>,
 ): Promise<void> {
   const { sessionKey, type: contentType, episodesInSeason } = play;
   if (activeSessions.has(sessionKey)) return;
@@ -321,8 +335,9 @@ export async function ultimateFallbackFromCandidates(
   try {
     // Opted-out indexers are not walked. Search Flow (#282): the sure Sources are tried first, then the maybe ones.
     const indexerMap = settings.healthCheckIndexers;
-    const list = sureFirst(indexerMap ? candidates.filter(c => indexerMap[c.indexerName] !== false) : candidates);
-    if (list.length === 0) {
+    const eligible = (cs: FallbackCandidate[]) => (indexerMap ? cs.filter(c => indexerMap[c.indexerName] !== false) : cs);
+    const list = sureFirst(eligible(candidates));
+    if (list.length === 0 && !more) {
       console.log(`${tag} No eligible candidates`);
       return;
     }
@@ -348,12 +363,20 @@ export async function ultimateFallbackFromCandidates(
       size: list.length,
       inFlight: Math.max(1, settings.candidateCount),
       isDead: index => recall(list[index], play).dead !== undefined,
-      indexerOf: index => list[index].indexerName,
+      indexersOf: index => sourcesOf(list[index]).map(s => s.indexerName ?? ''),
       hits: new Map([...hits].map(([index, data]) => [index, data.videoPath])),
+      open: more !== undefined,
+      isMaybe: index => list[index].flow === 'maybe',
     });
     const runs = new Map<number, SourceRun>();
     const runOf = (index: number): SourceRun => { let r = runs.get(index); if (!r) runs.set(index, r = {}); return r; };
     const name = (index: number) => `#${index + 1} ${list[index].title}`;
+    // The Source a Release plays from: the one its grab fetched, or its first (a library hit needs no grab).
+    const played = (index: number): FallbackCandidate => {
+      const c = list[index];
+      const s = runs.get(index)?.source;
+      return s ? { ...c, nzbUrl: s.nzbUrl, indexerName: s.indexerName, searchExitIp: s.searchExitIp ?? c.searchExitIp } : c;
+    };
 
     let finish!: () => void;
     const finished = new Promise<void>(resolve => { finish = resolve; });
@@ -377,12 +400,13 @@ export async function ultimateFallbackFromCandidates(
       };
       // The check samples the file AltMount is told to play (#203): the episode selector it is sent.
       const used = pool;
-      checkSource({ ...list[index], episodePattern: filePattern }, used)
+      checkSource({ ...played(index), episodePattern: filePattern }, used)
         .then(result => {
           if (checking.get(index) !== mine) return;
           runOf(index).containerType = result.containerType;
           // Search Flow's extra proof (#286): a maybe whose NZB's video file fits the title is sure from now on. Its
-          // list's Source is marked (a later Walk of the list, the played line); this Walk keeps its order (#190).
+          // list's Source is marked (a later Walk of the list, the played line), and this Walk hands it over as sure, in
+          // its list place (#190).
           const proved = play.flow ? videoProof(list[index], result.videoName, play.flow) : undefined;
           if (proved) {
             Object.assign(list[index], { flow: proved.flow, flowWhy: proved.flowWhy, proof: proved.proof });
@@ -390,7 +414,7 @@ export async function ultimateFallbackFromCandidates(
           }
           // A check whose pool was stopped (its Walk ended, #244) was not answered: no verdict to log.
           if (!isHealthy(result) && !used?.stopped) console.log(`${tag} ❌ #${index + 1} not healthy (${result.message}) — ${list[index].title}`);
-          verdict({ type: 'checked', index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true });
+          verdict({ type: 'checked', index, verdict: isHealthy(result) ? 'healthy' : result.status === 'blocked' ? 'blocked' : 'error', episodeOnly: result.episodeOnly === true, ...(proved ? { sure: true } : {}) });
         }, () => verdict({ type: 'checked', index, verdict: 'error' }));
     };
     // Stop the Walk's other checks for an Unscramble retry: their connections close at once (a fresh pool for later).
@@ -410,7 +434,7 @@ export async function ultimateFallbackFromCandidates(
 
     // The Backend prepare: submit (the grab's NZB), wait for the job, find the video, probe its first byte.
     const prepare = async (index: number): Promise<void> => {
-      const c = list[index];
+      const c = played(index);
       const r = runOf(index);
       const logPrefix = `${tag} [prepare #${index + 1}] `;
       try {
@@ -430,7 +454,7 @@ export async function ultimateFallbackFromCandidates(
         if (r.cancelled) return;
         await backend.probe(video, { logPrefix, title: c.title, source: c.indexerName });
         if (r.cancelled) return;
-        remember({ source: c, play, ready: video });
+        remember({ source: { ...c, sources: undefined }, play, ready: video });
         r.video = video;
         console.log(`${logPrefix}✅ Stream ready: ${c.title}`);
         post({ type: 'prepared', index, videoPath: video.videoPath });
@@ -450,13 +474,18 @@ export async function ultimateFallbackFromCandidates(
         case 'grab': {
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
-          // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab.
-          walkGrab(c.nzbUrl, c.title, `${tag} [grab #${d.index + 1}] `, c.indexerName, c.searchExitIp, controller.signal)
-            .then(() => post({ type: 'grabbed', index: d.index }), (err: Error) => {
+          runOf(d.index).grabbedOf = sourcesOf(c).length;
+          // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab. The Release's NZB comes
+          // from its fastest indexer, or another's when that fetch fails (#300).
+          grabRelease(c, { play, skips: indexer => walk.skips(indexer), logPrefix: `${tag} [grab #${d.index + 1}] `, stop: controller.signal })
+            .then(({ source, refused }) => {
+              runOf(d.index).source = source;
+              post({ type: 'grabbed', index: d.index, refused });
+            }, (err: Error) => {
               if (controller.signal.aborted) return;
               runOf(d.index).grabError = err;
               console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
-              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err) });
+              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err), refused: refusedBy(err), linkGone: linkGone(err) });
             });
           return;
         }
@@ -464,7 +493,7 @@ export async function ultimateFallbackFromCandidates(
           check(d.index);
           return;
         case 'prepare':
-          console.log(`${tag} 🚀 Submitting ${name(d.index)} [${list[d.index].indexerName}] to the Backend`);
+          console.log(`${tag} 🚀 Submitting ${name(d.index)} [${played(d.index).indexerName}] to the Backend`);
           void prepare(d.index);
           return;
         case 'cancel': {
@@ -486,7 +515,7 @@ export async function ultimateFallbackFromCandidates(
             sessionResolve(data, c.title);
             console.log(`${tag} ✅ Resolved via library in ${seconds()}s`);
           } else {
-            console.log(`${tag} ✅ Resolved in ${seconds()}s — ${c.title} [${c.indexerName}]`);
+            console.log(`${tag} ✅ Resolved in ${seconds()}s — ${c.title} [${played(d.index).indexerName}]`);
             sessionResolve(runOf(d.index).video!, c.title);
           }
           return;
@@ -528,8 +557,34 @@ export async function ultimateFallbackFromCandidates(
 
     // A stop (a newer list request, a settings change) ends the Walk at once: its checks' connections close now.
     controller.signal.addEventListener('abort', () => { pool?.stop(); post({ type: 'stop' }); }, { once: true });
+    // Late Sources (#301): put in the list where the Walk takes them, the library hits after them moved along.
+    const insert = (at: number, late: FallbackCandidate[]) => {
+      if (late.length === 0) return;
+      list.splice(at, 0, ...late);
+      shiftPlaces(hits, at, late.length);
+      post({ type: 'more', at, count: late.length });
+    };
+    const takeLate = (whole: FallbackCandidate[]) => {
+      if (walk.done) return;
+      const fresh = mergeLate(list, sureFirst(eligible(whole)));
+      // A late copy of a Release the Walk grabbed joined its Sources (here, or already in the list's fallback group,
+      // whose candidates these are): one whose links were all gone is grabbed again.
+      for (const [index, r] of runs) {
+        if (r.grabbedOf !== undefined && sourcesOf(list[index]).length > r.grabbedOf) post({ type: 'joined', index });
+      }
+      const sure = fresh.filter(c => c.flow !== 'maybe');
+      const firstMaybe = list.findIndex((c, i) => i >= walk.reached && c.flow === 'maybe');
+      insert(firstMaybe < 0 ? list.length : firstMaybe, sure);
+      insert(list.length, fresh.filter(c => c.flow === 'maybe'));
+      if (fresh.length > 0) console.log(`${tag} ➕ ${fresh.length} late Source(s) from a slower indexer joined the Walk`);
+    };
+
     for (const d of walk.start()) run(d);
     if (walk.done) finish();
+    if (more) {
+      more.then(takeLate).catch(err => console.error(`${tag} Late Sources not taken:`, err))
+        .finally(() => { if (!walk.done) post({ type: 'closed' }); });
+    }
     await finished;
 
     // ── Summary ──────────────────────────────────────────────────

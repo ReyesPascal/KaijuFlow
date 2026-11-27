@@ -15,6 +15,17 @@ export interface StreamData {
   sourceTitle?: string;
 }
 
+/** One indexer's Source of a Release (#300; GLOSSARY: Release): its link, release name and size on that indexer. */
+export interface ReleaseSource {
+  nzbUrl: string;
+  title: string;
+  indexerName: string;
+  size?: number;
+  /** Proxy exit IP captured when that indexer was searched (see FallbackCandidate.searchExitIp). */
+  searchExitIp?: string;
+}
+
+/** A Release as the Walk plays it: its first Source's fields, and every Source it has (`sources`, #300). */
 export interface FallbackCandidate {
   nzbUrl: string;
   title: string;
@@ -33,6 +44,9 @@ export interface FallbackCandidate {
   flowWhy?: string;
   /** The extra proof that made a maybe sure (#286): at list time, or the Play-time check's (the NZB's video file). */
   proof?: string;
+  /** The Release's Sources, one per indexer, in search order (#299). Absent in a group saved before #300, and for
+   *  EasyNews: then the candidate is its only Source. */
+  sources?: ReleaseSource[];
 }
 
 export interface FallbackGroup {

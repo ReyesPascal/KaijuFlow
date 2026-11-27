@@ -26,16 +26,17 @@ import NodeCache from 'node-cache';
 import { withStepRef, logStep, timeStepSync } from '../utils/stepTiming.js';
 import { startProcessTrace } from '../utils/processTrace.js';
 import { config } from '../config/index.js';
-import { clearFallbackGroups, clearTimeoutEntries, headStart, listAsked, isUltimateFallbackActive, clearResolvedSessions } from '../play/index.js';
+import { clearFallbackGroups, addToFallbackGroup, clearTimeoutEntries, headStart, listAsked, isUltimateFallbackActive, clearResolvedSessions, type FallbackCandidate } from '../play/index.js';
 import { sessionKeyOf, makePlayContext, type PlayContext } from '../play/playContext.js';
 import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
-import { kaijuSearch, type SearchContext } from './searchOrchestrator.js';
+import { kaijuSearch, type SearchContext, type KaijuAnswer } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
 import { flowTitleOf, markSources, type FlowTitle } from '../parsers/searchFlow.js';
-import { waysOf } from './kaijuSearch.js';
+import { waysOf, releaseSourcesOf } from './kaijuSearch.js';
 import { verifiedMarks } from './verifiedMarks.js';
-import { buildStreams } from './streamBuilder.js';
+import { buildStreams, candidatesOf } from './streamBuilder.js';
 import { recall } from '../play/sourceMemory.js';
+import type { ReleaseSource } from '../play/types.js';
 import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
 import { isDatabaseLoaded } from '../anime/animeDatabase.js';
@@ -46,8 +47,17 @@ import { getSelfUrl } from '../utils/selfUrl.js';
 // Use stdTTL: 0 (no expiry) and manage TTL per-entry via cache.set() so runtime changes take effect
 const cache = new NodeCache({ stdTTL: 0 });
 
+/**
+ * A slower indexer's answer still out (#301), by search cache key: the list cache holds the fast answer alone until
+ * it comes, so a list served from the cache meanwhile takes the late Sources from here (spec #298's review, Codex 2).
+ * Resolves to the whole answer's raw results (undefined when it failed); gone once it is cached.
+ */
+type LateRaw = { rawResults: any[]; deprioritizedPacks: any[] };
+const pendingLate = new Map<string, Promise<LateRaw | undefined>>();
+
 export function clearSearchCache(): void {
   cache.flushAll();
+  pendingLate.clear();
   clearFallbackGroups();
   clearTimeoutEntries();
   clearResolvedSessions();
@@ -185,6 +195,10 @@ async function resolveTitleAndBuildSearchCtx(args: {
   return { titleInfo, searchCtx };
 }
 
+/** What the list's `list` step line says of the list (#249, #301): cached or searched, how many Streams, and the
+ *  indexers it went out without. */
+type ListLine = { cache?: 'hit' | 'miss'; streams?: number; not_waited_for?: string[] };
+
 // Stream handler - called when user wants to watch something
 builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
   // The list's own step line (#249): the whole request with a trace of the process meanwhile, written after the
@@ -192,14 +206,14 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
   // answer). `cache` says whether the search was cached.
   const t0 = performance.now();
   const endTrace = startProcessTrace();
-  const listLine: { cache?: 'hit' | 'miss'; streams?: number } = {};
+  const listLine: ListLine = {};
   const answer = await streamList(type, id, listLine);
   const ms = performance.now() - t0;
   setImmediate(() => logStep({ step: 'list', ms, ...listLine, ...endTrace() }));
   return answer;
 }));
 
-async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 'miss'; streams?: number }): Promise<{ streams: any[] }> {
+async function streamList(type: string, id: string, listLine: ListLine): Promise<{ streams: any[] }> {
   try {
     // Check if addon is disabled
     if (!config.addonEnabled) {
@@ -296,11 +310,11 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
     listAsked(sessionKeyOf(requestManifestKey, type, imdbId, season, episode));
 
     // === SHARED: Filter dead NZBs from raw results ===
-    const filterDeadFromRaw = (results: any[], play: PlayContext) => {
+    const filterDeadFromRaw = (results: any[], play: PlayContext, quiet = false) => {
       if (!config.filterDeadNzbs) return results;
       const SELF_URL = getSelfUrl(); // must match the EasyNews NZB URLs the play side marks dead
       const manifestKey = requestContext.getStore()?.manifestKey || '';
-      const isDead = (nzbUrl: string, title: string) => recall({ nzbUrl, title }, play).dead !== undefined;
+      const isDead = (nzbUrl: string, title: string, sources?: ReleaseSource[]) => recall({ nzbUrl, title, sources }, play).dead !== undefined;
       const before = results.length;
       const removed: { title: string; indexer: string }[] = [];
       const filtered = results.filter(r => {
@@ -311,12 +325,13 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
           if (meta.sig) nzbParams.set('sig', meta.sig);
           dead = isDead(`${SELF_URL}/${manifestKey}/easynews/nzb?${nzbParams.toString()}`, r.title);
         } else {
-          dead = isDead(r.link, r.title);
+          // A Release is dead when one of its Sources carries the Release's mark (#300).
+          dead = isDead(r.link, r.title, releaseSourcesOf(r));
         }
         if (dead) removed.push({ title: r.title, indexer: r.indexerName || r.origin });
         return !dead;
       });
-      if (filtered.length < before) {
+      if (filtered.length < before && !quiet) {
         console.log(`🚫 Filtered ${before - filtered.length} dead NZB(s) from results (${filtered.length} remaining)`);
         for (const { title, indexer } of removed) console.log(`   ✂️  "${title}" [${indexer}]`);
       }
@@ -324,22 +339,41 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
     };
 
     // === SHARED: the Head start (#206): Best's check and prepare begin when the list is asked for ===
-    const startHeadStart = (fallbackCandidates: any[] | undefined, play: PlayContext) => {
+    // On-tile-selection turns it off: UF waits for a press of Best (the lobby in streamHandler.ts).
+    const headStartOn = () => isUltimateFallbackActive() && !!config.ultimateFallback && config.ultimateFallback.whenToResolve !== 'on-tile-selection';
+    // `more`: the whole list's candidates, when a slower indexer is still to answer (#301).
+    const startHeadStart = (fallbackCandidates: any[] | undefined, play: PlayContext, more?: Promise<FallbackCandidate[]>) => {
       // Head start (#206): the list goes out now; Best's check and prepare begin in the background.
-      // On-tile-selection turns it off: UF waits for a press of Best (the lobby in streamHandler.ts).
-      if (isUltimateFallbackActive() && config.ultimateFallback) {
-        if (config.ultimateFallback.whenToResolve === 'on-tile-selection') return;
-        timeStepSync({ step: 'head_start' }, () => headStart(play, fallbackCandidates ?? [], config.ultimateFallback!));
-      }
+      if (headStartOn()) timeStepSync({ step: 'head_start' }, () => headStart(play, fallbackCandidates ?? [], config.ultimateFallback!, more));
     };
 
     // === SHARED: Process from raw results → streams (filter, sort, build) ===
-    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: { episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number; flow?: FlowTitle }) => {
-      // The play context (#246): made once here, stored with the list's fallback group, read by every play of it.
-      const play = makePlayContext({
-        manifestKey: requestManifestKey, type, imdbId, season, episode,
-        aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason, flow: titleMeta.flow,
+    type TitleMeta = { episodesInSeason?: number; episodeAired?: string; now: number; runtime?: number; flow?: FlowTitle };
+    // The play context (#246): made here, stored with the list's fallback group, read by every play of it.
+    const playOf = (titleMeta: TitleMeta) => makePlayContext({
+      manifestKey: requestManifestKey, type, imdbId, season, episode,
+      aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason, flow: titleMeta.flow,
+    });
+    // A list's raw results as the list holds them, dead marks and the user's filters and sort applied, without the
+    // list's step lines or logs.
+    const keptOf = (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta, play: PlayContext): any[] =>
+      applyUserFilters(filterDeadFromRaw(rawResults, play, true), type, titleMeta.now, titleMeta.runtime, filterDeadFromRaw(deprioritizedPacks, play, true), { quiet: true });
+    // The Walk's candidates of a list's raw results, with no fallback group made (#301: the late Sources).
+    const candidatesFromRaw = (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta, play: PlayContext): FallbackCandidate[] =>
+      candidatesOf(keptOf(rawResults, deprioritizedPacks, titleMeta, play));
+    // A list's late Sources (#301): the whole answer's candidates, given to the list's fallback group (its entries keep
+    // their places) and returned for the running Walk. The list's own candidates when the answer failed.
+    const lateCandidates = (late: Promise<LateRaw | undefined>, titleMeta: (now: number) => TitleMeta, play: PlayContext,
+      fallbackGroupId: string | undefined, fallbackCandidates: FallbackCandidate[] | undefined): Promise<FallbackCandidate[]> =>
+      late.then(raw => {
+        if (!raw) return fallbackCandidates ?? [];
+        const candidates = candidatesFromRaw(raw.rawResults, raw.deprioritizedPacks, titleMeta(Date.now()), play);
+        if (fallbackGroupId) addToFallbackGroup(fallbackGroupId, candidates);
+        return candidates;
       });
+
+    const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta) => {
+      const play = playOf(titleMeta);
 
       // Filter dead NZBs from both main results AND deprioritized packs — yearless
       // season packs of remade shows take the deprioritized path (applyRemakeFilter)
@@ -361,7 +395,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
 
       // Build streams
       // Build streams (and the list's fallback group, written once)
-      const { streams, fallbackCandidates } = timeStepSync({ step: 'list_build' }, () => buildStreams({
+      const { streams, fallbackCandidates, fallbackGroupId } = timeStepSync({ step: 'list_build' }, () => buildStreams({
         allResults,
         healthResults: verifiedMarks(allResults),
         play,
@@ -369,7 +403,7 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
         runtime: titleMeta.runtime,
       }), out => ({ streams: out.streams.length }));
 
-      return { streams, fallbackCandidates, play };
+      return { streams, fallbackCandidates, fallbackGroupId, play };
     };
 
     // Check cache first (cacheTTL of 0 means disabled)
@@ -381,12 +415,13 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
         const now = Date.now();
 
         // Re-apply filters and sort, and build streams with current settings
-        const { streams, fallbackCandidates, play } = await processFromRaw(
-          cached.rawResults, cached.deprioritizedPacks || [],
-          { episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now, runtime: cached._meta.runtime, flow: cached._meta.flow }
-        );
+        const cachedMeta = (at: number): TitleMeta => ({ episodesInSeason: cached._meta.episodesInSeason, episodeAired: cached._meta.episodeAired, now: at, runtime: cached._meta.runtime, flow: cached._meta.flow });
+        const { streams, fallbackCandidates, fallbackGroupId, play } = await processFromRaw(cached.rawResults, cached.deprioritizedPacks || [], cachedMeta(now));
 
-        startHeadStart(fallbackCandidates, play);
+        // The cache holds only the fast indexer's answer while a slower one is still out (#301): its Sources join this
+        // list's fallback group and its Walk when they come.
+        const late = pendingLate.get(cacheKey);
+        startHeadStart(fallbackCandidates, play, late && lateCandidates(late, cachedMeta, play, fallbackGroupId, fallbackCandidates));
         Object.assign(listLine, { cache: 'hit', streams: streams.length });
         return { streams };
       }
@@ -408,50 +443,79 @@ async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 
       type, imdbId, season, episode, animeId, animeResolved, tvdbIdFromRequest,
     });
 
-    // Kaiju Search (#285): every indexer by ID and by name, and EasyNews, at once.
-    const { indexer: indexManagerResults, easynews: easynewsResults } = await kaijuSearch(searchCtx);
-    // Tag indexer/easynews results with origin so downstream code can route correctly.
-    // (Searchers don't currently emit origin natively; we tag at orchestrator level.)
-    const tagOrigin = (r: any, origin: 'indexer' | 'easynews'): any =>
-      r.origin ? r : { ...r, origin };
-    const allRawResults: any[] = [
-      ...indexManagerResults.map(r => tagOrigin(r, 'indexer')),
-      ...easynewsResults.map(r => tagOrigin(r, 'easynews')),
-    ];
-    console.log('');
-    console.log('═══ Results Processing ' + '═'.repeat(40));
-    console.log(`📊 Found ${allRawResults.length} total results (indexer: ${indexManagerResults.length}, easynews: ${easynewsResults.length})`);
+    const flowTitle = flowTitleOf(searchCtx);
+    const titleMeta = (now: number): TitleMeta => ({ episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime, flow: flowTitle });
+    // An answer of Kaiju Search as the list holds it (and caches it): every Source tagged with its origin, deduped,
+    // pre-filtered (content-dependent) and marked by Search Flow (#282: Best's Walk tries the sure ones first).
+    const rawOf = (answer: KaijuAnswer, logged: boolean) => {
+      // Tag indexer/easynews results with origin so downstream code can route correctly.
+      // (Searchers don't currently emit origin natively; we tag at orchestrator level.)
+      const tagOrigin = (r: any, origin: 'indexer' | 'easynews'): any =>
+        r.origin ? r : { ...r, origin };
+      const allRawResults: any[] = [
+        ...answer.indexer.map(r => tagOrigin(r, 'indexer')),
+        ...answer.easynews.map(r => tagOrigin(r, 'easynews')),
+      ];
+      if (logged) {
+        console.log('');
+        console.log('═══ Results Processing ' + '═'.repeat(40));
+        console.log(`📊 Found ${allRawResults.length} total results (indexer: ${answer.indexer.length}, easynews: ${answer.easynews.length})`);
+      }
+      const deduped = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
+      return { rawResults: markSources(deduped.results, flowTitle), deprioritizedPacks: markSources(deduped.deprioritizedPacks, flowTitle) };
+    };
+    // Cache raw results + deprioritized packs (filters, sorts and marks reapply on cache hits).
+    const cacheList = (rawResults: any[], deprioritizedPacks: any[]) => {
+      const skipEmptyCache = config.searchConfig?.cacheEmptyResults === false && rawResults.length === 0;
+      if (config.cacheEnabled && config.cacheTTL > 0 && !skipEmptyCache) {
+        cache.set(cacheKey, {
+          rawResults,
+          deprioritizedPacks,
+          _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime, flow: flowTitle },
+        }, config.cacheTTL);
+      } else if (skipEmptyCache && config.cacheEnabled && config.cacheTTL > 0) {
+        console.log(`⏭️  Skipping cache write — 0 results for ${type} ${imdbId}`);
+      }
+    };
+
+    // Kaiju Search (#285): every indexer by ID and by name, and EasyNews, at once. The list goes out as soon as an
+    // indexer's answer holds a sure Source the list keeps (#301; its dedup, dead marks and the user's filters applied,
+    // spec #298's review P7); a slower indexer's Sources come later (`late`).
+    const listed = (releases: any[]) => {
+      const meta = titleMeta(Date.now());
+      const raw = rawOf({ indexer: releases, easynews: [] }, false);
+      return keptOf(raw.rawResults, raw.deprioritizedPacks, meta, playOf(meta));
+    };
+    const answer = await kaijuSearch(searchCtx, { listed });
 
     // === STEP 3: DEDUP + CONTENT-DEPENDENT PRE-FILTERING (cacheable) ===
-    const deduped = deduplicateAndPreFilter(allRawResults, titleInfo.hasRemake, titleInfo.episodeName, titleInfo.year, titleInfo.titleYear);
-    // Search Flow (#282): every Source marked sure or maybe, with why; Best's Walk tries the sure ones first. Cached
-    // with the marks.
-    const flowTitle = flowTitleOf(searchCtx);
-    const rawResults = markSources(deduped.results, flowTitle);
-    const deprioritizedPacks = markSources(deduped.deprioritizedPacks, flowTitle);
+    const { rawResults, deprioritizedPacks } = rawOf(answer, true);
 
     // === STEP 4: FILTER, SORT, BUILD (user-preference-dependent; no health check, #191) ===
-    const now = Date.now();
-    const { streams, fallbackCandidates, play } = await processFromRaw(
-      rawResults, deprioritizedPacks,
-      { episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, now, runtime: titleInfo.runtime, flow: flowTitle }
-    );
+    const { streams, fallbackCandidates, fallbackGroupId, play } = await processFromRaw(rawResults, deprioritizedPacks, titleMeta(Date.now()));
+    cacheList(rawResults, deprioritizedPacks);
 
-    // Cache raw results + deprioritized packs (filters, sorts and marks reapply on cache hits).
-    const skipEmptyCache = config.searchConfig?.cacheEmptyResults === false && rawResults.length === 0;
-    if (config.cacheEnabled && config.cacheTTL > 0 && !skipEmptyCache) {
-      cache.set(cacheKey, {
-        rawResults,
-        deprioritizedPacks,
-        _meta: { type, season, episode, episodesInSeason: titleInfo.episodesInSeason, episodeAired: titleInfo.episodeAired, runtime: titleInfo.runtime, flow: flowTitle },
-      }, config.cacheTTL);
-    } else if (skipEmptyCache && config.cacheEnabled && config.cacheTTL > 0) {
-      console.log(`⏭️  Skipping cache write — 0 results for ${type} ${imdbId}`);
+    if (answer.late) {
+      // Late Sources (#301): every indexer's answer, kept for the next list request of this title (cached; until then
+      // pendingLate, for a list served from the cache meanwhile), given to the running Walk and to the list's fallback
+      // group (the list's entries keep their places).
+      const pending: Promise<LateRaw | undefined> = answer.late.then(late => {
+        const raw = rawOf(late, false);
+        cacheList(raw.rawResults, raw.deprioritizedPacks);
+        console.log(`⏩ Late answer for ${type} ${imdbId}: ${late.indexer.length} indexer Release(s), the list had ${answer.indexer.length}`);
+        return raw;
+      }).catch(err => {
+        console.error('❌ Late indexer answer failed:', err);
+        return undefined;
+      }).finally(() => { if (pendingLate.get(cacheKey) === pending) pendingLate.delete(cacheKey); });
+      pendingLate.set(cacheKey, pending);
+      startHeadStart(fallbackCandidates, play, lateCandidates(pending, titleMeta, play, fallbackGroupId, fallbackCandidates));
+    } else {
+      startHeadStart(fallbackCandidates, play);
     }
 
-    startHeadStart(fallbackCandidates, play);
-
-    Object.assign(listLine, { cache: 'miss', streams: streams.length });
+    // The indexers the list went out without (#301), by name: none when it waited for every one.
+    Object.assign(listLine, { cache: 'miss', streams: streams.length, ...(answer.notWaitedFor ? { not_waited_for: answer.notWaitedFor } : {}) });
     return { streams };
   } catch (error) {
     console.error('❌ Stream handler error:', error);

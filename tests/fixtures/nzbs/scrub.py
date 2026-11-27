@@ -1,4 +1,4 @@
-"""Scrub an NZB captured on Brain into a test fixture (review standards, rule 2).
+"""Scrub an NZB captured on Brain into a test fixture.
 
 Kept as captured: the XML layout, file order, subjects (release names, yEnc
 counters), dates, groups, segment numbers and byte counts. Scrubbed: message

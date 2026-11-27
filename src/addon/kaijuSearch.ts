@@ -15,6 +15,7 @@
 import type { IndexerCaps } from '../types.js';
 import { indexerContentKey } from './dedup.js';
 import { asRead } from '../config/capsMigration.js';
+import type { ReleaseSource } from '../play/types.js';
 
 /** A way of asking an indexer: by one of its IDs, or by name (`text`, the searchers' own word for it). */
 export type SearchWay = 'imdb' | 'tmdb' | 'tvdb' | 'tvmaze' | 'text';
@@ -73,21 +74,62 @@ export function mergeFound<T extends { link?: string; title?: string; size?: num
   return out;
 }
 
+// --------------------------------------------------------------------------- Releases (#299)
+
+/** A Release's name as it is matched: lower case, with spaces, `.`, `-` and `_` removed (NZBHydra2's key). */
+export const releaseNameKey = (title: string | undefined): string => (title ?? '').toLowerCase().replace(/[\s._-]+/g, '');
+
+/** Two sizes of one upload: both known and at most 1 % apart (of the larger). */
+const sameSize = (a: number | undefined, b: number | undefined): boolean =>
+  !!a && !!b && a > 0 && b > 0 && Math.abs(a - b) <= 0.01 * Math.max(a, b);
+
+/**
+ * Merge the indexers' Sources into Releases (GLOSSARY: Release): Sources on different indexers with the same cleaned-up
+ * name (`releaseNameKey`) and a size within 1 % are one upload. A Release is listed at its first Source's place, with
+ * that Source's fields (its link, indexer and size), every way that found any of its Sources (`foundBy`), and its
+ * Sources in order (`sources`, one per indexer: two uploads of one name on the same indexer are two Releases). Its size
+ * is compared with the first Source's. Every Release has `sources`, one when a single indexer has it.
+ */
+export function mergeReleases<T extends { title?: string; size?: number; indexerName?: string; foundBy?: FoundBy[] }>(
+  sources: T[],
+): (T & { sources: T[] })[] {
+  const out: (T & { sources: T[] })[] = [];
+  const byName = new Map<string, (T & { sources: T[] })[]>();
+  for (const s of sources) {
+    const { sources: _ignored, ...source } = s as T & { sources?: unknown };
+    const key = releaseNameKey(s.title);
+    const named = byName.get(key) ?? [];
+    const release = named.find(r => sameSize(r.size, s.size) && !r.sources.some(o => (o.indexerName ?? '') === (s.indexerName ?? '')));
+    if (release) {
+      release.sources.push(source as T);
+      for (const w of s.foundBy ?? []) if (!release.foundBy?.includes(w)) release.foundBy = [...(release.foundBy ?? []), w];
+      release.foundBy?.sort((a, b) => (a === b ? 0 : a === 'id' ? -1 : 1));
+      continue;
+    }
+    const fresh = { ...(source as T), sources: [source as T] };
+    named.push(fresh);
+    byName.set(key, named);
+    out.push(fresh);
+  }
+  return out;
+}
+
 // --------------------------------------------------------------------------- the dev switch's search lines (#285)
 
 /** One indexer as a search asked it: its name, and the IDs it was asked by (none when it was asked by name only). */
 export interface AskedIndexer { source: string; ids: SearchWay[] }
 
-type Marked = { title: string; flow: 'sure' | 'maybe'; flowWhy: string; proof?: string; indexerName?: string; foundBy?: FoundBy[] };
+type Marked = { title: string; size?: number; flow: 'sure' | 'maybe'; flowWhy: string; proof?: string; indexerName?: string; foundBy?: FoundBy[] };
 
-/** A result as its search line names it: a sure one extra proof made sure says which proof (#286). */
-const entry = (r: Marked) => ({ release: r.title, flow: r.flow, ...(r.proof ? { proof: r.proof } : {}), why: r.flowWhy });
+/** A result as its search line names it, with its size when known (the quick check's indexer table matches Releases by
+ *  name and size, tools/brain/quickcheck.py); a sure one extra proof made sure says which proof (#286). */
+const entry = (r: Marked) => ({ release: r.title, ...(r.size ? { size: r.size } : {}), flow: r.flow, ...(r.proof ? { proof: r.proof } : {}), why: r.flowWhy });
 
 /**
  * Write a `search` step line per indexer and way of asking (dev switch only; the caller checks it): the way (`id`,
  * `name`), what it was asked (`asked`: the IDs, or `name`), how many results came back that way (`count`, the kept
  * ones and those Search Flow dropped), how many stayed (`kept`, `sure`, `maybe`) and each result with its Search Flow
- * mark and why (`results`, the dropped ones last). `marked` is the search's merged results marked by Search Flow;
+ * mark and why (`results`, the dropped ones last; a kept one with its `size`). `marked` is the search's merged results marked by Search Flow;
  * `dropped` what each indexer's name filter dropped (`droppedBy`; key '' is a query to several indexers at once, put
  * on a name line of `several`, the index manager). Names and numbers only: no URL or key.
  */
@@ -121,4 +163,9 @@ export function logStrictAlone(log: (fields: Record<string, unknown>) => void, m
   if (marked.length === 0 || marked.some(r => r.flow === 'sure' && !r.proof)) return;
   const sure = marked.filter(r => r.flow === 'sure').length;
   log({ strict_alone: 'nothing', kept: marked.length, sure, maybe: marked.length - sure });
+}
+
+/** A Release's Sources as the play side knows them (#300; play/types.ts ReleaseSource); undefined without `sources`. */
+export function releaseSourcesOf(r: { sources?: { link: string; title: string; indexerName?: string; size?: number; searchExitIp?: string }[] }): ReleaseSource[] | undefined {
+  return r.sources?.map(s => ({ nzbUrl: s.link, title: s.title, indexerName: s.indexerName ?? '', size: s.size, searchExitIp: s.searchExitIp }));
 }

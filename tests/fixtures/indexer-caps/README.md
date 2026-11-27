@@ -6,4 +6,4 @@ Real `t=caps` replies, as the indexers sent them (HTTP 200, `text/xml;charset=UT
 - `ninjacentral-caps.xml`: NinjaCentral, the stand-in's recording of it (`store/baseline/ninjacentral/`, request `api t=caps`), its links rewritten to `@@STANDIN@@` by the stand-in, nothing else changed.
 - `drunkenslug-error-wrong-key.xml`: DrunkenSlug's answer to a search with a wrong key, taken the same day: a Newznab `<error>` sent with HTTP 200, which holds no caps.
 
-`tests/unit/kaiju-search.test.ts` reads caps from them (`fetchIndexerCaps`, NZBHydra's sync): what Kaiju Search asks an indexer by (review rule 2). When an indexer changes its replies, capture new ones here.
+`tools/brain/test_search_ping.py` holds the preflight's search to the wrong-key answer, and shows a caps reply is no search answer. `tests/unit/kaiju-search.test.ts` reads caps from them (`fetchIndexerCaps`, NZBHydra's sync): what Kaiju Search asks an indexer by. When an indexer changes its replies, capture new ones here.

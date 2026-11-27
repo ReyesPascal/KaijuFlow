@@ -38,11 +38,14 @@ class FakeGh:
         return a if isinstance(a, str) else json.dumps(a)
 
 
-def run(argv, fake):
+def run(argv, fake, slept=None):
+    """main's exit code and lines; `slept`, when given, gets each wait main asks for."""
     out, t = io.StringIO(), [0.0]
 
     def sleep(s):
         t[0] += s
+        if slept is not None:
+            slept.append(s)
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
         code = prwatch.main(argv, run_gh=fake, sleep=sleep, clock=lambda: t[0])
     return code, out.getvalue().splitlines()
@@ -63,10 +66,23 @@ class PrWatchTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(lines, ['PR #230: watching 3 checks at b025f27, 1 still running', 'PR #230 GREEN at b025f27'])
 
+    def test_the_last_check_finishing_is_seen_within_5_s(self):
+        slept = []
+        self.assertEqual(run(['230'], FakeGh(RUNNING, GREEN), slept)[0], 0)
+        self.assertEqual(slept, [5.0])
+
     def test_red_names_the_failed_checks_and_exits_1(self):
         code, lines = run(['230'], FakeGh(RUNNING, RED))
         self.assertEqual(code, 1)
         self.assertEqual(lines[-1], 'PR #230 RED at b025f27: discovery-stream')
+
+    def test_a_failed_check_is_red_at_once_while_others_still_run(self):
+        # 2026-11-24, indexers-298 at 19c40ba: KaijuFlow CI failed 81 s in, discovery-stream ran 4 more minutes
+        failed_early = with_checks(RED, **{'a4-isolated': {'status': 'IN_PROGRESS', 'conclusion': ''}})
+        fake = FakeGh(failed_early, GREEN)
+        code, lines = run(['230'], fake)
+        self.assertEqual((code, lines), (1, ['PR #230 RED at b025f27: discovery-stream (1 check still running)']))
+        self.assertEqual(len(fake.calls), 1)
 
     def test_a_draft_is_named_so(self):
         draft = dict(GREEN, isDraft=True)
@@ -101,7 +117,7 @@ class PrWatchTest(unittest.TestCase):
         status = dict(GREEN, statusCheckRollup=GREEN['statusCheckRollup'] + [{'__typename': 'StatusContext', 'context': 'ext', 'state': 'PENDING'}])
         self.assertEqual(prwatch.verdict(status), ('running', 1, 4))
         status['statusCheckRollup'][-1]['state'] = 'ERROR'
-        self.assertEqual(prwatch.verdict(status), ('red', ['ext']))
+        self.assertEqual(prwatch.verdict(status), ('red', ['ext'], 0))
 
     def test_a_bad_argument_exits_2(self):
         for argv in ([], ['x'], ['230', '--interval']):

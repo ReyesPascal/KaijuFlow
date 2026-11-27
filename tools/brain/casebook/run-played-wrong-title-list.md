@@ -40,7 +40,7 @@ Nothing tested and rejected yet.
 
 ## Fix
 
-The run is marked never compared with; #267 makes the preflight pass over it. Nothing stops the same mistake.
+None needed: ADR 0010 retired the replayed runs it happens in, and #273 archived them.
 
 ## History
 

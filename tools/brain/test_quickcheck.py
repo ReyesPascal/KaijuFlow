@@ -12,6 +12,7 @@ import unittest
 
 from unittest import mock
 
+import allowance
 import brainreport as br
 import brainrun
 import common
@@ -19,9 +20,10 @@ import draw
 import fixing
 import pool
 import quickcheck as qc
+import retired
 import testbed
-from test_preflight import FakeWorld, make_cfg, run_command
-from test_settings import SECRET, make_copies, tempdir
+from test_preflight import PLENTY, FakeWorld, make_cfg, run_command
+from test_settings import SECRET, make_copies, put_limits, tempdir
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UTC = datetime.timezone.utc
@@ -324,17 +326,37 @@ class JudgeTest(unittest.TestCase):
         o = qc.judge(visit(sources=5, plays=False, steps=dead))  # two Sources never reached: not shown that none would play
         self.assertEqual((o['outcome'], o['why']), ('fail', 'no video (failure video), and only 3 of 5 Sources were checked'))
 
-    def test_an_empty_list_is_a_fail_when_it_is_not_shown_that_nothing_would_play(self):
+    def test_an_empty_list_is_nothing_to_play_indexers_down_only_when_every_switched_on_indexer_failed(self):
         lines = step_lines_of('2026-11-24-step-lines', 'kaijuflow-indexer-down-empty-list.txt')  # NinjaCentral did not answer
         kept = qc.visit_steps(lines, 'tt1375666', '2026-11-24T06:00:46.348Z')
-        self.assertEqual([s['step'] for s in kept], ['indexer_page', 'list_filter'])
-        o = qc.judge(visit(title=['movie', 'tt1375666', 'Inception', 'popular-film', '2010-07-15'], sources=0, best=False, steps=kept))
-        self.assertEqual((o['outcome'], o['why']), ('fail', 'the list held no Source, and NinjaCentral did not answer its search (page 1)'))
+        self.assertEqual([s['step'] for s in kept], ['indexer_page', 'list_filter', 'list'])
+        inception = ['movie', 'tt1375666', 'Inception', 'popular-film', '2010-07-15']
+        o = qc.judge(visit(title=inception, sources=0, best=False, steps=kept), indexers=['ninjacentral'])
+        self.assertEqual((o['outcome'], o['why']),
+                         ('nothing to play', 'indexers down: no switched-on indexer answered its search (NinjaCentral)'))
+        # DrunkenSlug switched on too and answered (its real page line of the 2026-11-24 quick check): judged on the list
+        drunkenslug = dict(next(s for s in real_steps() if s['step'] == 'indexer_page' and s['source'] == 'DrunkenSlug'),
+                           ref='tt1375666', t='2026-11-24T06:00:46.900Z')
+        o = qc.judge(visit(title=inception, sources=0, best=False, steps=[drunkenslug, *kept]),
+                     indexers=['drunkenslug', 'ninjacentral'])
+        self.assertEqual((o['outcome'], o['why']),
+                         ('nothing to play', "the list held no Source: KaijuFlow's search kept 0 Sources and its filters kept none; "
+                                             'NinjaCentral did not answer its search'))
+        o = qc.judge(visit(title=inception, sources=0, best=False, steps=[drunkenslug, *kept]),
+                     indexers=['drunkenslug', 'ninjacentral', 'nzbgeek'])  # one more switched on and never asked: down too
+        self.assertIn('NinjaCentral and nzbgeek did not answer its search', o['why'])
+        o = qc.judge(visit(title=inception, sources=0, best=False, steps=kept))  # no switched-on list: the indexers its lines name
+        self.assertEqual(o['outcome'], 'nothing to play')
+        self.assertIn('indexers down', o['why'])
+
+    def test_an_empty_list_is_a_fail_when_it_is_not_shown_that_nothing_would_play(self):
+        lines = step_lines_of('2026-11-24-step-lines', 'kaijuflow-indexer-down-empty-list.txt')
+        kept = qc.visit_steps(lines, 'tt1375666', '2026-11-24T06:00:46.348Z')
         answered = [dict(kept[0], ok=True), kept[1]]
-        o = qc.judge(visit(sources=0, best=False, steps=answered))
+        o = qc.judge(visit(sources=0, best=False, steps=answered), indexers=['ninjacentral'])
         self.assertEqual((o['outcome'], o['why']),
                          ('nothing to play', "the list held no Source: KaijuFlow's search kept 0 Sources and its filters kept none"))
-        o = qc.judge(visit(sources=0, best=False))  # no list_filter line: the list's handler failed
+        o = qc.judge(visit(sources=0, best=False, steps=answered[:1]), indexers=['ninjacentral'])  # no list_filter line
         self.assertEqual(o['outcome'], 'fail')
         self.assertIn('no list_filter line', o['why'])
 
@@ -364,6 +386,158 @@ def outcome(label='A Film', outcome='played', **kw):
             'video': outcome == 'played', 'checked': [], 'fallbacks': 0, 'check_misses': [], 'start_s': 3.0, 'title_to_video': 5.0,
             'slow': False}
     return {**base, **kw}
+
+
+
+REAL_CHECK = '2026-11-24-quick-check'  # the 2026-11-24T122253Z quick check, NinjaCentral and DrunkenSlug both switched on
+
+
+def real_steps():
+    """KaijuFlow's step lines of the real 2026-11-24 quick check (fixtures/2026-11-24-quick-check/)."""
+    return step_lines_of(REAL_CHECK, 'kaijuflow-steps.log')
+
+
+def real_check(edit=lambda steps: steps):
+    """The real 2026-11-24 quick check as write_check_ending holds it: each visit's kept steps and the Releases each
+    indexer's search found, cut at the visit's end as the check read its log then, and the stand-in's requests.
+    `edit(steps)` changes KaijuFlow's lines first (an indexer made down)."""
+    folder = os.path.join(HERE, 'fixtures', REAL_CHECK)
+    check = json.loads(read(folder, 'check.json'))
+    steps = edit(real_steps())
+    for v in check['visits']:
+        since = br.iso(br.parse_ts(v['t_start']) - datetime.timedelta(seconds=1))
+        then = [s for s in steps if br.parse_ts(s['t']) <= br.parse_ts(v['t_end']) + datetime.timedelta(seconds=1)]
+        v['steps'], v['found'] = qc.visit_steps(then, v['id'], since), qc.found_by_indexer(then, v['id'], since)
+    check.update(status='ok', kind='quick check', folder='2026-11-24T122253Z-quick-check', commit='198e843',
+                 requests=qc.requests_by_indexer(allowance.requests_in(os.path.join(folder, 'standin.log'))))
+    return check
+
+
+def ninjacentral_down(steps):
+    """The real lines as they would be with NinjaCentral down: its pages not answered, so no search of its and no Source
+    of its checked."""
+    out = []
+    for s in steps:
+        if s.get('source') != 'NinjaCentral':
+            out.append(s)
+        elif s['step'] == 'indexer_page':
+            out.append(dict(s, ok=False))
+    return out
+
+
+class ReleaseRuleTest(unittest.TestCase):
+    """The Release rule on its shared table (tests/fixtures/release-rule/table.tsv), the one Kaiju Search's copy
+    (mergeReleases, tests/unit/release-rule.test.ts) is tested against."""
+
+    def test_each_row_of_the_shared_table(self):
+        head, *lines = read(HERE, '..', '..', 'tests', 'fixtures', 'release-rule', 'table.tsv').rstrip('\n').split('\n')
+        for row in [dict(zip(head.split('\t'), line.split('\t'))) for line in lines]:
+            size = (lambda v: int(v) if v else None)
+            with self.subTest(a=row['a'], b=row['b']):
+                self.assertEqual(qc.release_key(row['a']), row['key_a'])
+                self.assertEqual(qc.same_release(row['a'], size(row['size_a']), row['b'], size(row['size_b'])),
+                                 row['same'] == 'yes')
+
+
+class RealCheckTest(unittest.TestCase):
+    """The judge and the indexer table on the real 2026-11-24 quick check, as it was and with one indexer made down."""
+
+    def outcomes(self, check):
+        return [qc.judge(v, indexers=check['indexers']) for v in qc.judged(check)]
+
+    def test_the_real_check_judged_as_it_was(self):
+        check = real_check()
+        self.assertEqual([o['outcome'] for o in self.outcomes(check)], ['played', 'played', 'played', 'played', 'fail'])
+
+    def test_one_indexer_down_with_sources_from_the_other_is_judged_on_its_list(self):
+        check = real_check(ninjacentral_down)
+        outcomes = self.outcomes(check)
+        self.assertEqual([o['outcome'] for o in outcomes], ['played', 'played', 'played', 'played', 'fail'])
+        self.assertEqual(outcomes[3]['release'], 'Mad.Men.2007.S04E05.2160p.HMAX.WEB-DL.DUAL.DDP5.1.H.265-FUZEER')
+        self.assertNotIn('NinjaCentral', outcomes[4]['why'])  # Girlfriends fails on its own: no played line
+
+    def test_every_indexer_down_is_nothing_to_play_and_not_a_fail(self):
+        def all_down(steps):
+            return [dict(s, ok=False) for s in steps if s['step'] == 'indexer_page'] + [
+                dict(s, results=0, kept=0) for s in steps if s['step'] in ('list_filter', 'list')]
+        check = real_check(all_down)
+        for v in check['visits']:
+            v.update(sources=0, best=False, play=None)
+        outcomes = self.outcomes(check)
+        self.assertEqual({(o['outcome'], o['why']) for o in outcomes},
+                         {('nothing to play', 'indexers down: no switched-on indexer answered its search (DrunkenSlug and NinjaCentral)')})
+        self.assertEqual(qc.verdict(check, outcomes), 'pass')
+
+    def test_the_indexer_table(self):
+        check = real_check()
+        rows = {r['indexer']: r for r in qc.indexer_rows(check, self.outcomes(check))}
+        self.assertEqual({k: (r['searches'], r['downloads'], r['typical_s'], r['slowest_s'], r['not_answered'], r['lists'],
+                              r['without'], r['only_it']) for k, r in rows.items()},
+                         {'DrunkenSlug': (21, 9, 0.49, 2.14, 0, 5, 0, 3),
+                          'NinjaCentral': (20, 7, 0.42, 0.69, 0, 5, 0, 0)})
+        text = qc.render_report(check, self.outcomes(check))
+        self.assertIn('## Indexers\n\n| Indexer | Searches | Downloads | Answer time | Lists sent without it | '
+                      'Plays from a Release only it had |\n|---|---|---|---|---|---|\n'
+                      '| DrunkenSlug | 21 | 9 | 0.49 s typical, 2.14 s slowest | 0 of 5 | 3 |\n'
+                      '| NinjaCentral | 20 | 7 | 0.42 s typical, 0.69 s slowest | 0 of 5 | 0 |\n', text)
+
+    def test_the_table_with_one_indexer_down_and_a_list_sent_before_the_slow_one_answered(self):
+        def slow_drunkenslug(steps):  # Mad Men's list goes out before DrunkenSlug's last page (as #301 lets it)
+            return [dict(s, t='2026-11-24T12:23:37.500Z') if s.get('ref') == 'tt0804503:4:5' and s['step'] == 'indexer_page'
+                    and s['source'] == 'DrunkenSlug' and s['t'] == '2026-11-24T12:23:37.091Z' else s
+                    for s in ninjacentral_down(steps)]
+        check = real_check(slow_drunkenslug)
+        rows = {r['indexer']: r for r in qc.indexer_rows(check, self.outcomes(check))}
+        self.assertEqual((rows['NinjaCentral']['not_answered'], rows['NinjaCentral']['typical_s'], rows['NinjaCentral']['without']),
+                         (20, None, 0))
+        self.assertEqual((rows['DrunkenSlug']['without'], rows['DrunkenSlug']['only_it']), (1, 4))
+        text = qc.render_report(check, self.outcomes(check))
+        self.assertIn('| NinjaCentral | 20 | 7 | none answered, 20 not answered | 0 of 5 | 0 |', text)
+        self.assertIn('| DrunkenSlug | 21 | 9 | 0.49 s typical, 2.14 s slowest | 1 of 5 | 4 |', text)
+
+    def test_lists_sent_without_an_indexer_are_read_from_the_list_lines_not_waited_for(self):
+        # a check after #301: Mad Men's list says it went out without DrunkenSlug, and a late NinjaCentral page (its own
+        # name search, after the list) does not count NinjaCentral as left out
+        def lines(steps):
+            out = []
+            for s in steps:
+                if s.get('ref') == 'tt0804503:4:5' and s['step'] == 'list':
+                    out.append(dict(s, not_waited_for=['DrunkenSlug']))
+                elif (s.get('ref') == 'tt0804503:4:5' and s['step'] == 'indexer_page' and s['source'] == 'NinjaCentral'
+                      and s['t'] == max(x['t'] for x in steps if x.get('ref') == s['ref'] and x['step'] == 'indexer_page'
+                                        and x['source'] == 'NinjaCentral')):
+                    out.append(dict(s, t='2026-11-24T12:23:39.000Z'))
+                else:
+                    out.append(s)
+            return out
+        check = real_check(lines)
+        check['started'] = '2026-11-25T10:00:00.000Z'
+        rows = {r['indexer']: r for r in qc.indexer_rows(check, self.outcomes(check))}
+        self.assertEqual((rows['DrunkenSlug']['without'], rows['NinjaCentral']['without']), (1, 0))
+
+    def test_a_release_only_one_indexer_had_is_matched_by_name_and_a_size_within_one_percent(self):
+        # the search lines with sizes (as KaijuFlow writes them since spec #298's review): NinjaCentral's copy of the
+        # name DrunkenSlug played Forgotten Island from is 5 % bigger, another upload, so that play is DrunkenSlug's alone
+        def sized(far):
+            def edit(steps):
+                out = []
+                for s in steps:
+                    if s['step'] == 'search' and s.get('results'):
+                        big = far and s['source'] == 'NinjaCentral' and s.get('ref') == 'tt36583977'
+                        s = dict(s, results=[dict(r, size=1_050_000_000 if big else 1_000_000_000) for r in s['results']])
+                    out.append(s)
+                return out
+            return edit
+        for far, drunkenslug in ((False, 3), (True, 4)):
+            check = real_check(sized(far))
+            rows = {r['indexer']: r for r in qc.indexer_rows(check, self.outcomes(check))}
+            self.assertEqual((rows['DrunkenSlug']['only_it'], rows['NinjaCentral']['only_it']), (drunkenslug, 0), far)
+
+    def test_without_search_lines_the_plays_column_is_not_known(self):
+        check = real_check(lambda steps: [s for s in steps if s['step'] != 'search'])
+        rows = qc.indexer_rows(check, self.outcomes(check))
+        self.assertEqual([r['only_it'] for r in rows], [None, None])
+        self.assertIn('| 0 of 5 | not known (no search lines: the dev switch was off) |', qc.render_report(check, self.outcomes(check)))
 
 
 class ReportTest(unittest.TestCase):
@@ -525,8 +699,8 @@ class CheckWorld:
         self.calls.append(('sleep', s))
         self.takes(s)
 
-    def preflight(self, mode, seen=None):
-        self.calls.append(('preflight', mode))
+    def preflight(self, seen=None):
+        self.calls.append(('preflight',))
         if seen is not None:
             seen.update(load=0.2, machine={'power': 'ac', 'cpu_probe_ms': 900})
         return list(self.problems)
@@ -566,6 +740,9 @@ class CheckWorld:
         if self.store is None:  # the real stand-in has no store to record into
             raise RuntimeError('indexer stand-in did not start')
         self.calls.append(('standin', mode))
+        self.standin_log = logpath
+        with open(logpath, 'w') as f:
+            f.write('stand-in record list=check on 0.0.0.0:1340\n')
         world = self
 
         class Handle:
@@ -584,6 +761,7 @@ class CheckWorld:
 
     def check_visit(self, kind, vid, pause_s):
         self.calls.append(('visit', vid))
+        self.takes(0.01)  # the list request reaches KaijuFlow a moment after the check sends it
         t_list = br.iso(self.clock)
         if not self.up:
             return brainrun.check_visit_answer((None, {'error': 'connection refused'}, b'', {'ready': 0.0}), None)
@@ -596,6 +774,15 @@ class CheckWorld:
             return brainrun.check_visit_answer((200, {}, b'{"streams": []}', {'ready': 2.0, 'total': 2.0}), None, pause_s, self.sleep)
         body = json.dumps({'streams': [BEST, {'name': 'KaijuFlow', 'title': 'A'}, {'name': 'KaijuFlow', 'title': 'B'}]}).encode()
         got = (200, {}, body, {'ready': 2.0, 'total': 2.0})
+        ms = int(self.clock.timestamp() * 1000)
+        with open(self.standin_log, 'a') as f:  # as the stand-in logs what it sent the indexer: the search, and the grab
+            f.write(f'RECORD ninjacentral api extended=1&imdbid={vid}&t=movie -> 200 1000 bytes from=172.18.0.3 t={ms}\n'
+                    f'RECORD ninjacentral nzb 6b8caa20c9ff -> 200 2000 bytes from=172.18.0.3 t={ms}\n')
+        for line in ({'step': 'indexer_page', 'source': 'NinjaCentral', 'ok': True, 'page': 1, 'ms': 300},
+                     {'step': 'list', 'ok': True, 'cache': 'miss', 'ms': 2000},
+                     {'step': 'search', 'source': 'NinjaCentral', 'ok': True, 'way': 'id',
+                      'results': [{'release': release, 'flow': 'sure'}] if isinstance(release, str) else []}):
+            self.log.append(f'{t_list} [KF-STEP] ' + json.dumps({'ms': 0, **line, 'ref': vid, 't': t_list}))
 
         def press(stream):
             self.takes(3.0)
@@ -640,7 +827,7 @@ class CheckWorld:
 def check_cfg(case):
     root = tempdir(case)
     return dict(name='quick-check', runs_root=root, test_dir=os.path.join(root, 'td'), indexers=['ninjacentral'], browse_pause=5,
-                settle=3, ledger=os.path.join(root, 'titles-played.json'), user_id='u', cases=os.path.join(tempdir(case), 'cases'))
+                ledger=os.path.join(root, 'titles-played.json'), user_id='u', cases=os.path.join(tempdir(case), 'cases'))
 
 
 def run_check(cfg, world):
@@ -656,9 +843,11 @@ class QuickCheckRunTest(unittest.TestCase):
         code, out = run_check(cfg, world)
         self.assertEqual(code, 0, out)
         self.assertIn('Pass: 0 fails in 5 titles.', out)
-        self.assertEqual(world.calls[:5], [('preflight', 'check'), ('draw', 'quick', qc.QUICK_KINDS), ('reset', tuple(brainrun.ALL_TESTBED)),
+        self.assertEqual(world.calls[:5], [('preflight',), ('draw', 'quick', qc.QUICK_KINDS), ('reset', tuple(brainrun.ALL_TESTBED)),
                                            ('open-store',), ('standin', 'record')])
         self.assertEqual([c[1] for c in world.calls if c[0] == 'visit'], [t[1] for t in DRAWN])  # each title once
+        # the Browse pause only, no pause after a title: the settle is retired (spec #298's review, P6)
+        self.assertEqual([c for c in world.calls if c[0] == 'sleep'], [('sleep', 5)] * 5)
         self.assertEqual(world.calls[-3:], [('standin-stop',), ('stop-all',), ('close-store',)])
         self.assertEqual(sum(qc.QUICK_KINDS.values()), 5)
         folder = os.path.join(cfg['runs_root'], '2026-11-25T100000Z-quick-check')
@@ -743,14 +932,22 @@ class QuickCheckRunTest(unittest.TestCase):
         self.assertNotIn(('reset', tuple(brainrun.ALL_TESTBED)), world.calls)
         self.assertIn('| quick-check | failed |', read(cfg['runs_root'], 'INDEX.md'))
 
-    def test_an_indexer_that_does_not_answer_fails_the_check(self):
+    def test_an_indexer_that_does_not_answer_is_nothing_to_play_not_a_fail(self):
         world = CheckWorld()
         world.plays['tt0000003'] = 'indexer down'
         cfg = check_cfg(self)
         code, out = run_check(cfg, world)
-        self.assertEqual(code, brainrun.EXIT_FAILS, out)
+        self.assertEqual(code, 0, out)
         report = read(cfg['runs_root'], '2026-11-25T100000Z-quick-check', 'report.md')
-        self.assertIn('the list held no Source, and NinjaCentral did not answer its search (page 1)', report)
+        self.assertIn('- Old Film: indexers down: no switched-on indexer answered its search (NinjaCentral).', report)
+
+    def test_the_report_has_the_indexer_table_from_the_stand_ins_log_and_kaijuflows_lines(self):
+        cfg, world = check_cfg(self), CheckWorld()
+        code, out = run_check(cfg, world)
+        self.assertEqual(code, 0, out)
+        report = read(cfg['runs_root'], '2026-11-25T100000Z-quick-check', 'report.md')
+        # each visit: one search and one grab through the stand-in, one page answered in 0.30 s, the list after it
+        self.assertIn('| NinjaCentral | 5 | 5 | 0.30 s typical, 0.30 s slowest | 0 of 5 | 5 |', report)
 
     def test_tmdb_failing_the_draw_ends_the_check_with_its_sentence(self):
         cfg = check_cfg(self)
@@ -776,7 +973,7 @@ class QuickCheckRunTest(unittest.TestCase):
         cfg, world = check_cfg(self), CheckWorld(problems=['The machine is busy.'])
         code, out = run_check(cfg, world)
         self.assertEqual((code, out), (1, 'The machine is busy.\n'))
-        self.assertEqual(world.calls, [('preflight', 'check')])
+        self.assertEqual(world.calls, [('preflight',)])
         self.assertFalse(os.path.exists(os.path.join(cfg['runs_root'], 'INDEX.md')))
 
     def test_a_stop_keeps_the_titles_played_and_gives_no_verdict(self):
@@ -858,8 +1055,9 @@ class RealPartsTest(unittest.TestCase):
             brainrun.main(['check', '--quick', '--test-dir', td, '--runs-root', self.root, '--tickets-dry-run'])
         self.assertTrue(seen['tickets_dry_run'])  # ... unless it is a dry run
         self.assertIsInstance(brainrun.RealIO(self.cfg).tracker(), fixing.GitHub)
-        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-            brainrun.main(['check', '--quick', '--run', self.root])
+        with contextlib.redirect_stdout(io.StringIO()) as out:  # a run folder's check is retired (ADR 0010, #273)
+            self.assertEqual(brainrun.main(['check', '--quick', '--run', self.root]), retired.EXIT_RETIRED)
+        self.assertIn('retired by ADR 0010', out.getvalue())
 
 
 # --------------------------------------------------------------------------- the preflight of a check, on fixture test copies
@@ -872,9 +1070,7 @@ class CheckPreflightTest(unittest.TestCase):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 300)})
 
     def limits(self, entries):
-        with open(os.path.join(self.td, 'limits.json'), 'w') as f:
-            json.dump({'indexers': {slug: {'search_per_day': s, 'download_per_day': d, 'reset': 'rolling-24h'}
-                                    for slug, (s, d) in entries.items()}}, f)
+        put_limits(os.path.join(self.td, 'indexers.json'), entries)
 
     def used(self, downloads):
         """A record folder whose stand-in log asked the real ninjacentral `downloads` NZBs just now."""
@@ -885,24 +1081,43 @@ class CheckPreflightTest(unittest.TestCase):
             f.write(''.join(f'RECORD ninjacentral nzb/abc{i} from=1.2.3.4 t={t}\n' for i in range(downloads)))
 
     def test_a_right_setup_passes_a_check_with_no_recording(self):
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
         self.assertIn("Setup is right for a check", text)
-        self.assertIn("idle (1-minute load below 1.00)", text)
         self.assertIn("the indexer allowance holds the check's requests", text)
 
-    def test_a_check_needs_the_key_file_and_an_idle_machine(self):
+    def test_a_check_needs_the_key_file(self):
         os.chmod(os.path.join(self.td, 'indexers.json'), 0o644)
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg, load=2.5))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('can be read by others', text)
-        self.assertIn('load average is 2.50', text)
         self.assertNotIn(SECRET, text)
+
+    def test_a_quick_check_does_not_wait_for_an_idle_machine_and_keeps_the_load(self):
+        seen = {}
+        self.assertEqual(brainrun.preflight(self.cfg, FakeWorld(self.cfg, load=2.5), seen), [])
+        self.assertEqual(seen['load'], 2.5)  # the record keeps the load either way (#303)
+        code, text = run_command(self.cfg, FakeWorld(self.cfg, load=2.5))
+        self.assertEqual(code, 0, text)
+        self.assertNotIn('idle', text)
+
+    def test_a_full_check_needs_an_idle_machine(self):
+        code, text = run_command(dict(self.cfg, full_check=True), FakeWorld(self.cfg, load=2.5))
+        self.assertEqual(code, 1, text)
+        self.assertIn('load average is 2.50', text)
+        code, text = run_command(dict(self.cfg, full_check=True), FakeWorld(self.cfg))
+        self.assertEqual(code, 0, text)
+        self.assertIn('idle (1-minute load below 1.00)', text)
+
+    def test_a_full_check_under_a_standing_go_does_not_wait_for_an_idle_machine_and_keeps_the_load(self):
+        cfg, seen = dict(self.cfg, full_check=True, standing_go=True), {}
+        self.assertEqual(brainrun.preflight(cfg, FakeWorld(cfg, load=2.5), seen), [])
+        self.assertEqual(seen['load'], 2.5)
 
     def test_too_little_allowance_left_refuses_a_check(self):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
         self.used(450 - 149)  # 149 downloads left between the two; 5 titles may need 150
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
         self.assertIn('The indexers have 149 downloads left today between them (drunkenslug 0, ninjacentral 149), '
                       'and the check may need 150', text)
@@ -912,33 +1127,41 @@ class CheckPreflightTest(unittest.TestCase):
         # Source, so two indexers together must hold the check's downloads; neither needs all of them alone
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 100)})
         self.used(450 - 60)  # ninjacentral 60 left, drunkenslug 100: 160 between them, 150 needed
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
 
     def test_searches_still_count_per_indexer(self):
         # every title is searched on every indexer, so each needs the check's searches itself
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (59, 100)})
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
-        self.assertIn('drunkenslug has 59 searches left today, and the check may need 60', text)
+        self.assertIn('drunkenslug has 59 searches left today, and the check may need 61', text)  # 60 for the titles, 1 for the preflight's search (#303)
 
     def test_a_drill_down_asks_for_one_titles_allowance(self):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})
         self.used(450 - 30)  # 30 downloads left: one title may need 30, five 150
-        code, text = run_command('check', dict(self.cfg, check_titles=1), FakeWorld(self.cfg))
+        code, text = run_command(dict(self.cfg, check_titles=1), FakeWorld(self.cfg))
         self.assertEqual(code, 0, text)
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
         self.assertIn('The indexers have 30 downloads left today between them (drunkenslug 0, ninjacentral 30), '
                       'and the check may need 150', text)
 
-    def test_a_missing_limits_file_or_entry_refuses_a_check(self):
+    def test_an_indexer_without_limits_in_the_key_file_refuses_a_check_and_names_the_command(self):
+        make_copies(self, base=os.path.dirname(self.td))  # a key file with no limits in it
         self.limits({'ninjacentral': (2000, 450)})
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
-        self.assertIn('The limits file has no entry for drunkenslug', text)
-        os.remove(os.path.join(self.td, 'limits.json'))
-        code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
-        self.assertEqual(code, 1)
-        self.assertIn('There is no limits file yet', text)
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
+        self.assertEqual(code, 1, text)
+        self.assertIn('The key file has no daily limits for drunkenslug, so its allowance cannot be checked: add them '
+                      '(python3 -I tools/brain/testbed.py indexer add drunkenslug --stash <entry> --searches <n> --downloads <n>)', text)
+        self.assertNotIn(SECRET, text)
+
+    def test_a_limits_file_beside_the_key_file_is_not_read(self):
+        make_copies(self, base=os.path.dirname(self.td))
+        with open(os.path.join(self.td, 'limits.json'), 'w') as f:
+            json.dump({'indexers': {s: {'search_per_day': 2000, 'download_per_day': 450} for s in ('ninjacentral', 'drunkenslug')}}, f)
+        code, text = run_command(self.cfg, FakeWorld(self.cfg))
+        self.assertEqual(code, 1, text)
+        self.assertIn('The key file', text)
 
 
 class IndexerRuleTest(unittest.TestCase):
@@ -976,7 +1199,7 @@ class IndexerRuleTest(unittest.TestCase):
         data['expected'].append({'copies': ['kaijuflow'], 'settings': {'indexers[*].timeout': 15}})
         with open(path, 'w') as f:
             json.dump(data, f)
-        problems = brainrun.preflight('record', cfg, FakeWorld(cfg))
+        problems = brainrun.preflight(cfg, FakeWorld(cfg, allowance=PLENTY))
         self.assertEqual([p.split(',')[0] for p in problems if '.timeout' in p], ['KaijuFlow has no indexers[NinjaCentral].timeout setting'])
 
     def test_apply_writes_the_setting_into_every_indexer(self):

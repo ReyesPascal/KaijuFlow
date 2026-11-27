@@ -1,5 +1,5 @@
 """The one fixture builder for the brain tools' tests (#241): run folders in a temp directory, laid out as brainrun leaves
-them (docs/formats.md, "Run records"). The brainreport, runcheck, build_page, preflight and runs tests make theirs here.
+them (archive/formats-retired.md, "Run records"). The brainreport tests and the archived ones (archive/) make theirs here.
 """
 import json
 import os

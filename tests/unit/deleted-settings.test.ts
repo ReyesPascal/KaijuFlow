@@ -81,3 +81,14 @@ test('a legacy config\'s empty caps lists become unknown at load; caps marked as
   });
   assert.equal(migrateLegacyCaps(c), false, 'a second startup finds nothing to change');
 });
+
+// Releases (#299): an upload on several indexers is one Release, so the priority dedup (keep one indexer's copy of the
+// same title and size) and its order of indexers are replaced and go from an old config.
+test('the priority dedup and its indexer order are dropped; the other search settings stay', () => {
+  const c: Record<string, unknown> = {
+    indexerPriority: ['NinjaCentral', 'DrunkenSlug'],
+    searchConfig: { indexerPriorityDedup: true, urlDedup: true },
+  };
+  assert.equal(dropDeletedSettings(c), true);
+  assert.deepEqual(c, { searchConfig: { urlDedup: true } });
+});

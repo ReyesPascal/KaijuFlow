@@ -15,7 +15,8 @@ const DELETED: Record<string, string[]> = {
   // cap (#228): a failed list entry walks on through the whole list, as the cap's default did.
   ultimateFallback: ['desiredBackups', 'backupProcessingLimit', 'maxAttempts'],
   // The old global search methods (Kaiju Search, #285: every indexer is asked by ID and by name at once).
-  searchConfig: ['movieSearchMethod', 'tvSearchMethod', 'useTextSearchForAnime'],
+  // The priority dedup (#299: an upload on several indexers is one Release).
+  searchConfig: ['movieSearchMethod', 'tvSearchMethod', 'useTextSearchForAnime', 'indexerPriorityDedup'],
 };
 
 /** Settings deleted from every indexer entry (direct `indexers` and synced `syncedIndexers`), and why. */
@@ -26,8 +27,9 @@ const DELETED_PER_INDEXER: Record<'indexers' | 'syncedIndexers', string[]> = {
   syncedIndexers: ['enabledForHealthCheck', 'movieSearchMethod', 'tvSearchMethod', 'animeMovieSearchMethod', 'animeTvSearchMethod'],
 };
 
-/** Top-level settings deleted: the legacy text-search switch the search methods came from (#285). */
-const DELETED_TOP = ['useTextSearch'];
+/** Top-level settings deleted: the legacy text-search switch the search methods came from (#285), and the priority
+ *  dedup's order of indexers (#299). */
+const DELETED_TOP = ['useTextSearch', 'indexerPriority'];
 
 /** Env vars of the deleted settings: set, they are ignored (startup says so). */
 export const DELETED_ENV = ['HEALTH_CHECK_ENABLED', 'ULTIMATE_FALLBACK_DESIRED_BACKUPS', 'ULTIMATE_FALLBACK_BACKUP_PROCESSING_LIMIT',

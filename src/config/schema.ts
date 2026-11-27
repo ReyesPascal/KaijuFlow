@@ -62,7 +62,6 @@ export interface ConfigData {
   easynewsTimeout?: number;
   easynewsMode?: 'ddl' | 'nzb';
   easynewsHealthCheck?: boolean;
-  indexerPriority?: string[];
   zyclopsEndpoint?: string;
   proxyMode?: 'disabled' | 'http';
   proxyUrl?: string;

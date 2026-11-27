@@ -2,7 +2,7 @@
 
     python3 -I tools/brain/draw.py titles --check <name> --kinds popular-film=3,popular-episode=2 --out <titles.json>
                                           [--ledger FILE] [--test-dir DIR]
-    python3 -I tools/brain/draw.py seed [--ledger FILE] [--pool tools/brain/pool.json]
+    python3 -I tools/brain/draw.py seed [--ledger FILE] [--pool tools/brain/archive/pool.json]
 
 `titles` asks TMDB for titles of each kind (KINDS), takes them at random from the kind's lists, skips every title in
 the ledger (the titles already played, `<runs root>/titles-played.json`, outside the repo) and checks each one's ID
@@ -275,7 +275,7 @@ def main(argv, http=pool.real_http, rng=None, now=None):
     t.add_argument('--test-dir', default=os.environ.get('TEST_DIR', common.DEFAULT_TEST_DIR))
     s = sub.add_parser('seed', help="add the replayed recording's played titles to the ledger")
     s.add_argument('--ledger', default=DEFAULT_LEDGER)
-    s.add_argument('--pool', default=pool.DEFAULT_POOL)
+    s.add_argument('--pool', default=pool.OLD_POOL)
     a = ap.parse_args(argv)
     now = now or datetime.datetime.now(datetime.timezone.utc)
     if a.cmd == 'seed':
