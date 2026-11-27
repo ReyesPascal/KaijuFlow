@@ -23,7 +23,7 @@ timeout 1h python3 -I tools/brain/brainrun.py check --quick --rebuild-image > ch
 grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' check.log
 ```
 
-About 10 minutes: the preflight for a check, 5 new titles drawn, one reset, then one press of Best per title on the live indexers. Add `--fix` to run the preflight's safe fixes first. Then, in order:
+About 10 minutes: the preflight for a check, then the new titles played on the live indexers ([New titles every time](docs/rules.md#new-titles-every-time), [One reset per check](docs/rules.md#one-reset-per-check), [How a title is played](docs/rules.md#how-a-title-is-played)). Add `--fix` to run the preflight's safe fixes first. Then, in order:
 
 1. Read the folder's `report.md` and file its ticket texts (one per fail and check miss). Diagnosis files the fix ticket of a proved KaijuFlow cause by itself (`fix-tickets/` in the folder; the report's Diagnosis section names it, #288); `--tickets-dry-run` writes the text only.
 2. In a worktree, `python3 -I tools/brain/diagnosis.py record <folder>` puts the check's occurrences, comebacks and filed tickets on the Casebook; commit them for review.
@@ -37,7 +37,7 @@ timeout 30m python3 -I tools/brain/brainrun.py drill --title tt5180504 --episode
 grep -E 'no video|Error|limit|^Pass|^Fail|^No verdict|^EXIT ' drill.log
 ```
 
-The command a fix ticket names (#272), once its fix is merged; [A fix is proved by a drill-down](docs/rules.md#a-fix-is-proved-by-a-drill-down). Add `--rebuild-image` when the fix is in the image. It plays that one title as a quick check plays a title (the preflight for one title, one reset, one press of Best) and the report's Drill-down section says what each suspected cause is marked. `--entry <id>` names an entry besides the ones proved on the title before. Then `python3 -I tools/brain/diagnosis.py record <folder>` in a worktree writes the marks on the entries, for review; a KaijuFlow cause it proved again gets its new fix ticket from `diagnosis.py fix <folder>`. `--full` (watched with a skip) comes with the full check's watch (#271).
+The command a fix ticket names (#272), once its fix is merged; [A fix is proved by a drill-down](docs/rules.md#a-fix-is-proved-by-a-drill-down). Add `--rebuild-image` when the fix is in the image. It plays that one title as a quick check plays a title ([How a title is played](docs/rules.md#how-a-title-is-played)) and the report's Drill-down section says what each suspected cause is marked. `--entry <id>` names an entry besides the ones proved on the title before. Then `python3 -I tools/brain/diagnosis.py record <folder>` in a worktree writes the marks on the entries, for review; a KaijuFlow cause it proved again gets its new fix ticket from `diagnosis.py fix <folder>`. `--full` (watched with a skip) comes with the full check's watch (#271).
 
 ## Before a check
 
@@ -67,7 +67,7 @@ What to work on next: `python3 -I tools/brain/frontier.py` prints the tickets th
 
 ## What spends indexer requests
 
-A quick check (up to 60 searches and 150 downloads) and a drill-down (12 and 30), through the stand-in on the live indexers, plus the preflight's one caps request per switched-on indexer. `usage` spends none.
+A quick check, a drill-down and the preflight, through the stand-in on the live indexers; how many each may spend is [The allowance](docs/rules.md#the-allowance). `usage` spends none.
 
 ## Publish the page
 

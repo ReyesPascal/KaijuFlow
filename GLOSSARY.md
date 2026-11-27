@@ -123,7 +123,7 @@ The fixed wait in a check between a title's list arriving and its play, standing
 _Avoid_: think time, settle (the settle is the pause after a play)
 
 **CPU probe**:
-A short fixed piece of single-thread work (about 1 s on Brain plugged in) that a run's preflight times before the run starts, the same work every run, so a run whose CPU was slower says so. It judges nothing; the run keeps it in `meta.json` and the report holds it against the previous run's. Format in `tools/brain/docs/formats.md`.
+A short fixed piece of single-thread work (about 1 s on Brain plugged in) that a check's preflight times before the check starts, the same work every check, so a check whose CPU was slower says so. It judges nothing; the check keeps it in `meta.json` (`machine`), and no check is held against an earlier one's (ADR 0010). Format in `tools/brain/docs/formats.md`.
 _Avoid_: benchmark (it measures the machine, not KaijuFlow)
 
 **Round** (retired by ADR 0010):
@@ -135,8 +135,8 @@ The first Source in a side's list for a title. Two top picks are the same Source
 _Avoid_: first result, winner
 
 **Fail**:
-A play that gives no video: the viewer presses the round's entry (the top pick, or Best) and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md` ("What is a fail"; a check passes on zero fails, "The verdict and the report").
-_Avoid_: miss (a miss is a request the Recording cannot answer), error
+A play that gives no video: the viewer presses Best and gets an error, the failure video or a refusal. A video of the wrong title or episode is a fail too, and in a full check so is video that freezes or breaks on a skip while it is watched. Video after a fallback is played, not a fail, and so is slow video (a slow play). Speed never makes up for a fail; fails come first, then fast. Fails are counted as plays, and a count names the titles too ("2 titles failed · 4 of 40 plays"); the rule is in `tools/brain/docs/rules.md` ("What is a fail"; a check passes on zero fails, "The verdict and the report").
+_Avoid_: miss (a check miss is a Source the health check passed that the Backend then refused, counted apart), error
 
 **Nothing to play**:
 A title for which no indexer KaijuFlow asks has a Source the Backend can stream, shown to the viewer as such. It is not a fail, but it counts only once it is shown that no Source would have played; a Source that would have played but was marked dead or never reached makes it a fail. The rule is in `tools/brain/docs/rules.md` ("What is reported but is not a fail").
