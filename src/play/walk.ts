@@ -29,6 +29,8 @@
  *   answer, or a Backend failure leaves it alive.
  */
 
+import { shiftPlaces } from './lateSources.js';
+
 /** About twice the deepest Walk measured (16 grabs, The Twilight Zone S02E06, #14 played), #228. */
 export const WALK_MAX_GRABS = 30;
 
@@ -286,9 +288,7 @@ export class Walk {
   private insert(at: number, count: number): void {
     if (at < this.next || at > this.size) throw new Error(`Walk: late Sources at ${at}, the Walk reached ${this.next} of ${this.size}`);
     if (count <= 0) return;
-    const moved = [...this.hits].map(([index, path]): [number, string] => [index >= at ? index + count : index, path]);
-    this.hits.clear();
-    for (const [index, path] of moved) this.hits.set(index, path);
+    shiftPlaces(this.hits, at, count);
     this.size += count;
   }
 

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import type { FallbackCandidate, FallbackGroup } from './types.js';
 import type { PlayContext } from './playContext.js';
 import { config as globalConfig } from '../config/index.js';
+import { mergeLate } from './lateSources.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,14 +95,7 @@ export function createFallbackGroup(id: string, candidates: FallbackCandidate[],
 export function addToFallbackGroup(id: string, candidates: FallbackCandidate[]): void {
   const group = getFallbackGroup(id);
   if (!group) return;
-  const key = (c: FallbackCandidate) => `${c.nzbUrl}\u0000${c.title}`;
-  const held = new Map(group.candidates.map(c => [key(c), c]));
-  for (const c of candidates) {
-    const mine = held.get(key(c));
-    if (!mine) { group.candidates.push(c); continue; }
-    const { flow: _flow, flowWhy: _why, proof: _proof, ...fields } = c;
-    Object.assign(mine, fields);
-  }
+  group.candidates.push(...mergeLate(group.candidates, candidates));
   saveFallbackGroupsToDisk();
 }
 

@@ -32,11 +32,10 @@ import { resolveTitle, type ResolvedTitleInfo } from './titleResolver.js';
 import { kaijuSearch, type SearchContext, type KaijuAnswer } from './searchOrchestrator.js';
 import { deduplicateAndPreFilter, applyUserFilters } from './resultProcessor.js';
 import { flowTitleOf, markSources, type FlowTitle } from '../parsers/searchFlow.js';
-import { waysOf } from './kaijuSearch.js';
+import { waysOf, releaseSourcesOf } from './kaijuSearch.js';
 import { verifiedMarks } from './verifiedMarks.js';
 import { buildStreams, candidatesOf } from './streamBuilder.js';
 import { recall } from '../play/sourceMemory.js';
-import { releaseSourcesOf } from './kaijuSearch.js';
 import type { ReleaseSource } from '../play/types.js';
 import { requestContext } from '../requestContext.js';
 import { parseAnimeId, resolveAnimeId } from '../anime/animeIdResolver.js';
@@ -187,6 +186,10 @@ async function resolveTitleAndBuildSearchCtx(args: {
   return { titleInfo, searchCtx };
 }
 
+/** What the list's `list` step line says of the list (#249, #301): cached or searched, how many Streams, and the
+ *  indexers it went out without. */
+type ListLine = { cache?: 'hit' | 'miss'; streams?: number; not_waited_for?: string[] };
+
 // Stream handler - called when user wants to watch something
 builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
   // The list's own step line (#249): the whole request with a trace of the process meanwhile, written after the
@@ -194,14 +197,14 @@ builder.defineStreamHandler(({ type, id }) => withStepRef(id, async () => {
   // answer). `cache` says whether the search was cached.
   const t0 = performance.now();
   const endTrace = startProcessTrace();
-  const listLine: { cache?: 'hit' | 'miss'; streams?: number; not_waited_for?: string[] } = {};
+  const listLine: ListLine = {};
   const answer = await streamList(type, id, listLine);
   const ms = performance.now() - t0;
   setImmediate(() => logStep({ step: 'list', ms, ...listLine, ...endTrace() }));
   return answer;
 }));
 
-async function streamList(type: string, id: string, listLine: { cache?: 'hit' | 'miss'; streams?: number; not_waited_for?: string[] }): Promise<{ streams: any[] }> {
+async function streamList(type: string, id: string, listLine: ListLine): Promise<{ streams: any[] }> {
   try {
     // Check if addon is disabled
     if (!config.addonEnabled) {

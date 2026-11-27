@@ -15,10 +15,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { NntpConnectionPool } from '../health/nntpConnection.js';
 import { logPrepareStart } from './streamCache.js';
-import { remember, recall } from './sourceMemory.js';
+import { remember, recall, sourcesOf } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
 import { grabRelease, refusedBy } from './releaseGrab.js';
-import { sourcesOf } from './sourceMemory.js';
+import { mergeLate, shiftPlaces } from './lateSources.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { sourceFailure, isSourceFailure } from '../backends/types.js';
 import { selectTimeoutMs, formatTimeoutSeconds, type TimeoutSet } from './timeoutDefaults.js';
@@ -282,8 +282,6 @@ interface SourceRun {
   prepareError?: Error;
 }
 
-/** Same Source of a list: its NZB link and release name (as the list's entries find their candidate). */
-const candidateKey = (c: FallbackCandidate) => `${c.nzbUrl}\u0000${c.title}`;
 
 /**
  * Best's Walk for a play (its play context, #246): the Head start's, or a press's that walks on its own. `more`: the
@@ -559,21 +557,12 @@ export async function ultimateFallbackFromCandidates(
     const insert = (at: number, late: FallbackCandidate[]) => {
       if (late.length === 0) return;
       list.splice(at, 0, ...late);
-      const moved = [...hits].map(([index, data]): [number, StreamData] => [index >= at ? index + late.length : index, data]);
-      hits.clear();
-      for (const [index, data] of moved) hits.set(index, data);
+      shiftPlaces(hits, at, late.length);
       post({ type: 'more', at, count: late.length });
     };
     const takeLate = (whole: FallbackCandidate[]) => {
       if (walk.done) return;
-      const held = new Map(list.map(c => [candidateKey(c), c]));
-      const fresh: FallbackCandidate[] = [];
-      for (const c of sureFirst(eligible(whole))) {
-        const mine = held.get(candidateKey(c));
-        if (!mine) { fresh.push(c); continue; }
-        const { flow: _flow, flowWhy: _why, proof: _proof, ...fields } = c;
-        Object.assign(mine, fields);
-      }
+      const fresh = mergeLate(list, sureFirst(eligible(whole)));
       const sure = fresh.filter(c => c.flow !== 'maybe');
       const firstMaybe = list.findIndex((c, i) => i >= walk.reached && c.flow === 'maybe');
       insert(firstMaybe < 0 ? list.length : firstMaybe, sure);
