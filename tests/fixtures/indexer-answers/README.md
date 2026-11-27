@@ -6,3 +6,5 @@ Real name-search answers (`t=search&q=Girlfriends S04E04&cat=5000&extended=1`, H
 - `drunkenslug-search-girlfriends-s04e04.xml`: DrunkenSlug, 18 items.
 
 They share uploads under different guids and links: `…squalor` at the same size, and `Girlfriends.S04E04.720p.HDTV.x264-REGRET`, which DrunkenSlug holds twice (0.11 % and 1.5 % from NinjaCentral's size). `tests/unit/releases.test.ts` serves them from two fake indexers: what Kaiju Search merges into one Release.
+
+`tools/brain/test_search_ping.py` answers the preflight's search with them (a search answer, whatever it holds), and the Release rule's shared table (`tests/fixtures/release-rule/`) takes its pairs from them.

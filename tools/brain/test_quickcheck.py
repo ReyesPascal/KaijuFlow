@@ -1132,7 +1132,7 @@ class CheckPreflightTest(unittest.TestCase):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (59, 100)})
         code, text = run_command('check', self.cfg, FakeWorld(self.cfg))
         self.assertEqual(code, 1, text)
-        self.assertIn('drunkenslug has 59 searches left today, and the check may need 61', text)  # 60 for the titles, 1 for the caps request (#303)
+        self.assertIn('drunkenslug has 59 searches left today, and the check may need 61', text)  # 60 for the titles, 1 for the preflight's search (#303)
 
     def test_a_drill_down_asks_for_one_titles_allowance(self):
         self.limits({'ninjacentral': (2000, 450), 'drunkenslug': (1000, 0)})

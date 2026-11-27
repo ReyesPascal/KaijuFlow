@@ -31,11 +31,11 @@ class FakeWorld(brainrun.RealIO):
 
     def __init__(self, cfg, label=COMMIT, head=COMMIT, dirty=False, free=True, changed=None, load=0.3,
                  machine=('127.0.0.1', '::1', HOST_IP, '172.17.0.1'), dns=('85.12.62.251', '85.12.62.214'), power='ac', probe=950,
-                 policy=(('governor', 'powersave'), ('energy_preference', 'performance')), caps=None, allowance=None):
+                 policy=(('governor', 'powersave'), ('energy_preference', 'performance')), pings=None, allowance=None):
         super().__init__(cfg)
-        # caps: {slug: (status, body) or None (no answer)} the caps request gets (#303); every other indexer of the key file
-        # answers with NinjaCentral's captured caps, and one the key file lacks gets the stand-in's 404
-        self.caps, self.caps_asked = dict(caps or {}), []
+        # pings: {slug: (status, body) or None (no answer)} the preflight's search gets (#303); every other indexer of the
+        # key file answers with NinjaCentral's captured search answer, and one the key file lacks gets the stand-in's 404
+        self.pings, self.pinged = dict(pings or {}), []
         self.allowance = allowance  # {slug: {'search', 'download'}} left, given by hand; None reads the key file's limits
         self.power_, self.probe, self.policy = power, probe, dict(policy)
         self.asked = []  # the machine's readings in the order they were taken: 'load', 'probe'
@@ -91,15 +91,15 @@ class FakeWorld(brainrun.RealIO):
         self.asked_dns.append((name, server))
         return answer(self.dns)
 
-    def caps_answers(self, slugs):
-        self.caps_asked.append(list(slugs))
+    def ping_answers(self, slugs):
+        self.pinged.append(list(slugs))
         known = brainrun.key_file_names(brainrun._key_path(self.cfg))
-        return {s: self.caps[s] if s in self.caps else (200, CAPS_REPLY) if s in known else (404, b'unknown indexer') for s in slugs}
+        return {s: self.pings[s] if s in self.pings else (200, SEARCH_ANSWER) if s in known else (404, b'unknown indexer') for s in slugs}
 
 
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tests', 'fixtures', 'indexer-caps',
-                       'ninjacentral-caps.xml'), 'rb') as _f:
-    CAPS_REPLY = _f.read()  # a real indexer's caps reply
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tests', 'fixtures', 'indexer-answers',
+                       'ninjacentral-search-girlfriends-s04e04.xml'), 'rb') as _f:
+    SEARCH_ANSWER = _f.read()  # a real indexer's search answer
 
 
 def answer(addresses):
@@ -206,7 +206,7 @@ class PreflightTest(unittest.TestCase):
         code, text = run_command('check', self.cfg, self.world())
         self.assertEqual(code, 0, text)
         self.assertIn('the machine is plugged in, HOST_IP and altmountUrl are its addresses, news.newshosting.com resolves outside '
-                      "10.x and the indexer allowance holds the check's requests, and every indexer answered its caps request", text)
+                      "10.x and the indexer allowance holds the check's requests, and every indexer answered its search", text)
         self.assertIn('CPU probe: 950 ms (governor powersave, energy preference performance).', text)
 
     def test_a_machine_on_battery_stops_a_check(self):

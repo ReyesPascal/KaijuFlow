@@ -323,8 +323,8 @@ class RealIO:
     def fix(self, fixes):
         return run_fixes(self.cfg, fixes, self.stop_all)
 
-    def caps_answers(self, slugs):
-        return ping_caps(_key_path(self.cfg), slugs, self.cfg.get('standin_port', 1340), self.cfg.get('runs_root'))
+    def ping_answers(self, slugs):
+        return ping_search(_key_path(self.cfg), slugs, self.cfg.get('standin_port', 1340), self.cfg.get('runs_root'))
 
     def open_check_store(self, run_dir):
         """The check's own empty store for the stand-in, in the test folder; the stand-in and the cap rule read it from cfg."""
@@ -780,12 +780,13 @@ def setting_differences(expected, settings, file=None, apply=None):
     return out
 
 
-# The check's caps request (#303): one `t=caps` per switched-on indexer through the stand-in, so a wrong key, an expired
-# account or a down indexer refuses the check before titles are drawn. Test tools only: KaijuFlow sends none of its own.
-CAPS_REQUEST = 't=caps'
-CAPS_PING_SEARCHES = 1  # what the request costs each indexer, as the allowance counts it (an "api" request is a search)
-CAPS_PING_LOG = allowance.CAPS_PING_LOG  # in the runs root: the stand-in's RECORD and ERROR lines of every caps request
-CAPS_TIMEOUT_S = 70  # the stand-in waits up to 60 s for the indexer (indexer_standin.fetch_real)
+# The check's search (#303): one one-result search per switched-on indexer through the stand-in, so a wrong key, an
+# expired account or a down indexer refuses the check before titles are drawn. A search, not a caps request: indexers
+# answer `t=caps` without a key (spec #298's review, P3). Test tools only: KaijuFlow sends none of its own.
+PING_REQUEST = 't=search&limit=1'
+PING_SEARCHES = 1  # what the search costs each indexer, as the allowance counts it (an "api" request is a search)
+PING_LOG = allowance.PING_LOG  # in the runs root: the stand-in's RECORD and ERROR lines of every preflight search
+PING_TIMEOUT_S = 70  # the stand-in waits up to 60 s for the indexer (indexer_standin.fetch_real)
 NOT_REACHED = (502, b'indexer not reachable')  # the stand-in's answer when the indexer could not be reached
 
 
@@ -807,20 +808,20 @@ def _get(url, timeout):
         return None
 
 
-def ping_caps(key_file, slugs, port, runs_root, timeout=CAPS_TIMEOUT_S):
-    """{slug: (status, body), or None when the indexer gave no answer} for one caps request to each indexer, sent through
+def ping_search(key_file, slugs, port, runs_root, timeout=PING_TIMEOUT_S):
+    """{slug: (status, body), or None when the indexer gave no answer} for one one-result search of each indexer, sent through
     the stand-in's own code in record mode (the key file's address, key and dropped parameters) on loopback, on an empty
     store of its own that is deleted after, so every request reaches the real indexer and nothing is kept. Its RECORD and
-    ERROR lines are added to the runs root's caps log, where the allowance counts each as a search."""
+    ERROR lines are added to the runs root's preflight search log, where the allowance counts each as a search."""
     cfg = br.read_json(key_file) or {'indexers': {}}
-    store, out = tempfile.mkdtemp(prefix='caps-ping-'), {}
+    store, out = tempfile.mkdtemp(prefix='search-ping-'), {}
     try:
-        with open(os.devnull, 'w') as quiet, contextlib.redirect_stderr(quiet):  # its lines go to the caps log instead
-            srv = indexer_standin.make_server(cfg, store, 'record', 'caps', port, bind='127.0.0.1')
+        with open(os.devnull, 'w') as quiet, contextlib.redirect_stderr(quiet):  # its lines go to the search log instead
+            srv = indexer_standin.make_server(cfg, store, 'record', 'ping', port, bind='127.0.0.1')
             threading.Thread(target=srv.serve_forever, daemon=True).start()
             try:
                 for slug in slugs:
-                    got = _get(f'http://127.0.0.1:{port}/{urllib.parse.quote(slug)}/api?{CAPS_REQUEST}'
+                    got = _get(f'http://127.0.0.1:{port}/{urllib.parse.quote(slug)}/api?{PING_REQUEST}'
                                f'&apikey={testbed.STANDIN_API_KEY}', timeout)
                     out[slug] = None if got == NOT_REACHED else got
             finally:
@@ -830,7 +831,7 @@ def ping_caps(key_file, slugs, port, runs_root, timeout=CAPS_TIMEOUT_S):
         shutil.rmtree(store, ignore_errors=True)
     if runs_root and srv.state.log_lines:
         os.makedirs(runs_root, exist_ok=True)
-        with open(os.path.join(runs_root, CAPS_PING_LOG), 'a') as f:
+        with open(os.path.join(runs_root, PING_LOG), 'a') as f:
             f.write(''.join(line + '\n' for line in srv.state.log_lines))
     return out
 
@@ -852,25 +853,26 @@ def _error_text(body):
     return ': '.join(str(x)[:120] for x in (code, what) if x)
 
 
-def caps_problem(slug, answer):
-    """The preflight's sentence for an indexer's caps answer (ping_caps), or None when it answered with its caps."""
-    off = f'python3 -I tools/brain/testbed.py indexer off {slug}'
+def ping_problem(slug, answer):
+    """The preflight's sentence for an indexer's answer to its search (ping_search), or None when it answered with a
+    search answer (an RSS feed, with or without a result)."""
+    off = f'{TESTBED} indexer off {slug}'
     fix = (f'put its right key in the key file ({allowance.add_command(slug)}, which reads it from the stash), or switch it '
            f'off for this check ({off})')
     if answer is None or tuple(answer) == NOT_REACHED:
-        return (f'{slug} did not answer the caps request the preflight sent it through the indexer stand-in, so it is down or '
+        return (f'{slug} did not answer the search the preflight sent it through the indexer stand-in, so it is down or '
                 f'cannot be reached: wait until it answers, or switch it off for this check ({off}).')
     status, body = answer
     if indexer_standin.is_limit(status, body):
-        return (f'{slug} says its limit is reached (its answer to the caps request): wait for its reset (brainrun.py usage shows '
+        return (f'{slug} says its limit is reached (its answer to the search): wait for its reset (brainrun.py usage shows '
                 f'the allowance), or switch it off for this check ({off}).')
     if indexer_standin.has_error(body):
         said = _error_text(body)
-        return f"{slug} answered the caps request with an error{f' ({said})' if said else ''}, so its key or account is wrong: {fix}."
+        return f"{slug} answered the search with an error{f' ({said})' if said else ''}, so its key or account is wrong: {fix}."
     if not 200 <= status < 300:
-        return f'{slug} answered the caps request with HTTP {status}: {fix}.'
-    if not re.search(rb'<caps\b', body):
-        return f'{slug} answered the caps request with something that is not its caps: {fix}.'
+        return f'{slug} answered the search with HTTP {status}: {fix}.'
+    if not re.search(rb'<rss\b', body):
+        return f'{slug} answered the search with something that is not a search answer: {fix}.'
     return None
 
 
@@ -1123,7 +1125,7 @@ def preflight(mode, cfg, io, seen=None):
     if mode == 'check':
         left, problem = io.allowance_left()
         want = quickcheck.need(cfg.get('check_titles') or sum(quickcheck.QUICK_KINDS.values()))
-        want['search'] += CAPS_PING_SEARCHES  # check 12's caps request
+        want['search'] += PING_SEARCHES  # check 12's search
         if problem:
             problems.append(problem)  # the key file's limits are missing or wrong: the sentence names the command
         else:
@@ -1151,12 +1153,12 @@ def preflight(mode, cfg, io, seen=None):
                     problems.append(f'The indexers have {sum(downloads.values())} {name} left today between them ({each}), and the '
                                     f"check may need {want['download']}: wait for a reset (brainrun.py usage shows the allowance).")
 
-    # 12. (check only, #303) every switched-on indexer answers one caps request through the stand-in; sent last, and only when
+    # 12. (check only, #303) every switched-on indexer answers one one-result search through the stand-in; sent last, and only when
     # nothing else refused, so a refused check spends no request
     if mode == 'check' and not problems:
         slugs = sorted({slug for s in readable for slug in rep['enabled'][s]})
-        answers = io.caps_answers(slugs)
-        problems += [p for p in (caps_problem(slug, answers.get(slug)) for slug in slugs) if p]
+        answers = io.ping_answers(slugs)
+        problems += [p for p in (ping_problem(slug, answers.get(slug)) for slug in slugs) if p]
     return problems
 
 
@@ -1169,7 +1171,7 @@ def preflight_command(mode, cfg, io):
     if not problems:
         idle = f' and idle (1-minute load below {BUSY_LOAD:.2f})' if waits_for_idle(mode, cfg) else ''
         machine = (f'; the machine is plugged in{idle}, HOST_IP and altmountUrl are its addresses, {NEWS_HOST} resolves outside 10.x'
-                   + {'check': " and the indexer allowance holds the check's requests, and every indexer answered its caps request"}.get(mode, ''))
+                   + {'check': " and the indexer allowance holds the check's requests, and every indexer answered its search"}.get(mode, ''))
         print(f'Setup is right for a {mode}: image, indexers, addresses, connection caps, sort and filter settings and port all check out{machine}.')
         if 'machine' in seen:
             print(f"CPU probe: {br.probe_text(seen['machine'])}.")

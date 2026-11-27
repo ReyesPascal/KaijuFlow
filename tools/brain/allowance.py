@@ -28,7 +28,8 @@ COLUMNS = ('Columns: Used = requests counted since the indexer last reset; Limit
            'Left = Limit minus Used.')
 ADD_COMMAND = 'python3 -I tools/brain/testbed.py indexer add {slug} --stash <entry> --searches <n> --downloads <n>'
 LIMIT_FIELDS = ('search_per_day', 'download_per_day', 'reset', 'timezone')
-CAPS_PING_LOG = 'caps-pings.log'  # in the runs root: the check preflight's caps requests (#303), one search each
+PING_LOG = 'preflight-searches.log'  # in the runs root: the check preflight's searches (#303), one search each
+OLD_PING_LOG = 'caps-pings.log'  # the same, from when the preflight sent a caps request instead (before spec #298's review)
 
 
 def limits_path(cfg):
@@ -123,7 +124,7 @@ def requests_in(log):
 def standin_requests(runs_root):
     """Every request the stand-in sent to a real indexer, from every record folder's log."""
     out = []
-    for log in sorted(glob.glob(os.path.join(runs_root, '*', 'logs', 'standin.log'))) + [os.path.join(runs_root, CAPS_PING_LOG)]:
+    for log in sorted(glob.glob(os.path.join(runs_root, '*', 'logs', 'standin.log'))) + [os.path.join(runs_root, n) for n in (OLD_PING_LOG, PING_LOG)]:
         out.extend(requests_in(log))
     return out
 

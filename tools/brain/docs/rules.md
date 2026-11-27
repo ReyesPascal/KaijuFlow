@@ -45,7 +45,7 @@ Every indexer address in KaijuFlow's test copy is the stand-in's, and the stand-
 
 ### The allowance
 
-The preflight refuses a check unless every switched-on indexer has the check's searches left today (12 per title, plus one for its caps request) and together they have its downloads (30 per title), counted against the daily limits in the key file.
+The preflight refuses a check unless every switched-on indexer has the check's searches left today (12 per title, plus one for its preflight search) and together they have its downloads (30 per title), counted against the daily limits in the key file.
 
 - **Why:** every title is searched on every indexer, while the Walk's 30 grabs are shared, taken from whichever indexer has the Source (owner's pick on #286, 2026-11-24, when an indexer with 100 downloads a day joined one with 450).
 - **Enforced by:** `brainrun.preflight` check 11 (`allowance.left`, `quickcheck.NEED_PER_TITLE`; `test_allowance.py`, `test_preflight.py`); `brainrun.py usage` shows Used, Limit and Left.
@@ -61,10 +61,10 @@ The preflight says each problem in one plain sentence that names the command or 
 
 ### Every switched-on indexer answers before titles are drawn
 
-A check starts only when every switched-on indexer answers one caps request, sent by the test tools only and counted as one search.
+A check starts only when every switched-on indexer answers one one-result search, sent by the test tools only and counted as one search.
 
-- **Why:** a wrong key, an expired account or a down indexer is caught before titles are drawn, without slowing real use (spec #298 stories 15–16, #303).
-- **Enforced by:** `brainrun.preflight` check 12 (`ping_caps`, `caps-pings.log`; `test_caps_ping.py`).
+- **Why:** a wrong key, an expired account or a down indexer is caught before titles are drawn, without slowing real use (spec #298 stories 15–16, #303); a search, since indexers answer a caps request without a key (owner, 2026-11-27, the review of #298).
+- **Enforced by:** `brainrun.preflight` check 12 (`ping_search`, `preflight-searches.log`; `test_search_ping.py`).
 
 ## Test copies and settings
 
