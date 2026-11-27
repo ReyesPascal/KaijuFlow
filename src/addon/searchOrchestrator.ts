@@ -99,8 +99,11 @@ export interface KaijuListAnswer extends KaijuAnswer { late?: Promise<KaijuAnswe
  * The list deadline (#301): the search answers as soon as an indexer's answer holds a sure Source (Search Flow's sure)
  * while others are still to answer; their Sources come in `late`, merged into the Releases. Otherwise it waits for
  * every indexer, each bounded by its own timeout. EasyNews is always waited for. Prowlarr and NZBHydra ask every indexer in one call: they answer once.
+ * `listed`: what the list would hold of the Releases so far, marked by Search Flow (the list's dedup and the user's
+ * filters applied, spec #298's review P7), so a sure Source the list drops does not send it out early; without it,
+ * every Release counts.
  */
-export async function kaijuSearch(ctx: SearchContext): Promise<KaijuListAnswer> {
+export async function kaijuSearch(ctx: SearchContext, opts: { listed?: (releases: any[]) => { flow?: string }[] } = {}): Promise<KaijuListAnswer> {
   const title = flowTitleOf(ctx);
   const easy = easynewsSearch(ctx);
   let goOut!: (out: { soFar: any[]; notWaitedFor: string[] }) => void;
@@ -108,7 +111,8 @@ export async function kaijuSearch(ctx: SearchContext): Promise<KaijuListAnswer> 
   let gone = false;
   const sources = indexManagerSearch(ctx, (soFar, waitingFor) => {
     if (waitingFor.length === 0 || gone) return false;
-    if (markSources(soFar, title).some(s => s.flow === 'sure')) {
+    const held = opts.listed ? opts.listed(mergeReleases(mergeFound(soFar))) : markSources(soFar, title);
+    if (held.some(s => s.flow === 'sure')) {
       gone = true;
       goOut({ soFar, notWaitedFor: waitingFor });
       return true;

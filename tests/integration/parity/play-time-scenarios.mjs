@@ -573,6 +573,34 @@ export const playTimeScenarios = [
     },
   },
   {
+    // The list deadline (#301) decides on the Sources the list holds (spec #298's review, P7): the fast indexer's only
+    // sure Source is bigger than the user's size cap, so the list holds none of its sure ones, waits for the slow
+    // indexer and lists its sure Source.
+    id: 'the-list-waits-for-the-slow-indexer-when-the-users-filters-drop-the-fast-ones-sure-source',
+    async run(w) {
+      const { id, fast: [big], slow: [sure] } = offerFastAndSlow(w, 'capped', [{ tag: 'capped-big' }], [{ tag: 'capped-sure' }]);
+      const saved = w.configData.movieFilters;
+      try {
+        w.configData.movieFilters = { ...w.config.filters, maxFileSize: big.size - 1 };
+        await withIndexer(w, w.second.entry, async () => {
+          const t0 = Date.now();
+          const { result: streams, lines } = await withLogs(async () => {
+            const out = await w.list('movie', id);
+            await new Promise(r => setImmediate(r)); // the list's own step line is written one turn after the answer
+            return out;
+          });
+          const listedAt = Date.now();
+          assert.deepEqual(stepsOf(lines).filter(x => x.step === 'list' && x.ref === id).map(x => 'not_waited_for' in x), [false], 'its list line names no indexer it did not wait for');
+          assert.ok(listedAt - t0 >= SLOW_INDEXER_MS, `the list waited for the slow indexer (${listedAt - t0} ms)`);
+          assert.deepEqual(streams.filter(s => !isBest(s)).map(entryTitle), [sure.title], 'the slow indexer\'s sure Source; the big one is filtered out');
+        });
+      } finally {
+        w.configData.movieFilters = saved;
+        w.second.slow(0);
+      }
+    },
+  },
+  {
     // #301 with #300: a late copy of a Release joins its Sources. The fast indexer (here the second one) lists the
     // Release with a copy it refuses to hand out (429), under a dead Source whose slow check holds the Walk; the slow
     // indexer's copy of the same upload arrives meanwhile, so Best fetches the Release's NZB from it and plays it.

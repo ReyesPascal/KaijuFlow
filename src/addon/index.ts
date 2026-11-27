@@ -301,7 +301,7 @@ async function streamList(type: string, id: string, listLine: ListLine): Promise
     listAsked(sessionKeyOf(requestManifestKey, type, imdbId, season, episode));
 
     // === SHARED: Filter dead NZBs from raw results ===
-    const filterDeadFromRaw = (results: any[], play: PlayContext) => {
+    const filterDeadFromRaw = (results: any[], play: PlayContext, quiet = false) => {
       if (!config.filterDeadNzbs) return results;
       const SELF_URL = getSelfUrl(); // must match the EasyNews NZB URLs the play side marks dead
       const manifestKey = requestContext.getStore()?.manifestKey || '';
@@ -322,7 +322,7 @@ async function streamList(type: string, id: string, listLine: ListLine): Promise
         if (dead) removed.push({ title: r.title, indexer: r.indexerName || r.origin });
         return !dead;
       });
-      if (filtered.length < before) {
+      if (filtered.length < before && !quiet) {
         console.log(`🚫 Filtered ${before - filtered.length} dead NZB(s) from results (${filtered.length} remaining)`);
         for (const { title, indexer } of removed) console.log(`   ✂️  "${title}" [${indexer}]`);
       }
@@ -345,10 +345,13 @@ async function streamList(type: string, id: string, listLine: ListLine): Promise
       manifestKey: requestManifestKey, type, imdbId, season, episode,
       aired: titleMeta.episodeAired, episodesInSeason: titleMeta.episodesInSeason, flow: titleMeta.flow,
     });
-    // The Walk's candidates of a list's raw results, dead marks and the user's filters and sort applied as the list's
-    // are, without the list's step lines and with no fallback group made (#301: the late Sources).
+    // A list's raw results as the list holds them, dead marks and the user's filters and sort applied, without the
+    // list's step lines or logs.
+    const keptOf = (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta, play: PlayContext): any[] =>
+      applyUserFilters(filterDeadFromRaw(rawResults, play, true), type, titleMeta.now, titleMeta.runtime, filterDeadFromRaw(deprioritizedPacks, play, true), { quiet: true });
+    // The Walk's candidates of a list's raw results, with no fallback group made (#301: the late Sources).
     const candidatesFromRaw = (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta, play: PlayContext): FallbackCandidate[] =>
-      candidatesOf(applyUserFilters(filterDeadFromRaw(rawResults, play), type, titleMeta.now, titleMeta.runtime, filterDeadFromRaw(deprioritizedPacks, play), { quiet: true }));
+      candidatesOf(keptOf(rawResults, deprioritizedPacks, titleMeta, play));
 
     const processFromRaw = async (rawResults: any[], deprioritizedPacks: any[], titleMeta: TitleMeta) => {
       const play = playOf(titleMeta);
@@ -456,8 +459,14 @@ async function streamList(type: string, id: string, listLine: ListLine): Promise
     };
 
     // Kaiju Search (#285): every indexer by ID and by name, and EasyNews, at once. The list goes out as soon as an
-    // indexer's answer holds a sure Source (#301); a slower indexer's Sources come later (`late`).
-    const answer = await kaijuSearch(searchCtx);
+    // indexer's answer holds a sure Source the list keeps (#301; its dedup, dead marks and the user's filters applied,
+    // spec #298's review P7); a slower indexer's Sources come later (`late`).
+    const listed = (releases: any[]) => {
+      const meta = titleMeta(Date.now());
+      const raw = rawOf({ indexer: releases, easynews: [] }, false);
+      return keptOf(raw.rawResults, raw.deprioritizedPacks, meta, playOf(meta));
+    };
+    const answer = await kaijuSearch(searchCtx, { listed });
 
     // === STEP 3: DEDUP + CONTENT-DEPENDENT PRE-FILTERING (cacheable) ===
     const { rawResults, deprioritizedPacks } = rawOf(answer, true);
