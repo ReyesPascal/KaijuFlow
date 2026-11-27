@@ -84,3 +84,23 @@ test('a maybe the check proves sure is handed over at once, before a late sure S
   assert.deepEqual(kinds(walk.on({ type: 'checked', index: 1, verdict: 'healthy' })), [], 'the proven Source is being prepared');
   assert.deepEqual(kinds(walk.on({ type: 'prepared', index: 0, videoPath: '/v/a.mkv' })), ['settle 0']);
 });
+
+test('a Release whose known links were gone is grabbed again when a late copy joins it', () => {
+  const { walk } = walkOver(['sure'], 1);
+  walk.start();
+  assert.deepEqual(kinds(walk.on({ type: 'grabFailed', index: 0, badSource: true, linkGone: true, refused: [] })), [],
+    'not marked dead by the Walk (the grab marked each gone link), and no end: more may come');
+  assert.deepEqual(kinds(walk.on({ type: 'joined', index: 0 })), ['grab 0'], 'its new Source is grabbed');
+  walk.on({ type: 'grabbed', index: 0 });
+  assert.deepEqual(kinds(walk.on({ type: 'checked', index: 0, verdict: 'healthy' })), ['prepare 0']);
+  assert.deepEqual(kinds(walk.on({ type: 'prepared', index: 0, videoPath: '/v/a.mkv' })), ['settle 0']);
+  assert.equal(walk.grabCount, 2, 'the grab again counts against the 30');
+});
+
+test('a late copy joining a Release whose grab failed otherwise does not grab it again', () => {
+  const { walk } = walkOver(['sure'], 1);
+  walk.start();
+  assert.deepEqual(kinds(walk.on({ type: 'grabFailed', index: 0, badSource: true, refused: [] })), ['markDead 0']);
+  assert.deepEqual(kinds(walk.on({ type: 'joined', index: 0 })), []);
+  assert.deepEqual(kinds(walk.on({ type: 'closed' })), ['settleNone ran-out']);
+});

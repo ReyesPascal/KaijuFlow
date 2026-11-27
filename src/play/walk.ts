@@ -18,7 +18,8 @@
  *   rest of the Walk, said once: its other Sources are passed by unless a library hit, which needs no grab (ADR 0004).
  *   The grabs already under way when it refuses still reach it, so it is asked at most `inFlight` (candidateCount) times.
  * - A list still growing (#301): when the list went out before a slower indexer answered, the Walk is `open` and its
- *   late Sources join it (`more`, put after what the Walk reached) until the list is whole (`closed`). While open, a
+ *   late Sources join it (`more`, put after what the Walk reached) until the list is whole (`closed`). A Release whose
+ *   grab failed only because every link it knew was gone is grabbed again when a late copy joins it (`joined`). While open, a
  *   Walk whose Sources all failed waits instead of ending, and a healthy maybe is not handed to the Backend: a sure
  *   Source still to come goes first. A held maybe leaves its place in the Walk to a sure Source, never to a maybe. The sure Sources entered are handed over before the maybes, each in list order.
  * - Each Source of the list is a Release (#300; GLOSSARY: Release): one grab, one check, one dead mark, whichever of its
@@ -75,14 +76,17 @@ export class WalkLimits {
 export type WalkEvent =
   /** `refused`: the indexers that refused the grab before one of the Release's other Sources was fetched (#300). */
   | { type: 'grabbed'; index: number; refused?: readonly string[] }
-  /** `badSource`: every indexer says the link is gone, or its NZB is bad (ADR 0004). `refused`: the indexers that refused. */
-  | { type: 'grabFailed'; index: number; badSource: boolean; refused: readonly string[] }
+  /** `badSource`: every indexer says the link is gone, or its NZB is bad (ADR 0004). `refused`: the indexers that refused.
+   *  `linkGone`: every link was gone, each Source already marked dead on its own: a late copy may still play (`joined`). */
+  | { type: 'grabFailed'; index: number; badSource: boolean; refused: readonly string[]; linkGone?: boolean }
   /** `sure`: Search Flow's extra proof made a maybe sure (#286): it is handed over as a sure Source, in its list place. */
   | { type: 'checked'; index: number; verdict: 'healthy' | 'blocked' | 'error'; episodeOnly?: boolean; sure?: boolean }
   | { type: 'prepared'; index: number; videoPath: string }
   | { type: 'prepareFailed'; index: number; badSource: boolean }
   /** Late Sources (#301): `count` of them were put in the list at `at`, at or after the first Source not reached. */
   | { type: 'more'; at: number; count: number }
+  /** A late copy of the Release joined its Sources (#301): grabbed again when its grab failed for gone links only. */
+  | { type: 'joined'; index: number }
   /** The list is whole: no more Sources will come. */
   | { type: 'closed' }
   | { type: 'stop' };
@@ -134,6 +138,9 @@ export interface WalkMember {
   prepare: 'idle' | 'preparing' | 'done' | 'failed' | 'cancelled';
   /** A library hit: waiting (parked), played, kept as a backup, or passed by (same video, other container). */
   library?: 'parked' | 'played' | 'backup' | 'duplicate' | 'mismatch';
+  /** Its grab failed for gone links only (`linkGone`); `again`: a late copy joined it, so it is grabbed again (#301). */
+  linkGone?: boolean;
+  again?: boolean;
   /** A maybe: read when the Walk reached it, dropped when the check proves it sure (it keeps its list place, #190). */
   maybe?: boolean;
 }
@@ -199,7 +206,11 @@ export class Walk {
       case 'grabFailed':
         m.grab = 'failed';
         for (const indexer of event.refused) this.skipIndexer(indexer, out);
-        if (event.badSource) out.push({ type: 'markDead', index: m.index, cause: 'grab' });
+        if (event.linkGone) m.linkGone = true; // its Sources are marked: no mark of the Release's
+        else if (event.badSource) out.push({ type: 'markDead', index: m.index, cause: 'grab' });
+        break;
+      case 'joined':
+        if (m.grab === 'failed' && m.linkGone) m.again = true;
         break;
       case 'checked':
         m.check = event.verdict;
@@ -274,6 +285,8 @@ export class Walk {
     const walked = this.members.filter(m => !this.finished(m));
     if (walked.length < this.opts.inFlight) return true;
     if (walked.length - walked.filter(m => this.held(m)).length >= this.opts.inFlight) return false;
+    const again = this.members.find(m => m.again);
+    if (again) return !again.maybe;
     let i = this.next;
     while (i < this.size && this.passedBy(i)) i++;
     return i < this.size && !this.opts.isMaybe?.(i);
@@ -281,6 +294,7 @@ export class Walk {
 
   private canEnter(): boolean {
     if (this.limits.stopped) return false;
+    if (this.members.some(m => m.again)) return true;
     let i = this.next;
     while (i < this.size && this.passedBy(i)) i++;
     return i < this.size;
@@ -305,9 +319,19 @@ export class Walk {
     if (this.limits.refused(indexer)) out.push({ type: 'skipIndexer', indexer });
   }
 
-  /** Bring the next Source of the list into the Walk. False when none can come: the list ran out or the grabs did. */
+  /** Bring the next Source of the list into the Walk: first a Release a late copy joined (it keeps its place), then
+   *  the next not reached. False when none can come: the list ran out or the grabs did. */
   private enter(out: WalkDecision[]): boolean {
     if (this.limits.stopped) return false;
+    const again = this.members.find(m => m.again);
+    if (again) {
+      if (this.limits.grab() !== 'grab') { out.push({ type: 'ceiling', grabs: this.limits.grabCount }); return false; }
+      delete again.again;
+      delete again.linkGone;
+      again.grab = 'grabbing';
+      out.push({ type: 'grab', index: again.index });
+      return true;
+    }
     while (this.next < this.size && this.passedBy(this.next)) this.next++;
     if (this.next >= this.size) return false;
     const index = this.next;

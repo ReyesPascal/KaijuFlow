@@ -644,6 +644,33 @@ export const playTimeScenarios = [
     })),
   },
   {
+    // #301 with #300 (spec #298's review, Codex 1): the fast indexer (here the second one) lists a Release whose link
+    // it has taken down (404), so Best's first grab of it fails; the slow indexer's copy of the same upload joins the
+    // Release later, and the Walk grabs it again from that copy and plays it. The gone link is that indexer's alone:
+    // the next list still offers the Release.
+    id: 'a-release-whose-link-was-gone-plays-from-a-late-copy',
+    run: w => withIndexer(w, w.second.entry, async () => {
+      w.stats.resetAllStats();
+      const id = `tt${nextImdb++}`;
+      w.cinemeta.add(id, { name: 'KaijuFlow PlayTime lategone', year: '2026' });
+      const rel = { tag: 'lategone-rel', title: 'KaijuFlow.PlayTime.lategone.2026.2160p.WEB-DL.H265-REL', size: 19 * GB, media: mediaFor('lategone-rel') };
+      const upload = w.backend.addMovie(rel.tag, rel.title, rel.media);
+      w.second.offer(id, [{ title: rel.title, size: rel.size, link: w.second.copy(`${rel.tag}-second`, upload, { refuse: { status: 404 } }) }]);
+      w.indexer.offer(id, [{ title: rel.title, size: rel.size, link: upload }]);
+      w.indexer.slow(SLOW_INDEXER_MS);
+      try {
+        const streams = await w.list('movie', id);
+        const r = await play(streams[0].url);
+        assert.equal(r.status, 200, 'Best plays');
+        assertBytes(r.body, rel.media, 'Best plays the Release, from the slow indexer\'s late copy');
+        assert.deepEqual(fetchedFrom(w, rel.tag), { Parity: 1, Second: 1 }, 'the fast indexer\'s link was gone, the late copy served');
+      } finally {
+        w.indexer.slow(0);
+      }
+      assert.ok(await offered(w, id, rel), 'the Release stays in the list');
+    }),
+  },
+  {
     // #301 with #300: the late copy joins the Release in the list's fallback group too, so a clicked list entry with no
     // Head start (On Click) fetches its NZB from the slow indexer once the fast one refuses.
     id: 'a-late-copy-of-a-release-joins-its-sources-for-a-clicked-entry',

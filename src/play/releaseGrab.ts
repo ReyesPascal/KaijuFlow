@@ -65,7 +65,11 @@ export class ReleaseGrabError extends Error {
   readonly badGrab: boolean;
   readonly isTimeout = false;
   readonly isEpisodeSpecific = false;
-  constructor(message: string, readonly refused: string[], badRelease: boolean) {
+  /**
+   * `linkGone`: a bad Release only because every Source tried said its link is gone (LinkGoneError). Each was marked
+   * dead on its own (`linkOnly`), so a late copy of the Release on another indexer is still worth a grab (#301).
+   */
+  constructor(message: string, readonly refused: string[], badRelease: boolean, readonly linkGone = false) {
     super(message);
     this.name = 'ReleaseGrabError';
     this.isBadSource = this.badGrab = badRelease;
@@ -103,14 +107,20 @@ export async function grabRelease(
       last = err as Error;
       if (!isSourceFailure(err)) refused.push(s.indexerName);
       else if (!(err instanceof LinkGoneError)) { badNzb = true; break; } // the upload's own fault: no other indexer has a good copy
-      // Gone on this indexer: that Source's own mark, so the next play starts at another indexer.
-      else if (all.length > 1) remember({ source: s, play, dead: err, everyEpisode: true, linkOnly: true });
+      // Gone on this indexer: that Source's own mark, so the next play starts at another indexer, and a copy of the
+      // Release found later on another indexer is not dead with it (a Release whose every Source is marked is).
+      else remember({ source: s, play, dead: err, everyEpisode: true, linkOnly: true });
       if (n < order.length - 1) console.log(`${logPrefix}↪️ ${s.indexerName}'s NZB not fetched (${(err as Error).message}): trying the Release's other Sources`);
     }
   }
   // A gone Source beside a refusal, or beside one passed by, is no bad Release.
   const bad = badNzb || (last !== undefined && refused.length === 0 && !passedBy);
-  throw new ReleaseGrabError(last?.message ?? 'every Source of the Release was passed by: its indexers refused earlier in this Walk', refused, bad);
+  throw new ReleaseGrabError(last?.message ?? 'every Source of the Release was passed by: its indexers refused earlier in this Walk', refused, bad, bad && !badNzb);
+}
+
+/** A grab's error says every Source tried had its link gone, each marked dead on its own (grabRelease). */
+export function linkGone(err: unknown): boolean {
+  return err instanceof ReleaseGrabError && err.linkGone;
 }
 
 /** The indexers a grab's error says refused (grabRelease); none for any other error. */

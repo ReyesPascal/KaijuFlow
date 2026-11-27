@@ -17,7 +17,7 @@ import { NntpConnectionPool } from '../health/nntpConnection.js';
 import { logPrepareStart } from './streamCache.js';
 import { remember, recall, sourcesOf } from './sourceMemory.js';
 import { logPlayFailed } from '../utils/stepTiming.js';
-import { grabRelease, refusedBy } from './releaseGrab.js';
+import { grabRelease, refusedBy, linkGone } from './releaseGrab.js';
 import { mergeLate, shiftPlaces } from './lateSources.js';
 import { getActiveBackend, PrepareCancelledError } from '../backends/index.js';
 import { sourceFailure, isSourceFailure } from '../backends/types.js';
@@ -278,6 +278,8 @@ interface SourceRun {
   cancelled?: boolean;
   containerType?: string;
   grabError?: Error;
+  /** How many Sources the Release had when last grabbed: a late copy that joins it after makes more (#301). */
+  grabbedOf?: number;
   video?: StreamData;
   prepareError?: Error;
 }
@@ -472,6 +474,7 @@ export async function ultimateFallbackFromCandidates(
         case 'grab': {
           const c = list[d.index];
           deferred.lastVettedUrl = c.nzbUrl;
+          runOf(d.index).grabbedOf = sourcesOf(c).length;
           // A stop cuts the grab off (#244): its answer is not wanted, so it is no failed grab. The Release's NZB comes
           // from its fastest indexer, or another's when that fetch fails (#300).
           grabRelease(c, { play, skips: indexer => walk.skips(indexer), logPrefix: `${tag} [grab #${d.index + 1}] `, stop: controller.signal })
@@ -482,7 +485,7 @@ export async function ultimateFallbackFromCandidates(
               if (controller.signal.aborted) return;
               runOf(d.index).grabError = err;
               console.log(`${tag} ❌ Grab failed for ${name(d.index)}: ${err.message}`);
-              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err), refused: refusedBy(err) });
+              post({ type: 'grabFailed', index: d.index, badSource: isSourceFailure(err), refused: refusedBy(err), linkGone: linkGone(err) });
             });
           return;
         }
@@ -564,6 +567,11 @@ export async function ultimateFallbackFromCandidates(
     const takeLate = (whole: FallbackCandidate[]) => {
       if (walk.done) return;
       const fresh = mergeLate(list, sureFirst(eligible(whole)));
+      // A late copy of a Release the Walk grabbed joined its Sources (here, or already in the list's fallback group,
+      // whose candidates these are): one whose links were all gone is grabbed again.
+      for (const [index, r] of runs) {
+        if (r.grabbedOf !== undefined && sourcesOf(list[index]).length > r.grabbedOf) post({ type: 'joined', index });
+      }
       const sure = fresh.filter(c => c.flow !== 'maybe');
       const firstMaybe = list.findIndex((c, i) => i >= walk.reached && c.flow === 'maybe');
       insert(firstMaybe < 0 ? list.length : firstMaybe, sure);
