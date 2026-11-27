@@ -2,7 +2,7 @@
 // sure Source (Search Flow's sure), without waiting for a slower indexer; the slower one's Sources come later
 // (`late`), merged into their Releases. When no answer so far holds a sure Source it waits for every indexer, each
 // bounded by its own timeout. Owner: NinjaCentral is the fast go-to, DrunkenSlug slower with rarer and older releases.
-// The fakes answer with real answers of both (tests/fixtures/indexer-answers/, review rule 2).
+// The fakes answer with real answers of both (tests/fixtures/indexer-answers/).
 // Run: npm run test:unit
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';

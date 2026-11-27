@@ -99,7 +99,7 @@ class FakeWorld(brainrun.RealIO):
 
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tests', 'fixtures', 'indexer-caps',
                        'ninjacentral-caps.xml'), 'rb') as _f:
-    CAPS_REPLY = _f.read()  # a real indexer's caps reply (review rule 2)
+    CAPS_REPLY = _f.read()  # a real indexer's caps reply
 
 
 def answer(addresses):

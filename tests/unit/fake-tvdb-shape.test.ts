@@ -1,4 +1,4 @@
-// The fake TVDB must answer in real TVDB v4's reply layout (review rule 2). Fixtures in tests/fixtures/tvdb/ are
+// The fake TVDB must answer in real TVDB v4's reply layout. Fixtures in tests/fixtures/tvdb/ are
 // replies captured from api4.thetvdb.com on 2026-11-23; only the status and the layout (fields, nesting, types)
 // are compared, never values.
 // Run: npm run test:unit

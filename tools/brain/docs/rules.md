@@ -195,7 +195,7 @@ Tests compare bytes with `assertBytes` (`tests/integration/parity/bytes.mjs`), n
 
 A test goes through the code that uses the change, not just the new helper.
 
-- **Why:** #131's test passed while the coordinator never used the value (2026-11-15; review-standards.md 4).
+- **Why:** #131's test passed while the coordinator never used the value (2026-11-15; review-standards.md).
 - **Enforced by:** by hand (review).
 
 ### Words and ADRs

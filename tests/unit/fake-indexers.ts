@@ -1,5 +1,5 @@
 // Fake Newznab indexers for the Kaiju Search tests (Releases #299, the list deadline #301): each answers a name search
-// with a set answer (a real one from tests/fixtures/indexer-answers/, review rule 2, or one built with `rss`), and
+// with a set answer (a real one from tests/fixtures/indexer-answers/, or one built with `rss`), and
 // every other query with an empty answer. `delayMs` makes one slow, as DrunkenSlug is beside NinjaCentral.
 import http from 'node:http';
 import { after } from 'node:test';

@@ -24,7 +24,7 @@ Every standing rule is in `tools/brain/docs/rules.md`. A new standing decision o
 
 ### Review standards
 
-Four written rules for reviewing tests, shared setup and call sites, and the review a fix-up gets before it merges: `docs/agents/review-standards.md`.
+One written rule for reviewing a change, that a test reaches the code that uses it: `docs/agents/review-standards.md`.
 
 ### Domain docs
 

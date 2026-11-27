@@ -254,7 +254,7 @@ class DrawTest(unittest.TestCase):
 
 
 class CapturedTmdbTest(unittest.TestCase):
-    """The draw on TMDB's real answers (review rule 2): one draw of every kind, captured 2026-11-24."""
+    """The draw on TMDB's real answers: one draw of every kind, captured 2026-11-24."""
 
     def test_a_draw_on_tmdb_s_real_answers_gives_the_captured_titles(self):
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', '2026-11-24-tmdb-draw',

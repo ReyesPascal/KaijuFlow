@@ -1,6 +1,6 @@
 """Tests for the check preflight's caps request (#303): one `t=caps` per switched-on indexer, sent through the real stand-in
-code to a fake indexer on loopback that answers with replies captured from the real indexers (tests/fixtures/indexer-caps/,
-review rule 2), counted by the allowance as one search each, and judged by the preflight.
+code to a fake indexer on loopback that answers with replies captured from the real indexers (tests/fixtures/indexer-caps/),
+counted by the allowance as one search each, and judged by the preflight.
 
     python3 -I -m unittest discover -s tools/brain -p 'test_caps_ping.py'
 """

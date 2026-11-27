@@ -23,7 +23,7 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-# captured, scrubbed logs the brain tools' tests read (review rule 2)
+# captured, scrubbed logs the brain tools' tests read
 !tools/brain/fixtures/**/*.log
 
 # Runtime data

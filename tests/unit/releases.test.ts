@@ -2,7 +2,7 @@
 // matched by a cleaned-up title (lower case, separators removed) and a size within 1 %, carrying its Source on each
 // indexer. Kaiju Search hands the list Releases, so the list shows one entry per Release.
 // The fake indexers answer a name search with real answers of NinjaCentral and DrunkenSlug
-// (tests/fixtures/indexer-answers/, review rule 2), their links pointing back at the fake as the stand-in's did.
+// (tests/fixtures/indexer-answers/), their links pointing back at the fake as the stand-in's did.
 // Run: npm run test:unit
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';

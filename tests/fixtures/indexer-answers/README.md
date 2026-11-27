@@ -5,4 +5,4 @@ Real name-search answers (`t=search&q=Girlfriends S04E04&cat=5000&extended=1`, H
 - `ninjacentral-search-girlfriends-s04e04.xml`: NinjaCentral, 7 items.
 - `drunkenslug-search-girlfriends-s04e04.xml`: DrunkenSlug, 18 items.
 
-They share uploads under different guids and links: `…squalor` at the same size, and `Girlfriends.S04E04.720p.HDTV.x264-REGRET`, which DrunkenSlug holds twice (0.11 % and 1.5 % from NinjaCentral's size). `tests/unit/releases.test.ts` serves them from two fake indexers: what Kaiju Search merges into one Release (review rule 2).
+They share uploads under different guids and links: `…squalor` at the same size, and `Girlfriends.S04E04.720p.HDTV.x264-REGRET`, which DrunkenSlug holds twice (0.11 % and 1.5 % from NinjaCentral's size). `tests/unit/releases.test.ts` serves them from two fake indexers: what Kaiju Search merges into one Release.

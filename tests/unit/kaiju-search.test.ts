@@ -1,7 +1,7 @@
 // Kaiju Search (#285, spec #279; GLOSSARY: Kaiju Search): every indexer is asked by ID (the IDs its caps list) and by
 // name at once; the answers are merged and each Source is listed once, then sorted by Search Flow.
 // The fake indexers answer like a Newznab indexer: `t=movie` / `t=tvsearch` with an ID it supports, `t=search` with
-// `q`, and an error for an ID its caps do not list (review rule 1).
+// `q`, and an error for an ID its caps do not list.
 // Run: npm run test:unit
 import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -119,7 +119,7 @@ test('the ID search asks with every ID the indexer supports; an indexer whose ca
 });
 
 // Caps replies as indexers sent them (tests/fixtures/indexer-caps/README.md): DrunkenSlug's and NinjaCentral's `t=caps`,
-// and DrunkenSlug's answer to a wrong key, a Newznab <error> sent with HTTP 200 (review rule 2).
+// and DrunkenSlug's answer to a wrong key, a Newznab <error> sent with HTTP 200.
 const capsFixture = (name: string) => fs.readFileSync(new URL(`../fixtures/indexer-caps/${name}`, import.meta.url), 'utf8');
 const DS_CAPS = capsFixture('drunkenslug-caps.xml');
 const NINJA_CAPS = capsFixture('ninjacentral-caps.xml');
